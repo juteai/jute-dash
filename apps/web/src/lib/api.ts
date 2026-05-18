@@ -1,0 +1,170 @@
+import type { Agent, DashboardData, HomeState, MessageResponse, PublicConfig, UserFacingIssue, WidgetLayout } from '$lib/types';
+
+const API_BASE = import.meta.env.VITE_JUTE_API_URL ?? 'http://127.0.0.1:8787';
+
+export async function getDashboard(fetcher: typeof fetch): Promise<DashboardData> {
+  const [config, home, agentResponse, layout] = await Promise.all([
+    getJSON<PublicConfig>(fetcher, '/api/v1/config'),
+    getJSON<HomeState>(fetcher, '/api/v1/home'),
+    getJSON<{ agents: Agent[] }>(fetcher, '/api/v1/agents'),
+    getJSON<WidgetLayout>(fetcher, '/api/v1/widgets/layout')
+  ]);
+
+  return {
+    config,
+    home,
+    agents: agentResponse.agents,
+    layout,
+    connectionState: 'connected',
+    stale: false,
+    hubUrl: API_BASE,
+    loadedAt: new Date().toISOString()
+  };
+}
+
+export async function sendMessage(
+  fetcher: typeof fetch,
+  agentId: string,
+  text: string
+): Promise<MessageResponse> {
+  const response = await fetcher(`${API_BASE}/api/v1/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ agentId, text })
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+  }
+  return response.json() as Promise<MessageResponse>;
+}
+
+export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {
+  const config: PublicConfig = {
+    home: {
+      name: 'Jute Home',
+      timezone: 'UTC',
+      locale: 'en'
+    },
+    display: {
+      theme: 'system',
+      accentColor: 'teal',
+      idleMode: 'ambient'
+    },
+    agents: [],
+    rooms: [],
+    tiles: []
+  };
+
+  return {
+    config,
+    home: {
+      generatedAt: new Date().toISOString(),
+      home: config.home,
+      rooms: [],
+      tiles: [],
+      weather: {
+        locationName: 'London',
+        temperature: null,
+        temperatureUnit: '°C',
+        apparentTemperature: null,
+        condition: 'Weather unavailable',
+        icon: 'cloud',
+        weatherCode: null,
+        humidity: null,
+        windSpeed: null,
+        windSpeedUnit: 'km/h',
+        sunrise: '',
+        sunset: '',
+        isDay: null,
+        updatedAt: '',
+        source: 'open-meteo',
+        status: 'unavailable'
+      }
+    },
+    agents: [],
+    layout: fallbackLayout(),
+    connectionState: 'offline',
+    stale: true,
+    hubUrl: API_BASE,
+    loadedAt: new Date().toISOString(),
+    issue: issue ?? {
+      code: 'hub_unreachable',
+      severity: 'error',
+      title: 'Hub not reachable',
+      message: `Jute Dash cannot connect to the local hub at ${shortHubUrl(API_BASE)}.`,
+      action: {
+        label: 'Retry',
+        target: 'retry'
+      }
+    }
+  };
+}
+
+export function hubURL() {
+  return API_BASE;
+}
+
+function shortHubUrl(value: string) {
+  return value.replace(/^https?:\/\//, '');
+}
+
+function fallbackLayout(): WidgetLayout {
+  return {
+    profileId: 'fallback-dashboard',
+    widgets: [
+      {
+        id: 'date-time',
+        kind: 'date-time',
+        title: 'Date & Time',
+        x: 0,
+        y: 0,
+        w: 2,
+        h: 1,
+        minW: 1,
+        minH: 1,
+        size: 'wide',
+        settings: {},
+        visible: true
+      },
+      {
+        id: 'weather',
+        kind: 'weather',
+        title: 'Weather',
+        x: 2,
+        y: 0,
+        w: 2,
+        h: 1,
+        minW: 1,
+        minH: 1,
+        size: 'wide',
+        settings: {},
+        visible: true
+      },
+      {
+        id: 'chat-history',
+        kind: 'chat-history',
+        title: 'Chat History',
+        x: 0,
+        y: 1,
+        w: 2,
+        h: 2,
+        minW: 1,
+        minH: 1,
+        size: 'medium',
+        settings: {},
+        visible: true
+      }
+    ]
+  };
+}
+
+async function getJSON<T>(fetcher: typeof fetch, path: string): Promise<T> {
+  const response = await fetcher(`${API_BASE}${path}`);
+  if (!response.ok) {
+    throw new Error(`Jute API request failed: ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}

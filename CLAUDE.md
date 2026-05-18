@@ -1,0 +1,85 @@
+# Claude Guidance For Jute Dash
+
+Jute Dash is a local-first home assistant platform. Treat this repo as architecture-led: read the docs before expanding implementation.
+
+## Core Architecture
+
+- Hub: Go service for config, persistence, local API, A2A transport, smart-home adapters, widget permissions, event streams, and future headless voice.
+- Display: SvelteKit with shadcn-svelte conventions for dashboard, settings, widget host, PWA, and kiosk use.
+- Persistence: SQLite for runtime data, JSON for bootstrap/import/export.
+- Agents: bring-your-own A2A servers discovered through Agent Cards.
+- Widgets: native Svelte for first-party widgets, sandboxed Widget Packs for custom widgets.
+
+Key docs:
+
+- [Architecture Index](docs/architecture/index.md)
+- [System Architecture](docs/architecture/system.md)
+- [Configuration And Persistence](docs/architecture/configuration-persistence.md)
+- [Display UX](docs/architecture/display-ux.md)
+- [Resilience And Error UX](docs/architecture/resilience-error-ux.md)
+- [Widgets](docs/architecture/widgets.md)
+- [A2A Compatibility](docs/architecture/a2a.md)
+- [MCP Bridge](docs/architecture/mcp-bridge.md)
+- [Voice And Wake Word Architecture](docs/architecture/voice.md)
+- [Voice Provider Packs](docs/architecture/voice-providers.md)
+- [Text-To-Speech](docs/architecture/text-to-speech.md)
+- [Distribution](docs/architecture/distribution.md)
+- [UX Customization](docs/architecture/ux-customization.md)
+- [Security And Privacy](docs/architecture/security-privacy.md)
+
+## Working Rules
+
+- Keep the hub headless-capable.
+- Keep the display as a client of the hub API.
+- Treat the current `apps/web` dashboard as throwaway POC UI. Do not preserve current CSS, layout, side panel, tile structure, or styling unless it matches Display UX.
+- Use shadcn-svelte conventions and BOW/WOB light/dark mode from Display UX for future frontend work.
+- Do not call remote A2A agents directly from the Svelte app.
+- Do not put durable settings only in browser storage.
+- Treat SQLite as runtime truth once persistence exists. Treat JSON as bootstrap/import/export.
+- Classify new settings before implementation: boot-only, household durable, device-profile durable, install record, cache, secret reference, or transient UI state.
+- Do not silently hide hub/API failures behind fake live data. Show startup offline, reconnecting, stale, degraded, no-agent, and widget failure states according to Resilience And Error UX.
+- Prefer recoverable inline UX over blocking modals for runtime failures.
+- Do not show raw internal errors, stack traces, full remote URLs, token names, or secret references in user-facing UI.
+- Do not store raw secrets in JSON config or public API responses.
+- Do not create a custom A2A protocol binding for v1.
+- Use the optional Jute A2A extension for dashboard context: `https://jute.dev/a2a/extensions/dashboard-context/v1`.
+- Send dashboard context only when an agent declares support.
+- Treat MCP as optional local context/tool access for trusted agents. A2A remains the conversation and task protocol.
+- Implement the MCP Bridge inside the Go hub, disabled by default, loopback-bound by default, and using Streamable HTTP as the default v1 transport.
+- Store MCP credentials as secret references only and never expose remote agents to local MCP credentials automatically.
+- Expose only hub-approved dashboard/widget context and hub-mediated tools through MCP.
+- Do not let widgets call MCP directly or agents connect directly to widget iframes.
+- Keep wake word and VAD local before any cloud STT call.
+- Route voice transcripts through the hub conversation pipeline, not directly to agents.
+- Never send raw microphone audio to A2A agents.
+- Implement STT/TTS integrations as Voice Provider Packs, not Go dynamic plugins.
+- Keep cloud STT/TTS opt-in and command providers disabled unless explicitly enabled.
+
+## Widget Rules
+
+- Custom widgets are Widget Packs with `widget.json`.
+- Render untrusted widgets in sandboxed iframes.
+- Use the typed postMessage SDK contract for host/widget communication.
+- Expose agent context only from manifest-declared public fields.
+- Keep permissions explicit and revocable.
+
+## Commands
+
+```sh
+make setup
+make dev
+make test
+make web-check
+make check
+```
+
+## Documentation Discipline
+
+- Update docs before implementing new architecture behavior.
+- Do not leave open-ended decisions in architecture docs.
+- When adding display behavior, update Display UX and do not treat the current POC UI as canonical.
+- When adding resilience or user-facing error behavior, update Resilience And Error UX.
+- When adding A2A behavior, check the current official A2A docs and update Jute docs with links.
+- When adding MCP behavior, check the current official MCP docs and update MCP Bridge and MCP Agent Guidelines.
+- When adding widget behavior, update both architecture and developer guidelines.
+- When adding voice behavior, update voice architecture, provider pack architecture, and developer guidelines.

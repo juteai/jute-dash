@@ -1,0 +1,100 @@
+{
+  "home": {
+    "name": "Jute House",
+    "timezone": "Europe/London",
+    "locale": "en-GB"
+  },
+  "server": {
+    "listenAddress": "127.0.0.1:8787"
+  },
+  "display": {
+    "theme": "system",
+    "accentColor": "teal",
+    "idleMode": "ambient"
+  },
+  "weather": {
+    "enabled": true,
+    "provider": "open-meteo",
+    "locationName": "London",
+    "latitude": 51.5072,
+    "longitude": -0.1276,
+    "temperatureUnit": "celsius",
+    "windSpeedUnit": "kmh"
+  },
+  "agents": [
+    {
+      "id": "house-concierge",
+      "name": "House Concierge",
+      "description": "General household assistant for summaries, reminders, and routing requests.",
+      "cardUrl": "https://agent.example.com/.well-known/agent-card.json",
+      "endpointUrl": "https://agent.example.com/a2a/v1",
+      "protocolBinding": "JSONRPC",
+      "enabled": true,
+      "capabilities": ["conversation", "home-summary", "reminders"],
+      "auth": {
+        "type": "bearer",
+        "envToken": "JUTE_HOUSE_CONCIERGE_TOKEN"
+      }
+    },
+    {
+      "id": "energy-watch",
+      "name": "Energy Watch",
+      "description": "Tracks household energy usage and suggests low-friction savings.",
+      "cardUrl": "https://energy.example.com/.well-known/agent-card.json",
+      "endpointUrl": "https://energy.example.com/a2a/v1",
+      "protocolBinding": "JSONRPC",
+      "enabled": false,
+      "capabilities": ["energy", "forecasting"]
+    }
+  ],
+  "rooms": [
+    {
+      "id": "kitchen",
+      "name": "Kitchen",
+      "summary": "Comfortable",
+      "status": "ok"
+    },
+    {
+      "id": "living-room",
+      "name": "Living Room",
+      "summary": "Lights on",
+      "status": "active"
+    },
+    {
+      "id": "studio",
+      "name": "Studio",
+      "summary": "Quiet mode",
+      "status": "muted"
+    }
+  ],
+  "tiles": [
+    {
+      "id": "climate",
+      "kind": "climate",
+      "label": "Climate",
+      "value": "21.5 C",
+      "detail": "Heating idle"
+    },
+    {
+      "id": "lights",
+      "kind": "lighting",
+      "label": "Lights",
+      "value": "6 on",
+      "detail": "Evening scene"
+    },
+    {
+      "id": "security",
+      "kind": "security",
+      "label": "Security",
+      "value": "Armed home",
+      "detail": "All doors closed"
+    },
+    {
+      "id": "network",
+      "kind": "network",
+      "label": "Network",
+      "value": "Online",
+      "detail": "42 devices"
+    }
+  ]
+}
