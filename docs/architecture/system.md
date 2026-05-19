@@ -89,8 +89,9 @@ Initial API families:
 - `/api/v1/setup`: future first-run setup status and completion.
 - `/api/v1/status`: future setup, store, event stream, agent, widget, voice, provider, and degraded health summary.
 - `/api/v1/devices`: future device profile and per-device settings.
-- `/api/v1/voice/status`: future voice state, provider, mute, and follow-up status.
-- `/api/v1/voice/providers`: future STT/TTS provider pack discovery, details, and health tests.
+- `/api/v1/voice/status`: current voice state, provider, mute, and follow-up status foundation.
+- `/api/v1/voice/mute`, `/api/v1/voice/unmute`, `/api/v1/voice/cancel`: current voice state controls.
+- `/api/v1/voice/providers`: current provider-list response shape and future STT/TTS provider pack discovery, details, and health tests.
 - `/api/v1/tts`: future voice listing, preview, speak, and stop controls.
 - `/api/v1/conversations`: future multi-turn conversation APIs for typed, push-to-talk, and wake-word turns.
 - `/api/v1/events`: Server-Sent Events stream for home, widget, agent, and task updates.

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	a2aclient "jute-dash/internal/a2a"
@@ -25,6 +26,9 @@ type Server struct {
 	setup       store.SetupStatus
 	layout      store.WidgetLayout
 	layoutStore WidgetLayoutStore
+	voice       config.VoiceConfig
+	voiceStore  VoiceSettingsStore
+	mu          sync.Mutex
 	started     time.Time
 	version     string
 }
@@ -33,6 +37,13 @@ type WidgetLayoutStore interface {
 	WidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error)
 	SaveWidgetLayout(ctx context.Context, layout store.WidgetLayout) (store.WidgetLayout, error)
 	ResetWidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error)
+}
+
+type VoiceSettingsStore interface {
+	VoiceSettings(ctx context.Context, deviceProfileID string) (store.VoiceSettings, error)
+	SetVoiceMuted(ctx context.Context, deviceProfileID string, muted bool) (store.VoiceSettings, error)
+	CancelVoice(ctx context.Context, deviceProfileID string) (store.VoiceSettings, error)
+	VoiceProviders(ctx context.Context) ([]store.VoiceProviderPack, error)
 }
 
 type HealthResponse struct {
@@ -51,6 +62,26 @@ type MessageResponse struct {
 	AgentID        string `json:"agentId"`
 	Status         string `json:"status"`
 	Message        string `json:"message"`
+}
+
+type VoiceStatusResponse struct {
+	Enabled                 bool   `json:"enabled"`
+	Muted                   bool   `json:"muted"`
+	State                   string `json:"state"`
+	ServiceStatus           string `json:"serviceStatus"`
+	DeviceProfileID         string `json:"deviceProfileId"`
+	WakeWordModelID         string `json:"wakeWordModelId"`
+	STTProviderID           string `json:"sttProviderId"`
+	TTSProviderID           string `json:"ttsProviderId"`
+	STTModelID              string `json:"sttModelId"`
+	TTSModelID              string `json:"ttsModelId"`
+	TTSVoiceID              string `json:"ttsVoiceId"`
+	PreferredAgentID        string `json:"preferredAgentId"`
+	CloudOptIn              bool   `json:"cloudOptIn"`
+	CommandProvidersEnabled bool   `json:"commandProvidersEnabled"`
+	FollowupWindowSeconds   int    `json:"followupWindowSeconds"`
+	MicrophoneProfile       string `json:"microphoneProfile"`
+	UpdatedAt               string `json:"updatedAt"`
 }
 
 func New(cfg config.Config, version string) http.Handler {
@@ -90,6 +121,10 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 	if messageSender == nil {
 		messageSender = a2aclient.NewJSONRPCClient()
 	}
+	var voiceStore VoiceSettingsStore
+	if candidate, ok := layoutStore.(VoiceSettingsStore); ok {
+		voiceStore = candidate
+	}
 	server := &Server{
 		cfg:         cfg,
 		registry:    registry.New(cfg.Agents),
@@ -98,6 +133,8 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 		setup:       normalizeSetupStatus(setup),
 		layout:      normalizeWidgetLayout(layout),
 		layoutStore: layoutStore,
+		voice:       cfg.Voice,
+		voiceStore:  voiceStore,
 		started:     time.Now().UTC(),
 		version:     version,
 	}
@@ -112,6 +149,11 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 	mux.HandleFunc("/api/v1/widgets/catalog", server.handleWidgetCatalog)
 	mux.HandleFunc("/api/v1/widgets/layout", server.handleWidgetLayout)
 	mux.HandleFunc("/api/v1/widgets/layout/reset", server.handleWidgetLayoutReset)
+	mux.HandleFunc("/api/v1/voice/status", server.handleVoiceStatus)
+	mux.HandleFunc("/api/v1/voice/mute", server.handleVoiceMute)
+	mux.HandleFunc("/api/v1/voice/unmute", server.handleVoiceUnmute)
+	mux.HandleFunc("/api/v1/voice/cancel", server.handleVoiceCancel)
+	mux.HandleFunc("/api/v1/voice/providers", server.handleVoiceProviders)
 
 	return withCommonHeaders(mux)
 }
@@ -253,6 +295,66 @@ func (s *Server) handleWidgetLayoutReset(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, saved)
 }
 
+func (s *Server) handleVoiceStatus(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	status, err := s.currentVoiceStatus(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "voice status is unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) handleVoiceMute(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	status, err := s.setVoiceMuted(r.Context(), true)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "voice mute state could not be updated")
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) handleVoiceUnmute(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	status, err := s.setVoiceMuted(r.Context(), false)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "voice mute state could not be updated")
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) handleVoiceCancel(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	status, err := s.cancelVoice(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "voice state could not be cancelled")
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) handleVoiceProviders(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	providers, err := s.voiceProviders(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "voice providers are unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"providers": providers})
+}
+
 func (s *Server) currentWidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error) {
 	if s.layoutStore == nil {
 		return normalizeWidgetLayout(s.layout), nil
@@ -278,6 +380,117 @@ func (s *Server) saveWidgetLayout(ctx context.Context, layout store.WidgetLayout
 	}
 	s.layout = normalizeWidgetLayout(saved)
 	return s.layout, nil
+}
+
+func (s *Server) currentVoiceStatus(ctx context.Context) (VoiceStatusResponse, error) {
+	if s.voiceStore != nil {
+		settings, err := s.voiceStore.VoiceSettings(ctx, "")
+		if err != nil {
+			return VoiceStatusResponse{}, err
+		}
+		return voiceStatusFromSettings(settings), nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return voiceStatusFromConfig(s.voice, time.Now().UTC()), nil
+}
+
+func (s *Server) setVoiceMuted(ctx context.Context, muted bool) (VoiceStatusResponse, error) {
+	if s.voiceStore != nil {
+		settings, err := s.voiceStore.SetVoiceMuted(ctx, "", muted)
+		if err != nil {
+			return VoiceStatusResponse{}, err
+		}
+		return voiceStatusFromSettings(settings), nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.voice.MutedByDefault = muted
+	return voiceStatusFromConfig(s.voice, time.Now().UTC()), nil
+}
+
+func (s *Server) cancelVoice(ctx context.Context) (VoiceStatusResponse, error) {
+	if s.voiceStore != nil {
+		settings, err := s.voiceStore.CancelVoice(ctx, "")
+		if err != nil {
+			return VoiceStatusResponse{}, err
+		}
+		return voiceStatusFromSettings(settings), nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return voiceStatusFromConfig(s.voice, time.Now().UTC()), nil
+}
+
+func (s *Server) voiceProviders(ctx context.Context) ([]store.VoiceProviderPack, error) {
+	if s.voiceStore == nil {
+		return []store.VoiceProviderPack{}, nil
+	}
+	return s.voiceStore.VoiceProviders(ctx)
+}
+
+func voiceStatusFromSettings(settings store.VoiceSettings) VoiceStatusResponse {
+	return VoiceStatusResponse{
+		Enabled:                 settings.Enabled,
+		Muted:                   settings.Muted,
+		State:                   voiceState(settings.Enabled, settings.Muted),
+		ServiceStatus:           voiceServiceStatus(settings.Enabled, settings.STTProviderID, settings.TTSProviderID),
+		DeviceProfileID:         settings.DeviceProfileID,
+		WakeWordModelID:         settings.WakeWordModelID,
+		STTProviderID:           settings.STTProviderID,
+		TTSProviderID:           settings.TTSProviderID,
+		STTModelID:              settings.STTModelID,
+		TTSModelID:              settings.TTSModelID,
+		TTSVoiceID:              settings.TTSVoiceID,
+		PreferredAgentID:        settings.PreferredAgentID,
+		CloudOptIn:              settings.CloudOptIn,
+		CommandProvidersEnabled: settings.CommandProvidersEnabled,
+		FollowupWindowSeconds:   settings.FollowupWindowSeconds,
+		MicrophoneProfile:       settings.MicrophoneProfile,
+		UpdatedAt:               settings.UpdatedAt,
+	}
+}
+
+func voiceStatusFromConfig(voice config.VoiceConfig, now time.Time) VoiceStatusResponse {
+	return VoiceStatusResponse{
+		Enabled:                 voice.Enabled,
+		Muted:                   voice.MutedByDefault,
+		State:                   voiceState(voice.Enabled, voice.MutedByDefault),
+		ServiceStatus:           voiceServiceStatus(voice.Enabled, voice.STTProviderID, voice.TTSProviderID),
+		DeviceProfileID:         "default-display",
+		WakeWordModelID:         voice.WakeWordModelID,
+		STTProviderID:           voice.STTProviderID,
+		TTSProviderID:           voice.TTSProviderID,
+		STTModelID:              voice.STTModelID,
+		TTSModelID:              voice.TTSModelID,
+		TTSVoiceID:              voice.TTSVoiceID,
+		PreferredAgentID:        voice.PreferredAgentID,
+		CloudOptIn:              voice.CloudOptIn,
+		CommandProvidersEnabled: voice.CommandProvidersEnabled,
+		FollowupWindowSeconds:   voice.FollowupWindowSeconds,
+		MicrophoneProfile:       voice.MicrophoneProfile,
+		UpdatedAt:               now.Format(time.RFC3339Nano),
+	}
+}
+
+func voiceState(enabled, muted bool) string {
+	if muted {
+		return "muted"
+	}
+	if enabled {
+		return "wake_listening"
+	}
+	return "idle"
+}
+
+func voiceServiceStatus(enabled bool, sttProviderID, _ string) string {
+	if !enabled || strings.TrimSpace(sttProviderID) == "" {
+		return "not_configured"
+	}
+	return "ready"
 }
 
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {

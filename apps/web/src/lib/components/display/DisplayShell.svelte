@@ -5,7 +5,7 @@
   import DashboardView from '$lib/components/display/DashboardView.svelte';
   import OfflineState from '$lib/components/display/OfflineState.svelte';
   import StatusRibbon from '$lib/components/display/StatusRibbon.svelte';
-  import { getDashboard, getWidgetCatalog, resetWidgetLayout, saveWidgetLayout, sendMessage } from '$lib/api';
+  import { getDashboard, getWidgetCatalog, muteVoice, resetWidgetLayout, saveWidgetLayout, sendMessage, unmuteVoice } from '$lib/api';
   import { firstAvailableAgent, getAgentAvailability, isAgentAvailable } from '$lib/agents';
   import type {
     Agent,
@@ -31,6 +31,7 @@
   let mode: DisplayMode = 'dashboard';
   let chatState: ChatState = 'idle';
   let messages: ChatMessage[] = [];
+  let voiceIssue = '';
   let selectedAgentId = '';
   let prefersDark = false;
   let hasConnected = data.connectionState === 'connected';
@@ -343,6 +344,33 @@
     chatState = 'idle';
   }
 
+  async function toggleVoiceMute() {
+    if (dashboard.voice.serviceStatus !== 'ready') {
+      voiceIssue = 'Voice is not configured yet. Add an STT provider before using microphone controls.';
+      return;
+    }
+    try {
+      const voice = dashboard.voice.muted ? await unmuteVoice(fetch) : await muteVoice(fetch);
+      dashboard = {
+        ...dashboard,
+        voice,
+        connectionState: 'connected',
+        stale: false,
+        issue: undefined,
+        loadedAt: new Date().toISOString()
+      };
+      voiceIssue = '';
+    } catch {
+      voiceIssue = 'Voice state could not be updated. Check that the hub is running, then try again.';
+      markIssue('degraded', {
+        code: 'voice_update_failed',
+        severity: 'warning',
+        title: 'Voice not updated',
+        message: 'Jute could not update the voice mute state.'
+      });
+    }
+  }
+
   async function retryDashboard() {
     if (!browser || retrying) {
       return;
@@ -555,10 +583,12 @@
       stale={dashboard.stale}
       selectedAgent={selectedAgent}
       selectedAvailability={selectedAvailability}
+      voice={dashboard.voice}
       {widgetCatalog}
       {editIssue}
       {savingLayout}
       onOpenChat={() => openChat()}
+      onToggleVoiceMute={toggleVoiceMute}
       onEnterEdit={enterEdit}
       onSaveEdit={saveEdit}
       onCancelEdit={cancelEdit}
@@ -575,6 +605,8 @@
           {agents}
           {messages}
           state={chatState}
+          voice={dashboard.voice}
+          {voiceIssue}
           {selectedAgentId}
           {selectedAvailability}
           onAgentChange={(agentId) => {
@@ -584,6 +616,7 @@
           onRetry={retryMessage}
           onClose={closeChat}
           onCancel={cancelChatTurn}
+          onToggleVoiceMute={toggleVoiceMute}
         />
       </div>
     {/if}

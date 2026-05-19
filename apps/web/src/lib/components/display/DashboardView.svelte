@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { MessageCircle, Mic, Pencil, RotateCcw, Settings, X } from 'lucide-svelte';
+  import { MessageCircle, Mic, MicOff, Pencil, RotateCcw, Settings, X } from 'lucide-svelte';
   import DashboardGrid from '$lib/components/display/DashboardGrid.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
-  import type { Agent, AgentAvailability, ChatMessage, DashboardData, WidgetCatalogItem } from '$lib/types';
+  import type { Agent, AgentAvailability, ChatMessage, DashboardData, VoiceStatus, WidgetCatalogItem } from '$lib/types';
 
   export let data: DashboardData;
   export let editMode = false;
@@ -12,10 +12,12 @@
   export let stale = false;
   export let selectedAgent: Agent | undefined;
   export let selectedAvailability: AgentAvailability = 'unknown';
+  export let voice: VoiceStatus;
   export let widgetCatalog: WidgetCatalogItem[] = [];
   export let editIssue = '';
   export let savingLayout = false;
   export let onOpenChat: () => void = () => {};
+  export let onToggleVoiceMute: () => Promise<void> | void = () => {};
   export let onEnterEdit: () => void = () => {};
   export let onSaveEdit: () => void = () => {};
   export let onCancelEdit: () => void = () => {};
@@ -28,6 +30,12 @@
   let showCatalog = false;
 
   $: saveDisabled = savingLayout || stale;
+  $: voiceReady = voice?.serviceStatus === 'ready';
+  $: voiceLabel = voiceReady
+    ? voice.muted
+      ? 'Voice muted'
+      : 'Wake listening'
+    : 'Voice not configured';
 
   function canAddWidget(item: WidgetCatalogItem) {
     return item.allowMultiple || !data.layout.widgets.some((widget) => widget.kind === item.kind && widget.visible);
@@ -66,8 +74,18 @@
         <IconButton label="Open chat" variant="outline" on:click={onOpenChat}>
           <MessageCircle size={20} />
         </IconButton>
-        <IconButton label="Voice" variant="outline">
-          <Mic size={20} />
+        <IconButton
+          label={voiceLabel}
+          variant="outline"
+          pressed={voiceReady && !voice.muted}
+          disabled={!voiceReady}
+          on:click={onToggleVoiceMute}
+        >
+          {#if voiceReady && !voice.muted}
+            <Mic size={20} />
+          {:else}
+            <MicOff size={20} />
+          {/if}
         </IconButton>
         <IconButton label="Edit dashboard" variant="outline" on:click={onEnterEdit}>
           <Pencil size={20} />

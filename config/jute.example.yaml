@@ -20,6 +20,22 @@ weather:
   temperature-unit: celsius
   wind-speed-unit: kmh
 
+voice:
+  enabled: false
+  muted-by-default: true
+  wake-word-model-id: ""
+  stt-provider-id: ""
+  tts-provider-id: ""
+  stt-model-id: ""
+  tts-model-id: ""
+  tts-voice-id: ""
+  preferred-agent-id: ""
+  cloud-opt-in: false
+  command-providers-enabled: false
+  sensitive-output-policy: visual_only_sensitive
+  followup-window-seconds: 8
+  microphone-profile: ""
+
 agents:
   - id: house-concierge
     name: House Concierge

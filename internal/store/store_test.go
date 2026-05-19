@@ -39,14 +39,18 @@ func TestInitializeMigratesAndSeedsEmptyDB(t *testing.T) {
 		t.Fatalf("expected home.name missing field, got %+v", result.Setup.Missing)
 	}
 
-	assertCount(t, st, "schema_migrations", 1)
+	assertCount(t, st, "schema_migrations", 2)
 	assertCount(t, st, "household_settings", 1)
 	assertCount(t, st, "device_profiles", 1)
 	assertCount(t, st, "layout_profiles", 1)
 	assertCount(t, st, "widget_instances", 3)
+	assertCount(t, st, "voice_settings", 1)
 
 	if result.Config.Home.Name != config.Default().Home.Name {
 		t.Fatalf("unexpected home name: %q", result.Config.Home.Name)
+	}
+	if !result.Config.Voice.MutedByDefault || result.Config.Voice.FollowupWindowSeconds != 8 {
+		t.Fatalf("unexpected voice defaults: %+v", result.Config.Voice)
 	}
 	if len(result.Config.Agents) != 0 {
 		t.Fatalf("production empty-store defaults should not include fake agents: %+v", result.Config.Agents)
@@ -107,6 +111,86 @@ func TestBootstrapConfigAppliesOnlyOnce(t *testing.T) {
 	}
 	if len(result.Config.Agents) != 1 || result.Config.Agents[0].ID != "house" {
 		t.Fatalf("bootstrap agents should remain from first seed, got %+v", result.Config.Agents)
+	}
+}
+
+func TestVoiceSettingsSeededFromBootstrap(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+
+	bootstrap := config.Default()
+	bootstrap.Voice.Enabled = true
+	bootstrap.Voice.MutedByDefault = false
+	bootstrap.Voice.STTProviderID = "wyoming-local"
+	bootstrap.Voice.PreferredAgentID = "house"
+	bootstrap.Voice.FollowupWindowSeconds = 10
+
+	result, err := st.Initialize(context.Background(), bootstrap, true)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	if !result.Config.Voice.Enabled || result.Config.Voice.MutedByDefault || result.Config.Voice.STTProviderID != "wyoming-local" {
+		t.Fatalf("unexpected config voice settings: %+v", result.Config.Voice)
+	}
+
+	settings, err := st.VoiceSettings(context.Background(), "")
+	if err != nil {
+		t.Fatalf("VoiceSettings() error = %v", err)
+	}
+	if !settings.Enabled || settings.Muted || settings.STTProviderID != "wyoming-local" || settings.PreferredAgentID != "house" || settings.FollowupWindowSeconds != 10 {
+		t.Fatalf("unexpected voice settings: %+v", settings)
+	}
+}
+
+func TestVoiceMuteAndCancelUpdateState(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+
+	bootstrap := config.Default()
+	bootstrap.Voice.Enabled = true
+	bootstrap.Voice.MutedByDefault = false
+	bootstrap.Voice.STTProviderID = "wyoming-local"
+	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	muted, err := st.SetVoiceMuted(context.Background(), "", true)
+	if err != nil {
+		t.Fatalf("SetVoiceMuted(true) error = %v", err)
+	}
+	if !muted.Muted || muted.UpdatedAt == "" {
+		t.Fatalf("unexpected muted settings: %+v", muted)
+	}
+
+	unmuted, err := st.SetVoiceMuted(context.Background(), "", false)
+	if err != nil {
+		t.Fatalf("SetVoiceMuted(false) error = %v", err)
+	}
+	if unmuted.Muted {
+		t.Fatalf("unexpected unmuted settings: %+v", unmuted)
+	}
+
+	cancelled, err := st.CancelVoice(context.Background(), "")
+	if err != nil {
+		t.Fatalf("CancelVoice() error = %v", err)
+	}
+	if cancelled.Muted || cancelled.STTProviderID != "wyoming-local" {
+		t.Fatalf("cancel should preserve durable voice settings: %+v", cancelled)
+	}
+}
+
+func TestVoiceProvidersDefaultsToEmptyList(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	if _, err := st.Initialize(context.Background(), config.Default(), false); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	providers, err := st.VoiceProviders(context.Background())
+	if err != nil {
+		t.Fatalf("VoiceProviders() error = %v", err)
+	}
+	if len(providers) != 0 {
+		t.Fatalf("expected no voice providers, got %+v", providers)
 	}
 }
 

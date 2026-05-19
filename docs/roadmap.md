@@ -28,6 +28,7 @@
 - Add `/api/v1/events` for dashboard and task updates.
 - Replace POC dashboard UI with the clean-slate dashboard, edit mode, WidgetFrame, and chat mode.
 - Add display resilience UX: startup offline screen, runtime reconnect ribbon, stale dashboard styling, no-agent chat state, and widget error frames.
+- Add voice foundation state: persisted voice settings, status/mute/cancel APIs, provider-list response shape, and display microphone status controls.
 - Implement Widget Pack manifest validation and iframe host runtime.
 - Show agent skills in the UI.
 - Send user prompts to a selected agent.
@@ -45,7 +46,7 @@
 
 ## Phase 3: Voice And Presence
 
-- Add hub voice status, conversation state, and voice/conversation SSE events.
+- Add conversation state and voice/conversation SSE events on top of the Phase 1 voice foundation.
 - Add Echo Show-style conversation UI to the display.
 - Add local display-device voice service with VAD, openWakeWord, and pre-roll buffering.
 - Add Voice Provider Pack manifest validation and discovery.

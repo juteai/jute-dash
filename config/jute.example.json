@@ -21,6 +21,22 @@
     "temperatureUnit": "celsius",
     "windSpeedUnit": "kmh"
   },
+  "voice": {
+    "enabled": false,
+    "mutedByDefault": true,
+    "wakeWordModelId": "",
+    "sttProviderId": "",
+    "ttsProviderId": "",
+    "sttModelId": "",
+    "ttsModelId": "",
+    "ttsVoiceId": "",
+    "preferredAgentId": "",
+    "cloudOptIn": false,
+    "commandProvidersEnabled": false,
+    "sensitiveOutputPolicy": "visual_only_sensitive",
+    "followupWindowSeconds": 8,
+    "microphoneProfile": ""
+  },
   "agents": [
     {
       "id": "house-concierge",

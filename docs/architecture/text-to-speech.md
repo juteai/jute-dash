@@ -100,6 +100,8 @@ For low-latency local playback, prefer PCM or WAV. For network transfer, Opus or
 
 ## API Contracts
 
+The current voice foundation does not synthesize or play TTS audio. It only persists selected TTS provider and voice IDs beside the rest of device voice settings so later TTS APIs can use the same configuration surface.
+
 Future hub APIs:
 
 - `GET /api/v1/tts/voices`: returns voices for the selected provider or a requested provider ID.

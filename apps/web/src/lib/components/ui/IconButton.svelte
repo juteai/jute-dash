@@ -12,6 +12,7 @@
 <button
   type="button"
   aria-label={label}
+  title={label}
   aria-pressed={pressed}
   {disabled}
   class={cn('ui-icon-button', `ui-icon-button--${variant}`, className)}

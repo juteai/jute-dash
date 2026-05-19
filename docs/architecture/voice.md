@@ -202,17 +202,34 @@ The provider interfaces should support health status, model name, language, late
 
 TTS-specific playback, caching, and speech policy details are specified in [Text-To-Speech Architecture](text-to-speech.md).
 
+## First Implementation Slice
+
+The first voice implementation is a foundation slice only. It creates durable voice settings, safe hub status/control APIs, and display mute/listening status UI. It does **not** capture microphone audio, run wake-word detection, call STT providers, or play TTS audio.
+
+Implemented v1 foundation APIs:
+
+- `GET /api/v1/voice/status`: returns enabled/muted state, selected provider IDs, follow-up window, device profile, and safe service status.
+- `GET /api/v1/voice/providers`: returns discovered provider pack summaries; this may be an empty list before provider discovery exists.
+- `POST /api/v1/voice/mute`: marks the device voice state muted.
+- `POST /api/v1/voice/unmute`: marks the device voice state unmuted.
+- `POST /api/v1/voice/cancel`: clears transient voice activity when present and returns the current safe status.
+
+Foundation state names are `muted`, `idle`, and `wake_listening`. The service status is `not_configured` until voice is enabled and an STT provider is selected. The display may show microphone controls from this state, but browser microphone capture is still out of scope.
+
 ## API Contracts
 
-Future hub APIs:
+Hub APIs:
 
-- `GET /api/v1/voice/status`: returns current state, mute status, selected providers, active conversation ID, and follow-up deadline.
+- `GET /api/v1/voice/status`: returns current state, mute status, selected provider IDs, and follow-up settings. Future conversation state adds active conversation ID and follow-up deadline.
 - `GET /api/v1/voice/providers`: returns discovered STT/TTS provider packs and health states.
-- `GET /api/v1/voice/providers/{id}`: returns provider details, capabilities, and setup status.
-- `POST /api/v1/voice/providers/{id}/test`: runs a safe provider health or preview test.
 - `POST /api/v1/voice/mute`: mutes microphone capture.
 - `POST /api/v1/voice/unmute`: unmutes microphone capture.
 - `POST /api/v1/voice/cancel`: cancels active capture, transcription, response, or follow-up session.
+
+Future hub APIs:
+
+- `GET /api/v1/voice/providers/{id}`: returns provider details, capabilities, and setup status.
+- `POST /api/v1/voice/providers/{id}/test`: runs a safe provider health or preview test.
 - `POST /api/v1/conversations`: starts a typed, push-to-talk, or wake-word conversation.
 - `POST /api/v1/conversations/{id}/turns`: appends a user turn to an existing conversation.
 - `PATCH /api/v1/devices/{id}/voice-settings`: updates selected providers and per-device voice settings.

@@ -191,6 +191,100 @@ func TestSetupStatusEndpoint(t *testing.T) {
 	}
 }
 
+func TestVoiceStatusEndpointReturnsSafeDefaults(t *testing.T) {
+	handler := New(testConfig(), "test")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/voice/status", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var body VoiceStatusResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Enabled || !body.Muted || body.State != "muted" || body.ServiceStatus != "not_configured" {
+		t.Fatalf("unexpected voice status: %+v", body)
+	}
+}
+
+func TestVoiceMuteEndpointsUpdateState(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = true
+	cfg.Voice.STTProviderID = "wyoming-local"
+	handler := New(cfg, "test")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/unmute", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var body VoiceStatusResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode unmute response: %v", err)
+	}
+	if body.Muted || body.State != "wake_listening" || body.ServiceStatus != "ready" {
+		t.Fatalf("unexpected unmuted status: %+v", body)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/voice/mute", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode mute response: %v", err)
+	}
+	if !body.Muted || body.State != "muted" {
+		t.Fatalf("unexpected muted status: %+v", body)
+	}
+}
+
+func TestVoiceProvidersEndpointReturnsStableEmptyList(t *testing.T) {
+	handler := New(testConfig(), "test")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/voice/providers", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var body struct {
+		Providers []store.VoiceProviderPack `json:"providers"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Providers == nil || len(body.Providers) != 0 {
+		t.Fatalf("unexpected providers response: %+v", body.Providers)
+	}
+}
+
+func TestVoiceCancelPreservesSafeStatus(t *testing.T) {
+	handler := New(testConfig(), "test")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/cancel", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var body VoiceStatusResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.State != "muted" || body.ServiceStatus != "not_configured" {
+		t.Fatalf("unexpected cancel status: %+v", body)
+	}
+}
+
 func TestWidgetLayoutEndpoint(t *testing.T) {
 	layout := store.WidgetLayout{
 		ProfileID: "default-dashboard",

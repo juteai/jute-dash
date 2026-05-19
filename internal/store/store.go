@@ -72,6 +72,35 @@ type WidgetInstance struct {
 	Visible  bool           `json:"visible"`
 }
 
+type VoiceSettings struct {
+	DeviceProfileID         string `json:"deviceProfileId"`
+	Enabled                 bool   `json:"enabled"`
+	Muted                   bool   `json:"muted"`
+	WakeWordModelID         string `json:"wakeWordModelId"`
+	STTProviderID           string `json:"sttProviderId"`
+	TTSProviderID           string `json:"ttsProviderId"`
+	STTModelID              string `json:"sttModelId"`
+	TTSModelID              string `json:"ttsModelId"`
+	TTSVoiceID              string `json:"ttsVoiceId"`
+	PreferredAgentID        string `json:"preferredAgentId"`
+	CloudOptIn              bool   `json:"cloudOptIn"`
+	CommandProvidersEnabled bool   `json:"commandProvidersEnabled"`
+	SensitiveOutputPolicy   string `json:"sensitiveOutputPolicy"`
+	FollowupWindowSeconds   int    `json:"followupWindowSeconds"`
+	MicrophoneProfile       string `json:"microphoneProfile"`
+	UpdatedAt               string `json:"updatedAt"`
+}
+
+type VoiceProviderPack struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Version       string `json:"version"`
+	Kind          string `json:"kind"`
+	TransportType string `json:"transportType"`
+	HealthStatus  string `json:"healthStatus"`
+	UpdatedAt     string `json:"updatedAt"`
+}
+
 var ErrInvalidLayout = errors.New("invalid widget layout")
 
 func Open(dbPath string) (*Store, error) {
@@ -123,6 +152,9 @@ func (s *Store) Initialize(ctx context.Context, bootstrap config.Config, bootstr
 		}
 		result.Seeded = true
 	}
+	if err := s.ensureDefaultVoiceSettings(ctx, config.Default().Voice); err != nil {
+		return InitResult{}, err
+	}
 
 	cfg, err := s.Config(ctx)
 	if err != nil {
@@ -160,6 +192,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 	migrations := []migration{
 		{version: 1, name: "initial runtime settings", sql: initialMigrationSQL},
+		{version: 2, name: "voice settings runtime state", sql: voiceSettingsMigrationSQL},
 	}
 	for _, item := range migrations {
 		applied, err := s.migrationApplied(ctx, item.version)
@@ -220,6 +253,26 @@ WHERE id = ?`, defaultHouseholdID).Scan(
 		&cfg.Weather.WindSpeedUnit,
 	); err != nil {
 		return config.Config{}, fmt.Errorf("load weather settings: %w", err)
+	}
+	voiceSettings, err := s.VoiceSettings(ctx, defaultDeviceProfileID)
+	if err != nil {
+		return config.Config{}, err
+	}
+	cfg.Voice = config.VoiceConfig{
+		Enabled:                 voiceSettings.Enabled,
+		MutedByDefault:          voiceSettings.Muted,
+		WakeWordModelID:         voiceSettings.WakeWordModelID,
+		STTProviderID:           voiceSettings.STTProviderID,
+		TTSProviderID:           voiceSettings.TTSProviderID,
+		STTModelID:              voiceSettings.STTModelID,
+		TTSModelID:              voiceSettings.TTSModelID,
+		TTSVoiceID:              voiceSettings.TTSVoiceID,
+		PreferredAgentID:        voiceSettings.PreferredAgentID,
+		CloudOptIn:              voiceSettings.CloudOptIn,
+		CommandProvidersEnabled: voiceSettings.CommandProvidersEnabled,
+		SensitiveOutputPolicy:   voiceSettings.SensitiveOutputPolicy,
+		FollowupWindowSeconds:   voiceSettings.FollowupWindowSeconds,
+		MicrophoneProfile:       voiceSettings.MicrophoneProfile,
 	}
 
 	agents, err := s.loadAgents(ctx)
@@ -313,6 +366,108 @@ ORDER BY sort_order, id`, profileID)
 		return WidgetLayout{}, fmt.Errorf("iterate widget layout: %w", err)
 	}
 	return layout, nil
+}
+
+func (s *Store) VoiceSettings(ctx context.Context, deviceProfileID string) (VoiceSettings, error) {
+	deviceProfileID = strings.TrimSpace(deviceProfileID)
+	if deviceProfileID == "" {
+		deviceProfileID = defaultDeviceProfileID
+	}
+
+	var settings VoiceSettings
+	var enabled, muted, cloudOptIn, commandProviders int
+	if err := s.db.QueryRowContext(ctx, `
+SELECT device_profile_id, enabled, muted, wake_word_model_id, stt_provider_id, tts_provider_id,
+       stt_model_id, tts_model_id, tts_voice_id, cloud_opt_in, command_providers_enabled,
+       sensitive_output_policy, followup_window_seconds, microphone_profile, preferred_agent_id, updated_at
+FROM voice_settings
+WHERE device_profile_id = ?`, deviceProfileID).Scan(
+		&settings.DeviceProfileID,
+		&enabled,
+		&muted,
+		&settings.WakeWordModelID,
+		&settings.STTProviderID,
+		&settings.TTSProviderID,
+		&settings.STTModelID,
+		&settings.TTSModelID,
+		&settings.TTSVoiceID,
+		&cloudOptIn,
+		&commandProviders,
+		&settings.SensitiveOutputPolicy,
+		&settings.FollowupWindowSeconds,
+		&settings.MicrophoneProfile,
+		&settings.PreferredAgentID,
+		&settings.UpdatedAt,
+	); err != nil {
+		return VoiceSettings{}, fmt.Errorf("load voice settings: %w", err)
+	}
+	settings.Enabled = enabled == 1
+	settings.Muted = muted == 1
+	settings.CloudOptIn = cloudOptIn == 1
+	settings.CommandProvidersEnabled = commandProviders == 1
+	return settings, nil
+}
+
+func (s *Store) SetVoiceMuted(ctx context.Context, deviceProfileID string, muted bool) (VoiceSettings, error) {
+	deviceProfileID = strings.TrimSpace(deviceProfileID)
+	if deviceProfileID == "" {
+		deviceProfileID = defaultDeviceProfileID
+	}
+	now := nowUTC()
+	if _, err := s.db.ExecContext(ctx, `
+UPDATE voice_settings
+SET muted = ?, last_state_updated_at = ?, updated_at = ?
+WHERE device_profile_id = ?`, boolToInt(muted), now, now, deviceProfileID); err != nil {
+		return VoiceSettings{}, fmt.Errorf("update voice mute state: %w", err)
+	}
+	return s.VoiceSettings(ctx, deviceProfileID)
+}
+
+func (s *Store) CancelVoice(ctx context.Context, deviceProfileID string) (VoiceSettings, error) {
+	deviceProfileID = strings.TrimSpace(deviceProfileID)
+	if deviceProfileID == "" {
+		deviceProfileID = defaultDeviceProfileID
+	}
+	now := nowUTC()
+	if _, err := s.db.ExecContext(ctx, `
+UPDATE voice_settings
+SET last_state_updated_at = ?, updated_at = ?
+WHERE device_profile_id = ?`, now, now, deviceProfileID); err != nil {
+		return VoiceSettings{}, fmt.Errorf("cancel voice state: %w", err)
+	}
+	return s.VoiceSettings(ctx, deviceProfileID)
+}
+
+func (s *Store) VoiceProviders(ctx context.Context) ([]VoiceProviderPack, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, name, version, kind, transport_type, health_status, updated_at
+FROM voice_provider_packs
+ORDER BY name, id`)
+	if err != nil {
+		return nil, fmt.Errorf("load voice providers: %w", err)
+	}
+	defer rows.Close()
+
+	providers := []VoiceProviderPack{}
+	for rows.Next() {
+		var provider VoiceProviderPack
+		if err := rows.Scan(
+			&provider.ID,
+			&provider.Name,
+			&provider.Version,
+			&provider.Kind,
+			&provider.TransportType,
+			&provider.HealthStatus,
+			&provider.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan voice provider: %w", err)
+		}
+		providers = append(providers, provider)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate voice providers: %w", err)
+	}
+	return providers, nil
 }
 
 func (s *Store) SaveWidgetLayout(ctx context.Context, layout WidgetLayout) (WidgetLayout, error) {
@@ -640,9 +795,45 @@ VALUES (?, ?, ?, ?, ?, ?)`,
 	if err = seedDefaultWidgets(ctx, tx, now); err != nil {
 		return err
 	}
+	if err = seedVoiceSettings(ctx, tx, cfg.Voice, now); err != nil {
+		return err
+	}
 
 	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("commit seed: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ensureDefaultVoiceSettings(ctx context.Context, voice config.VoiceConfig) error {
+	now := nowUTC()
+	_, err := s.db.ExecContext(ctx, `
+INSERT OR IGNORE INTO voice_settings (
+  device_profile_id, enabled, muted, wake_word_model_id, stt_provider_id, tts_provider_id,
+  stt_model_id, tts_model_id, tts_voice_id, cloud_opt_in, command_providers_enabled,
+  sensitive_output_policy, followup_window_seconds, microphone_profile, preferred_agent_id,
+  last_state_updated_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		defaultDeviceProfileID,
+		boolToInt(voice.Enabled),
+		boolToInt(voice.MutedByDefault),
+		voice.WakeWordModelID,
+		voice.STTProviderID,
+		voice.TTSProviderID,
+		voice.STTModelID,
+		voice.TTSModelID,
+		voice.TTSVoiceID,
+		boolToInt(voice.CloudOptIn),
+		boolToInt(voice.CommandProvidersEnabled),
+		voice.SensitiveOutputPolicy,
+		voice.FollowupWindowSeconds,
+		voice.MicrophoneProfile,
+		voice.PreferredAgentID,
+		now,
+		now,
+	)
+	if err != nil {
+		return fmt.Errorf("ensure voice settings: %w", err)
 	}
 	return nil
 }
@@ -748,6 +939,37 @@ INSERT INTO widget_instances (
 		); err != nil {
 			return fmt.Errorf("seed widget %s: %w", widget.id, err)
 		}
+	}
+	return nil
+}
+
+func seedVoiceSettings(ctx context.Context, tx *sql.Tx, voice config.VoiceConfig, now string) error {
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO voice_settings (
+  device_profile_id, enabled, muted, wake_word_model_id, stt_provider_id, tts_provider_id,
+  stt_model_id, tts_model_id, tts_voice_id, cloud_opt_in, command_providers_enabled,
+  sensitive_output_policy, followup_window_seconds, microphone_profile, preferred_agent_id,
+  last_state_updated_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		defaultDeviceProfileID,
+		boolToInt(voice.Enabled),
+		boolToInt(voice.MutedByDefault),
+		voice.WakeWordModelID,
+		voice.STTProviderID,
+		voice.TTSProviderID,
+		voice.STTModelID,
+		voice.TTSModelID,
+		voice.TTSVoiceID,
+		boolToInt(voice.CloudOptIn),
+		boolToInt(voice.CommandProvidersEnabled),
+		voice.SensitiveOutputPolicy,
+		voice.FollowupWindowSeconds,
+		voice.MicrophoneProfile,
+		voice.PreferredAgentID,
+		now,
+		now,
+	); err != nil {
+		return fmt.Errorf("seed voice settings: %w", err)
 	}
 	return nil
 }
@@ -1137,4 +1359,11 @@ CREATE TABLE IF NOT EXISTS setting_audit_log (
   metadata_json TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+`
+
+const voiceSettingsMigrationSQL = `
+ALTER TABLE voice_settings ADD COLUMN enabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE voice_settings ADD COLUMN muted INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE voice_settings ADD COLUMN preferred_agent_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE voice_settings ADD COLUMN last_state_updated_at TEXT NOT NULL DEFAULT '';
 `

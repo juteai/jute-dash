@@ -78,6 +78,40 @@ export type WeatherState = {
   status: 'available' | 'unavailable' | 'disabled';
 };
 
+export type VoiceState = 'muted' | 'idle' | 'wake_listening';
+
+export type VoiceServiceStatus = 'ready' | 'not_configured';
+
+export type VoiceStatus = {
+  enabled: boolean;
+  muted: boolean;
+  state: VoiceState;
+  serviceStatus: VoiceServiceStatus;
+  deviceProfileId: string;
+  wakeWordModelId: string;
+  sttProviderId: string;
+  ttsProviderId: string;
+  sttModelId: string;
+  ttsModelId: string;
+  ttsVoiceId: string;
+  preferredAgentId: string;
+  cloudOptIn: boolean;
+  commandProvidersEnabled: boolean;
+  followupWindowSeconds: number;
+  microphoneProfile: string;
+  updatedAt: string;
+};
+
+export type VoiceProvider = {
+  id: string;
+  name: string;
+  version: string;
+  kind: string;
+  transportType: string;
+  healthStatus: string;
+  updatedAt: string;
+};
+
 export type PublicConfig = {
   home: HomeConfig;
   display: DisplayConfig;
@@ -99,6 +133,7 @@ export type DashboardData = {
   home: HomeState;
   agents: Agent[];
   layout: WidgetLayout;
+  voice: VoiceStatus;
   connectionState: AppConnectionState;
   stale: boolean;
   hubUrl: string;

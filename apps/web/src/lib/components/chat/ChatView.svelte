@@ -1,16 +1,18 @@
 <script lang="ts">
-  import { ChevronDown, VolumeX } from 'lucide-svelte';
+  import { ChevronDown, Mic, VolumeX } from 'lucide-svelte';
   import AssistantActivity from '$lib/components/chat/AssistantActivity.svelte';
   import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import { availabilityDescription, availabilityLabel, availabilityTone, getAgentAvailability } from '$lib/agents';
   import Badge from '$lib/components/ui/Badge.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
-  import type { Agent, AgentAvailability, ChatMessage, ChatState } from '$lib/types';
+  import type { Agent, AgentAvailability, ChatMessage, ChatState, VoiceStatus } from '$lib/types';
 
   export let agents: Agent[] = [];
   export let messages: ChatMessage[] = [];
   export let state: ChatState = 'idle';
+  export let voice: VoiceStatus;
+  export let voiceIssue = '';
   export let selectedAgentId = '';
   export let selectedAvailability: AgentAvailability = 'unknown';
   export let onAgentChange: (agentId: string) => void = () => {};
@@ -18,6 +20,7 @@
   export let onRetry: (message: ChatMessage) => Promise<void> | void = () => {};
   export let onClose: () => void = () => {};
   export let onCancel: () => void = () => {};
+  export let onToggleVoiceMute: () => Promise<void> | void = () => {};
 
   type BadgeTone = 'danger' | 'neutral' | 'active';
 
@@ -26,6 +29,12 @@
   $: selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
   $: agentAvailability = selectedAgent ? getAgentAvailability(selectedAgent) : selectedAvailability;
   $: composerDisabled = agentAvailability !== 'available';
+  $: voiceReady = voice?.serviceStatus === 'ready';
+  $: voiceLabel = voiceReady
+    ? voice.muted
+      ? 'Voice muted'
+      : 'Wake listening'
+    : 'Voice not configured';
   $: statusTone = state === 'error' ? 'danger' : state === 'idle' ? 'neutral' : 'active';
 </script>
 
@@ -59,8 +68,18 @@
           </select>
         </label>
       {/if}
-      <IconButton label="Mute voice" variant="outline">
-        <VolumeX size={19} />
+      <IconButton
+        label={voiceLabel}
+        variant="outline"
+        pressed={voiceReady && !voice.muted}
+        disabled={!voiceReady}
+        on:click={onToggleVoiceMute}
+      >
+        {#if voiceReady && !voice.muted}
+          <Mic size={19} />
+        {:else}
+          <VolumeX size={19} />
+        {/if}
       </IconButton>
       <IconButton label="Close chat" variant="outline" on:click={onClose}>
         <ChevronDown size={20} />
@@ -73,6 +92,10 @@
     <span>
       {#if !selectedAgent}
         No agent connected
+      {:else if voiceIssue}
+        {voiceIssue}
+      {:else if !voiceReady}
+        Voice input is not configured yet. Typed chat is available.
       {:else if agentAvailability !== 'available'}
         {availabilityDescription(agentAvailability)}
       {:else if state === 'thinking'}
@@ -97,7 +120,9 @@
   <MessageComposer
     {state}
     disabled={composerDisabled}
+    {voice}
     {onSubmit}
     {onCancel}
+    onVoiceClick={onToggleVoiceMute}
   />
 </section>

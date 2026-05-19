@@ -5,6 +5,8 @@ import type {
   MessageResponse,
   PublicConfig,
   UserFacingIssue,
+  VoiceProvider,
+  VoiceStatus,
   WidgetCatalogItem,
   WidgetLayout
 } from '$lib/types';
@@ -12,11 +14,12 @@ import type {
 const API_BASE = import.meta.env.VITE_JUTE_API_URL ?? 'http://127.0.0.1:8787';
 
 export async function getDashboard(fetcher: typeof fetch): Promise<DashboardData> {
-  const [config, home, agentResponse, layout] = await Promise.all([
+  const [config, home, agentResponse, layout, voice] = await Promise.all([
     getJSON<PublicConfig>(fetcher, '/api/v1/config'),
     getJSON<HomeState>(fetcher, '/api/v1/home'),
     getJSON<{ agents: Agent[] }>(fetcher, '/api/v1/agents'),
-    getJSON<WidgetLayout>(fetcher, '/api/v1/widgets/layout')
+    getJSON<WidgetLayout>(fetcher, '/api/v1/widgets/layout'),
+    getJSON<VoiceStatus>(fetcher, '/api/v1/voice/status')
   ]);
 
   return {
@@ -24,6 +27,7 @@ export async function getDashboard(fetcher: typeof fetch): Promise<DashboardData
     home,
     agents: agentResponse.agents,
     layout,
+    voice,
     connectionState: 'connected',
     stale: false,
     hubUrl: API_BASE,
@@ -82,6 +86,23 @@ export async function resetWidgetLayout(fetcher: typeof fetch, profileId: string
   return response.json() as Promise<WidgetLayout>;
 }
 
+export async function muteVoice(fetcher: typeof fetch): Promise<VoiceStatus> {
+  return postVoiceControl(fetcher, '/api/v1/voice/mute');
+}
+
+export async function unmuteVoice(fetcher: typeof fetch): Promise<VoiceStatus> {
+  return postVoiceControl(fetcher, '/api/v1/voice/unmute');
+}
+
+export async function cancelVoice(fetcher: typeof fetch): Promise<VoiceStatus> {
+  return postVoiceControl(fetcher, '/api/v1/voice/cancel');
+}
+
+export async function getVoiceProviders(fetcher: typeof fetch): Promise<VoiceProvider[]> {
+  const response = await getJSON<{ providers: VoiceProvider[] }>(fetcher, '/api/v1/voice/providers');
+  return response.providers;
+}
+
 export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {
   const config: PublicConfig = {
     home: {
@@ -127,6 +148,7 @@ export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {
     },
     agents: [],
     layout: fallbackLayout(),
+    voice: fallbackVoiceStatus(),
     connectionState: 'offline',
     stale: true,
     hubUrl: API_BASE,
@@ -200,6 +222,39 @@ function fallbackLayout(): WidgetLayout {
       }
     ]
   };
+}
+
+function fallbackVoiceStatus(): VoiceStatus {
+  return {
+    enabled: false,
+    muted: true,
+    state: 'muted',
+    serviceStatus: 'not_configured',
+    deviceProfileId: 'fallback-display',
+    wakeWordModelId: '',
+    sttProviderId: '',
+    ttsProviderId: '',
+    sttModelId: '',
+    ttsModelId: '',
+    ttsVoiceId: '',
+    preferredAgentId: '',
+    cloudOptIn: false,
+    commandProvidersEnabled: false,
+    followupWindowSeconds: 8,
+    microphoneProfile: '',
+    updatedAt: new Date().toISOString()
+  };
+}
+
+async function postVoiceControl(fetcher: typeof fetch, path: string): Promise<VoiceStatus> {
+  const response = await fetcher(`${API_BASE}${path}`, {
+    method: 'POST'
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+  }
+  return response.json() as Promise<VoiceStatus>;
 }
 
 async function getJSON<T>(fetcher: typeof fetch, path: string): Promise<T> {

@@ -19,6 +19,7 @@ type Config struct {
 	Server  ServerConfig  `json:"server" yaml:"server"`
 	Display DisplayConfig `json:"display" yaml:"display"`
 	Weather WeatherConfig `json:"weather" yaml:"weather"`
+	Voice   VoiceConfig   `json:"voice" yaml:"voice"`
 	Agents  []AgentConfig `json:"agents" yaml:"agents"`
 	Rooms   []RoomConfig  `json:"rooms" yaml:"rooms"`
 	Tiles   []TileConfig  `json:"tiles" yaml:"tiles"`
@@ -48,6 +49,23 @@ type WeatherConfig struct {
 	Longitude       float64 `json:"longitude" yaml:"longitude"`
 	TemperatureUnit string  `json:"temperatureUnit" yaml:"temperature-unit"`
 	WindSpeedUnit   string  `json:"windSpeedUnit" yaml:"wind-speed-unit"`
+}
+
+type VoiceConfig struct {
+	Enabled                 bool   `json:"enabled" yaml:"enabled"`
+	MutedByDefault          bool   `json:"mutedByDefault" yaml:"muted-by-default"`
+	WakeWordModelID         string `json:"wakeWordModelId" yaml:"wake-word-model-id"`
+	STTProviderID           string `json:"sttProviderId" yaml:"stt-provider-id"`
+	TTSProviderID           string `json:"ttsProviderId" yaml:"tts-provider-id"`
+	STTModelID              string `json:"sttModelId" yaml:"stt-model-id"`
+	TTSModelID              string `json:"ttsModelId" yaml:"tts-model-id"`
+	TTSVoiceID              string `json:"ttsVoiceId" yaml:"tts-voice-id"`
+	PreferredAgentID        string `json:"preferredAgentId" yaml:"preferred-agent-id"`
+	CloudOptIn              bool   `json:"cloudOptIn" yaml:"cloud-opt-in"`
+	CommandProvidersEnabled bool   `json:"commandProvidersEnabled" yaml:"command-providers-enabled"`
+	SensitiveOutputPolicy   string `json:"sensitiveOutputPolicy" yaml:"sensitive-output-policy"`
+	FollowupWindowSeconds   int    `json:"followupWindowSeconds" yaml:"followup-window-seconds"`
+	MicrophoneProfile       string `json:"microphoneProfile" yaml:"microphone-profile"`
 }
 
 type AgentConfig struct {
@@ -126,6 +144,12 @@ func Default() Config {
 			TemperatureUnit: "celsius",
 			WindSpeedUnit:   "kmh",
 		},
+		Voice: VoiceConfig{
+			Enabled:               false,
+			MutedByDefault:        true,
+			SensitiveOutputPolicy: "visual_only_sensitive",
+			FollowupWindowSeconds: 8,
+		},
 	}
 }
 
@@ -196,6 +220,12 @@ func Validate(cfg Config) error {
 		if !isSupportedWindSpeedUnit(cfg.Weather.WindSpeedUnit) {
 			problems = append(problems, "weather.windSpeedUnit must be kmh, mph, ms, or kn")
 		}
+	}
+	if cfg.Voice.FollowupWindowSeconds < 1 || cfg.Voice.FollowupWindowSeconds > 30 {
+		problems = append(problems, "voice.followupWindowSeconds must be between 1 and 30")
+	}
+	if strings.TrimSpace(cfg.Voice.SensitiveOutputPolicy) == "" {
+		problems = append(problems, "voice.sensitiveOutputPolicy is required")
 	}
 
 	seenAgents := map[string]struct{}{}
@@ -293,6 +323,12 @@ func applyDefaults(cfg *Config) {
 	}
 	if strings.TrimSpace(cfg.Weather.WindSpeedUnit) == "" {
 		cfg.Weather.WindSpeedUnit = defaults.Weather.WindSpeedUnit
+	}
+	if strings.TrimSpace(cfg.Voice.SensitiveOutputPolicy) == "" {
+		cfg.Voice.SensitiveOutputPolicy = defaults.Voice.SensitiveOutputPolicy
+	}
+	if cfg.Voice.FollowupWindowSeconds == 0 {
+		cfg.Voice.FollowupWindowSeconds = defaults.Voice.FollowupWindowSeconds
 	}
 	for i := range cfg.Agents {
 		if strings.TrimSpace(cfg.Agents[i].ProtocolBinding) == "" {

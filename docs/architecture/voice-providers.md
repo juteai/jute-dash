@@ -241,11 +241,16 @@ Status values:
 
 Health checks must not send household transcripts, live microphone audio, or secrets. Provider test calls use synthetic audio or user-confirmed preview text.
 
-## Future Hub APIs
+## Hub APIs
 
-Provider APIs:
+Implemented foundation provider API:
 
 - `GET /api/v1/voice/providers`: list discovered STT/TTS providers and health states.
+
+The first foundation implementation may return an empty provider list. It establishes the stable response shape and selected-provider settings before provider manifest discovery, health checks, or conformance tests exist.
+
+Future provider APIs:
+
 - `GET /api/v1/voice/providers/{id}`: provider details, capabilities, and setup status.
 - `POST /api/v1/voice/providers/{id}/test`: run a safe provider test.
 - `PATCH /api/v1/devices/{id}/voice-settings`: update selected STT/TTS providers and voice settings.

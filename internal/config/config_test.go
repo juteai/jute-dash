@@ -36,6 +36,9 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.Weather.LocationName != "London" {
 		t.Fatalf("unexpected weather location: %s", cfg.Weather.LocationName)
 	}
+	if cfg.Voice.Enabled || !cfg.Voice.MutedByDefault || cfg.Voice.FollowupWindowSeconds != 8 {
+		t.Fatalf("unexpected voice defaults: %+v", cfg.Voice)
+	}
 }
 
 func TestYAMLConfigLoadsKebabCaseFields(t *testing.T) {
@@ -58,6 +61,18 @@ weather:
   longitude: -1.0815
   temperature-unit: fahrenheit
   wind-speed-unit: mph
+voice:
+  enabled: true
+  muted-by-default: false
+  wake-word-model-id: openwakeword-hey-jute
+  stt-provider-id: wyoming-local
+  tts-provider-id: ""
+  preferred-agent-id: house
+  cloud-opt-in: false
+  command-providers-enabled: false
+  sensitive-output-policy: visual_only_sensitive
+  followup-window-seconds: 9
+  microphone-profile: kiosk-array
 agents:
   - id: house
     name: House
@@ -84,6 +99,55 @@ tiles: []
 	}
 	if len(cfg.Agents) != 1 || cfg.Agents[0].CardURL == "" || cfg.Agents[0].Auth.EnvToken != "HOUSE_AGENT_TOKEN" {
 		t.Fatalf("unexpected YAML agent: %+v", cfg.Agents)
+	}
+	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" || cfg.Voice.FollowupWindowSeconds != 9 {
+		t.Fatalf("unexpected YAML voice config: %+v", cfg.Voice)
+	}
+}
+
+func TestJSONConfigLoadsVoiceFields(t *testing.T) {
+	path := writeJSONConfig(t, `{
+		"home": {"name": "Workshop"},
+		"voice": {
+			"enabled": true,
+			"mutedByDefault": false,
+			"sttProviderId": "wyoming-local",
+			"ttsProviderId": "tts-local",
+			"preferredAgentId": "house",
+			"sensitiveOutputPolicy": "visual_only_sensitive",
+			"followupWindowSeconds": 7
+		},
+		"agents": [],
+		"rooms": [],
+		"tiles": []
+	}`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" || cfg.Voice.TTSProviderID != "tts-local" || cfg.Voice.FollowupWindowSeconds != 7 {
+		t.Fatalf("unexpected JSON voice config: %+v", cfg.Voice)
+	}
+}
+
+func TestLoadRejectsInvalidVoiceFollowupWindow(t *testing.T) {
+	path := writeYAMLConfig(t, `
+home:
+  name: Workshop
+voice:
+  followup-window-seconds: 31
+agents: []
+rooms: []
+tiles: []
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load() expected invalid voice follow-up window error")
+	}
+	if !strings.Contains(err.Error(), "voice.followupWindowSeconds") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
