@@ -53,6 +53,7 @@ type MessageSender interface {
 }
 
 type StreamEvent struct {
+	Kind           string
 	ConversationID string
 	TaskID         string
 	Status         string

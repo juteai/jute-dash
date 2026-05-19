@@ -208,7 +208,7 @@ export type ChatMessage = {
   role: ChatMessageRole;
   content: string;
   createdAt: string;
-  status?: 'sending' | 'sent' | 'failed';
+  status?: 'sending' | 'streaming' | 'sent' | 'failed';
   retryText?: string;
   agentId?: string;
 };
@@ -242,6 +242,40 @@ export type ConversationDetail = {
   conversation: Conversation;
   messages: ConversationMessage[];
 };
+
+export type ConversationStreamEvent =
+  | {
+      type: 'turn_started';
+      conversationId: string;
+      agentId: string;
+      taskId?: string;
+      status?: string;
+    }
+  | {
+      type: 'assistant_delta';
+      conversationId: string;
+      agentId: string;
+      taskId?: string;
+      text: string;
+      append: boolean;
+    }
+  | {
+      type: 'status_changed';
+      conversationId: string;
+      agentId: string;
+      taskId?: string;
+      status: string;
+      terminal?: boolean;
+    }
+  | ({
+      type: 'turn_completed';
+    } & ConversationDetail)
+  | {
+      type: 'turn_failed';
+      conversationId?: string;
+      agentId?: string;
+      message: string;
+    };
 
 export type MessageResponse = {
   conversationId: string;

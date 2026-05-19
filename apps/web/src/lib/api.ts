@@ -2,6 +2,7 @@ import type {
   Agent,
   Conversation,
   ConversationDetail,
+  ConversationStreamEvent,
   DashboardData,
   HomeState,
   MessageResponse,
@@ -112,6 +113,53 @@ export async function sendConversationTurn(
     throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
   }
   return response.json() as Promise<ConversationDetail>;
+}
+
+export async function sendConversationTurnStream(
+  fetcher: typeof fetch,
+  conversationId: string,
+  agentId: string,
+  text: string,
+  onEvent: (event: ConversationStreamEvent) => void
+): Promise<void> {
+  const response = await fetcher(`${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}/turns/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ agentId, text })
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+  }
+  if (!response.body) {
+    throw new Error('Jute streaming response was empty');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split(/\n\n/);
+    buffer = parts.pop() ?? '';
+    for (const part of parts) {
+      const event = parseSSEEvent(part);
+      if (event) {
+        onEvent(event);
+      }
+    }
+  }
+  buffer += decoder.decode();
+  const event = parseSSEEvent(buffer);
+  if (event) {
+    onEvent(event);
+  }
 }
 
 export async function addAgent(fetcher: typeof fetch, cardUrl: string): Promise<Agent> {
@@ -363,4 +411,22 @@ async function getJSON<T>(fetcher: typeof fetch, path: string): Promise<T> {
     throw new Error(`Jute API request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
+}
+
+function parseSSEEvent(raw: string): ConversationStreamEvent | undefined {
+  const lines = raw.split(/\r?\n/);
+  let type = '';
+  const data: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith('event:')) {
+      type = line.slice('event:'.length).trim();
+    } else if (line.startsWith('data:')) {
+      data.push(line.slice('data:'.length).trim());
+    }
+  }
+  if (!type || data.length === 0) {
+    return undefined;
+  }
+  const payload = JSON.parse(data.join('\n')) as Record<string, unknown>;
+  return { type, ...payload } as ConversationStreamEvent;
 }

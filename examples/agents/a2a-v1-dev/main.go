@@ -228,11 +228,11 @@ func writeStream(w http.ResponseWriter, id json.RawMessage, record task) {
 	})
 	flusher.Flush()
 	answer := textFromParts(record.Artifacts[0].Parts)
-	for _, chunk := range []string{answer[:min(len(answer), 22)], answer[min(len(answer), 22):]} {
+	for _, chunk := range streamChunks(answer, 8) {
 		if strings.TrimSpace(chunk) == "" {
 			continue
 		}
-		time.Sleep(250 * time.Millisecond)
+		time.Sleep(90 * time.Millisecond)
 		writeSSE(w, id, map[string]any{
 			"artifactUpdate": map[string]any{
 				"taskId":    record.ID,
@@ -255,6 +255,29 @@ func writeStream(w http.ResponseWriter, id json.RawMessage, record task) {
 		},
 	})
 	flusher.Flush()
+}
+
+func streamChunks(value string, maxWords int) []string {
+	words := strings.Fields(value)
+	if len(words) == 0 {
+		return nil
+	}
+	if maxWords <= 0 {
+		maxWords = 8
+	}
+	chunks := []string{}
+	for i := 0; i < len(words); i += maxWords {
+		end := i + maxWords
+		if end > len(words) {
+			end = len(words)
+		}
+		chunk := strings.Join(words[i:end], " ")
+		if end < len(words) {
+			chunk += " "
+		}
+		chunks = append(chunks, chunk)
+	}
+	return chunks
 }
 
 func handleListTasks(w http.ResponseWriter, req rpcRequest) {

@@ -131,6 +131,7 @@ func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
 	case response.Message != nil:
 		msg := *response.Message
 		return StreamEvent{
+			Kind:           "message",
 			ConversationID: msg.ContextID,
 			TaskID:         msg.TaskID,
 			Status:         "completed",
@@ -140,6 +141,7 @@ func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
 	case response.Task != nil:
 		task := *response.Task
 		return StreamEvent{
+			Kind:           "task",
 			ConversationID: task.ContextID,
 			TaskID:         task.ID,
 			Status:         fallbackID(task.Status.State, "working"),
@@ -149,6 +151,7 @@ func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
 	case response.StatusUpdate != nil:
 		update := *response.StatusUpdate
 		return StreamEvent{
+			Kind:           "status",
 			ConversationID: update.ContextID,
 			TaskID:         update.TaskID,
 			Status:         fallbackID(update.Status.State, "working"),
@@ -158,6 +161,7 @@ func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
 	case response.ArtifactUpdate != nil:
 		update := *response.ArtifactUpdate
 		return StreamEvent{
+			Kind:           "artifact",
 			ConversationID: update.ContextID,
 			TaskID:         update.TaskID,
 			Status:         "working",

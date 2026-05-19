@@ -17,6 +17,7 @@
     resetWidgetLayout,
     saveWidgetLayout,
     sendConversationTurn,
+    sendConversationTurnStream,
     setAgentEnabled,
     unmuteVoice
   } from '$lib/api';
@@ -28,6 +29,7 @@
     Conversation,
     ConversationDetail,
     ConversationMessage,
+    ConversationStreamEvent,
     DashboardData,
     DisplayMode,
     UserFacingIssue,
@@ -184,7 +186,7 @@
       role: message.role,
       content: message.content,
       createdAt: message.createdAt,
-      status: message.status === 'streaming' ? 'sending' : message.status === 'failed' ? 'failed' : 'sent',
+      status: message.status === 'streaming' ? 'streaming' : message.status === 'failed' ? 'failed' : 'sent',
       retryText: message.status === 'failed' && message.role === 'user' ? message.content : undefined,
       agentId: message.agentId
     };
@@ -485,23 +487,68 @@
     }
 
     const temporaryMessageId = retryMessageId ?? makeID();
-    messages = [
-      ...messages.filter((message) => message.id !== retryMessageId),
-      makeMessage('user', text, {
-        id: temporaryMessageId,
-        status: 'sending',
-        retryText: text,
-        agentId: agent.id
-      })
-    ];
     chatState = 'thinking';
+    let streamedOutput = false;
+    let completed = false;
+    let failedFromStream = false;
+    const assistantMessageId = makeID();
 
     try {
       const conversationId = await ensureConversation(agent);
-      const detail = await sendConversationTurn(fetch, conversationId, agent.id, text);
-      applyConversationDetail(detail);
+      messages = [
+        ...messages.filter((message) => message.id !== retryMessageId),
+        makeMessage('user', text, {
+          id: temporaryMessageId,
+          conversationId,
+          status: 'sent',
+          retryText: text,
+          agentId: agent.id
+        })
+      ];
+      await sendConversationTurnStream(fetch, conversationId, agent.id, text, (event) => {
+        if (event.type === 'turn_started') {
+          chatState = 'thinking';
+          return;
+        }
+        if (event.type === 'assistant_delta') {
+          streamedOutput = true;
+          chatState = 'streaming';
+          upsertAssistantDelta(assistantMessageId, event);
+          return;
+        }
+        if (event.type === 'status_changed') {
+          chatState = event.status === 'completed' ? 'streaming' : 'thinking';
+          return;
+        }
+        if (event.type === 'turn_completed') {
+          completed = true;
+          applyConversationDetail({
+            conversation: event.conversation,
+            messages: event.messages
+          });
+          return;
+        }
+        if (event.type === 'turn_failed') {
+          failedFromStream = true;
+          throw new Error(event.message);
+        }
+      });
+      if (!completed) {
+        throw new Error('stream ended before completion');
+      }
       markConnected();
     } catch {
+      if (!streamedOutput && !failedFromStream) {
+        try {
+          const conversationId = selectedConversationId || (await ensureConversation(agent));
+          const detail = await sendConversationTurn(fetch, conversationId, agent.id, text);
+          applyConversationDetail(detail);
+          markConnected();
+          return;
+        } catch {
+          // Fall through to the standard retryable failure state.
+        }
+      }
       messages = messages.map((message) =>
         message.id === temporaryMessageId ? { ...message, status: 'failed', retryText: text } : message
       );
@@ -513,6 +560,34 @@
         message: 'The selected agent did not complete the request.'
       });
       chatState = 'error';
+    }
+  }
+
+  function upsertAssistantDelta(messageId: string, event: Extract<ConversationStreamEvent, { type: 'assistant_delta' }>) {
+    let found = false;
+    messages = messages.map((message) => {
+      if (message.id !== messageId) {
+        return message;
+      }
+      found = true;
+      return {
+        ...message,
+        conversationId: event.conversationId || message.conversationId,
+        content: event.append ? message.content + event.text : event.text,
+        status: 'streaming',
+        agentId: event.agentId || message.agentId
+      };
+    });
+    if (!found) {
+      messages = [
+        ...messages,
+        makeMessage('assistant', event.text, {
+          id: messageId,
+          conversationId: event.conversationId,
+          status: 'streaming',
+          agentId: event.agentId
+        })
+      ];
     }
   }
 

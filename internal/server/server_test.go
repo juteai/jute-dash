@@ -1,10 +1,12 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -760,6 +762,125 @@ func TestConversationListShowsUnsupportedStateWhenAgentDoesNotExposeHistory(t *t
 	}
 }
 
+func TestConversationTurnStreamEmitsDeltasAndCompletion(t *testing.T) {
+	agentCardServer := streamingAgentCardServer(t, true)
+	defer agentCardServer.Close()
+	cfg := testConfig()
+	cfg.Agents[0].CardURL = agentCardServer.URL
+	streamer := &fakeStreamingSender{
+		streamEvents: []a2a.StreamEvent{
+			{Kind: "task", ConversationID: "ctx-1", TaskID: "task-1", Status: "working"},
+			{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "Hel", Append: true},
+			{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "lo", Append: true},
+			{Kind: "status", ConversationID: "ctx-1", TaskID: "task-1", Status: "completed", Terminal: true},
+		},
+		fakeTaskHistorySender: fakeTaskHistorySender{
+			records: map[string]a2a.TaskRecord{
+				"task-1": {
+					ID:        "task-1",
+					ContextID: "ctx-1",
+					Status:    "completed",
+					Messages: []a2a.TaskMessage{
+						{ID: "user-1", Role: "user", Text: "Hello"},
+						{ID: "agent-1", Role: "assistant", Text: "Hello"},
+					},
+					UpdatedAt: "2026-05-19T10:01:00Z",
+				},
+			},
+		},
+	}
+	handler := newServer(cfg, "test", weather.NewClient(), streamer, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil)
+
+	payload := bytes.NewBufferString(`{"agentId":"house","text":"Hello"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/ctx-1/turns/stream", payload)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	events := parseSSEEvents(t, rec.Body)
+	if got := eventNames(events); strings.Join(got, ",") != "turn_started,status_changed,assistant_delta,assistant_delta,status_changed,turn_completed" {
+		t.Fatalf("unexpected events: %+v", got)
+	}
+	if events[2].Data["text"] != "Hel" || events[3].Data["text"] != "lo" {
+		t.Fatalf("unexpected delta events: %+v", events)
+	}
+	if !streamer.streamCalled || streamer.lastStream.ConversationID != "ctx-1" || streamer.lastStream.Text != "Hello" {
+		t.Fatalf("unexpected stream request: %+v", streamer.lastStream)
+	}
+}
+
+func TestConversationTurnStreamFallsBackForNonStreamingAgent(t *testing.T) {
+	agentCardServer := streamingAgentCardServer(t, false)
+	defer agentCardServer.Close()
+	cfg := testConfig()
+	cfg.Agents[0].CardURL = agentCardServer.URL
+	sender := &fakeStreamingSender{
+		fakeTaskHistorySender: fakeTaskHistorySender{
+			fakeMessageSender: fakeMessageSender{result: a2a.SendMessageResult{
+				ConversationID: "ctx-1",
+				TaskID:         "task-1",
+				Status:         "completed",
+				Text:           "Blocking answer",
+			}},
+		},
+	}
+	handler := newServer(cfg, "test", weather.NewClient(), sender, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil)
+
+	payload := bytes.NewBufferString(`{"agentId":"house","text":"Hello"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/ctx-1/turns/stream", payload)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	events := parseSSEEvents(t, rec.Body)
+	if got := eventNames(events); strings.Join(got, ",") != "turn_started,turn_completed" {
+		t.Fatalf("unexpected events: %+v", got)
+	}
+	if sender.streamCalled {
+		t.Fatal("streamer should not be called for non-streaming agent")
+	}
+	if !sender.called {
+		t.Fatal("blocking sender should be called")
+	}
+}
+
+func TestConversationTurnStreamEmitsSafeFailureAfterPartialStream(t *testing.T) {
+	agentCardServer := streamingAgentCardServer(t, true)
+	defer agentCardServer.Close()
+	cfg := testConfig()
+	cfg.Agents[0].CardURL = agentCardServer.URL
+	streamer := &fakeStreamingSender{
+		streamEvents: []a2a.StreamEvent{
+			{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "Partial", Append: true},
+		},
+		streamErr: errors.New("raw remote stream failure with internals"),
+	}
+	handler := newServer(cfg, "test", weather.NewClient(), streamer, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil)
+
+	payload := bytes.NewBufferString(`{"agentId":"house","text":"Hello"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/ctx-1/turns/stream", payload)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	events := parseSSEEvents(t, rec.Body)
+	if got := eventNames(events); strings.Join(got, ",") != "turn_started,assistant_delta,turn_failed" {
+		t.Fatalf("unexpected events: %+v", got)
+	}
+	if message := events[2].Data["message"]; message != "Agent request failed" {
+		t.Fatalf("unexpected failure message: %+v", events[2].Data)
+	}
+	if strings.Contains(rec.Body.String(), "raw remote") {
+		t.Fatalf("stream leaked raw error: %s", rec.Body.String())
+	}
+}
+
 func testConfig() config.Config {
 	cfg := config.Default()
 	cfg.Agents = []config.AgentConfig{
@@ -860,4 +981,92 @@ func (s *fakeTaskHistorySender) GetTask(ctx context.Context, req a2a.GetTaskRequ
 		return task, nil
 	}
 	return a2a.TaskRecord{}, errors.New("task not found")
+}
+
+type fakeStreamingSender struct {
+	fakeTaskHistorySender
+	streamEvents []a2a.StreamEvent
+	streamErr    error
+	lastStream   a2a.SendMessageRequest
+	streamCalled bool
+}
+
+func (s *fakeStreamingSender) StreamMessage(ctx context.Context, req a2a.SendMessageRequest, handler a2a.StreamHandler) error {
+	s.streamCalled = true
+	s.lastStream = req
+	for _, event := range s.streamEvents {
+		if err := handler(event); err != nil {
+			return err
+		}
+	}
+	return s.streamErr
+}
+
+type sseEvent struct {
+	Name string
+	Data map[string]any
+}
+
+func parseSSEEvents(t *testing.T, reader io.Reader) []sseEvent {
+	t.Helper()
+	var events []sseEvent
+	var name string
+	var data strings.Builder
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			if name != "" {
+				var payload map[string]any
+				if err := json.Unmarshal([]byte(data.String()), &payload); err != nil {
+					t.Fatalf("decode SSE data for %s: %v\n%s", name, err, data.String())
+				}
+				events = append(events, sseEvent{Name: name, Data: payload})
+			}
+			name = ""
+			data.Reset()
+			continue
+		}
+		if strings.HasPrefix(line, "event:") {
+			name = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			if data.Len() > 0 {
+				data.WriteByte('\n')
+			}
+			data.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan SSE events: %v", err)
+	}
+	return events
+}
+
+func eventNames(events []sseEvent) []string {
+	names := make([]string, 0, len(events))
+	for _, event := range events {
+		names = append(names, event.Name)
+	}
+	return names
+}
+
+func streamingAgentCardServer(t *testing.T, streaming bool) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"name":        "Streaming Agent",
+			"description": "Test streaming card",
+			"version":     "1.0.0",
+			"supportedInterfaces": []map[string]string{
+				{"url": "http://agent.local/invoke", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+			},
+			"capabilities": map[string]any{
+				"streaming": streaming,
+			},
+			"defaultInputModes":  []string{"text/plain"},
+			"defaultOutputModes": []string{"text/plain"},
+		})
+	}))
 }

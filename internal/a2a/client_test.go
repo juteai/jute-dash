@@ -285,6 +285,9 @@ func TestJSONRPCClientStreamsA2AEvents(t *testing.T) {
 	if len(events) != 4 {
 		t.Fatalf("expected 4 events, got %+v", events)
 	}
+	if events[0].Kind != "task" || events[1].Kind != "artifact" || events[2].Kind != "artifact" || events[3].Kind != "status" {
+		t.Fatalf("unexpected stream event kinds: %+v", events)
+	}
 	if events[1].Text != "Hel" || !events[1].Append || events[2].Text != "lo" || !events[2].Terminal || !events[3].Terminal {
 		t.Fatalf("unexpected stream events: %+v", events)
 	}

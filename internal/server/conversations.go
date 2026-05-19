@@ -56,6 +56,14 @@ type ConversationDetail struct {
 	Messages     []ConversationMessage `json:"messages"`
 }
 
+type conversationTurnContext struct {
+	Agent       registry.Agent
+	Selected    selectedAgentInterface
+	BearerToken string
+	SendRequest a2aclient.SendMessageRequest
+	UserText    string
+}
+
 var errAgentHistoryUnsupported = errors.New("agent history is unavailable")
 
 func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +160,135 @@ func (s *Server) handleConversationSubroutes(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusOK, detail)
 		return
 	}
+	if len(parts) == 3 && parts[1] == "turns" && parts[2] == "stream" {
+		if !requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		s.handleConversationTurnStream(w, r, conversationID)
+		return
+	}
 	writeError(w, http.StatusNotFound, "conversation route not found")
+}
+
+func (s *Server) handleConversationTurnStream(w http.ResponseWriter, r *http.Request, conversationID string) {
+	var req ConversationTurnRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON request body")
+		return
+	}
+	turn, err := s.prepareConversationTurn(r.Context(), conversationID, req)
+	if err != nil {
+		writeConversationError(w, err)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming is unavailable")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+
+	sendConversationSSE(w, flusher, "turn_started", map[string]any{
+		"conversationId": conversationID,
+		"agentId":        turn.Agent.ID,
+		"status":         "working",
+	})
+	if !turn.Selected.Streaming {
+		s.sendBlockingTurnAsStream(w, flusher, r.Context(), turn, false)
+		return
+	}
+	streamer, ok := s.messages.(a2aclient.StreamingMessageSender)
+	if !ok {
+		s.sendBlockingTurnAsStream(w, flusher, r.Context(), turn, false)
+		return
+	}
+
+	var streamText strings.Builder
+	streamedDelta := false
+	taskID := ""
+	status := "working"
+	activeConversationID := conversationID
+	err = streamer.StreamMessage(r.Context(), turn.SendRequest, func(event a2aclient.StreamEvent) error {
+		if event.ConversationID != "" {
+			activeConversationID = event.ConversationID
+		}
+		if event.TaskID != "" {
+			taskID = event.TaskID
+		}
+		if event.Status != "" {
+			status = event.Status
+		}
+		switch event.Kind {
+		case "artifact", "message":
+			if event.Text != "" {
+				if event.Append {
+					streamText.WriteString(event.Text)
+				} else {
+					streamText.Reset()
+					streamText.WriteString(event.Text)
+				}
+				streamedDelta = true
+				sendConversationSSE(w, flusher, "assistant_delta", map[string]any{
+					"conversationId": activeConversationID,
+					"agentId":        turn.Agent.ID,
+					"taskId":         taskID,
+					"text":           event.Text,
+					"append":         event.Append,
+				})
+			}
+		case "task", "status":
+			sendConversationSSE(w, flusher, "status_changed", map[string]any{
+				"conversationId": activeConversationID,
+				"agentId":        turn.Agent.ID,
+				"taskId":         taskID,
+				"status":         status,
+				"terminal":       event.Terminal,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		if !streamedDelta {
+			s.sendBlockingTurnAsStream(w, flusher, r.Context(), turn, true)
+			return
+		}
+		sendConversationSSE(w, flusher, "turn_failed", map[string]any{
+			"conversationId": activeConversationID,
+			"agentId":        turn.Agent.ID,
+			"message":        "Agent request failed",
+		})
+		return
+	}
+	detail := s.detailAfterTurn(r.Context(), turn.Agent, turn.Selected, turn.BearerToken, activeConversationID, taskID, turn.UserText, streamText.String(), status)
+	sendConversationSSE(w, flusher, "turn_completed", detail)
+}
+
+func (s *Server) sendBlockingTurnAsStream(w http.ResponseWriter, flusher http.Flusher, ctx context.Context, turn conversationTurnContext, retried bool) {
+	result, err := s.messages.SendMessage(ctx, turn.SendRequest)
+	if err != nil {
+		sendConversationSSE(w, flusher, "turn_failed", map[string]any{
+			"conversationId": turn.SendRequest.ConversationID,
+			"agentId":        turn.Agent.ID,
+			"message":        "Agent request failed",
+			"retried":        retried,
+		})
+		return
+	}
+	detail := s.detailAfterTurn(ctx, turn.Agent, turn.Selected, turn.BearerToken, result.ConversationID, result.TaskID, turn.UserText, result.Text, result.Status)
+	sendConversationSSE(w, flusher, "turn_completed", detail)
+}
+
+func sendConversationSSE(w http.ResponseWriter, flusher http.Flusher, event string, data any) {
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "event: %s\n", event)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", bytes)
+	flusher.Flush()
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
@@ -306,42 +442,16 @@ func (s *Server) agentConversation(ctx context.Context, agent registry.Agent, se
 }
 
 func (s *Server) sendConversationTurn(ctx context.Context, conversationID string, req ConversationTurnRequest) (ConversationDetail, error) {
-	text := strings.TrimSpace(req.Text)
-	if text == "" {
-		return ConversationDetail{}, errors.New("text is required")
-	}
-	agent, ok := s.registry.Find(strings.TrimSpace(req.AgentID))
-	if !ok {
-		return ConversationDetail{}, errors.New("agent not found")
-	}
-	configuredAgent, ok := s.configuredAgent(agent.ID)
-	if !ok {
-		return ConversationDetail{}, errors.New("agent not found")
-	}
-	selected := s.selectedAgentInterface(ctx, agent)
-	if selected.ProtocolBinding != a2aclient.ProtocolJSONRPC {
-		return ConversationDetail{}, a2aclient.ErrUnsupportedProtocol
-	}
-	bearerToken, ok := agentBearerToken(configuredAgent)
-	if !ok {
-		return ConversationDetail{}, errors.New("agent credentials are not available")
-	}
-	sendReq := a2aclient.SendMessageRequest{
-		EndpointURL:     selected.EndpointURL,
-		ProtocolBinding: selected.ProtocolBinding,
-		ProtocolVersion: selected.ProtocolVersion,
-		Text:            text,
-		BearerToken:     bearerToken,
-		ConversationID:  conversationID,
-		Extensions:      selected.Extensions,
-		Metadata:        selected.Metadata,
+	turn, err := s.prepareConversationTurn(ctx, conversationID, req)
+	if err != nil {
+		return ConversationDetail{}, err
 	}
 	var streamText strings.Builder
 	var taskID string
 	var status string
-	if selected.Streaming {
+	if turn.Selected.Streaming {
 		if streamer, ok := s.messages.(a2aclient.StreamingMessageSender); ok {
-			err := streamer.StreamMessage(ctx, sendReq, func(event a2aclient.StreamEvent) error {
+			err := streamer.StreamMessage(ctx, turn.SendRequest, func(event a2aclient.StreamEvent) error {
 				if event.Append {
 					streamText.WriteString(event.Text)
 				} else if event.Text != "" {
@@ -357,15 +467,58 @@ func (s *Server) sendConversationTurn(ctx context.Context, conversationID string
 				return nil
 			})
 			if err == nil {
-				return s.detailAfterTurn(ctx, agent, selected, bearerToken, conversationID, taskID, text, streamText.String(), status), nil
+				return s.detailAfterTurn(ctx, turn.Agent, turn.Selected, turn.BearerToken, conversationID, taskID, turn.UserText, streamText.String(), status), nil
 			}
 		}
 	}
-	result, err := s.messages.SendMessage(ctx, sendReq)
+	result, err := s.messages.SendMessage(ctx, turn.SendRequest)
 	if err != nil {
 		return ConversationDetail{}, err
 	}
-	return s.detailAfterTurn(ctx, agent, selected, bearerToken, result.ConversationID, result.TaskID, text, result.Text, result.Status), nil
+	return s.detailAfterTurn(ctx, turn.Agent, turn.Selected, turn.BearerToken, result.ConversationID, result.TaskID, turn.UserText, result.Text, result.Status), nil
+}
+
+func (s *Server) prepareConversationTurn(ctx context.Context, conversationID string, req ConversationTurnRequest) (conversationTurnContext, error) {
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		return conversationTurnContext{}, errors.New("text is required")
+	}
+	agent, ok := s.registry.Find(strings.TrimSpace(req.AgentID))
+	if !ok {
+		return conversationTurnContext{}, errors.New("agent not found")
+	}
+	if !agent.Enabled {
+		return conversationTurnContext{}, errors.New("agent is disabled")
+	}
+	configuredAgent, ok := s.configuredAgent(agent.ID)
+	if !ok {
+		return conversationTurnContext{}, errors.New("agent not found")
+	}
+	selected := s.selectedAgentInterface(ctx, agent)
+	if selected.ProtocolBinding != a2aclient.ProtocolJSONRPC {
+		return conversationTurnContext{}, a2aclient.ErrUnsupportedProtocol
+	}
+	bearerToken, ok := agentBearerToken(configuredAgent)
+	if !ok {
+		return conversationTurnContext{}, errors.New("agent credentials are not available")
+	}
+	sendReq := a2aclient.SendMessageRequest{
+		EndpointURL:     selected.EndpointURL,
+		ProtocolBinding: selected.ProtocolBinding,
+		ProtocolVersion: selected.ProtocolVersion,
+		Text:            text,
+		BearerToken:     bearerToken,
+		ConversationID:  conversationID,
+		Extensions:      selected.Extensions,
+		Metadata:        selected.Metadata,
+	}
+	return conversationTurnContext{
+		Agent:       agent,
+		Selected:    selected,
+		BearerToken: bearerToken,
+		SendRequest: sendReq,
+		UserText:    text,
+	}, nil
 }
 
 func (s *Server) detailAfterTurn(ctx context.Context, agent registry.Agent, selected selectedAgentInterface, bearerToken, conversationID, taskID, userText, assistantText, status string) ConversationDetail {
@@ -470,6 +623,8 @@ func writeConversationError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotImplemented, "agent protocol binding is not implemented yet")
 	case errors.Is(err, errAgentHistoryUnsupported):
 		writeError(w, http.StatusNotImplemented, "agent history is unavailable")
+	case strings.Contains(err.Error(), "disabled"):
+		writeError(w, http.StatusConflict, err.Error())
 	case strings.Contains(err.Error(), "required"):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case strings.Contains(err.Error(), "not found"):
