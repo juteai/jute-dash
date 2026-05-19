@@ -9,7 +9,7 @@ Jute Dash is a local-first home assistant platform. The foundation is:
 - Go hub for configuration, persistence, local API, A2A transport, smart-home adapters, widget permissions, event streams, and future headless voice services.
 - SvelteKit display app with shadcn-svelte conventions for the touch dashboard, settings, widget host, and kiosk/PWA surface.
 - SQLite as the runtime persistence layer.
-- JSON config as bootstrap, import, and export format.
+- YAML config as the preferred bootstrap, import, and export format; JSON remains supported for compatibility.
 - A2A compatibility through standard A2A protocol bindings, not custom transport shortcuts.
 
 Start with the architecture docs before making product changes:
@@ -36,8 +36,8 @@ Start with the architecture docs before making product changes:
 - Use shadcn-svelte conventions and the BOW/WOB display palette from [Display UX](docs/architecture/display-ux.md) for future frontend work.
 - Use the hub API as the source of truth for durable settings, layouts, agents, widgets, and home state.
 - Prefer small, explicit interfaces over broad plugin hooks.
-- Use SQLite for runtime state once persistence is needed; keep JSON config portable and secret-free.
-- Treat JSON as bootstrap/import/export only. Do not make JSON the live source of truth after SQLite exists.
+- Use SQLite for runtime state once persistence is needed; keep YAML/JSON config portable and secret-free.
+- Treat YAML/JSON config as bootstrap/import/export only. Do not make config files the live source of truth after SQLite exists.
 - Classify new settings before implementation: boot-only, household durable, device-profile durable, install record, cache, secret reference, or transient UI state.
 - Do not silently hide hub/API failures behind fake live data. Show startup offline, reconnecting, stale, degraded, no-agent, and widget failure states according to Resilience And Error UX.
 - Prefer recoverable inline UX over blocking modals for runtime failures.

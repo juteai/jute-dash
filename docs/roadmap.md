@@ -10,7 +10,7 @@
 - Define clean-slate display UX and mark the current dashboard as throwaway POC.
 - Define voice and wake-word architecture, provider boundaries, follow-up listening, and conversation UI.
 - Define selectable STT/TTS Voice Provider Packs and TTS playback policy.
-- Define local configuration persistence, first-run setup, JSON bootstrap/import/export, and SQLite runtime ownership.
+- Define local configuration persistence, first-run setup, YAML/JSON bootstrap/import/export, and SQLite runtime ownership.
 - Define resilience and error UX for hub disconnects, stale data, no-agent states, widget failures, and safe error copy.
 - Add coding-agent guidance in `AGENTS.md` and `CLAUDE.md`.
 - Build the Go hub entrypoint.

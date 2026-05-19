@@ -6,7 +6,8 @@ Jute should be easy to run out of the box without hand-editing files, but advanc
 
 The decision:
 
-- JSON is bootstrap, import, and export format.
+- YAML is the preferred bootstrap, import, and export format.
+- JSON remains supported for machine-friendly compatibility.
 - SQLite is runtime truth.
 - Secrets are references only.
 - The hub owns all durable settings.
@@ -33,7 +34,7 @@ Effective configuration is built in this order:
 
 1. compiled safe defaults;
 2. boot-only CLI and environment overrides;
-3. optional bootstrap JSON, applied only when initializing an empty runtime store;
+3. optional bootstrap YAML or JSON, applied only when initializing an empty runtime store;
 4. SQLite household settings;
 5. SQLite device profile overrides;
 6. transient browser state for non-durable UI only.
@@ -69,9 +70,9 @@ $JUTE_HOME/jute.db
 
 Default bootstrap config:
 
-- development: `config/jute.example.json`;
-- Docker: `/config/config.json`;
-- systemd: `/etc/jute/config.json`;
+- development: `config/jute.example.yaml`;
+- Docker: `/config/config.yaml`;
+- systemd: `/etc/jute/config.yaml`;
 - ordinary local install: optional.
 
 No bootstrap config is required for first run.
@@ -84,7 +85,7 @@ When no runtime database exists, the hub:
 2. creates `jute.db`;
 3. runs all migrations;
 4. inserts safe defaults;
-5. applies bootstrap JSON if a bootstrap file was provided;
+5. applies bootstrap YAML or JSON if a bootstrap file was provided;
 6. exposes setup status through the local API.
 
 The first-run UI should collect only the minimum useful settings:
@@ -162,9 +163,23 @@ Before adding a new setting, classify it as one of:
 
 Do not store durable settings only in browser local storage.
 
+## YAML Bootstrap Format
+
+YAML is the recommended format for hand-authored Jute configuration because it is easier to scan and maintain for homes, agents, widgets, layouts, and future setup records.
+
+Rules:
+
+- `.yaml` and `.yml` are preferred for local bootstrap config;
+- `.json` remains accepted for generated config, tests, and compatibility;
+- YAML uses kebab-case keys such as `listen-address`, `card-url`, and `wind-speed-unit`;
+- YAML decoding is strict and rejects unknown fields;
+- YAML is not watched or automatically reloaded in v1.
+
+Jute intentionally does not copy Glance's live config reload model in v1. Runtime edits happen through the hub and persist to SQLite. Editing a YAML file after `jute.db` exists does not silently overwrite runtime settings; use a future explicit import flow for that.
+
 ## Secrets
 
-Secrets are never stored directly in JSON or ordinary SQLite settings rows.
+Secrets are never stored directly in YAML, JSON, or ordinary SQLite settings rows.
 
 v1 secret references:
 
@@ -182,7 +197,7 @@ Public APIs may expose whether a secret is configured. They must not expose raw 
 
 ## Import And Export
 
-JSON export is a portable projection of runtime settings.
+YAML export is the preferred human-readable portable projection of runtime settings. JSON export remains available for machine-readable workflows.
 
 Export includes:
 
@@ -254,7 +269,7 @@ Future CLI behavior:
 
 - `juted init`: create the data directory, database, and optional bootstrap config.
 - `juted --data-dir`: override runtime data path.
-- `juted --config`: provide bootstrap/import config.
+- `juted --config`: provide YAML or JSON bootstrap/import config.
 - `juted --listen`: boot-only listen override.
 - `juted --headless`: start without serving the display.
 
@@ -266,7 +281,8 @@ Use SQLite-aware backup/export paths instead of copying only `jute.db` while the
 
 Backup options:
 
-- JSON export for portable, secret-free configuration;
+- YAML export for portable, secret-free human configuration;
+- JSON export for machine-readable compatibility;
 - SQLite backup API for full local backup;
 - stopped-service file copy for advanced users;
 - future encrypted export for secrets and sensitive history.
@@ -275,12 +291,12 @@ Recovery flow:
 
 1. start from safe defaults if no backup exists;
 2. restore SQLite backup for full local state;
-3. import JSON for portable settings;
+3. import YAML or JSON for portable settings;
 4. reattach secrets through environment variables or future keyring setup.
 
 ## Development Defaults
 
-Development keeps using `config/jute.example.json` for a rich demo.
+Development keeps using `config/jute.example.yaml` for a rich demo.
 
 Production defaults should be quieter:
 

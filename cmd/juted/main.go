@@ -16,7 +16,7 @@ import (
 var version = "dev"
 
 func main() {
-	configPath := flag.String("config", os.Getenv("JUTE_CONFIG"), "optional path to Jute bootstrap config JSON")
+	configPath := flag.String("config", os.Getenv("JUTE_CONFIG"), "optional path to Jute bootstrap config YAML or JSON")
 	dataDirOverride := flag.String("data-dir", os.Getenv("JUTE_DATA_DIR"), "override Jute runtime data directory")
 	listenOverride := flag.String("listen", os.Getenv("JUTE_LISTEN"), "override listen address")
 	flag.Parse()

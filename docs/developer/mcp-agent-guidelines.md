@@ -130,7 +130,7 @@ For the normal Jute development loop, use:
 make dev-a2a
 ```
 
-That target runs the example in server-only mode, starts the hub with `config/jute.dev-a2a.json`, and then starts the Svelte display. MCP is not required for this flow.
+That target runs the example in server-only mode, starts the hub with `config/jute.dev-a2a.yaml`, and then starts the Svelte display. MCP is not required for this flow.
 
 The example binds to `127.0.0.1:9797` by default and publishes an Agent Card at:
 

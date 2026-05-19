@@ -47,7 +47,7 @@ make kronk-a2a-setup
 make dev-a2a
 ```
 
-`make dev-a2a` starts the Kronk A2A server, waits for its Agent Card, then starts the hub with `config/jute.dev-a2a.json` and the web UI. First run may take a while because Kronk can download model/runtime assets. Reset only that dev store with:
+`make dev-a2a` starts the Kronk A2A server, waits for its Agent Card, then starts the hub with `config/jute.dev-a2a.yaml` and the web UI. First run may take a while because Kronk can download model/runtime assets. Reset only that dev store with:
 
 ```sh
 make dev-a2a-reset
@@ -116,7 +116,7 @@ The project tracks A2A as an external protocol rather than inventing a custom ag
 
 ## Configuration Direction
 
-Runtime settings will live in SQLite. JSON config is for bootstrap, import, and export. The hub owns durable settings, and public config responses are redacted projections.
+Runtime settings live in SQLite. YAML config is the preferred human-authored bootstrap/import/export format, and JSON remains supported for machine-friendly compatibility. The hub owns durable settings, and public config responses are redacted projections.
 
 `JUTE_HOME` is the planned data root. The runtime database defaults to `$JUTE_HOME/jute.db`, with Docker using `/data` and systemd using `/var/lib/jute`.
 

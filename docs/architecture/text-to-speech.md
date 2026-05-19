@@ -183,7 +183,7 @@ Persist TTS settings per device profile:
 - sensitive-output speech policy;
 - cloud opt-in.
 
-JSON config may bootstrap these values, but runtime edits are saved through the hub settings API.
+YAML or JSON config may bootstrap these values, but runtime edits are saved through the hub settings API.
 
 ## Security And Privacy
 
@@ -193,4 +193,3 @@ JSON config may bootstrap these values, but runtime edits are saved through the 
 - TTS logs exclude raw synthesized text by default.
 - Audio cache entries are treated as private household data.
 - Browser `speechSynthesis` is only a display fallback and must not become the headless voice path.
-

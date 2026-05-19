@@ -91,23 +91,19 @@ Remote internet exposure is not a v1 feature.
 
 Planned bootstrap/import-export shape:
 
-```json
-{
-  "mcp": {
-    "enabled": false,
-    "transport": "streamable-http",
-    "listenAddress": "127.0.0.1:8790",
-    "path": "/mcp",
-    "allowLan": false,
-    "auth": {
-      "mode": "local-token",
-      "envToken": "JUTE_MCP_TOKEN"
-    }
-  }
-}
+```yaml
+mcp:
+  enabled: false
+  transport: streamable-http
+  listen-address: 127.0.0.1:8790
+  path: /mcp
+  allow-lan: false
+  auth:
+    mode: local-token
+    env-token: JUTE_MCP_TOKEN
 ```
 
-Runtime settings live in SQLite. JSON is bootstrap/import/export only.
+Runtime settings live in SQLite. YAML is the preferred bootstrap/import/export format, and JSON remains supported for compatibility.
 
 MCP settings classification:
 

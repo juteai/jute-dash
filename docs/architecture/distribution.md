@@ -55,7 +55,7 @@ Raspberry Pi support targets 64-bit Raspberry Pi OS first.
 Run hub and display separately for fast iteration:
 
 ```sh
-go run ./cmd/juted -config config/jute.example.json
+go run ./cmd/juted -config config/jute.example.yaml
 cd apps/web && npm run dev
 ```
 
@@ -64,7 +64,7 @@ cd apps/web && npm run dev
 Run one binary that serves the hub API and display:
 
 ```sh
-juted --config /etc/jute/config.json
+juted --config /etc/jute/config.yaml
 ```
 
 Once SQLite persistence exists, `--config` bootstraps an empty runtime store. Runtime settings then live in the data directory.
@@ -86,7 +86,7 @@ docker run --rm \
 The package installs:
 
 - `/usr/local/bin/juted`
-- `/etc/jute/config.json`
+- `/etc/jute/config.yaml`
 - `/var/lib/jute/jute.db`
 - `jute.service`
 
@@ -102,7 +102,7 @@ Default runtime locations:
 - Docker: `/data`;
 - systemd: `/var/lib/jute`.
 
-The runtime database defaults to `$JUTE_HOME/jute.db`. JSON config remains bootstrap/import/export and should not be treated as the live source of truth after the database exists.
+The runtime database defaults to `$JUTE_HOME/jute.db`. YAML/JSON config remains bootstrap/import/export and should not be treated as the live source of truth after the database exists.
 
 ## Versioning
 

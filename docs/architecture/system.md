@@ -26,7 +26,7 @@ flowchart LR
   api["Local Hub API\nHTTP + SSE"]
   hub["Jute Hub\nGo"]
   sqlite["SQLite runtime store\nruntime truth"]
-  config["Bootstrap JSON config\nimport/export"]
+  config["Bootstrap YAML/JSON config\nimport/export"]
   widgets["Widget runtime"]
   registry["Agent registry"]
   a2a["A2A client transport"]
@@ -83,7 +83,7 @@ The display talks only to the hub API. It does not call remote agents or smart-h
 Initial API families:
 
 - `/api/v1/home`: current normalized home state.
-- `/api/v1/widgets`: widget catalog, layouts, widget state, and widget permissions.
+- `/api/v1/widgets`: widget catalog, layouts, widget state, and widget permissions. The current v1 surface includes `GET /api/v1/widgets/catalog`, `GET /api/v1/widgets/layout`, `PUT /api/v1/widgets/layout`, and `POST /api/v1/widgets/layout/reset`.
 - `/api/v1/agents`: configured agents, cached cards, skills, health, and selected bindings.
 - `/api/v1/messages`: user turns that become A2A tasks.
 - `/api/v1/setup`: future first-run setup status and completion.
@@ -142,13 +142,13 @@ The display treats event-stream failure as `reconnecting` or `degraded` dependin
 
 ## Persistence
 
-SQLite is runtime truth. JSON config is still used for bootstrap, import, and export.
+SQLite is runtime truth. YAML config is preferred for bootstrap, import, and export. JSON config remains supported for compatibility.
 
 The effective configuration precedence is:
 
 1. compiled safe defaults;
 2. boot-only CLI and environment overrides;
-3. optional bootstrap JSON applied only when initializing an empty runtime store;
+3. optional bootstrap YAML or JSON applied only when initializing an empty runtime store;
 4. SQLite household settings;
 5. SQLite device profile overrides;
 6. transient browser state for non-durable UI only.
@@ -166,7 +166,7 @@ Persisted data:
 - MCP bridge enablement, auth references, endpoint settings, and per-agent MCP scopes;
 - automation schedules when introduced.
 
-Secrets are not stored in JSON config or ordinary SQLite settings rows. v1 uses environment variable references. Later releases add OS keyring support.
+Secrets are not stored in YAML/JSON config or ordinary SQLite settings rows. v1 uses environment variable references. Later releases add OS keyring support.
 
 Configuration and persistence details are specified in [Configuration And Persistence](configuration-persistence.md).
 

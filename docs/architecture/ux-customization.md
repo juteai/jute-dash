@@ -121,7 +121,7 @@ The hub persists customization in SQLite:
 Config precedence:
 
 1. command-line flags and environment variables for server boot behavior;
-2. optional JSON bootstrap config for empty-store initialization;
+2. optional YAML or JSON bootstrap config for empty-store initialization;
 3. SQLite household settings;
 4. SQLite device profile settings;
 5. transient browser state for non-durable UI only.

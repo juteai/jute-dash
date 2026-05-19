@@ -6,97 +6,100 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"jute-dash/internal/a2a"
+
+	"go.yaml.in/yaml/v4"
 )
 
 type Config struct {
-	Home    HomeConfig    `json:"home"`
-	Server  ServerConfig  `json:"server"`
-	Display DisplayConfig `json:"display"`
-	Weather WeatherConfig `json:"weather"`
-	Agents  []AgentConfig `json:"agents"`
-	Rooms   []RoomConfig  `json:"rooms"`
-	Tiles   []TileConfig  `json:"tiles"`
+	Home    HomeConfig    `json:"home" yaml:"home"`
+	Server  ServerConfig  `json:"server" yaml:"server"`
+	Display DisplayConfig `json:"display" yaml:"display"`
+	Weather WeatherConfig `json:"weather" yaml:"weather"`
+	Agents  []AgentConfig `json:"agents" yaml:"agents"`
+	Rooms   []RoomConfig  `json:"rooms" yaml:"rooms"`
+	Tiles   []TileConfig  `json:"tiles" yaml:"tiles"`
 }
 
 type HomeConfig struct {
-	Name     string `json:"name"`
-	Timezone string `json:"timezone"`
-	Locale   string `json:"locale"`
+	Name     string `json:"name" yaml:"name"`
+	Timezone string `json:"timezone" yaml:"timezone"`
+	Locale   string `json:"locale" yaml:"locale"`
 }
 
 type ServerConfig struct {
-	ListenAddress string `json:"listenAddress"`
+	ListenAddress string `json:"listenAddress" yaml:"listen-address"`
 }
 
 type DisplayConfig struct {
-	Theme       string `json:"theme"`
-	AccentColor string `json:"accentColor"`
-	IdleMode    string `json:"idleMode"`
+	Theme       string `json:"theme" yaml:"theme"`
+	AccentColor string `json:"accentColor" yaml:"accent-color"`
+	IdleMode    string `json:"idleMode" yaml:"idle-mode"`
 }
 
 type WeatherConfig struct {
-	Enabled         bool    `json:"enabled"`
-	Provider        string  `json:"provider"`
-	LocationName    string  `json:"locationName"`
-	Latitude        float64 `json:"latitude"`
-	Longitude       float64 `json:"longitude"`
-	TemperatureUnit string  `json:"temperatureUnit"`
-	WindSpeedUnit   string  `json:"windSpeedUnit"`
+	Enabled         bool    `json:"enabled" yaml:"enabled"`
+	Provider        string  `json:"provider" yaml:"provider"`
+	LocationName    string  `json:"locationName" yaml:"location-name"`
+	Latitude        float64 `json:"latitude" yaml:"latitude"`
+	Longitude       float64 `json:"longitude" yaml:"longitude"`
+	TemperatureUnit string  `json:"temperatureUnit" yaml:"temperature-unit"`
+	WindSpeedUnit   string  `json:"windSpeedUnit" yaml:"wind-speed-unit"`
 }
 
 type AgentConfig struct {
-	ID              string      `json:"id"`
-	Name            string      `json:"name"`
-	Description     string      `json:"description"`
-	CardURL         string      `json:"cardUrl"`
-	EndpointURL     string      `json:"endpointUrl"`
-	ProtocolBinding string      `json:"protocolBinding"`
-	Enabled         bool        `json:"enabled"`
-	Capabilities    []string    `json:"capabilities"`
-	Auth            *AuthConfig `json:"auth,omitempty"`
+	ID              string      `json:"id" yaml:"id"`
+	Name            string      `json:"name" yaml:"name"`
+	Description     string      `json:"description" yaml:"description"`
+	CardURL         string      `json:"cardUrl" yaml:"card-url"`
+	EndpointURL     string      `json:"endpointUrl" yaml:"endpoint-url"`
+	ProtocolBinding string      `json:"protocolBinding" yaml:"protocol-binding"`
+	Enabled         bool        `json:"enabled" yaml:"enabled"`
+	Capabilities    []string    `json:"capabilities" yaml:"capabilities"`
+	Auth            *AuthConfig `json:"auth,omitempty" yaml:"auth,omitempty"`
 }
 
 type AuthConfig struct {
-	Type     string `json:"type"`
-	EnvToken string `json:"envToken"`
+	Type     string `json:"type" yaml:"type"`
+	EnvToken string `json:"envToken" yaml:"env-token"`
 }
 
 type RoomConfig struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Summary string `json:"summary"`
-	Status  string `json:"status"`
+	ID      string `json:"id" yaml:"id"`
+	Name    string `json:"name" yaml:"name"`
+	Summary string `json:"summary" yaml:"summary"`
+	Status  string `json:"status" yaml:"status"`
 }
 
 type TileConfig struct {
-	ID     string `json:"id"`
-	Kind   string `json:"kind"`
-	Label  string `json:"label"`
-	Value  string `json:"value"`
-	Detail string `json:"detail"`
+	ID     string `json:"id" yaml:"id"`
+	Kind   string `json:"kind" yaml:"kind"`
+	Label  string `json:"label" yaml:"label"`
+	Value  string `json:"value" yaml:"value"`
+	Detail string `json:"detail" yaml:"detail"`
 }
 
 type PublicConfig struct {
-	Home    HomeConfig          `json:"home"`
-	Display DisplayConfig       `json:"display"`
-	Agents  []PublicAgentConfig `json:"agents"`
-	Rooms   []RoomConfig        `json:"rooms"`
-	Tiles   []TileConfig        `json:"tiles"`
+	Home    HomeConfig          `json:"home" yaml:"home"`
+	Display DisplayConfig       `json:"display" yaml:"display"`
+	Agents  []PublicAgentConfig `json:"agents" yaml:"agents"`
+	Rooms   []RoomConfig        `json:"rooms" yaml:"rooms"`
+	Tiles   []TileConfig        `json:"tiles" yaml:"tiles"`
 }
 
 type PublicAgentConfig struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	Description     string   `json:"description"`
-	CardURL         string   `json:"cardUrl"`
-	EndpointURL     string   `json:"endpointUrl"`
-	ProtocolBinding string   `json:"protocolBinding"`
-	Enabled         bool     `json:"enabled"`
-	Capabilities    []string `json:"capabilities"`
-	AuthConfigured  bool     `json:"authConfigured"`
+	ID              string   `json:"id" yaml:"id"`
+	Name            string   `json:"name" yaml:"name"`
+	Description     string   `json:"description" yaml:"description"`
+	CardURL         string   `json:"cardUrl" yaml:"card-url"`
+	EndpointURL     string   `json:"endpointUrl" yaml:"endpoint-url"`
+	ProtocolBinding string   `json:"protocolBinding" yaml:"protocol-binding"`
+	Enabled         bool     `json:"enabled" yaml:"enabled"`
+	Capabilities    []string `json:"capabilities" yaml:"capabilities"`
+	AuthConfigured  bool     `json:"authConfigured" yaml:"auth-configured"`
 }
 
 func Default() Config {
@@ -138,9 +141,7 @@ func Load(path string) (Config, error) {
 	}
 	defer file.Close()
 
-	decoder := json.NewDecoder(file)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&cfg); err != nil {
+	if err := decode(file, path, &cfg); err != nil {
 		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
 
@@ -150,6 +151,21 @@ func Load(path string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func decode(file *os.File, path string, cfg *Config) error {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".yaml", ".yml":
+		decoder := yaml.NewDecoder(file)
+		decoder.KnownFields(true)
+		return decoder.Decode(cfg)
+	case ".json", "":
+		decoder := json.NewDecoder(file)
+		decoder.DisallowUnknownFields()
+		return decoder.Decode(cfg)
+	default:
+		return fmt.Errorf("unsupported config file extension %q", filepath.Ext(path))
+	}
 }
 
 func Validate(cfg Config) error {

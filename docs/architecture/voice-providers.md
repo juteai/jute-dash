@@ -205,7 +205,7 @@ The display remains useful when TTS is disabled or fails. The assistant response
 
 ## Provider Selection
 
-Provider selection is persisted per device profile in SQLite and may be bootstrapped from JSON config.
+Provider selection is persisted per device profile in SQLite and may be bootstrapped from YAML or JSON config.
 
 Persisted settings:
 
@@ -298,4 +298,3 @@ Provider packs should include conformance tests once the provider test harness e
 - Never send raw microphone audio, pre-roll buffers, or partial transcripts to A2A agents.
 - Disable command providers by default.
 - Log provider IDs and health transitions, not raw transcripts, raw audio, synthesized sensitive text, or credential values.
-

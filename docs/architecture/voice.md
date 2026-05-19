@@ -277,7 +277,7 @@ Persist these settings per device profile in SQLite:
 - preferred voice language;
 - per-device preferred agent.
 
-JSON config may bootstrap these values, but runtime changes are saved through the hub settings API.
+YAML or JSON config may bootstrap these values, but runtime changes are saved through the hub settings API.
 
 ## Privacy Rules
 

@@ -5,7 +5,7 @@ Jute Dash is a local-first home assistant platform built around a headless-capab
 ## Architecture Map
 
 - [System Architecture](system.md): hub, display, API boundaries, persistence, event streams, and deployment modes.
-- [Configuration And Persistence](configuration-persistence.md): local data paths, first-run setup, SQLite runtime store, JSON bootstrap/import/export, migrations, and secrets.
+- [Configuration And Persistence](configuration-persistence.md): local data paths, first-run setup, SQLite runtime store, YAML/JSON bootstrap/import/export, migrations, and secrets.
 - [Display UX](display-ux.md): clean-slate dashboard, widget frame, edit mode, chat mode, brand constants, and first widgets.
 - [Resilience And Error UX](resilience-error-ux.md): hub disconnects, stale data, no-agent states, widget failures, safe error copy, and recovery behavior.
 - [Widgets](widgets.md): built-in widgets, custom Widget Packs, iframe sandboxing, SDK messages, and dashboard context.
@@ -27,8 +27,8 @@ Jute Dash is a local-first home assistant platform built around a headless-capab
 - Runtime failures must be visible, calm, and actionable. Do not silently hide hub disconnects, missing agents, stale data, or widget failures.
 - Voice is local-first hybrid: wake word and VAD run locally, while STT/TTS use selectable Voice Provider Packs with local/LAN defaults and optional cloud implementations.
 - Voice Provider Packs are manifest-driven process or network integrations. Do not use Go in-process dynamic plugins for v1.
-- SQLite is runtime truth. JSON config is bootstrap, import, and export format.
-- Secrets are references only and are not stored in JSON or ordinary settings rows.
+- SQLite is runtime truth. YAML config is preferred for bootstrap, import, and export, while JSON remains supported.
+- Secrets are references only and are not stored in YAML, JSON, or ordinary settings rows.
 - Custom widgets use Widget Packs by default, loaded from a manifest and rendered in sandboxed iframes with a typed postMessage SDK.
 - Jute-specific dashboard context is sent to agents through an optional A2A extension, not a custom A2A protocol binding.
 - The optional Jute MCP Bridge runs inside the Go hub and exposes local dashboard context and safe tools to trusted local agents.

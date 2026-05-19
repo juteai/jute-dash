@@ -175,4 +175,4 @@ Exports should separate:
 
 Encrypted export can be added later when user profiles and remote sync exist.
 
-JSON import/export details are specified in [Configuration And Persistence](configuration-persistence.md).
+YAML/JSON import-export details are specified in [Configuration And Persistence](configuration-persistence.md).

@@ -6,7 +6,7 @@ Jute Dash is a local-first home assistant platform. Treat this repo as architect
 
 - Hub: Go service for config, persistence, local API, A2A transport, smart-home adapters, widget permissions, event streams, and future headless voice.
 - Display: SvelteKit with shadcn-svelte conventions for dashboard, settings, widget host, PWA, and kiosk use.
-- Persistence: SQLite for runtime data, JSON for bootstrap/import/export.
+- Persistence: SQLite for runtime data, YAML for preferred bootstrap/import/export, and JSON for compatibility.
 - Agents: bring-your-own A2A servers discovered through Agent Cards.
 - Widgets: native Svelte for first-party widgets, sandboxed Widget Packs for custom widgets.
 
@@ -35,12 +35,12 @@ Key docs:
 - Use shadcn-svelte conventions and BOW/WOB light/dark mode from Display UX for future frontend work.
 - Do not call remote A2A agents directly from the Svelte app.
 - Do not put durable settings only in browser storage.
-- Treat SQLite as runtime truth once persistence exists. Treat JSON as bootstrap/import/export.
+- Treat SQLite as runtime truth once persistence exists. Treat YAML/JSON config as bootstrap/import/export.
 - Classify new settings before implementation: boot-only, household durable, device-profile durable, install record, cache, secret reference, or transient UI state.
 - Do not silently hide hub/API failures behind fake live data. Show startup offline, reconnecting, stale, degraded, no-agent, and widget failure states according to Resilience And Error UX.
 - Prefer recoverable inline UX over blocking modals for runtime failures.
 - Do not show raw internal errors, stack traces, full remote URLs, token names, or secret references in user-facing UI.
-- Do not store raw secrets in JSON config or public API responses.
+- Do not store raw secrets in YAML/JSON config or public API responses.
 - Do not create a custom A2A protocol binding for v1.
 - Use the optional Jute A2A extension for dashboard context: `https://jute.dev/a2a/extensions/dashboard-context/v1`.
 - Send dashboard context only when an agent declares support.

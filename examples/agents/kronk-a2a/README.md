@@ -45,20 +45,21 @@ JSON-RPC:   http://127.0.0.1:9797/invoke
 
 Use this local agent as a development Agent Card target:
 
-```json
-{
-  "id": "kronk-local",
-  "name": "Kronk Local",
-  "description": "Local Kronk-backed A2A test agent.",
-  "enabled": true,
-  "cardUrl": "http://127.0.0.1:9797/.well-known/agent-card.json",
-  "endpointUrl": "http://127.0.0.1:9797/invoke",
-  "protocolBinding": "JSONRPC",
-  "capabilities": ["conversation", "local-a2a", "mcp-ready"]
-}
+```yaml
+id: kronk-local
+name: Kronk Local
+description: Local Kronk-backed A2A test agent.
+enabled: true
+card-url: http://127.0.0.1:9797/.well-known/agent-card.json
+endpoint-url: http://127.0.0.1:9797/invoke
+protocol-binding: JSONRPC
+capabilities:
+  - conversation
+  - local-a2a
+  - mcp-ready
 ```
 
-The repository also includes `config/jute.dev-a2a.json` and a `make dev-a2a` target that wires this server into the local dashboard.
+The repository also includes `config/jute.dev-a2a.yaml` and a `make dev-a2a` target that wires this server into the local dashboard.
 
 ## MCP Testing
 

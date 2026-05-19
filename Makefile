@@ -1,8 +1,8 @@
 SHELL := /bin/bash
 
 WEB_DIR := apps/web
-CONFIG ?= config/jute.example.json
-A2A_CONFIG ?= config/jute.dev-a2a.json
+CONFIG ?= config/jute.example.yaml
+A2A_CONFIG ?= config/jute.dev-a2a.yaml
 A2A_DATA_DIR ?= .jute/dev-a2a
 A2A_AGENT_CARD_URL ?= http://127.0.0.1:9797/.well-known/agent-card.json
 HUB_URL ?= http://127.0.0.1:8787

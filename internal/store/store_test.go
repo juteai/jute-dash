@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -108,6 +110,65 @@ func TestBootstrapConfigAppliesOnlyOnce(t *testing.T) {
 	}
 }
 
+func TestYAMLBootstrapConfigAppliesOnlyOnce(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+
+	firstPath := writeStoreYAMLConfig(t, `
+home:
+  name: YAML Bootstrap One
+  timezone: Europe/London
+  locale: en-GB
+agents:
+  - id: yaml-house
+    name: YAML House
+    card-url: https://agent.example.com/.well-known/agent-card.json
+    endpoint-url: https://agent.example.com/a2a/v1
+    protocol-binding: JSONRPC
+    enabled: true
+rooms: []
+tiles: []
+`)
+	first, err := config.Load(firstPath)
+	if err != nil {
+		t.Fatalf("Load(first YAML) error = %v", err)
+	}
+	result, err := st.Initialize(context.Background(), first, true)
+	if err != nil {
+		t.Fatalf("Initialize(first) error = %v", err)
+	}
+	if result.Config.Home.Name != "YAML Bootstrap One" {
+		t.Fatalf("unexpected first home name: %q", result.Config.Home.Name)
+	}
+
+	secondPath := writeStoreYAMLConfig(t, `
+home:
+  name: YAML Bootstrap Two
+  timezone: Europe/London
+  locale: en-GB
+agents: []
+rooms: []
+tiles: []
+`)
+	second, err := config.Load(secondPath)
+	if err != nil {
+		t.Fatalf("Load(second YAML) error = %v", err)
+	}
+	result, err = st.Initialize(context.Background(), second, true)
+	if err != nil {
+		t.Fatalf("Initialize(second) error = %v", err)
+	}
+	if result.Seeded {
+		t.Fatal("expected existing store not to be seeded again")
+	}
+	if result.Config.Home.Name != "YAML Bootstrap One" {
+		t.Fatalf("YAML bootstrap should only apply once, got home name %q", result.Config.Home.Name)
+	}
+	if len(result.Config.Agents) != 1 || result.Config.Agents[0].ID != "yaml-house" {
+		t.Fatalf("YAML bootstrap agents should remain from first seed, got %+v", result.Config.Agents)
+	}
+}
+
 func TestStoreBackedPublicConfigDoesNotExposeSecretReferences(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
@@ -194,6 +255,133 @@ func TestWidgetLayoutReturnsSeededWidgets(t *testing.T) {
 	}
 }
 
+func TestWidgetCatalogReturnsBuiltIns(t *testing.T) {
+	catalog := WidgetCatalog()
+	if len(catalog) != 3 {
+		t.Fatalf("expected 3 built-in widgets, got %+v", catalog)
+	}
+	want := []string{"date-time", "weather", "chat-history"}
+	for i, kind := range want {
+		if catalog[i].Kind != kind {
+			t.Fatalf("catalog item %d kind = %q, want %q", i, catalog[i].Kind, kind)
+		}
+		if catalog[i].AllowMultiple {
+			t.Fatalf("%s should be single-instance in v1", kind)
+		}
+	}
+}
+
+func TestSaveWidgetLayoutPersists(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	if _, err := st.Initialize(context.Background(), config.Default(), false); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	layout := DefaultWidgetLayout()
+	layout.Widgets[0].X = 1
+	layout.Widgets[0].W = 3
+	layout.Widgets[1].Visible = false
+
+	saved, err := st.SaveWidgetLayout(context.Background(), layout)
+	if err != nil {
+		t.Fatalf("SaveWidgetLayout() error = %v", err)
+	}
+	if saved.Widgets[0].X != 1 || saved.Widgets[0].W != 3 || saved.Widgets[1].Visible {
+		t.Fatalf("unexpected saved layout: %+v", saved.Widgets)
+	}
+
+	reloaded, err := st.WidgetLayout(context.Background(), "")
+	if err != nil {
+		t.Fatalf("WidgetLayout() error = %v", err)
+	}
+	if reloaded.Widgets[0].X != 1 || reloaded.Widgets[0].W != 3 || reloaded.Widgets[1].Visible {
+		t.Fatalf("layout did not persist: %+v", reloaded.Widgets)
+	}
+}
+
+func TestSaveWidgetLayoutRejectsInvalidLayouts(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*WidgetLayout)
+	}{
+		{
+			name: "empty profile",
+			mutate: func(layout *WidgetLayout) {
+				layout.ProfileID = ""
+			},
+		},
+		{
+			name: "duplicate id",
+			mutate: func(layout *WidgetLayout) {
+				layout.Widgets[1].ID = layout.Widgets[0].ID
+			},
+		},
+		{
+			name: "duplicate single instance kind",
+			mutate: func(layout *WidgetLayout) {
+				layout.Widgets[1].Kind = layout.Widgets[0].Kind
+			},
+		},
+		{
+			name: "unknown kind",
+			mutate: func(layout *WidgetLayout) {
+				layout.Widgets[0].Kind = "unknown"
+			},
+		},
+		{
+			name: "bad dimensions",
+			mutate: func(layout *WidgetLayout) {
+				layout.Widgets[0].W = 0
+			},
+		},
+		{
+			name: "out of bounds",
+			mutate: func(layout *WidgetLayout) {
+				layout.Widgets[0].X = 3
+				layout.Widgets[0].W = 2
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st := openTestStore(t)
+			defer st.Close()
+			if _, err := st.Initialize(context.Background(), config.Default(), false); err != nil {
+				t.Fatalf("Initialize() error = %v", err)
+			}
+			layout := DefaultWidgetLayout()
+			tt.mutate(&layout)
+			if _, err := st.SaveWidgetLayout(context.Background(), layout); !errors.Is(err, ErrInvalidLayout) {
+				t.Fatalf("SaveWidgetLayout() error = %v, want ErrInvalidLayout", err)
+			}
+		})
+	}
+}
+
+func TestResetWidgetLayoutRestoresDefaults(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	if _, err := st.Initialize(context.Background(), config.Default(), false); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	layout := DefaultWidgetLayout()
+	layout.Widgets[0].Visible = false
+	if _, err := st.SaveWidgetLayout(context.Background(), layout); err != nil {
+		t.Fatalf("SaveWidgetLayout() error = %v", err)
+	}
+
+	reset, err := st.ResetWidgetLayout(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ResetWidgetLayout() error = %v", err)
+	}
+	if len(reset.Widgets) != 3 || !reset.Widgets[0].Visible || reset.Widgets[0].X != 0 {
+		t.Fatalf("unexpected reset layout: %+v", reset)
+	}
+}
+
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
 	st, err := Open(filepath.Join(t.TempDir(), "jute.db"))
@@ -221,4 +409,13 @@ func contains(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func writeStoreYAMLConfig(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "jute.yaml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write YAML config: %v", err)
+	}
+	return path
 }
