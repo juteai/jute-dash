@@ -4,6 +4,8 @@
 
 Jute agents use A2A for conversations and tasks. Local or trusted agents may additionally connect to the optional Jute MCP Bridge for dashboard context and safe Jute tools.
 
+Widgets expose agent-facing capabilities as [Widget Skills](../architecture/widget-skills.md). A Widget Skill can provide public context, prompt guidance, and hub-mediated actions.
+
 MCP is optional. Agents must work without it.
 
 Architecture details are in [MCP Bridge](../architecture/mcp-bridge.md).
@@ -35,8 +37,9 @@ On connect:
 1. initialize the MCP session;
 2. list resources;
 3. list tools;
-4. read `jute://dashboard/current` only when relevant to the user turn;
-5. call tools only when their description and schema match the needed action.
+4. read `jute://skills` to understand currently available widget abilities;
+5. read `jute://dashboard/current` or specific skill context only when relevant to the user turn;
+6. call tools only when their description and schema match the needed action.
 
 Do not assume a tool exists because another Jute install had it. Tool and resource availability depends on hub version, scopes, widget permissions, and current dashboard state.
 
@@ -48,8 +51,12 @@ Initial resources:
 - `jute://widgets/visible`
 - `jute://widgets/{id}/context`
 - `jute://home/state`
+- `jute://skills`
+- `jute://skills/{skillId}`
+- `jute://skills/{skillId}/context`
+- `jute://widgets/{id}/skill`
 
-Use resource reads for context. Prefer visible widget context over guessed home state.
+Use resource reads for context. Prefer visible Widget Skills over guessed home state.
 
 Do not infer hidden widgets, private widget state, raw adapter data, exact presence, camera content, microphone audio, or browser storage. If a resource omits data, treat it as unavailable or unauthorized.
 
@@ -58,14 +65,18 @@ Do not infer hidden widgets, private widget state, raw adapter data, exact prese
 Initial tools:
 
 - `jute_dashboard_context_get`
-- `jute_widget_list`
-- `jute_widget_read_context`
+- `jute_skill_list`
+- `jute_skill_read_context`
+- `jute_skill_invoke_action`
+- `jute_skill_prompt_get`
 - `jute_display_notification`
 - `jute_display_focus_widget`
 
 Rules:
 
-- use read tools before display mutation tools when possible;
+- use skill discovery and context reads before invoking actions;
+- invoke only actions declared by the relevant skill;
+- treat skill prompts as guidance, not permission grants;
 - keep display notifications short and non-sensitive;
 - focus only visible widgets;
 - do not use display tools as a substitute for asking the user;
@@ -77,9 +88,13 @@ Default scopes are read-only:
 
 - `dashboard:read`
 - `widgets:read`
+- `skills:read`
+- `skills:context_read`
 
-Display mutation scopes are opt-in:
+Skill action and display mutation scopes are opt-in:
 
+- `skills:action_invoke`
+- `skills:prompt_read`
 - `display:write_ephemeral`
 - `display:focus_widget`
 
@@ -95,6 +110,7 @@ If a tool or resource returns a permission error:
 Agents should:
 
 - use Jute context to answer the user's immediate request;
+- choose actions from available Widget Skills rather than inventing capabilities;
 - state uncertainty when context is stale, missing, or unavailable;
 - avoid revealing private or unauthorized context;
 - avoid mentioning implementation details unless the user asks;

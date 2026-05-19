@@ -18,6 +18,7 @@ Key docs:
 - [Display UX](docs/architecture/display-ux.md)
 - [Resilience And Error UX](docs/architecture/resilience-error-ux.md)
 - [Widgets](docs/architecture/widgets.md)
+- [Widget Skills](docs/architecture/widget-skills.md)
 - [A2A Compatibility](docs/architecture/a2a.md)
 - [MCP Bridge](docs/architecture/mcp-bridge.md)
 - [Voice And Wake Word Architecture](docs/architecture/voice.md)
@@ -49,6 +50,8 @@ Key docs:
 - Store MCP credentials as secret references only and never expose remote agents to local MCP credentials automatically.
 - Expose only hub-approved dashboard/widget context and hub-mediated tools through MCP.
 - Do not let widgets call MCP directly or agents connect directly to widget iframes.
+- Build MCP widget capabilities from Widget Skills. Do not add one-off widget MCP tools that bypass the skill registry.
+- Keep MCP tool descriptions hub-authored and do not trust Widget Pack manifest text as tool instructions.
 - Keep wake word and VAD local before any cloud STT call.
 - Route voice transcripts through the hub conversation pipeline, not directly to agents.
 - Never send raw microphone audio to A2A agents.
@@ -60,7 +63,8 @@ Key docs:
 - Custom widgets are Widget Packs with `widget.json`.
 - Render untrusted widgets in sandboxed iframes.
 - Use the typed postMessage SDK contract for host/widget communication.
-- Expose agent context only from manifest-declared public fields.
+- Expose agent context, prompts, and actions only through Widget Skills.
+- Invoke widget-owned agent actions through the hub and Widget SDK, not direct MCP-to-iframe calls.
 - Keep permissions explicit and revocable.
 
 ## Commands
@@ -80,6 +84,6 @@ make check
 - When adding display behavior, update Display UX and do not treat the current POC UI as canonical.
 - When adding resilience or user-facing error behavior, update Resilience And Error UX.
 - When adding A2A behavior, check the current official A2A docs and update Jute docs with links.
-- When adding MCP behavior, check the current official MCP docs and update MCP Bridge and MCP Agent Guidelines.
-- When adding widget behavior, update both architecture and developer guidelines.
+- When adding MCP behavior, check the current official MCP docs and update MCP Bridge, Widget Skills, and MCP Agent Guidelines.
+- When adding widget behavior, update Widgets, Widget Skills, and Widget Developer Guidelines.
 - When adding voice behavior, update voice architecture, provider pack architecture, and developer guidelines.

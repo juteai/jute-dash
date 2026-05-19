@@ -4,7 +4,7 @@
 
 Jute targets A2A 1.0 and treats A2A as the external agent interoperability layer. Jute is an A2A client and local orchestrator. Remote or local agents are A2A servers.
 
-The optional [MCP Bridge](mcp-bridge.md) is complementary. A2A remains the conversation and task protocol. MCP is a richer local pull/tool surface for trusted agents that can connect to the hub.
+The optional [MCP Bridge](mcp-bridge.md) is complementary. A2A remains the conversation and task protocol. MCP is a richer local pull/tool surface for trusted agents that can connect to the hub. Widget capabilities exposed through MCP are defined by [Widget Skills](widget-skills.md).
 
 Primary references:
 
@@ -148,7 +148,7 @@ The hub redacts or omits:
 
 A2A dashboard-context metadata is the compact push path. It is appropriate for remote or cloud agents and for agents that do not connect to local MCP.
 
-The MCP Bridge is the richer pull path for trusted local agents. It exposes safe dashboard and widget context as MCP resources and safe hub-mediated actions as MCP tools. It does not replace A2A task messaging and does not create a custom A2A protocol binding.
+The MCP Bridge is the richer pull path for trusted local agents. It exposes safe dashboard context, Widget Skills, and hub-mediated actions as MCP resources, prompts, and tools. It does not replace A2A task messaging and does not create a custom A2A protocol binding.
 
 Remote agents do not receive MCP credentials automatically. If an agent cannot use MCP, it still receives the user's turn through standard A2A and may receive compact dashboard context only when it declares the Jute A2A extension.
 

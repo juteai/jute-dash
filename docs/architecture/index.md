@@ -9,6 +9,7 @@ Jute Dash is a local-first home assistant platform built around a headless-capab
 - [Display UX](display-ux.md): clean-slate dashboard, widget frame, edit mode, chat mode, brand constants, and first widgets.
 - [Resilience And Error UX](resilience-error-ux.md): hub disconnects, stale data, no-agent states, widget failures, safe error copy, and recovery behavior.
 - [Widgets](widgets.md): built-in widgets, custom Widget Packs, iframe sandboxing, SDK messages, and dashboard context.
+- [Widget Skills](widget-skills.md): agent-facing widget capabilities, context, prompts, actions, and MCP mapping.
 - [A2A Compatibility](a2a.md): Agent Card discovery, A2A 1.0 bindings, streaming, caching, credentials, and the Jute dashboard-context extension.
 - [MCP Bridge](mcp-bridge.md): optional local MCP tool and context surface for trusted A2A agents.
 - [Voice And Wake Word Architecture](voice.md): local-first hybrid voice, wake word, STT/TTS providers, follow-up listening, and conversation UI.
@@ -30,6 +31,7 @@ Jute Dash is a local-first home assistant platform built around a headless-capab
 - SQLite is runtime truth. YAML config is preferred for bootstrap, import, and export, while JSON remains supported.
 - Secrets are references only and are not stored in YAML, JSON, or ordinary settings rows.
 - Custom widgets use Widget Packs by default, loaded from a manifest and rendered in sandboxed iframes with a typed postMessage SDK.
+- Widgets expose agent-facing capabilities through Widget Skills, which the hub maps to safe MCP resources, prompts, and tools.
 - Jute-specific dashboard context is sent to agents through an optional A2A extension, not a custom A2A protocol binding.
 - The optional Jute MCP Bridge runs inside the Go hub and exposes local dashboard context and safe tools to trusted local agents.
 - Standard A2A protocol bindings are used for v1, in this order: `JSONRPC`, `HTTP+JSON`, then `GRPC`.

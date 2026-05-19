@@ -7,7 +7,7 @@ Jute Dash is split into two primary applications:
 - **Jute Hub:** a Go service that owns configuration, persistence, local API, agent registry, A2A client transport, smart-home adapters, event streams, and future voice services.
 - **Jute Display:** a SvelteKit app using shadcn-svelte conventions for the touch-first dashboard, settings UI, widget host, and kiosk/PWA experience.
 - **Jute Voice Service:** a local voice boundary for microphone capture, VAD, wake-word detection, utterance buffering, STT, and optional TTS.
-- **Jute MCP Bridge:** an optional hub-owned MCP surface for trusted local agents to read safe dashboard/widget context and call hub-mediated tools.
+- **Jute MCP Bridge:** an optional hub-owned MCP surface for trusted local agents to read safe dashboard context, use Widget Skills, and call hub-mediated tools.
 
 This split keeps the hub useful without a screen and keeps the display portable across browsers, tablets, wall displays, and native wrappers.
 
@@ -60,7 +60,7 @@ flowchart LR
 - Emit state updates over Server-Sent Events first; use WebSockets later only when bidirectional low-latency transport is required.
 - Resolve, cache, validate, and select A2A Agent Cards.
 - Send A2A tasks and stream task updates back to displays.
-- Serve the optional MCP Bridge for trusted local agents when explicitly enabled.
+- Serve the optional MCP Bridge for trusted local agents when explicitly enabled, using Widget Skills as the widget capability contract.
 - Own conversation identity, follow-up windows, voice event emission, and routing final transcripts into the A2A task pipeline.
 - Discover voice provider packs, validate manifests, and persist selected STT/TTS providers per device profile.
 - Normalize home data from adapters into rooms, devices, scenes, sensors, and alerts.

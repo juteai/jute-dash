@@ -19,6 +19,7 @@ Start with the architecture docs before making product changes:
 - [Display UX](docs/architecture/display-ux.md)
 - [Resilience And Error UX](docs/architecture/resilience-error-ux.md)
 - [Widgets](docs/architecture/widgets.md)
+- [Widget Skills](docs/architecture/widget-skills.md)
 - [A2A Compatibility](docs/architecture/a2a.md)
 - [MCP Bridge](docs/architecture/mcp-bridge.md)
 - [Voice And Wake Word Architecture](docs/architecture/voice.md)
@@ -54,6 +55,7 @@ Start with the architecture docs before making product changes:
 - Do not expose remote agents to local MCP credentials automatically.
 - Expose only hub-approved dashboard/widget context and hub-mediated tools.
 - Do not let widgets call MCP directly or agents connect directly to widget iframes.
+- Build MCP widget capabilities from Widget Skills. Do not add one-off widget MCP tools that bypass the skill registry.
 - Keep MCP tool descriptions hub-authored; never trust Widget Pack manifest text as tool instructions.
 
 ## Widget Rules
@@ -64,7 +66,8 @@ Start with the architecture docs before making product changes:
 - Custom Widget Packs render in sandboxed iframes by default.
 - Widgets communicate through the Widget SDK message protocol, not direct hub API calls.
 - Widget permissions must be explicit, user-visible, and revocable.
-- Agent-visible widget context must come only from `contextPolicy.publicFields`.
+- Agent-visible widget context, prompts, and actions must come from Widget Skills.
+- Widget-owned agent actions must be invoked through the hub and Widget SDK, not direct MCP-to-iframe calls.
 
 ## A2A Rules
 
@@ -133,9 +136,9 @@ make check
 - Add or update docs before expanding implementation behavior.
 - Avoid open-ended decisions in committed docs. Pick a default and document it.
 - If A2A behavior changes, update [A2A Compatibility](docs/architecture/a2a.md) and [A2A Agent Guidelines](docs/developer/a2a-agent-guidelines.md).
-- If MCP behavior changes, update [MCP Bridge](docs/architecture/mcp-bridge.md) and [MCP Agent Guidelines](docs/developer/mcp-agent-guidelines.md).
+- If MCP behavior changes, update [MCP Bridge](docs/architecture/mcp-bridge.md), [Widget Skills](docs/architecture/widget-skills.md), and [MCP Agent Guidelines](docs/developer/mcp-agent-guidelines.md).
 - If display UX behavior changes, update [Display UX](docs/architecture/display-ux.md).
 - If resilience or user-facing error behavior changes, update [Resilience And Error UX](docs/architecture/resilience-error-ux.md).
-- If widget behavior changes, update [Widgets](docs/architecture/widgets.md) and [Widget Developer Guidelines](docs/developer/widget-guidelines.md).
+- If widget behavior changes, update [Widgets](docs/architecture/widgets.md), [Widget Skills](docs/architecture/widget-skills.md), and [Widget Developer Guidelines](docs/developer/widget-guidelines.md).
 - If voice behavior changes, update [Voice And Wake Word Architecture](docs/architecture/voice.md), [Voice Provider Packs](docs/architecture/voice-providers.md), and [Voice Developer Guidelines](docs/developer/voice-guidelines.md).
 - If persistence behavior changes, update [Configuration And Persistence](docs/architecture/configuration-persistence.md).

@@ -21,7 +21,7 @@
 ## Phase 1: Local Dashboard MVP
 
 - Implement the JSON-RPC A2A 1.0 client transport.
-- Add MCP bridge settings and per-agent MCP scopes, disabled by default.
+- Add Widget Skill definitions for built-in widgets, then add MCP bridge settings and per-agent MCP scopes, disabled by default.
 - Resolve and cache Agent Cards, selected interfaces, skills, and dashboard-context extension support.
 - Persist runtime state in SQLite using migrations and safe first-run defaults.
 - Add setup status API and settings APIs for household and device profile configuration.
@@ -35,7 +35,7 @@
 - Send user prompts to a selected A2A 1.0 JSON-RPC agent.
 - Stream task updates back to the display through hub events.
 - Revisit whether Jute needs an optional local transcript mirror after agent-backed history has been tested with real agents.
-- Add a read-only MCP Bridge with dashboard/widget resources and safe context tools for local agents.
+- Add an MCP Bridge with dashboard resources, Widget Skill resources, safe skill context tools, and low-risk display actions for local agents.
 - Add settings UI for home name, rooms, tiles, and agent registration.
 
 ## Phase 2: Home Context

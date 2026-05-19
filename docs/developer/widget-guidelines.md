@@ -2,7 +2,7 @@
 
 ## Overview
 
-Jute widgets are small dashboard experiences that can read approved home data, render glanceable UI, and optionally expose safe public context to A2A agents.
+Jute widgets are small dashboard experiences that can read approved home data, render glanceable UI, and optionally expose safe capabilities to agents through Widget Skills.
 
 There are two widget types:
 
@@ -34,11 +34,35 @@ The widget entrypoint must be static browser content. It can be built from any f
   "name": "Energy Price",
   "version": "1.0.0",
   "entry": "index.html",
-  "permissions": ["home:read", "widget:state"],
+  "permissions": ["home:read", "widget:state", "agent:skill"],
   "dataNeeds": ["energy.current_tariff", "home.locale"],
-  "contextPolicy": {
-    "exposeToAgents": true,
-    "publicFields": ["tariffName", "currentPrice", "nextCheapWindow"]
+  "agentSkill": {
+    "enabled": true,
+    "skillId": "com.example.energy-price.current",
+    "summary": "Read current energy tariff and identify cheaper upcoming windows.",
+    "requiredPermissions": ["agent:skill", "home:read"],
+    "visibilityPolicy": "visible_or_focused",
+    "context": {
+      "fields": [
+        { "name": "tariffName", "type": "string" },
+        { "name": "currentPrice", "type": "number", "unit": "GBP/kWh" },
+        { "name": "nextCheapWindow", "type": "string" }
+      ]
+    },
+    "actions": [
+      {
+        "id": "refresh",
+        "title": "Refresh tariff data",
+        "sideEffect": "read",
+        "requiresConfirmation": false
+      }
+    ],
+    "prompts": [
+      {
+        "id": "energy_usage_advice",
+        "title": "Energy usage advice"
+      }
+    ]
   },
   "sizes": ["small", "medium", "wide"]
 }
@@ -51,7 +75,9 @@ Manifest rules:
 - `entry` must point inside the Widget Pack.
 - `permissions` must list every privileged capability the widget needs.
 - `dataNeeds` must list the hub data topics the widget consumes.
-- `contextPolicy.publicFields` must list exactly which widget fields may be shown to agents.
+- `agentSkill.context.fields` must list exactly which widget fields may be shown to agents.
+- `agentSkill.actions` must list every operation an agent can ask the hub to perform for the widget.
+- `agentSkill.prompts` must list prompt purposes, not raw trusted instructions.
 - `sizes` must include at least one supported size.
 
 ## Permissions
@@ -60,7 +86,7 @@ Initial permissions:
 
 - `home:read`: read normalized non-sensitive home state.
 - `widget:state`: store widget-specific state through the hub.
-- `agent:context`: allow public context fields to be included in A2A dashboard context.
+- `agent:skill`: allow hub-approved agents to see the widget's skill, public context, prompt guidance, and declared actions.
 - `network:fetch`: ask the hub to fetch approved external URLs.
 - `media:display`: render approved image or video sources.
 
@@ -98,14 +124,18 @@ Host to widget messages:
 - `jute.host.permissions`: granted permission set.
 - `jute.host.error`: rejected request or runtime error.
 
-## Agent Context
+## Widget Skills
 
-Widgets can expose context to agents only when:
+Widget Skills are described in [Widget Skills](../architecture/widget-skills.md). They are the agent-facing contract for what a widget can read, explain, and safely do.
 
-- the widget declares `agent:context`;
-- `contextPolicy.exposeToAgents` is true;
-- each exposed field is listed in `contextPolicy.publicFields`;
-- the user has granted the widget's agent context permission;
+Widgets can expose skills to agents only when:
+
+- the widget declares `agent:skill`;
+- `agentSkill.enabled` is true;
+- each exposed field is listed in `agentSkill.context.fields`;
+- every exposed action is listed in `agentSkill.actions`;
+- every prompt purpose is listed in `agentSkill.prompts`;
+- the user has granted the widget's agent skill permission;
 - the widget is visible or focused according to the hub context policy.
 
 Never expose:
@@ -117,6 +147,22 @@ Never expose:
 - camera frames or microphone audio;
 - hidden widget state;
 - browser local storage.
+
+Skill action rules:
+
+- use stable action IDs;
+- define JSON Schema inputs and outputs;
+- mark the side-effect level as `read`, `display`, `configure`, or future `home_action`;
+- require confirmation for configure, home-action, and other high-impact operations;
+- return safe public results;
+- tolerate rejected or unavailable action requests.
+
+Prompt rules:
+
+- declare the prompt purpose and title;
+- do not put secrets, private state, or manipulative instructions in prompt text;
+- expect the hub to wrap, rewrite, or replace third-party prompt text before exposing it through MCP;
+- treat prompts as guidance, not permission grants.
 
 ## UX Requirements
 
