@@ -107,6 +107,30 @@ Widget Packs declare agent-facing skills in `widget.json` with `agentSkill`.
 
 Built-in widgets use the same contract in code instead of `widget.json`.
 
+`agentSkill` is optional. Visual-only widgets should omit it or set `enabled` to false. Agent-visible widgets must include a complete `agentSkill` block.
+
+Required `agentSkill` fields:
+
+- `enabled`
+- `skillId`
+- `summary`
+- `requiredPermissions`
+- `visibilityPolicy`
+- `context.fields`
+
+Optional `agentSkill` fields:
+
+- `actions`
+- `prompts`
+
+Field rules:
+
+- `skillId` uses reverse-DNS or `jute.*` naming and must be stable across versions.
+- `summary` is a short capability description, not an instruction to the model.
+- `requiredPermissions` must be a subset of the widget's manifest permissions.
+- `visibilityPolicy` is `visible`, `focused`, or `visible_or_focused` for v1.
+- `context.fields`, `actions`, and `prompts` must use stable IDs because agents may learn or cache them.
+
 ## Context
 
 Skill context is the safe public state an agent may read.
@@ -120,6 +144,34 @@ Rules:
 - exact presence, private notes, raw adapter payloads, secrets, camera frames, microphone audio, browser storage, and undeclared fields are never context.
 
 `contextPolicy.publicFields` is replaced by `agentSkill.context.fields`. Existing POC code may still use public fields internally until the new contract is implemented, but new architecture work should use Widget Skills.
+
+Supported context field types for v1:
+
+- `string`
+- `number`
+- `integer`
+- `boolean`
+- `enum`
+- `datetime`
+- `duration`
+- `object`
+- `array`
+
+Each context field must include:
+
+- `name`
+- `type`
+- `description`
+
+Optional field metadata:
+
+- `unit`
+- `enumValues`
+- `nullable`
+- `freshness`
+- `sensitivity`
+
+Only `sensitivity: public` fields may be exposed to agents. If omitted, the hub treats the field as public only when it is declared in `agentSkill.context.fields` and produced by hub-approved state.
 
 ## Actions
 
@@ -143,6 +195,18 @@ Action rules:
 
 For the POC, only `read` and low-risk `display` actions are in scope.
 
+Required action fields:
+
+- `id`
+- `title`
+- `description`
+- `sideEffect`
+- `requiresConfirmation`
+- `inputSchema`
+- `outputSchema`
+
+Action IDs are local to the skill and should be stable. The MCP Bridge invokes actions as `{ skillId, widgetInstanceId?, actionId, arguments }` through the generic `jute_skill_invoke_action` tool.
+
 ## Prompts
 
 Widget Skill prompts are reusable guidance fragments for agents.
@@ -156,6 +220,19 @@ Prompt rules:
 - prompts guide the agent but never grant permission.
 
 For third-party widgets, the manifest may declare prompt purpose and expected use, but the hub decides the final prompt content exposed to agents.
+
+Required prompt fields:
+
+- `id`
+- `title`
+- `purpose`
+
+Optional prompt fields:
+
+- `arguments`
+- `examples`
+
+Prompt declarations must describe intended use. They must not contain raw model instructions that override Jute policy, ask the model to ignore permissions, or imply hidden context exists.
 
 ## MCP Mapping
 
@@ -201,6 +278,23 @@ MCP scopes:
 - `skills:prompt_read`: read hub-approved skill prompts.
 
 The hub may map these scopes onto broader POC scopes while the implementation is small, but the public contract should use skill scopes.
+
+## Validation Failure Behavior
+
+Invalid Widget Skills are disabled, not partially exposed.
+
+The hub should reject or disable a skill when:
+
+- `skillId` is missing, unstable, or duplicated for the same widget instance;
+- required permissions are not declared by the widget;
+- the visibility policy is unsupported;
+- context fields are missing required metadata;
+- action schemas are invalid JSON Schema;
+- action side-effect levels are unsupported;
+- prompts contain raw secrets or policy-bypassing instructions;
+- the widget is hidden or lacks the required permission grant.
+
+When a skill is disabled, MCP resources omit it and A2A dashboard context does not mention it. The widget may still render visually if its visual manifest is valid.
 
 ## Safety Rules
 

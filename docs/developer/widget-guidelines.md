@@ -11,6 +11,8 @@ There are two widget types:
 
 Custom widgets should be Widget Packs unless they are accepted into the core display app.
 
+Start new custom widgets from [Widget Pack Template](widget-pack-template.md).
+
 ## Widget Pack Structure
 
 Minimum structure:
@@ -19,7 +21,19 @@ Minimum structure:
 my-widget/
   widget.json
   index.html
+assets/
+```
+
+Recommended contribution structure:
+
+```text
+my-widget/
+  widget.json
+  index.html
+  README.md
   assets/
+  src/
+  tests/
 ```
 
 The widget entrypoint must be static browser content. It can be built from any framework as long as it speaks the Widget SDK message protocol.
@@ -75,10 +89,19 @@ Manifest rules:
 - `entry` must point inside the Widget Pack.
 - `permissions` must list every privileged capability the widget needs.
 - `dataNeeds` must list the hub data topics the widget consumes.
+- `agentSkill` is optional for visual-only widgets and required for agent-visible widgets.
 - `agentSkill.context.fields` must list exactly which widget fields may be shown to agents.
 - `agentSkill.actions` must list every operation an agent can ask the hub to perform for the widget.
 - `agentSkill.prompts` must list prompt purposes, not raw trusted instructions.
 - `sizes` must include at least one supported size.
+
+Do not include:
+
+- raw secrets, API keys, tokens, passwords, or OAuth refresh tokens;
+- absolute local filesystem paths;
+- native executable hooks;
+- direct hub API URLs;
+- direct MCP, A2A, camera, microphone, or filesystem access instructions.
 
 ## Permissions
 
@@ -124,6 +147,25 @@ Host to widget messages:
 - `jute.host.permissions`: granted permission set.
 - `jute.host.error`: rejected request or runtime error.
 
+## Message Lifecycle
+
+The normal widget startup flow is:
+
+1. Widget loads in the frame or sandboxed iframe.
+2. Widget sends `jute.widget.ready`.
+3. Host replies with `jute.host.theme`, `jute.host.visibility`, and `jute.host.permissions`.
+4. Widget requests declared data topics with `jute.widget.request_data`.
+5. Host returns approved data with `jute.host.data`.
+6. Widget renders, emits safe state updates, and handles permission or visibility changes.
+
+Rules:
+
+- never assume a permission was granted because it appears in `widget.json`;
+- never request undeclared data topics;
+- never persist state outside `jute.widget.update_state`;
+- never keep polling while hidden unless a future background policy grants it;
+- treat `jute.host.error` as recoverable and show an inline widget state.
+
 ## Widget Skills
 
 Widget Skills are described in [Widget Skills](../architecture/widget-skills.md). They are the agent-facing contract for what a widget can read, explain, and safely do.
@@ -163,6 +205,27 @@ Prompt rules:
 - do not put secrets, private state, or manipulative instructions in prompt text;
 - expect the hub to wrap, rewrite, or replace third-party prompt text before exposing it through MCP;
 - treat prompts as guidance, not permission grants.
+
+## Contribution Checklist
+
+Widget PRs should include:
+
+- manifest or built-in manifest-equivalent metadata;
+- README with purpose, data needs, permissions, privacy behavior, and supported sizes;
+- screenshots or a short visual description for each supported size;
+- accessibility notes for keyboard, screen reader, high contrast, and reduced motion;
+- Widget Skill documentation when `agentSkill` is enabled;
+- test notes or manual verification steps;
+- license statement compatible with Jute Dash.
+
+Reviewers should reject widgets that:
+
+- request unnecessary permissions;
+- expose private state through Widget Skills;
+- rely on direct hub, MCP, A2A, filesystem, camera, or microphone access;
+- require unsandboxed third-party code for normal operation;
+- add global display styling or assume the current POC dashboard layout;
+- fail to render useful empty, loading, unavailable, error, permission-required, and stale states.
 
 ## UX Requirements
 

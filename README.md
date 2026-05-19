@@ -16,6 +16,7 @@ Architecture docs:
 - [Configuration And Persistence](docs/architecture/configuration-persistence.md)
 - [Display UX](docs/architecture/display-ux.md)
 - [Widgets](docs/architecture/widgets.md)
+- [Widget Skills](docs/architecture/widget-skills.md)
 - [A2A Compatibility](docs/architecture/a2a.md)
 - [Voice And Wake Word Architecture](docs/architecture/voice.md)
 - [Voice Provider Packs](docs/architecture/voice-providers.md)
@@ -89,6 +90,19 @@ config/                Example local configuration
 docs/                  Architecture notes, roadmap, and decisions
 examples/agents/       Optional local test agents and integration fixtures
 ```
+
+## Widget Development
+
+Custom widgets are contributed as Widget Packs: static browser content plus a `widget.json` manifest. The manifest declares identity, permissions, data needs, supported sizes, and optional Widget Skills for agent/MCP exposure.
+
+Start here:
+
+- [Widgets Architecture](docs/architecture/widgets.md)
+- [Widget Skills](docs/architecture/widget-skills.md)
+- [Widget Developer Guidelines](docs/developer/widget-guidelines.md)
+- [Widget Pack Template](docs/developer/widget-pack-template.md)
+
+Widgets must render inside `WidgetFrame`, communicate through the Widget SDK message protocol, and never call the hub API, MCP, A2A agents, camera, microphone, filesystem, or raw network directly.
 
 ## Current API Surface
 

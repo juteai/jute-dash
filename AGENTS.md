@@ -20,6 +20,7 @@ Start with the architecture docs before making product changes:
 - [Resilience And Error UX](docs/architecture/resilience-error-ux.md)
 - [Widgets](docs/architecture/widgets.md)
 - [Widget Skills](docs/architecture/widget-skills.md)
+- [Widget Pack Template](docs/developer/widget-pack-template.md)
 - [A2A Compatibility](docs/architecture/a2a.md)
 - [MCP Bridge](docs/architecture/mcp-bridge.md)
 - [Voice And Wake Word Architecture](docs/architecture/voice.md)
@@ -68,6 +69,7 @@ Start with the architecture docs before making product changes:
 - Widget permissions must be explicit, user-visible, and revocable.
 - Agent-visible widget context, prompts, and actions must come from Widget Skills.
 - Widget-owned agent actions must be invoked through the hub and Widget SDK, not direct MCP-to-iframe calls.
+- New Widget Pack docs, examples, or scaffolds should follow [Widget Pack Template](docs/developer/widget-pack-template.md).
 
 ## A2A Rules
 

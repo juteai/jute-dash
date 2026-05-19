@@ -19,6 +19,7 @@ Key docs:
 - [Resilience And Error UX](docs/architecture/resilience-error-ux.md)
 - [Widgets](docs/architecture/widgets.md)
 - [Widget Skills](docs/architecture/widget-skills.md)
+- [Widget Pack Template](docs/developer/widget-pack-template.md)
 - [A2A Compatibility](docs/architecture/a2a.md)
 - [MCP Bridge](docs/architecture/mcp-bridge.md)
 - [Voice And Wake Word Architecture](docs/architecture/voice.md)
@@ -66,6 +67,7 @@ Key docs:
 - Expose agent context, prompts, and actions only through Widget Skills.
 - Invoke widget-owned agent actions through the hub and Widget SDK, not direct MCP-to-iframe calls.
 - Keep permissions explicit and revocable.
+- New Widget Pack docs, examples, or scaffolds should follow Widget Pack Template.
 
 ## Commands
 
