@@ -42,14 +42,15 @@ func main() {
 		log.Fatalf("inspect store: %v", err)
 	}
 
-	bootstrapProvided := strings.TrimSpace(*configPath) != "" && needsSeed
 	bootstrap := config.Default()
-	if bootstrapProvided {
+	configProvided := strings.TrimSpace(*configPath) != ""
+	if configProvided {
 		bootstrap, err = config.Load(*configPath)
 		if err != nil {
 			log.Fatalf("load config: %v", err)
 		}
 	}
+	bootstrapProvided := configProvided && needsSeed
 
 	result, err := runtimeStore.Initialize(ctx, bootstrap, bootstrapProvided)
 	if err != nil {
@@ -58,11 +59,14 @@ func main() {
 
 	cfg := result.Config
 	cfg.Server = bootstrap.Server
+	if configProvided {
+		cfg.Agents = bootstrap.Agents
+	}
 	if *listenOverride != "" {
 		cfg.Server.ListenAddress = *listenOverride
 	}
 
-	handler := server.NewWithSetupStatusAndLayoutStore(cfg, version, result.Setup, runtimeStore)
+	handler := server.NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg, version, result.Setup, runtimeStore, *configPath)
 	log.Printf("jute data directory: %s", dataDir)
 	log.Printf("jute hub listening on http://%s", cfg.Server.ListenAddress)
 	if err := http.ListenAndServe(cfg.Server.ListenAddress, handler); err != nil {

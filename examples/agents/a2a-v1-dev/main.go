@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,7 +19,7 @@ type rpcRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id"`
 	Method  string          `json:"method"`
-	Params  sendParams      `json:"params"`
+	Params  json.RawMessage `json:"params"`
 }
 
 type sendParams struct {
@@ -33,6 +34,31 @@ type message struct {
 	Parts     []part         `json:"parts,omitempty"`
 	Metadata  map[string]any `json:"metadata,omitempty"`
 }
+
+type task struct {
+	ID        string     `json:"id"`
+	ContextID string     `json:"contextId"`
+	Status    taskStatus `json:"status"`
+	History   []message  `json:"history,omitempty"`
+	Artifacts []artifact `json:"artifacts,omitempty"`
+}
+
+type taskStatus struct {
+	State   string   `json:"state"`
+	Message *message `json:"message,omitempty"`
+}
+
+type artifact struct {
+	Parts []part `json:"parts"`
+}
+
+type taskStore struct {
+	mu    sync.Mutex
+	tasks []task
+	byID  map[string]task
+}
+
+var history = taskStore{byID: map[string]task{}}
 
 type part struct {
 	Text string `json:"text,omitempty"`
@@ -117,27 +143,55 @@ func handleInvoke(w http.ResponseWriter, r *http.Request) {
 		writeRPCError(w, nil, -32700, "invalid JSON")
 		return
 	}
-	if req.Method != "SendMessage" && req.Method != "SendStreamingMessage" {
+	switch req.Method {
+	case "SendMessage", "SendStreamingMessage":
+		handleSend(w, r, req)
+	case "ListTasks":
+		handleListTasks(w, req)
+	case "GetTask":
+		handleGetTask(w, req)
+	default:
 		writeRPCError(w, req.ID, -32601, "method not found")
+	}
+}
+
+func handleSend(w http.ResponseWriter, r *http.Request, req rpcRequest) {
+	var params sendParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		writeRPCError(w, req.ID, -32602, "invalid send params")
 		return
 	}
-	text := textFromParts(req.Params.Message.Parts)
+	text := textFromParts(params.Message.Parts)
 	if text == "" {
 		text = "empty prompt"
 	}
-	contextID := strings.TrimSpace(req.Params.Message.ContextID)
+	contextID := strings.TrimSpace(params.Message.ContextID)
 	if contextID == "" {
 		contextID = "ctx-" + newID()
 	}
 	hasExtensionHeader := strings.Contains(r.Header.Get("A2A-Extensions"), dashboardContextExtensionURI)
-	_, hasMetadata := req.Params.Message.Metadata[dashboardContextExtensionURI]
+	_, hasMetadata := params.Message.Metadata[dashboardContextExtensionURI]
 	contextStatus := "no dashboard context received"
 	if hasExtensionHeader && hasMetadata {
 		contextStatus = "dashboard context received"
 	}
 	answer := fmt.Sprintf("Dev A2A reply: %s. I saw %s.", text, contextStatus)
+	taskID := "task-" + newID()
+	record := task{
+		ID:        taskID,
+		ContextID: contextID,
+		Status: taskStatus{
+			State: "completed",
+		},
+		History: []message{
+			{MessageID: firstNonEmpty(params.Message.MessageID, "msg-"+newID()), ContextID: contextID, Role: "ROLE_USER", Parts: []part{{Text: text}}},
+			{MessageID: "msg-" + newID(), ContextID: contextID, TaskID: taskID, Role: "ROLE_AGENT", Parts: []part{{Text: answer}}},
+		},
+		Artifacts: []artifact{{Parts: []part{{Text: answer}}}},
+	}
+	history.save(record)
 	if req.Method == "SendStreamingMessage" {
-		writeStream(w, req.ID, contextID, answer)
+		writeStream(w, req.ID, record)
 		return
 	}
 	writeJSON(w, http.StatusOK, rpcResponse{
@@ -147,6 +201,7 @@ func handleInvoke(w http.ResponseWriter, r *http.Request) {
 			"message": message{
 				MessageID: "msg-" + newID(),
 				ContextID: contextID,
+				TaskID:    taskID,
 				Role:      "ROLE_AGENT",
 				Parts:     []part{{Text: answer}},
 			},
@@ -154,7 +209,7 @@ func handleInvoke(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func writeStream(w http.ResponseWriter, id json.RawMessage, contextID, answer string) {
+func writeStream(w http.ResponseWriter, id json.RawMessage, record task) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeRPCError(w, id, -32000, "streaming unavailable")
@@ -164,15 +219,15 @@ func writeStream(w http.ResponseWriter, id json.RawMessage, contextID, answer st
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 
-	taskID := "task-" + newID()
 	writeSSE(w, id, map[string]any{
 		"task": map[string]any{
-			"id":        taskID,
-			"contextId": contextID,
+			"id":        record.ID,
+			"contextId": record.ContextID,
 			"status":    map[string]any{"state": "working"},
 		},
 	})
 	flusher.Flush()
+	answer := textFromParts(record.Artifacts[0].Parts)
 	for _, chunk := range []string{answer[:min(len(answer), 22)], answer[min(len(answer), 22):]} {
 		if strings.TrimSpace(chunk) == "" {
 			continue
@@ -180,8 +235,8 @@ func writeStream(w http.ResponseWriter, id json.RawMessage, contextID, answer st
 		time.Sleep(250 * time.Millisecond)
 		writeSSE(w, id, map[string]any{
 			"artifactUpdate": map[string]any{
-				"taskId":    taskID,
-				"contextId": contextID,
+				"taskId":    record.ID,
+				"contextId": record.ContextID,
 				"append":    true,
 				"artifact": map[string]any{
 					"parts": []map[string]string{{"text": chunk}},
@@ -193,13 +248,44 @@ func writeStream(w http.ResponseWriter, id json.RawMessage, contextID, answer st
 	time.Sleep(150 * time.Millisecond)
 	writeSSE(w, id, map[string]any{
 		"statusUpdate": map[string]any{
-			"taskId":    taskID,
-			"contextId": contextID,
+			"taskId":    record.ID,
+			"contextId": record.ContextID,
 			"final":     true,
 			"status":    map[string]any{"state": "completed"},
 		},
 	})
 	flusher.Flush()
+}
+
+func handleListTasks(w http.ResponseWriter, req rpcRequest) {
+	var params struct {
+		ContextID string `json:"contextId"`
+		PageSize  int    `json:"pageSize"`
+	}
+	_ = json.Unmarshal(req.Params, &params)
+	writeJSON(w, http.StatusOK, rpcResponse{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result: map[string]any{
+			"tasks": history.list(params.ContextID, params.PageSize),
+		},
+	})
+}
+
+func handleGetTask(w http.ResponseWriter, req rpcRequest) {
+	var params struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(req.Params, &params); err != nil || strings.TrimSpace(params.ID) == "" {
+		writeRPCError(w, req.ID, -32602, "task id is required")
+		return
+	}
+	record, ok := history.get(params.ID)
+	if !ok {
+		writeRPCError(w, req.ID, -32001, "task not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"task": record}})
 }
 
 func writeSSE(w http.ResponseWriter, id json.RawMessage, result any) {
@@ -218,6 +304,48 @@ func textFromParts(parts []part) string {
 		}
 	}
 	return strings.Join(chunks, "\n\n")
+}
+
+func (s *taskStore) save(record task) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.byID[record.ID] = record
+	s.tasks = append([]task{record}, s.tasks...)
+}
+
+func (s *taskStore) list(contextID string, pageSize int) []task {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if pageSize <= 0 || pageSize > 50 {
+		pageSize = 50
+	}
+	tasks := make([]task, 0, pageSize)
+	for _, record := range s.tasks {
+		if contextID != "" && record.ContextID != contextID {
+			continue
+		}
+		tasks = append(tasks, record)
+		if len(tasks) >= pageSize {
+			break
+		}
+	}
+	return tasks
+}
+
+func (s *taskStore) get(id string) (task, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.byID[id]
+	return record, ok
+}
+
+func firstNonEmpty(candidates ...string) string {
+	for _, candidate := range candidates {
+		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func writeRPCError(w http.ResponseWriter, id json.RawMessage, code int, message string) {

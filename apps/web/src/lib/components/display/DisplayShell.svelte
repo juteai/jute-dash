@@ -6,17 +6,18 @@
   import OfflineState from '$lib/components/display/OfflineState.svelte';
   import StatusRibbon from '$lib/components/display/StatusRibbon.svelte';
   import {
+    addAgent,
     createConversation,
-    deleteConversation,
+    deleteAgent,
     getConversation,
     getConversations,
     getDashboard,
     getWidgetCatalog,
-    hubURL,
     muteVoice,
     resetWidgetLayout,
     saveWidgetLayout,
     sendConversationTurn,
+    setAgentEnabled,
     unmuteVoice
   } from '$lib/api';
   import { firstAvailableAgent, getAgentAvailability, isAgentAvailable } from '$lib/agents';
@@ -26,7 +27,6 @@
     ChatState,
     Conversation,
     ConversationDetail,
-    ConversationEvent,
     ConversationMessage,
     DashboardData,
     DisplayMode,
@@ -50,8 +50,12 @@
   let messages: ChatMessage[] = [];
   let conversations: Conversation[] = [];
   let selectedConversationId = '';
-  let lastEventId = 0;
-  let eventSource: EventSource | undefined;
+  let showAgentManager = false;
+  let agentCardUrl = '';
+  let agentIssue = '';
+  let savingAgent = false;
+  let mounted = false;
+  let historyAgentId = '';
   let voiceIssue = '';
   let selectedAgentId = '';
   let prefersDark = false;
@@ -77,21 +81,24 @@
     ...dashboard,
     layout: mode === 'edit' && draftLayout ? draftLayout : dashboard.layout
   };
+  $: if (mounted && selectedAgentId && selectedAgentId !== historyAgentId) {
+    void loadConversationHistory('', selectedAgentId);
+  }
 
   onMount(() => {
+    mounted = true;
     const query = window.matchMedia('(prefers-color-scheme: dark)');
     const updateTheme = () => {
       prefersDark = query.matches;
     };
     updateTheme();
     query.addEventListener('change', updateTheme);
-    void loadConversationHistory();
-    connectEvents();
+    void loadConversationHistory('', selectedAgentId);
 
     return () => {
+      mounted = false;
       query.removeEventListener('change', updateTheme);
       clearLongPress();
-      eventSource?.close();
     };
   });
 
@@ -119,17 +126,29 @@
     mode = 'dashboard';
   }
 
-  async function loadConversationHistory(preferredConversationId = selectedConversationId) {
+  async function loadConversationHistory(preferredConversationId = selectedConversationId, agentOverride = selectedAgentId) {
     try {
-      const loaded = await getConversations(fetch);
+      const agentId =
+        agentOverride ||
+        selectedAgentId ||
+        firstAvailableAgent(dashboard.agents)?.id ||
+        dashboard.agents.find((agent) => agent.enabled)?.id ||
+        dashboard.agents[0]?.id ||
+        '';
+      historyAgentId = agentId;
+      if (!agentId) {
+        conversations = [];
+        messages = [];
+        selectedConversationId = '';
+        return;
+      }
+      const loaded = await getConversations(fetch, agentId);
       conversations = loaded;
       const candidate =
         loaded.find((conversation) => conversation.id === preferredConversationId) ??
-        loaded.find((conversation) => conversation.agentId === selectedAgentId) ??
-        loaded.find((conversation) => conversation.agentId === availableAgent?.id) ??
         loaded[0];
       if (candidate) {
-        await loadConversation(candidate.id);
+        await loadConversation(candidate.id, candidate.agentId);
       } else {
         selectedConversationId = '';
         messages = [];
@@ -140,13 +159,13 @@
         code: 'conversation_history_unavailable',
         severity: 'warning',
         title: 'Conversation history unavailable',
-        message: 'Jute could not load saved conversations.'
+        message: 'Jute could not load agent-backed conversation history.'
       });
     }
   }
 
-  async function loadConversation(conversationId: string) {
-    const detail = await getConversation(fetch, conversationId);
+  async function loadConversation(conversationId: string, agentId = selectedAgentId) {
+    const detail = await getConversation(fetch, conversationId, agentId);
     applyConversationDetail(detail);
   }
 
@@ -176,74 +195,12 @@
     return [conversation, ...withoutCurrent].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
-  function connectEvents() {
-    if (!browser) {
-      return;
-    }
-    eventSource?.close();
-    const url = `${hubURL()}/api/v1/events${lastEventId > 0 ? `?since=${lastEventId}` : ''}`;
-    const source = new EventSource(url);
-    eventSource = source;
-    source.onopen = () => {
-      markConnected();
-    };
-    source.onmessage = (event) => {
-      try {
-        const conversationEvent = JSON.parse(event.data) as ConversationEvent;
-        lastEventId = Math.max(lastEventId, conversationEvent.id);
-        void handleConversationEvent(conversationEvent);
-      } catch {
-        // Ignore malformed event payloads; the next refresh will repair visible state.
-      }
-    };
-    source.onerror = () => {
-      if (eventSource === source) {
-        markIssue('reconnecting', {
-          code: 'event_stream_reconnecting',
-          severity: 'warning',
-          title: 'Reconnecting',
-          message: 'Live updates paused while Jute reconnects to the hub.'
-        });
-      }
-    };
-  }
-
-  async function handleConversationEvent(event: ConversationEvent) {
-    if (event.conversationId) {
-      if (!selectedConversationId || event.conversationId === selectedConversationId) {
-        try {
-          await loadConversation(event.conversationId);
-          markConnected();
-          return;
-        } catch {
-          // Fall through to a lightweight list refresh below.
-        }
-      }
-    }
-    try {
-      conversations = await getConversations(fetch);
-      markConnected();
-    } catch {
-      markIssue('degraded', {
-        code: 'conversation_refresh_failed',
-        severity: 'warning',
-        title: 'Conversation refresh failed',
-        message: 'Saved chat updates are temporarily unavailable.'
-      });
-    }
-  }
-
   async function ensureConversation(agent: Agent) {
     if (selectedConversationId) {
       const current = conversations.find((conversation) => conversation.id === selectedConversationId);
       if (current?.agentId === agent.id) {
         return selectedConversationId;
       }
-    }
-    const existing = conversations.find((conversation) => conversation.agentId === agent.id);
-    if (existing) {
-      await loadConversation(existing.id);
-      return existing.id;
     }
     const detail = await createConversation(fetch, agent.id);
     applyConversationDetail(detail);
@@ -272,28 +229,56 @@
     }
   }
 
-  async function deleteSelectedConversation(conversationId: string) {
+  async function saveAgentFromCard() {
+    const cardUrl = agentCardUrl.trim();
+    if (!cardUrl || savingAgent) {
+      return;
+    }
+    savingAgent = true;
+    agentIssue = '';
     try {
-      await deleteConversation(fetch, conversationId);
-      conversations = conversations.filter((conversation) => conversation.id !== conversationId);
-      if (selectedConversationId === conversationId) {
-        const next = conversations.find((conversation) => conversation.id !== conversationId);
-        if (next) {
-          await loadConversation(next.id);
-        } else {
-          selectedConversationId = '';
-          messages = [];
-          chatState = 'idle';
-        }
+      const agent = await addAgent(fetch, cardUrl);
+      selectedAgentId = agent.id;
+      agentCardUrl = '';
+      dashboard = await getDashboard(fetch);
+      await loadConversationHistory();
+      markConnected();
+    } catch {
+      agentIssue = 'Agent was not added. Check the Agent Card URL and that the hub was started with a YAML config.';
+      markIssue('degraded', {
+        code: 'agent_add_failed',
+        severity: 'warning',
+        title: 'Agent not added',
+        message: 'Jute could not add that A2A agent.'
+      });
+    } finally {
+      savingAgent = false;
+    }
+  }
+
+  async function toggleAgent(agent: Agent) {
+    try {
+      await setAgentEnabled(fetch, agent.id, !agent.enabled);
+      dashboard = await getDashboard(fetch);
+      markConnected();
+    } catch {
+      agentIssue = 'Agent state could not be updated.';
+    }
+  }
+
+  async function removeAgent(agent: Agent) {
+    try {
+      await deleteAgent(fetch, agent.id);
+      dashboard = await getDashboard(fetch);
+      if (selectedAgentId === agent.id) {
+        selectedAgentId = firstAvailableAgent(dashboard.agents)?.id ?? dashboard.agents[0]?.id ?? '';
+        selectedConversationId = '';
+        messages = [];
+        conversations = [];
       }
       markConnected();
     } catch {
-      markIssue('degraded', {
-        code: 'conversation_delete_failed',
-        severity: 'warning',
-        title: 'Conversation not deleted',
-        message: 'Jute could not delete that conversation.'
-      });
+      agentIssue = 'Agent could not be removed.';
     }
   }
 
@@ -513,7 +498,7 @@
 
     try {
       const conversationId = await ensureConversation(agent);
-      const detail = await sendConversationTurn(fetch, conversationId, text);
+      const detail = await sendConversationTurn(fetch, conversationId, agent.id, text);
       applyConversationDetail(detail);
       markConnected();
     } catch {
@@ -578,7 +563,6 @@
     try {
       dashboard = await getDashboard(fetch);
       await loadConversationHistory();
-      connectEvents();
       markConnected();
     } catch {
       markIssue(hasConnected ? 'reconnecting' : 'offline', {
@@ -799,7 +783,47 @@
       onMoveWidget={moveWidget}
       onResizeWidget={resizeWidget}
       onRemoveWidget={removeWidget}
+      onManageAgents={() => (showAgentManager = true)}
     />
+
+    {#if showAgentManager}
+      <div class="agent-manager-layer">
+        <section class="agent-manager" aria-label="Agent settings">
+          <header class="agent-manager-header">
+            <div>
+              <strong>Agents</strong>
+              <span>Add A2A agents by Agent Card URL. Jute writes them to the active YAML config.</span>
+            </div>
+            <button type="button" class="agent-manager-close" on:click={() => (showAgentManager = false)}>Close</button>
+          </header>
+          <form class="agent-add-form" on:submit|preventDefault={saveAgentFromCard}>
+            <input bind:value={agentCardUrl} placeholder="http://127.0.0.1:9797/.well-known/agent-card.json" />
+            <button type="submit" disabled={savingAgent || !agentCardUrl.trim()}>{savingAgent ? 'Adding' : 'Add agent'}</button>
+          </form>
+          {#if agentIssue}
+            <p class="agent-manager-issue">{agentIssue}</p>
+          {/if}
+          <div class="agent-manager-list">
+            {#if agents.length === 0}
+              <p>No agents configured yet.</p>
+            {:else}
+              {#each agents as agent}
+                <article class="agent-manager-item">
+                  <div>
+                    <strong>{agent.name}</strong>
+                    <span>{agent.cardUrl}</span>
+                  </div>
+                  <div class="agent-manager-actions">
+                    <button type="button" on:click={() => toggleAgent(agent)}>{agent.enabled ? 'Disable' : 'Enable'}</button>
+                    <button type="button" on:click={() => removeAgent(agent)}>Remove</button>
+                  </div>
+                </article>
+              {/each}
+            {/if}
+          </div>
+        </section>
+      </div>
+    {/if}
 
     {#if mode === 'chat'}
       <div class="chat-layer">
@@ -815,18 +839,14 @@
           {selectedAvailability}
           onAgentChange={(agentId) => {
             selectedAgentId = agentId;
-            const nextConversation = conversations.find((conversation) => conversation.agentId === agentId);
-            if (nextConversation) {
-              void loadConversation(nextConversation.id);
-            } else {
-              selectedConversationId = '';
-              messages = [];
-              chatState = 'idle';
-            }
+            selectedConversationId = '';
+            messages = [];
+            chatState = 'idle';
+            void loadConversationHistory('');
           }}
           onConversationSelect={(conversationId) => loadConversation(conversationId)}
           onNewConversation={createNewConversation}
-          onDeleteConversation={deleteSelectedConversation}
+          onManageAgents={() => (showAgentManager = true)}
           onSubmit={(value) => submitMessage(value)}
           onRetry={retryMessage}
           onClose={closeChat}

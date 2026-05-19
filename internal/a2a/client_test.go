@@ -180,6 +180,75 @@ func TestJSONRPCClientMapsRPCErrorSafely(t *testing.T) {
 	}
 }
 
+func TestJSONRPCClientListTasksSendsExpectedRequest(t *testing.T) {
+	var got struct {
+		Method string `json:"method"`
+		Params struct {
+			ContextID string `json:"contextId"`
+			PageSize  int    `json:"pageSize"`
+		} `json:"params"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		writeRPCResult(t, w, `{"tasks":[{"id":"task-1","contextId":"ctx-1","status":{"state":"completed"},"history":[{"messageId":"user-1","role":"ROLE_USER","parts":[{"text":"Hello"}]},{"messageId":"agent-1","role":"ROLE_AGENT","parts":[{"text":"Hi"}]}]}]}`)
+	}))
+	defer server.Close()
+
+	result, err := NewJSONRPCClient().ListTasks(t.Context(), ListTasksRequest{
+		EndpointURL:     server.URL,
+		ProtocolBinding: ProtocolJSONRPC,
+		ContextID:       "ctx-1",
+		PageSize:        10,
+	})
+	if err != nil {
+		t.Fatalf("ListTasks() error = %v", err)
+	}
+	if got.Method != "ListTasks" || got.Params.ContextID != "ctx-1" || got.Params.PageSize != 10 {
+		t.Fatalf("unexpected request: %+v", got)
+	}
+	if len(result.Tasks) != 1 || result.Tasks[0].ID != "task-1" || len(result.Tasks[0].Messages) != 2 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if result.Tasks[0].Messages[0].Role != "user" || result.Tasks[0].Messages[1].Text != "Hi" {
+		t.Fatalf("unexpected task messages: %+v", result.Tasks[0].Messages)
+	}
+}
+
+func TestJSONRPCClientGetTaskSendsExpectedRequest(t *testing.T) {
+	var got struct {
+		Method string `json:"method"`
+		Params struct {
+			ID            string `json:"id"`
+			HistoryLength int    `json:"historyLength"`
+		} `json:"params"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		writeRPCResult(t, w, `{"task":{"id":"task-2","contextId":"ctx-2","status":{"state":"completed","message":{"role":"ROLE_AGENT","parts":[{"text":"Done"}]}}}}`)
+	}))
+	defer server.Close()
+
+	task, err := NewJSONRPCClient().GetTask(t.Context(), GetTaskRequest{
+		EndpointURL:     server.URL,
+		ProtocolBinding: ProtocolJSONRPC,
+		TaskID:          "task-2",
+		HistoryLength:   25,
+	})
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if got.Method != "GetTask" || got.Params.ID != "task-2" || got.Params.HistoryLength != 25 {
+		t.Fatalf("unexpected request: %+v", got)
+	}
+	if task.ID != "task-2" || task.ContextID != "ctx-2" || len(task.Messages) != 1 || task.Messages[0].Text != "Done" {
+		t.Fatalf("unexpected task: %+v", task)
+	}
+}
+
 func TestJSONRPCClientStreamsA2AEvents(t *testing.T) {
 	var method string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

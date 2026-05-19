@@ -19,22 +19,21 @@ import (
 )
 
 type Server struct {
-	cfg           config.Config
-	registry      registry.Registry
-	weather       weather.Provider
-	messages      a2aclient.MessageSender
-	cardFetcher   *a2aclient.AgentCardFetcher
-	setup         store.SetupStatus
-	layout        store.WidgetLayout
-	layoutStore   WidgetLayoutStore
-	cardStore     AgentCardStore
-	conversations ConversationStore
-	events        *EventBroker
-	voice         config.VoiceConfig
-	voiceStore    VoiceSettingsStore
-	mu            sync.Mutex
-	started       time.Time
-	version       string
+	cfg         config.Config
+	registry    registry.Registry
+	weather     weather.Provider
+	messages    a2aclient.MessageSender
+	cardFetcher *a2aclient.AgentCardFetcher
+	setup       store.SetupStatus
+	layout      store.WidgetLayout
+	layoutStore WidgetLayoutStore
+	voice       config.VoiceConfig
+	voiceStore  VoiceSettingsStore
+	configPath  string
+	agentCards  map[string]agentCardCache
+	mu          sync.Mutex
+	started     time.Time
+	version     string
 }
 
 type WidgetLayoutStore interface {
@@ -48,23 +47,6 @@ type VoiceSettingsStore interface {
 	SetVoiceMuted(ctx context.Context, deviceProfileID string, muted bool) (store.VoiceSettings, error)
 	CancelVoice(ctx context.Context, deviceProfileID string) (store.VoiceSettings, error)
 	VoiceProviders(ctx context.Context) ([]store.VoiceProviderPack, error)
-}
-
-type AgentCardStore interface {
-	AgentCardCache(ctx context.Context, agentID string) (store.AgentCardCache, error)
-	SaveAgentCardCache(ctx context.Context, cache store.AgentCardCache) error
-}
-
-type ConversationStore interface {
-	CreateConversation(ctx context.Context, conversation store.Conversation) (store.Conversation, error)
-	ListConversations(ctx context.Context) ([]store.Conversation, error)
-	Conversation(ctx context.Context, id string) (store.ConversationDetail, error)
-	AddConversationMessage(ctx context.Context, message store.ConversationMessage) (store.ConversationMessage, error)
-	UpdateConversationMessage(ctx context.Context, messageID, content, status, taskID string, appendContent bool) (store.ConversationMessage, error)
-	UpdateConversationState(ctx context.Context, conversationID, status, a2aContextID, taskID string) (store.Conversation, error)
-	DeleteConversation(ctx context.Context, id string) error
-	AddConversationEvent(ctx context.Context, event store.ConversationEvent) (store.ConversationEvent, error)
-	ConversationEventsSince(ctx context.Context, sinceID int64) ([]store.ConversationEvent, error)
 }
 
 type HealthResponse struct {
@@ -128,16 +110,20 @@ func NewWithSetupStatusAndLayout(cfg config.Config, version string, setup store.
 }
 
 func NewWithSetupStatusAndLayoutStore(cfg config.Config, version string, setup store.SetupStatus, layoutStore WidgetLayoutStore) http.Handler {
+	return NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg, version, setup, layoutStore, "")
+}
+
+func NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg config.Config, version string, setup store.SetupStatus, layoutStore WidgetLayoutStore, configPath string) http.Handler {
 	layout := store.DefaultWidgetLayout()
 	if layoutStore != nil {
 		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
 			layout = loaded
 		}
 	}
-	return newServer(cfg, version, weather.NewClient(), nil, setup, layout, layoutStore)
+	return newServer(cfg, version, weather.NewClient(), nil, setup, layout, layoutStore, configPath)
 }
 
-func newServer(cfg config.Config, version string, weatherProvider weather.Provider, messageSender a2aclient.MessageSender, setup store.SetupStatus, layout store.WidgetLayout, layoutStore WidgetLayoutStore) http.Handler {
+func newServer(cfg config.Config, version string, weatherProvider weather.Provider, messageSender a2aclient.MessageSender, setup store.SetupStatus, layout store.WidgetLayout, layoutStore WidgetLayoutStore, configPath ...string) http.Handler {
 	if weatherProvider == nil {
 		weatherProvider = weather.NewClient()
 	}
@@ -148,30 +134,25 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 	if candidate, ok := layoutStore.(VoiceSettingsStore); ok {
 		voiceStore = candidate
 	}
-	var cardStore AgentCardStore
-	if candidate, ok := layoutStore.(AgentCardStore); ok {
-		cardStore = candidate
-	}
-	var conversationStore ConversationStore
-	if candidate, ok := layoutStore.(ConversationStore); ok {
-		conversationStore = candidate
+	activeConfigPath := ""
+	if len(configPath) > 0 {
+		activeConfigPath = configPath[0]
 	}
 	server := &Server{
-		cfg:           cfg,
-		registry:      registry.New(cfg.Agents),
-		weather:       weatherProvider,
-		messages:      messageSender,
-		cardFetcher:   a2aclient.NewAgentCardFetcher(),
-		setup:         normalizeSetupStatus(setup),
-		layout:        normalizeWidgetLayout(layout),
-		layoutStore:   layoutStore,
-		cardStore:     cardStore,
-		conversations: conversationStore,
-		events:        NewEventBroker(),
-		voice:         cfg.Voice,
-		voiceStore:    voiceStore,
-		started:       time.Now().UTC(),
-		version:       version,
+		cfg:         cfg,
+		registry:    registry.New(cfg.Agents),
+		weather:     weatherProvider,
+		messages:    messageSender,
+		cardFetcher: a2aclient.NewAgentCardFetcher(),
+		setup:       normalizeSetupStatus(setup),
+		layout:      normalizeWidgetLayout(layout),
+		layoutStore: layoutStore,
+		voice:       cfg.Voice,
+		voiceStore:  voiceStore,
+		configPath:  activeConfigPath,
+		agentCards:  map[string]agentCardCache{},
+		started:     time.Now().UTC(),
+		version:     version,
 	}
 
 	mux := http.NewServeMux()
@@ -245,17 +226,65 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) {
-		return
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]any{
+			"agents": s.agentsWithDiscovery(r.Context(), true),
+		})
+	case http.MethodPost:
+		var req struct {
+			CardURL string `json:"cardUrl"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON request body")
+			return
+		}
+		agent, err := s.addAgentFromCard(r.Context(), req.CardURL)
+		if err != nil {
+			writeAgentConfigError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, agent)
+	default:
+		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"agents": s.agentsWithDiscovery(r.Context(), true),
-	})
 }
 
 func (s *Server) handleAgentSubroutes(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/agents/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		writeError(w, http.StatusNotFound, "agent route not found")
+		return
+	}
+	agentID := strings.TrimSpace(parts[0])
+	if len(parts) == 1 {
+		switch r.Method {
+		case http.MethodPatch:
+			var req struct {
+				Enabled *bool `json:"enabled"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid JSON request body")
+				return
+			}
+			agent, err := s.patchAgent(agentID, req.Enabled)
+			if err != nil {
+				writeAgentConfigError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, agent)
+		case http.MethodDelete:
+			if err := s.deleteAgent(agentID); err != nil {
+				writeAgentConfigError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+		default:
+			writeMethodNotAllowed(w, http.MethodPatch+", "+http.MethodDelete)
+		}
+		return
+	}
 	if len(parts) != 2 || parts[1] != "refresh-card" {
 		writeError(w, http.StatusNotFound, "agent route not found")
 		return
@@ -263,7 +292,6 @@ func (s *Server) handleAgentSubroutes(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
-	agentID := strings.TrimSpace(parts[0])
 	agent, ok := s.registry.Find(agentID)
 	if !ok {
 		writeError(w, http.StatusNotFound, "agent not found")
@@ -639,6 +667,21 @@ type selectedAgentInterface struct {
 	Metadata        map[string]any
 }
 
+type agentCardCache struct {
+	AgentID                   string
+	CardJSON                  string
+	CardStatus                string
+	CardError                 string
+	SelectedEndpointURL       string
+	SelectedProtocolBinding   string
+	SelectedProtocolVersion   string
+	Streaming                 bool
+	DashboardContextSupported bool
+	Skills                    []a2aclient.AgentSkill
+	FetchedAt                 string
+	ExpiresAt                 string
+}
+
 func (s *Server) selectedAgentInterface(ctx context.Context, agent registry.Agent) selectedAgentInterface {
 	selected := selectedAgentInterface{
 		EndpointURL:     agent.EndpointURL,
@@ -662,13 +705,15 @@ func (s *Server) selectedAgentInterface(ctx context.Context, agent registry.Agen
 }
 
 func (s *Server) agentsWithDiscovery(ctx context.Context, refreshMissing bool) []registry.Agent {
+	s.mu.Lock()
 	agents := s.registry.List()
+	s.mu.Unlock()
 	for i := range agents {
-		var cache store.AgentCardCache
+		var cache agentCardCache
 		var ok bool
 		if refreshMissing {
 			cache, ok = s.currentAgentCardCache(ctx, agents[i])
-		} else if s.cardStore != nil {
+		} else {
 			cache, ok = s.loadAgentCardCache(ctx, agents[i].ID)
 		}
 		if ok {
@@ -678,7 +723,7 @@ func (s *Server) agentsWithDiscovery(ctx context.Context, refreshMissing bool) [
 	return agents
 }
 
-func (s *Server) agentWithDiscovery(agent registry.Agent, cache store.AgentCardCache) registry.Agent {
+func (s *Server) agentWithDiscovery(agent registry.Agent, cache agentCardCache) registry.Agent {
 	agent.CardStatus = cache.CardStatus
 	agent.CardFetchedAt = cache.FetchedAt
 	agent.CardError = cache.CardError
@@ -697,30 +742,23 @@ func (s *Server) agentWithDiscovery(agent registry.Agent, cache store.AgentCardC
 	return agent
 }
 
-func (s *Server) currentAgentCardCache(ctx context.Context, agent registry.Agent) (store.AgentCardCache, bool) {
-	if s.cardStore == nil {
-		return store.AgentCardCache{}, false
-	}
+func (s *Server) currentAgentCardCache(ctx context.Context, agent registry.Agent) (agentCardCache, bool) {
 	if cache, ok := s.loadAgentCardCache(ctx, agent.ID); ok && cache.CardStatus == "available" {
 		return cache, true
 	}
 	return s.refreshAgentCard(ctx, agent), true
 }
 
-func (s *Server) loadAgentCardCache(ctx context.Context, agentID string) (store.AgentCardCache, bool) {
-	if s.cardStore == nil {
-		return store.AgentCardCache{}, false
-	}
-	cache, err := s.cardStore.AgentCardCache(ctx, agentID)
-	if err != nil {
-		return store.AgentCardCache{}, false
-	}
-	return cache, true
+func (s *Server) loadAgentCardCache(ctx context.Context, agentID string) (agentCardCache, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cache, ok := s.agentCards[agentID]
+	return cache, ok
 }
 
-func (s *Server) refreshAgentCard(ctx context.Context, agent registry.Agent) store.AgentCardCache {
+func (s *Server) refreshAgentCard(ctx context.Context, agent registry.Agent) agentCardCache {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	cache := store.AgentCardCache{
+	cache := agentCardCache{
 		AgentID:                 agent.ID,
 		CardStatus:              "unavailable",
 		CardError:               "agent card is unavailable",
@@ -765,11 +803,10 @@ func (s *Server) refreshAgentCard(ctx context.Context, agent registry.Agent) sto
 	return cache
 }
 
-func (s *Server) saveAgentCardCache(ctx context.Context, cache store.AgentCardCache) {
-	if s.cardStore == nil {
-		return
-	}
-	_ = s.cardStore.SaveAgentCardCache(ctx, cache)
+func (s *Server) saveAgentCardCache(ctx context.Context, cache agentCardCache) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.agentCards[cache.AgentID] = cache
 }
 
 func (s *Server) dashboardContext(ctx context.Context) map[string]any {

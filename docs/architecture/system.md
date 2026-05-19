@@ -93,8 +93,8 @@ Initial API families:
 - `/api/v1/voice/mute`, `/api/v1/voice/unmute`, `/api/v1/voice/cancel`: current voice state controls.
 - `/api/v1/voice/providers`: current provider-list response shape and future STT/TTS provider pack discovery, details, and health tests.
 - `/api/v1/tts`: future voice listing, preview, speak, and stop controls.
-- `/api/v1/conversations`: current durable multi-turn conversation APIs for typed turns, with voice and wake-word turns planned to use the same pipeline.
-- `/api/v1/events`: Server-Sent Events stream for replayable conversation updates and future home, widget, agent, and task updates.
+- `/api/v1/conversations`: current multi-turn conversation APIs for typed turns. These are hub projections over the selected A2A agent's task history, with voice and wake-word turns planned to use the same pipeline.
+- `/api/v1/events`: currently a minimal SSE endpoint. Future releases will use it for replayable home, widget, agent, voice, and task updates.
 - `/api/v1/settings`: household, device profile, theme, and layout settings.
 - `/healthz`: existing minimal hub process reachability check.
 
@@ -139,11 +139,11 @@ Event types:
 
 Every event includes an `id`, `type`, `createdAt`, and `payload`. The display reconnects with the last seen event ID when supported.
 
-The display treats event-stream failure as `reconnecting` or `degraded` depending on whether ordinary hub requests still work. Future reconnect events include `hub.connected`, `hub.reconnecting`, `hub.disconnected`, and `hub.degraded`.
+The display treats event-stream failure as `reconnecting` or `degraded` depending on whether ordinary hub requests still work. Future reconnect events include `hub.connected`, `hub.reconnecting`, `hub.disconnected`, and `hub.degraded`. The current pre-v1 endpoint does not provide durable replay.
 
 ## Persistence
 
-SQLite is runtime truth. YAML config is preferred for bootstrap, import, and export. JSON config remains supported for compatibility.
+SQLite is runtime truth for household/display/widget settings. YAML config is preferred for bootstrap, import, and export. JSON config remains supported for compatibility. During the current pre-v1 agent-management slice, agent registrations are saved to the active YAML config file when one is available.
 
 The effective configuration precedence is:
 
@@ -159,9 +159,9 @@ Persisted data:
 - device profiles and pairing records;
 - dashboard layouts and theme settings;
 - widget installation records, permissions, and state;
-- cached Agent Cards, ETags, selected bindings, and health checks;
+- cached Agent Cards, ETags, selected bindings, and health checks when persistent caching is enabled;
 - room/device mappings and adapter metadata;
-- conversations, conversation messages, replayable conversation events, returned A2A context IDs, and latest task IDs;
+- no local conversation transcript store in the current implementation; conversation history is read from agents through A2A `ListTasks` and `GetTask`;
 - voice settings, wake-word model IDs, provider pack choices, STT/TTS model IDs, TTS voice IDs, follow-up windows, cloud opt-in, command-provider enablement, sensitive-output speech policy, and microphone profiles;
 - voice provider pack installation records, manifests, health state, and non-secret settings;
 - MCP bridge enablement, auth references, endpoint settings, and per-agent MCP scopes;

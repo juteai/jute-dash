@@ -18,6 +18,8 @@ const (
 	jsonRPCVersion             = "2.0"
 	methodSendMessage          = "SendMessage"
 	methodSendStreamingMessage = "SendStreamingMessage"
+	methodGetTask              = "GetTask"
+	methodListTasks            = "ListTasks"
 	methodNotFoundCode         = -32601
 )
 
@@ -64,6 +66,11 @@ type StreamHandler func(StreamEvent) error
 type StreamingMessageSender interface {
 	SendMessage(ctx context.Context, req SendMessageRequest) (SendMessageResult, error)
 	StreamMessage(ctx context.Context, req SendMessageRequest, handler StreamHandler) error
+}
+
+type TaskHistoryClient interface {
+	ListTasks(ctx context.Context, req ListTasksRequest) (ListTasksResult, error)
+	GetTask(ctx context.Context, req GetTaskRequest) (TaskRecord, error)
 }
 
 type JSONRPCClient struct {
@@ -189,10 +196,10 @@ func newHTTPRequest(ctx context.Context, req SendMessageRequest, body []byte) (*
 }
 
 type jsonRPCRequest struct {
-	JSONRPC string     `json:"jsonrpc"`
-	ID      string     `json:"id"`
-	Method  string     `json:"method"`
-	Params  sendParams `json:"params"`
+	JSONRPC string `json:"jsonrpc"`
+	ID      string `json:"id"`
+	Method  string `json:"method"`
+	Params  any    `json:"params,omitempty"`
 }
 
 type sendParams struct {

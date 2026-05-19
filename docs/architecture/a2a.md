@@ -60,20 +60,21 @@ The display never receives raw agent credentials.
 
 ## Messaging And Streaming
 
-User turns in the display become A2A send-message requests through the hub. The hub records the local task mapping and forwards task status and artifact updates to displays over `/api/v1/events`.
+User turns in the display become A2A send-message requests through the hub. The hub owns routing, credential lookup, dashboard-context redaction, and selected-agent state. Conversation history is agent-backed: when the display asks for history, the hub calls the selected agent's A2A task APIs and projects returned tasks/messages into the Jute chat UI.
 
 Voice turns follow the same path after transcription. The Jute Voice Service sends final transcripts to the hub; the hub sends text turns to A2A agents. Raw microphone audio, pre-roll buffers, and partial transcripts are not sent to A2A agents.
 
-For agents that support streaming, Jute uses the streaming operation for responsive dashboard updates. For agents without streaming, the hub polls task state or waits for push notification support in later releases.
+For agents that support streaming, Jute uses the streaming operation for responsive dashboard updates. For agents without streaming, the hub uses blocking send. For agents that do not expose task history, the display shows a history-unavailable state instead of inventing local history.
 
 Current implementation status:
 
 - JSON-RPC A2A 1.0 blocking chat is implemented with `SendMessage`.
 - JSON-RPC A2A 1.0 streaming chat is implemented with `SendStreamingMessage` when the selected Agent Card advertises streaming support.
+- JSON-RPC A2A task history is implemented with `ListTasks` and `GetTask` for agents that expose those methods.
 - The hub sends `A2A-Version: 1.0`.
-- The hub persists conversations, messages, returned `contextId` values, and latest task IDs in SQLite so follow-up turns can continue the same A2A context.
-- The display uses `/api/v1/conversations`, `/api/v1/conversations/{id}/turns`, and `/api/v1/events` for durable chat history and live updates.
-- Polling and task subscriptions remain future work.
+- The hub does not persist conversation transcripts locally in the current pre-v1 implementation. A2A agents remain the source of task and message history.
+- The display uses `/api/v1/conversations` and `/api/v1/conversations/{id}/turns` as hub-mediated projections over the selected agent's A2A task history.
+- Rich event replay, polling, and task subscriptions remain future work.
 
 ## Agent Card Caching
 
@@ -84,11 +85,11 @@ The hub honors standard HTTP caching headers when fetching Agent Cards:
 - use a conservative default cache duration when no caching headers are present;
 - refresh manually when the user asks or when a task fails due to capability mismatch.
 
-Cached cards live in SQLite with fetch time, expiry, ETag, content hash, and selected interface.
+Cached cards are refreshable implementation detail. The current pre-v1 hub keeps discovered card metadata in memory while the process runs; a later cache may store fetch time, expiry, ETag, content hash, and selected interface.
 
 Current implementation status:
 
-- The hub fetches configured Agent Cards, selects A2A 1.0 `JSONRPC` first, and caches the selected interface, skills, streaming flag, dashboard-context support, and safe card status in SQLite.
+- The hub fetches configured Agent Cards, selects A2A 1.0 `JSONRPC` first, and exposes the selected interface, skills, streaming flag, dashboard-context support, and safe card status to the UI.
 - The development `make dev-a2a` path uses the lightweight `examples/agents/a2a-v1-dev` fixture.
 
 ## Jute Dashboard-Context Extension

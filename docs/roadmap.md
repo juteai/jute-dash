@@ -25,15 +25,16 @@
 - Resolve and cache Agent Cards, selected interfaces, skills, and dashboard-context extension support.
 - Persist runtime state in SQLite using migrations and safe first-run defaults.
 - Add setup status API and settings APIs for household and device profile configuration.
-- Add `/api/v1/events` for dashboard and task updates.
+- Keep `/api/v1/events` as a minimal SSE surface, then expand it for dashboard and task updates.
 - Replace POC dashboard UI with the clean-slate dashboard, edit mode, WidgetFrame, and chat mode.
 - Add display resilience UX: startup offline screen, runtime reconnect ribbon, stale dashboard styling, no-agent chat state, and widget error frames.
 - Add voice foundation state: persisted voice settings, status/mute/cancel APIs, provider-list response shape, and display microphone status controls.
-- Add durable SQLite conversations, messages, replayable conversation events, and full chat history UI.
+- Add A2A agent-backed conversation history using `ListTasks` and `GetTask`, with a clear unsupported state for agents that do not expose history.
 - Implement Widget Pack manifest validation and iframe host runtime.
 - Show agent skills in the UI.
 - Send user prompts to a selected A2A 1.0 JSON-RPC agent.
 - Stream task updates back to the display through hub events.
+- Revisit whether Jute needs an optional local transcript mirror after agent-backed history has been tested with real agents.
 - Add a read-only MCP Bridge with dashboard/widget resources and safe context tools for local agents.
 - Add settings UI for home name, rooms, tiles, and agent registration.
 

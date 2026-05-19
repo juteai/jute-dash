@@ -57,8 +57,14 @@ export async function sendMessage(
   return response.json() as Promise<MessageResponse>;
 }
 
-export async function getConversations(fetcher: typeof fetch): Promise<Conversation[]> {
-  const response = await getJSON<{ conversations: Conversation[] }>(fetcher, '/api/v1/conversations');
+export async function getConversations(fetcher: typeof fetch, agentId: string): Promise<Conversation[]> {
+  if (!agentId) {
+    return [];
+  }
+  const response = await getJSON<{ conversations: Conversation[] }>(
+    fetcher,
+    `/api/v1/conversations?agentId=${encodeURIComponent(agentId)}`
+  );
   return response.conversations;
 }
 
@@ -81,13 +87,17 @@ export async function createConversation(
   return response.json() as Promise<ConversationDetail>;
 }
 
-export async function getConversation(fetcher: typeof fetch, conversationId: string): Promise<ConversationDetail> {
-  return getJSON<ConversationDetail>(fetcher, `/api/v1/conversations/${encodeURIComponent(conversationId)}`);
+export async function getConversation(fetcher: typeof fetch, conversationId: string, agentId: string): Promise<ConversationDetail> {
+  return getJSON<ConversationDetail>(
+    fetcher,
+    `/api/v1/conversations/${encodeURIComponent(conversationId)}?agentId=${encodeURIComponent(agentId)}`
+  );
 }
 
 export async function sendConversationTurn(
   fetcher: typeof fetch,
   conversationId: string,
+  agentId: string,
   text: string
 ): Promise<ConversationDetail> {
   const response = await fetcher(`${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}/turns`, {
@@ -95,7 +105,7 @@ export async function sendConversationTurn(
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ text })
+    body: JSON.stringify({ agentId, text })
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
@@ -104,8 +114,38 @@ export async function sendConversationTurn(
   return response.json() as Promise<ConversationDetail>;
 }
 
-export async function deleteConversation(fetcher: typeof fetch, conversationId: string): Promise<void> {
-  const response = await fetcher(`${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}`, {
+export async function addAgent(fetcher: typeof fetch, cardUrl: string): Promise<Agent> {
+  const response = await fetcher(`${API_BASE}/api/v1/agents`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ cardUrl })
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+  }
+  return response.json() as Promise<Agent>;
+}
+
+export async function setAgentEnabled(fetcher: typeof fetch, agentId: string, enabled: boolean): Promise<Agent> {
+  const response = await fetcher(`${API_BASE}/api/v1/agents/${encodeURIComponent(agentId)}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ enabled })
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+  }
+  return response.json() as Promise<Agent>;
+}
+
+export async function deleteAgent(fetcher: typeof fetch, agentId: string): Promise<void> {
+  const response = await fetcher(`${API_BASE}/api/v1/agents/${encodeURIComponent(agentId)}`, {
     method: 'DELETE'
   });
   if (!response.ok) {

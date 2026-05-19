@@ -222,6 +222,7 @@ export type Conversation = {
   latestTaskId: string;
   createdAt: string;
   updatedAt: string;
+  historyUnsupported?: boolean;
 };
 
 export type ConversationMessage = {
@@ -240,15 +241,6 @@ export type ConversationMessage = {
 export type ConversationDetail = {
   conversation: Conversation;
   messages: ConversationMessage[];
-};
-
-export type ConversationEvent = {
-  id: number;
-  type: string;
-  conversationId?: string;
-  messageId?: string;
-  payload: Record<string, unknown>;
-  createdAt: string;
 };
 
 export type MessageResponse = {

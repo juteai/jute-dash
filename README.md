@@ -96,16 +96,18 @@ examples/agents/       Optional local test agents and integration fixtures
 - `GET /api/v1/config`
 - `GET /api/v1/home`
 - `GET /api/v1/agents`
+- `POST /api/v1/agents`
+- `PATCH /api/v1/agents/{id}`
+- `DELETE /api/v1/agents/{id}`
 - `GET /api/v1/setup/status`
 - `POST /api/v1/messages`
 - `GET /api/v1/conversations`
 - `POST /api/v1/conversations`
 - `GET /api/v1/conversations/{id}`
-- `DELETE /api/v1/conversations/{id}`
 - `POST /api/v1/conversations/{id}/turns`
 - `GET /api/v1/events`
 
-`POST /api/v1/conversations/{id}/turns` is the primary chat path. It persists user and assistant messages in SQLite, uses A2A `SendStreamingMessage` when the selected Agent Card supports streaming, falls back to blocking `SendMessage`, and publishes replayable updates over `/api/v1/events`.
+`POST /api/v1/conversations/{id}/turns` is the primary chat path. It uses A2A `SendStreamingMessage` when the selected Agent Card supports streaming, falls back to blocking `SendMessage`, and reads conversation history back from the selected agent with A2A `ListTasks` and `GetTask` when that agent supports task history. Jute does not store conversation transcripts locally in this pre-v1 slice; unsupported agents show a clear history-unavailable state.
 
 `POST /api/v1/messages` remains as a blocking compatibility endpoint for simple smoke tests.
 
@@ -121,7 +123,7 @@ The project tracks A2A as an external protocol rather than inventing a custom ag
 
 ## Configuration Direction
 
-Runtime settings live in SQLite. YAML config is the preferred human-authored bootstrap/import/export format, and JSON remains supported for machine-friendly compatibility. The hub owns durable settings, and public config responses are redacted projections.
+Runtime settings generally live in SQLite. YAML config is the preferred human-authored bootstrap/import/export format, and JSON remains supported for machine-friendly compatibility. During the pre-v1 agent-management slice, configured agents are saved back to the active YAML config file so local users can add, disable, and remove A2A agents without editing SQLite directly. The hub owns durable settings, and public config responses are redacted projections.
 
 `JUTE_HOME` is the planned data root. The runtime database defaults to `$JUTE_HOME/jute.db`, with Docker using `/data` and systemd using `/var/lib/jute`.
 

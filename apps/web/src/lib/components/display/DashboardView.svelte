@@ -17,6 +17,7 @@
   export let editIssue = '';
   export let savingLayout = false;
   export let onOpenChat: () => void = () => {};
+  export let onManageAgents: () => void = () => {};
   export let onToggleVoiceMute: () => Promise<void> | void = () => {};
   export let onEnterEdit: () => void = () => {};
   export let onSaveEdit: () => void = () => {};
@@ -90,7 +91,7 @@
         <IconButton label="Edit dashboard" variant="outline" on:click={onEnterEdit}>
           <Pencil size={20} />
         </IconButton>
-        <IconButton label="Settings" variant="outline">
+        <IconButton label="Settings" variant="outline" on:click={onManageAgents}>
           <Settings size={20} />
         </IconButton>
       {/if}

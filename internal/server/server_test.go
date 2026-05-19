@@ -7,7 +7,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	a2a "jute-dash/internal/a2a"
@@ -136,7 +139,7 @@ func TestMessageEndpointUsesDiscoveredA2A10InterfaceAndDashboardContext(t *testi
 		Status:         "completed",
 		Text:           "Context received.",
 	}}
-	handler := newServer(result.Config, "test", weather.NewClient(), sender, result.Setup, store.DefaultWidgetLayout(), runtimeStore)
+	handler := newServer(cfg, "test", weather.NewClient(), sender, result.Setup, store.DefaultWidgetLayout(), runtimeStore)
 
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"What can you see?","conversationId":"ctx-existing"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
@@ -513,11 +516,11 @@ func TestStoreBackedConfigWorksWithExistingEndpoints(t *testing.T) {
 	}
 	defer runtimeStore.Close()
 
-	result, err := runtimeStore.Initialize(context.Background(), testConfig(), true)
-	if err != nil {
+	if _, err := runtimeStore.Initialize(context.Background(), testConfig(), true); err != nil {
 		t.Fatalf("initialize store: %v", err)
 	}
-	handler := NewWithWeatherProvider(result.Config, "test", weatherProviderFunc(func(ctx context.Context, cfg config.WeatherConfig) weather.State {
+	cfg := testConfig()
+	handler := NewWithWeatherProvider(cfg, "test", weatherProviderFunc(func(ctx context.Context, cfg config.WeatherConfig) weather.State {
 		return weather.State{Status: weather.StatusDisabled, LocationName: cfg.LocationName}
 	}))
 
@@ -537,7 +540,7 @@ func TestStoreBackedConfigWorksWithExistingEndpoints(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode agents response: %v", err)
 	}
-	if len(body.Agents) != 2 || body.Agents[0].ID != "energy" || body.Agents[1].ID != "house" {
+	if len(body.Agents) != 2 || body.Agents[0].ID != "house" || body.Agents[1].ID != "energy" {
 		t.Fatalf("unexpected store-backed agents response: %+v", body.Agents)
 	}
 }
@@ -578,7 +581,7 @@ func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize store: %v", err)
 	}
-	handler := NewWithSetupStatusAndLayoutStore(result.Config, "test", result.Setup, runtimeStore)
+	handler := NewWithSetupStatusAndLayoutStore(cfg, "test", result.Setup, runtimeStore)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
 	rec := httptest.NewRecorder()
@@ -606,6 +609,154 @@ func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
 	}
 	if !body.Agents[0].DashboardContextSupported || !body.Agents[0].Streaming || len(body.Agents[0].Skills) != 1 {
 		t.Fatalf("missing discovered metadata: %+v", body.Agents[0])
+	}
+}
+
+func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
+	agentCardServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"name":        "Kitchen Helper",
+			"description": "Local kitchen assistant",
+			"version":     "1.0.0",
+			"supportedInterfaces": []map[string]string{
+				{"url": "http://127.0.0.1:9797/invoke", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+			},
+			"defaultInputModes":  []string{"text/plain"},
+			"defaultOutputModes": []string{"text/plain"},
+		})
+	}))
+	defer agentCardServer.Close()
+
+	configPath := filepath.Join(t.TempDir(), "jute.yaml")
+	cfg := testConfig()
+	cfg.Agents = nil
+	if err := config.SaveYAML(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg, "test", store.SetupStatus{Complete: true}, nil, configPath)
+
+	payload := bytes.NewBufferString(`{"cardUrl":` + strconv.Quote(agentCardServer.URL) + `}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", payload)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	reloaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if len(reloaded.Agents) != 1 {
+		t.Fatalf("expected one saved agent, got %+v", reloaded.Agents)
+	}
+	if reloaded.Agents[0].ID != "kitchen-helper" || reloaded.Agents[0].EndpointURL != "http://127.0.0.1:9797/invoke" || !reloaded.Agents[0].Enabled {
+		t.Fatalf("unexpected saved agent: %+v", reloaded.Agents[0])
+	}
+	savedBytes, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	if !strings.Contains(string(savedBytes), "card-url: "+agentCardServer.URL) {
+		t.Fatalf("saved config does not include card URL:\n%s", string(savedBytes))
+	}
+}
+
+func TestConversationListUsesAgentTaskHistory(t *testing.T) {
+	history := &fakeTaskHistorySender{
+		tasks: []a2a.TaskRecord{
+			{
+				ID:        "task-1",
+				ContextID: "ctx-1",
+				Status:    "completed",
+				Messages: []a2a.TaskMessage{
+					{ID: "user-1", Role: "user", Text: "What is happening?"},
+					{ID: "agent-1", Role: "assistant", Text: "All calm."},
+				},
+				UpdatedAt: "2026-05-19T10:00:00Z",
+			},
+		},
+	}
+	handler := newServer(testConfig(), "test", weather.NewClient(), history, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?agentId=house", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Conversations []Conversation `json:"conversations"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Conversations) != 1 || body.Conversations[0].ID != "ctx-1" || body.Conversations[0].Title != "What is happening?" {
+		t.Fatalf("unexpected conversations: %+v", body.Conversations)
+	}
+	if history.listReq.EndpointURL != "https://agent.example.com/a2a/v1" || history.listReq.PageSize != 50 {
+		t.Fatalf("unexpected list request: %+v", history.listReq)
+	}
+}
+
+func TestConversationDetailUsesGetTaskHistory(t *testing.T) {
+	history := &fakeTaskHistorySender{
+		tasks: []a2a.TaskRecord{{ID: "task-1", ContextID: "ctx-1", Status: "completed", UpdatedAt: "2026-05-19T10:00:00Z"}},
+		records: map[string]a2a.TaskRecord{
+			"task-1": {
+				ID:        "task-1",
+				ContextID: "ctx-1",
+				Status:    "completed",
+				Messages: []a2a.TaskMessage{
+					{ID: "user-1", Role: "user", Text: "Hello"},
+					{ID: "agent-1", Role: "assistant", Text: "Hello back"},
+				},
+				UpdatedAt: "2026-05-19T10:01:00Z",
+			},
+		},
+	}
+	handler := newServer(testConfig(), "test", weather.NewClient(), history, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/ctx-1?agentId=house", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var detail ConversationDetail
+	if err := json.NewDecoder(rec.Body).Decode(&detail); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if detail.Conversation.ID != "ctx-1" || detail.Conversation.LatestTaskID != "task-1" {
+		t.Fatalf("unexpected conversation: %+v", detail.Conversation)
+	}
+	if len(detail.Messages) != 2 || detail.Messages[1].Content != "Hello back" {
+		t.Fatalf("unexpected messages: %+v", detail.Messages)
+	}
+	if history.getReq.TaskID != "task-1" || history.getReq.HistoryLength != 50 {
+		t.Fatalf("unexpected get request: %+v", history.getReq)
+	}
+}
+
+func TestConversationListShowsUnsupportedStateWhenAgentDoesNotExposeHistory(t *testing.T) {
+	handler := NewWithMessageSender(testConfig(), "test", &fakeMessageSender{})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?agentId=house", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Conversations []Conversation `json:"conversations"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Conversations) != 1 || !body.Conversations[0].HistoryUnsupported {
+		t.Fatalf("expected unsupported history state, got %+v", body.Conversations)
 	}
 }
 
@@ -681,4 +832,32 @@ func (s *fakeMessageSender) SendMessage(ctx context.Context, req a2a.SendMessage
 		return a2a.SendMessageResult{}, s.err
 	}
 	return s.result, nil
+}
+
+type fakeTaskHistorySender struct {
+	fakeMessageSender
+	tasks   []a2a.TaskRecord
+	records map[string]a2a.TaskRecord
+	listReq a2a.ListTasksRequest
+	getReq  a2a.GetTaskRequest
+}
+
+func (s *fakeTaskHistorySender) ListTasks(ctx context.Context, req a2a.ListTasksRequest) (a2a.ListTasksResult, error) {
+	s.listReq = req
+	tasks := make([]a2a.TaskRecord, 0, len(s.tasks))
+	for _, task := range s.tasks {
+		if req.ContextID != "" && task.ContextID != req.ContextID {
+			continue
+		}
+		tasks = append(tasks, task)
+	}
+	return a2a.ListTasksResult{Tasks: tasks}, nil
+}
+
+func (s *fakeTaskHistorySender) GetTask(ctx context.Context, req a2a.GetTaskRequest) (a2a.TaskRecord, error) {
+	s.getReq = req
+	if task, ok := s.records[req.TaskID]; ok {
+		return task, nil
+	}
+	return a2a.TaskRecord{}, errors.New("task not found")
 }

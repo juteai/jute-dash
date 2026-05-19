@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { ChevronDown, Mic, Plus, Trash2, VolumeX } from 'lucide-svelte';
+  import { ChevronDown, Mic, Plus, VolumeX } from 'lucide-svelte';
   import AssistantActivity from '$lib/components/chat/AssistantActivity.svelte';
   import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import { availabilityDescription, availabilityLabel, availabilityTone, getAgentAvailability } from '$lib/agents';
   import Badge from '$lib/components/ui/Badge.svelte';
-  import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import type { Agent, AgentAvailability, ChatMessage, ChatState, Conversation, VoiceStatus } from '$lib/types';
 
@@ -21,7 +20,7 @@
   export let onAgentChange: (agentId: string) => void = () => {};
   export let onConversationSelect: (conversationId: string) => Promise<void> | void = () => {};
   export let onNewConversation: () => Promise<void> | void = () => {};
-  export let onDeleteConversation: (conversationId: string) => Promise<void> | void = () => {};
+  export let onManageAgents: () => void = () => {};
   export let onSubmit: (value: string) => Promise<void> | void = () => {};
   export let onRetry: (message: ChatMessage) => Promise<void> | void = () => {};
   export let onClose: () => void = () => {};
@@ -154,8 +153,9 @@
           <div class="conversation-empty">
             {#if composerDisabled}
               No available agent yet.
+              <button type="button" class="conversation-link-button" on:click={onManageAgents}>Add agent</button>
             {:else}
-              Start a conversation to save it here.
+              Agent-backed history is empty or unsupported.
             {/if}
           </div>
         {:else}
@@ -179,7 +179,9 @@
         <div>
           <strong>{selectedConversation?.title || 'New conversation'}</strong>
           <span>
-            {#if selectedConversation}
+            {#if selectedConversation?.historyUnsupported}
+              History unavailable for this agent
+            {:else if selectedConversation}
               {selectedConversation.status}
             {:else if selectedAgent}
               Ready to start with {selectedAgent.name}
@@ -188,12 +190,6 @@
             {/if}
           </span>
         </div>
-        {#if selectedConversation}
-          <Button size="sm" variant="ghost" on:click={() => onDeleteConversation(selectedConversation.id)}>
-            <Trash2 size={15} />
-            <span>Delete</span>
-          </Button>
-        {/if}
       </div>
 
       <MessageList

@@ -9,6 +9,7 @@ The decision:
 - YAML is the preferred bootstrap, import, and export format.
 - JSON remains supported for machine-friendly compatibility.
 - SQLite is runtime truth.
+- Pre-v1 agent registrations are saved back to the active YAML config file so local development can add, disable, and remove A2A agents without a settings database editor.
 - Secrets are references only.
 - The hub owns all durable settings.
 - Browser state is transient only.
@@ -131,8 +132,6 @@ Initial table families:
 - `layout_profiles`
 - `rooms`
 - `tiles`
-- `agents`
-- `agent_card_cache`
 - `widget_packs`
 - `widget_instances`
 - `widget_permissions`
@@ -143,7 +142,7 @@ Initial table families:
 - `adapter_connections`
 - `setting_audit_log`
 
-Provider manifests and widget manifests are validated records. They are not executable code and are not durable sources of truth outside the hub store.
+Provider manifests and widget manifests are validated records. They are not executable code and are not durable sources of truth outside the hub store. A2A agent registrations are YAML-backed in the current pre-v1 implementation; a later settings store migration may promote agents into normalized tables after the add/edit UX has settled.
 
 Use stable string IDs for user-facing records so import/export and future sync can preserve identity.
 
@@ -175,7 +174,9 @@ Rules:
 - YAML decoding is strict and rejects unknown fields;
 - YAML is not watched or automatically reloaded in v1.
 
-Jute intentionally does not copy Glance's live config reload model in v1. Runtime edits happen through the hub and persist to SQLite. Editing a YAML file after `jute.db` exists does not silently overwrite runtime settings; use a future explicit import flow for that.
+Jute intentionally does not copy Glance's live config reload model in v1. Most runtime edits happen through the hub and persist to SQLite. The exception in the current pre-v1 implementation is A2A agent registration: adding, enabling/disabling, and removing agents through the UI writes the active YAML config file when the hub was started with a writable `.yaml` or `.yml` config path. Editing YAML by hand is still not watched or automatically reloaded; restart or use future import flows for broader changes.
+
+Conversation transcripts are not stored in YAML, JSON, or SQLite in the current implementation. Jute reads history from the selected A2A agent through `ListTasks` and `GetTask`; agents that do not expose those methods produce a history-unavailable state in the UI.
 
 ## Secrets
 
