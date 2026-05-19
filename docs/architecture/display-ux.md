@@ -133,11 +133,19 @@ Persisted widget layout fields:
 
 Implementation guidance:
 
-- choose a proven Svelte-compatible drag/resize grid library when implementation begins unless a small custom grid is clearly lower risk;
+- v1 uses a small custom Svelte grid editor for the built-in widget set;
+- revisit a proven Svelte-compatible drag/resize grid library only when Widget Packs or denser layouts make the custom editor too costly;
 - preserve layout through hub APIs, not browser local storage;
 - debounce layout saves while dragging;
 - commit the final layout when drag or resize ends;
 - keep keyboard alternatives for move and resize.
+
+Current v1 layout APIs:
+
+- `GET /api/v1/widgets/catalog`: built-in widget catalog.
+- `GET /api/v1/widgets/layout`: current device layout profile.
+- `PUT /api/v1/widgets/layout`: replace the current layout with a validated full layout document.
+- `POST /api/v1/widgets/layout/reset`: restore the default built-in layout.
 
 Widget additions can come from:
 

@@ -56,18 +56,13 @@ func main() {
 		log.Fatalf("initialize store: %v", err)
 	}
 
-	layout, err := runtimeStore.WidgetLayout(ctx, "")
-	if err != nil {
-		log.Fatalf("load widget layout: %v", err)
-	}
-
 	cfg := result.Config
 	cfg.Server = bootstrap.Server
 	if *listenOverride != "" {
 		cfg.Server.ListenAddress = *listenOverride
 	}
 
-	handler := server.NewWithSetupStatusAndLayout(cfg, version, result.Setup, layout)
+	handler := server.NewWithSetupStatusAndLayoutStore(cfg, version, result.Setup, runtimeStore)
 	log.Printf("jute data directory: %s", dataDir)
 	log.Printf("jute hub listening on http://%s", cfg.Server.ListenAddress)
 	if err := http.ListenAndServe(cfg.Server.ListenAddress, handler); err != nil {

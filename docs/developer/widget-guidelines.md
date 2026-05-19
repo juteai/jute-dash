@@ -150,6 +150,8 @@ Edit-mode rules:
 - widget actions must remain reachable by keyboard;
 - resize must snap to supported grid sizes;
 - layout changes persist through the hub, not browser local storage.
+- first-party built-in widgets are added from the hub-provided widget catalog;
+- v1 built-in widgets are single-instance unless the catalog explicitly says `allowMultiple: true`.
 
 ## Failure Behavior
 

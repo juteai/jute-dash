@@ -115,6 +115,20 @@ export type WidgetLayout = {
   widgets: WidgetInstance[];
 };
 
+export type WidgetCatalogItem = {
+  kind: string;
+  name: string;
+  description: string;
+  defaultTitle: string;
+  defaultW: number;
+  defaultH: number;
+  minW: number;
+  minH: number;
+  defaultSize: 'small' | 'medium' | 'wide' | 'large' | string;
+  overflow: 'clip' | 'scroll' | 'expand' | string;
+  allowMultiple: boolean;
+};
+
 export type WidgetInstance = {
   id: string;
   kind: WidgetKind;

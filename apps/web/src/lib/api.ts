@@ -1,4 +1,13 @@
-import type { Agent, DashboardData, HomeState, MessageResponse, PublicConfig, UserFacingIssue, WidgetLayout } from '$lib/types';
+import type {
+  Agent,
+  DashboardData,
+  HomeState,
+  MessageResponse,
+  PublicConfig,
+  UserFacingIssue,
+  WidgetCatalogItem,
+  WidgetLayout
+} from '$lib/types';
 
 const API_BASE = import.meta.env.VITE_JUTE_API_URL ?? 'http://127.0.0.1:8787';
 
@@ -39,6 +48,38 @@ export async function sendMessage(
     throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
   }
   return response.json() as Promise<MessageResponse>;
+}
+
+export async function getWidgetCatalog(fetcher: typeof fetch): Promise<WidgetCatalogItem[]> {
+  const response = await getJSON<{ widgets: WidgetCatalogItem[] }>(fetcher, '/api/v1/widgets/catalog');
+  return response.widgets;
+}
+
+export async function saveWidgetLayout(fetcher: typeof fetch, layout: WidgetLayout): Promise<WidgetLayout> {
+  const response = await fetcher(`${API_BASE}/api/v1/widgets/layout`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(layout)
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+  }
+  return response.json() as Promise<WidgetLayout>;
+}
+
+export async function resetWidgetLayout(fetcher: typeof fetch, profileId: string): Promise<WidgetLayout> {
+  const suffix = profileId ? `?profileId=${encodeURIComponent(profileId)}` : '';
+  const response = await fetcher(`${API_BASE}/api/v1/widgets/layout/reset${suffix}`, {
+    method: 'POST'
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+  }
+  return response.json() as Promise<WidgetLayout>;
 }
 
 export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {

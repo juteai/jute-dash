@@ -43,6 +43,20 @@ type WidgetLayout struct {
 	Widgets   []WidgetInstance `json:"widgets"`
 }
 
+type WidgetCatalogItem struct {
+	Kind          string `json:"kind"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	DefaultTitle  string `json:"defaultTitle"`
+	DefaultW      int    `json:"defaultW"`
+	DefaultH      int    `json:"defaultH"`
+	MinW          int    `json:"minW"`
+	MinH          int    `json:"minH"`
+	DefaultSize   string `json:"defaultSize"`
+	Overflow      string `json:"overflow"`
+	AllowMultiple bool   `json:"allowMultiple"`
+}
+
 type WidgetInstance struct {
 	ID       string         `json:"id"`
 	Kind     string         `json:"kind"`
@@ -57,6 +71,8 @@ type WidgetInstance struct {
 	Settings map[string]any `json:"settings"`
 	Visible  bool           `json:"visible"`
 }
+
+var ErrInvalidLayout = errors.New("invalid widget layout")
 
 func Open(dbPath string) (*Store, error) {
 	if strings.TrimSpace(dbPath) == "" {
@@ -299,6 +315,140 @@ ORDER BY sort_order, id`, profileID)
 	return layout, nil
 }
 
+func (s *Store) SaveWidgetLayout(ctx context.Context, layout WidgetLayout) (WidgetLayout, error) {
+	normalized, err := NormalizeWidgetLayout(layout)
+	if err != nil {
+		return WidgetLayout{}, err
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM layout_profiles WHERE id = ?`, normalized.ProfileID).Scan(&count); err != nil {
+		return WidgetLayout{}, fmt.Errorf("check layout profile: %w", err)
+	}
+	if count == 0 {
+		return WidgetLayout{}, fmt.Errorf("%w: layout profile not found", ErrInvalidLayout)
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return WidgetLayout{}, fmt.Errorf("begin save widget layout: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.ExecContext(ctx, `DELETE FROM widget_instances WHERE layout_profile_id = ?`, normalized.ProfileID); err != nil {
+		return WidgetLayout{}, fmt.Errorf("clear widget layout: %w", err)
+	}
+
+	now := nowUTC()
+	for i, widget := range normalized.Widgets {
+		settingsJSON, err := jsonString(widget.Settings)
+		if err != nil {
+			return WidgetLayout{}, fmt.Errorf("encode widget settings for %s: %w", widget.ID, err)
+		}
+		if _, err = tx.ExecContext(ctx, `
+INSERT INTO widget_instances (
+  id, kind, title, layout_profile_id, x, y, w, h, min_w, min_h, size, settings_json,
+  visible, sort_order, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			widget.ID,
+			widget.Kind,
+			widget.Title,
+			normalized.ProfileID,
+			widget.X,
+			widget.Y,
+			widget.W,
+			widget.H,
+			widget.MinW,
+			widget.MinH,
+			widget.Size,
+			settingsJSON,
+			boolToInt(widget.Visible),
+			i,
+			now,
+			now,
+		); err != nil {
+			return WidgetLayout{}, fmt.Errorf("save widget %s: %w", widget.ID, err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return WidgetLayout{}, fmt.Errorf("commit widget layout: %w", err)
+	}
+	return normalized, nil
+}
+
+func (s *Store) ResetWidgetLayout(ctx context.Context, profileID string) (WidgetLayout, error) {
+	layout := DefaultWidgetLayout()
+	if strings.TrimSpace(profileID) != "" {
+		layout.ProfileID = strings.TrimSpace(profileID)
+	}
+	return s.SaveWidgetLayout(ctx, layout)
+}
+
+func NormalizeWidgetLayout(layout WidgetLayout) (WidgetLayout, error) {
+	layout.ProfileID = strings.TrimSpace(layout.ProfileID)
+	if layout.ProfileID == "" {
+		return WidgetLayout{}, fmt.Errorf("%w: profileId is required", ErrInvalidLayout)
+	}
+	if layout.Widgets == nil {
+		layout.Widgets = []WidgetInstance{}
+	}
+
+	catalog := widgetCatalogByKind()
+	seenIDs := map[string]bool{}
+	seenKinds := map[string]bool{}
+
+	for i := range layout.Widgets {
+		widget := &layout.Widgets[i]
+		widget.ID = strings.TrimSpace(widget.ID)
+		widget.Kind = strings.TrimSpace(widget.Kind)
+		widget.Title = strings.TrimSpace(widget.Title)
+		widget.Size = strings.TrimSpace(widget.Size)
+
+		item, ok := catalog[widget.Kind]
+		if !ok {
+			return WidgetLayout{}, fmt.Errorf("%w: unknown widget kind %q", ErrInvalidLayout, widget.Kind)
+		}
+		if widget.ID == "" {
+			return WidgetLayout{}, fmt.Errorf("%w: widget id is required", ErrInvalidLayout)
+		}
+		if seenIDs[widget.ID] {
+			return WidgetLayout{}, fmt.Errorf("%w: duplicate widget id %q", ErrInvalidLayout, widget.ID)
+		}
+		seenIDs[widget.ID] = true
+		if !item.AllowMultiple && seenKinds[widget.Kind] {
+			return WidgetLayout{}, fmt.Errorf("%w: duplicate widget kind %q", ErrInvalidLayout, widget.Kind)
+		}
+		seenKinds[widget.Kind] = true
+		if widget.Title == "" {
+			widget.Title = item.DefaultTitle
+		}
+		if widget.Size == "" {
+			widget.Size = item.DefaultSize
+		}
+		if widget.MinW < item.MinW {
+			widget.MinW = item.MinW
+		}
+		if widget.MinH < item.MinH {
+			widget.MinH = item.MinH
+		}
+		if err := validateWidgetInstance(*widget); err != nil {
+			return WidgetLayout{}, err
+		}
+		if widget.Settings == nil {
+			widget.Settings = map[string]any{}
+		}
+		if _, err := json.Marshal(widget.Settings); err != nil {
+			return WidgetLayout{}, fmt.Errorf("%w: widget %s settings are not JSON serializable", ErrInvalidLayout, widget.ID)
+		}
+	}
+	return layout, nil
+}
+
 func DefaultWidgetLayout() WidgetLayout {
 	widgets := defaultWidgetInstances()
 	layout := WidgetLayout{
@@ -322,6 +472,50 @@ func DefaultWidgetLayout() WidgetLayout {
 		})
 	}
 	return layout
+}
+
+func WidgetCatalog() []WidgetCatalogItem {
+	return []WidgetCatalogItem{
+		{
+			Kind:          "date-time",
+			Name:          "Date & Time",
+			Description:   "Clock, date, timezone, and local display timing.",
+			DefaultTitle:  "Date & Time",
+			DefaultW:      2,
+			DefaultH:      1,
+			MinW:          1,
+			MinH:          1,
+			DefaultSize:   "wide",
+			Overflow:      "clip",
+			AllowMultiple: false,
+		},
+		{
+			Kind:          "weather",
+			Name:          "Weather",
+			Description:   "Current weather from the configured hub weather provider.",
+			DefaultTitle:  "Weather",
+			DefaultW:      2,
+			DefaultH:      1,
+			MinW:          1,
+			MinH:          1,
+			DefaultSize:   "wide",
+			Overflow:      "clip",
+			AllowMultiple: false,
+		},
+		{
+			Kind:          "chat-history",
+			Name:          "Chat History",
+			Description:   "Recent in-memory chat turns and active agent status.",
+			DefaultTitle:  "Chat History",
+			DefaultW:      2,
+			DefaultH:      2,
+			MinW:          1,
+			MinH:          1,
+			DefaultSize:   "medium",
+			Overflow:      "scroll",
+			AllowMultiple: false,
+		},
+	}
 }
 
 func (s *Store) configure(ctx context.Context) error {
@@ -577,6 +771,39 @@ func defaultWidgetInstances() []defaultWidgetInstance {
 		{id: "date-time", kind: "date-time", title: "Date & Time", x: 0, y: 0, w: 2, h: 1, minW: 1, minH: 1, size: "wide", visible: true},
 		{id: "weather", kind: "weather", title: "Weather", x: 2, y: 0, w: 2, h: 1, minW: 1, minH: 1, size: "wide", visible: true},
 		{id: "chat-history", kind: "chat-history", title: "Chat History", x: 0, y: 1, w: 2, h: 2, minW: 1, minH: 1, size: "medium", visible: true},
+	}
+}
+
+func widgetCatalogByKind() map[string]WidgetCatalogItem {
+	items := WidgetCatalog()
+	byKind := make(map[string]WidgetCatalogItem, len(items))
+	for _, item := range items {
+		byKind[item.Kind] = item
+	}
+	return byKind
+}
+
+func validateWidgetInstance(widget WidgetInstance) error {
+	if widget.X < 0 || widget.Y < 0 {
+		return fmt.Errorf("%w: widget %s position must be non-negative", ErrInvalidLayout, widget.ID)
+	}
+	if widget.W < 1 || widget.H < 1 || widget.MinW < 1 || widget.MinH < 1 {
+		return fmt.Errorf("%w: widget %s dimensions must be positive", ErrInvalidLayout, widget.ID)
+	}
+	if widget.W < widget.MinW || widget.H < widget.MinH {
+		return fmt.Errorf("%w: widget %s is smaller than its minimum size", ErrInvalidLayout, widget.ID)
+	}
+	if widget.W > 4 || widget.MinW > 4 || widget.X+widget.W > 4 {
+		return fmt.Errorf("%w: widget %s exceeds dashboard column bounds", ErrInvalidLayout, widget.ID)
+	}
+	if widget.H > 6 || widget.MinH > 6 || widget.Y > 99 {
+		return fmt.Errorf("%w: widget %s exceeds dashboard row bounds", ErrInvalidLayout, widget.ID)
+	}
+	switch widget.Size {
+	case "small", "medium", "wide", "large":
+		return nil
+	default:
+		return fmt.Errorf("%w: widget %s has unsupported size %q", ErrInvalidLayout, widget.ID, widget.Size)
 	}
 }
 

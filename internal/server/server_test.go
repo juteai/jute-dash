@@ -221,6 +221,129 @@ func TestWidgetLayoutEndpoint(t *testing.T) {
 	}
 }
 
+func TestWidgetCatalogEndpoint(t *testing.T) {
+	handler := New(testConfig(), "test")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/widgets/catalog", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var body struct {
+		Widgets []store.WidgetCatalogItem `json:"widgets"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Widgets) != 3 || body.Widgets[0].Kind != "date-time" {
+		t.Fatalf("unexpected catalog response: %+v", body.Widgets)
+	}
+}
+
+func TestWidgetLayoutPutPersistsWithStore(t *testing.T) {
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, runtimeStore)
+
+	layout := store.DefaultWidgetLayout()
+	layout.Widgets[0].X = 1
+	layout.Widgets[1].Visible = false
+	payload, err := json.Marshal(layout)
+	if err != nil {
+		t.Fatalf("marshal layout: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/widgets/layout", bytes.NewReader(payload))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	reloaded, err := runtimeStore.WidgetLayout(context.Background(), "")
+	if err != nil {
+		t.Fatalf("WidgetLayout() error = %v", err)
+	}
+	if reloaded.Widgets[0].X != 1 || reloaded.Widgets[1].Visible {
+		t.Fatalf("layout did not persist: %+v", reloaded.Widgets)
+	}
+}
+
+func TestWidgetLayoutPutRejectsInvalidLayout(t *testing.T) {
+	handler := New(testConfig(), "test")
+	payload := bytes.NewBufferString(`{"profileId":"default-dashboard","widgets":[{"id":"bad","kind":"missing","title":"Bad","x":0,"y":0,"w":1,"h":1,"minW":1,"minH":1,"size":"small","settings":{},"visible":true}]}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/widgets/layout", payload)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["error"] != "invalid widget layout" {
+		t.Fatalf("unexpected error response: %+v", body)
+	}
+}
+
+func TestWidgetLayoutResetEndpoint(t *testing.T) {
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+	layout := store.DefaultWidgetLayout()
+	layout.Widgets[0].Visible = false
+	if _, err := runtimeStore.SaveWidgetLayout(context.Background(), layout); err != nil {
+		t.Fatalf("SaveWidgetLayout() error = %v", err)
+	}
+	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, runtimeStore)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/widgets/layout/reset", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	var body store.WidgetLayout
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Widgets) != 3 || !body.Widgets[0].Visible {
+		t.Fatalf("unexpected reset layout: %+v", body)
+	}
+}
+
+func TestWidgetLayoutPutReturnsSafeStoreFailure(t *testing.T) {
+	layout := store.DefaultWidgetLayout()
+	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, &failingLayoutStore{
+		layout: layout,
+		err:    errors.New("sqlite path /private/raw/details failed"),
+	})
+	payload, err := json.Marshal(layout)
+	if err != nil {
+		t.Fatalf("marshal layout: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/widgets/layout", bytes.NewReader(payload))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status 500, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["error"] != "widget layout could not be saved" {
+		t.Fatalf("unexpected error response: %+v", body)
+	}
+}
+
 func TestStoreBackedConfigWorksWithExistingEndpoints(t *testing.T) {
 	runtimeStore, err := store.Open(filepath.Join(t.TempDir(), "jute.db"))
 	if err != nil {
@@ -278,6 +401,35 @@ func testConfig() config.Config {
 		},
 	}
 	return cfg
+}
+
+func openInitializedServerStore(t *testing.T) *store.Store {
+	t.Helper()
+	runtimeStore, err := store.Open(filepath.Join(t.TempDir(), "jute.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if _, err := runtimeStore.Initialize(context.Background(), testConfig(), true); err != nil {
+		t.Fatalf("initialize store: %v", err)
+	}
+	return runtimeStore
+}
+
+type failingLayoutStore struct {
+	layout store.WidgetLayout
+	err    error
+}
+
+func (s *failingLayoutStore) WidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error) {
+	return s.layout, nil
+}
+
+func (s *failingLayoutStore) SaveWidgetLayout(ctx context.Context, layout store.WidgetLayout) (store.WidgetLayout, error) {
+	return store.WidgetLayout{}, s.err
+}
+
+func (s *failingLayoutStore) ResetWidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error) {
+	return store.WidgetLayout{}, s.err
 }
 
 type weatherProviderFunc func(context.Context, config.WeatherConfig) weather.State

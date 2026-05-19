@@ -5,14 +5,29 @@
   import DashboardView from '$lib/components/display/DashboardView.svelte';
   import OfflineState from '$lib/components/display/OfflineState.svelte';
   import StatusRibbon from '$lib/components/display/StatusRibbon.svelte';
-  import { getDashboard, sendMessage } from '$lib/api';
+  import { getDashboard, getWidgetCatalog, resetWidgetLayout, saveWidgetLayout, sendMessage } from '$lib/api';
   import { firstAvailableAgent, getAgentAvailability, isAgentAvailable } from '$lib/agents';
-  import type { Agent, ChatMessage, ChatState, DashboardData, DisplayMode, UserFacingIssue } from '$lib/types';
+  import type {
+    Agent,
+    ChatMessage,
+    ChatState,
+    DashboardData,
+    DisplayMode,
+    UserFacingIssue,
+    WidgetCatalogItem,
+    WidgetInstance,
+    WidgetLayout
+  } from '$lib/types';
   import { cn } from '$lib/utils';
 
   export let data: DashboardData;
 
   let dashboard: DashboardData = data;
+  let dashboardForView: DashboardData = data;
+  let draftLayout: WidgetLayout | undefined;
+  let widgetCatalog: WidgetCatalogItem[] = [];
+  let editIssue = '';
+  let savingLayout = false;
   let mode: DisplayMode = 'dashboard';
   let chatState: ChatState = 'idle';
   let messages: ChatMessage[] = [];
@@ -36,6 +51,10 @@
   $: hasConnected = hasConnected || dashboard.connectionState === 'connected';
   $: showStartupOffline = !hasConnected && dashboard.connectionState === 'offline';
   $: activeTheme = resolveTheme(dashboard.config.display.theme, prefersDark);
+  $: dashboardForView = {
+    ...dashboard,
+    layout: mode === 'edit' && draftLayout ? draftLayout : dashboard.layout
+  };
 
   onMount(() => {
     const query = window.matchMedia('(prefers-color-scheme: dark)');
@@ -75,12 +94,177 @@
     mode = 'dashboard';
   }
 
-  function enterEdit() {
+  async function enterEdit() {
+    draftLayout = cloneLayout(dashboard.layout);
+    editIssue = '';
     mode = 'edit';
+    if (widgetCatalog.length === 0) {
+      try {
+        widgetCatalog = await getWidgetCatalog(fetch);
+        markConnected();
+      } catch {
+        editIssue = 'Widget catalog is unavailable. Existing widgets can still be adjusted.';
+        markIssue('degraded', {
+          code: 'widget_catalog_unavailable',
+          severity: 'warning',
+          title: 'Widget catalog unavailable',
+          message: 'Jute could not load the widget catalog.'
+        });
+      }
+    }
   }
 
-  function exitEdit() {
+  async function saveEdit() {
+    if (!draftLayout || savingLayout || dashboard.stale) {
+      return;
+    }
+    savingLayout = true;
+    editIssue = '';
+    try {
+      const saved = await saveWidgetLayout(fetch, packLayout(draftLayout));
+      dashboard = {
+        ...dashboard,
+        layout: saved,
+        connectionState: 'connected',
+        stale: false,
+        issue: undefined,
+        loadedAt: new Date().toISOString()
+      };
+      draftLayout = undefined;
+      mode = 'dashboard';
+    } catch {
+      editIssue = 'Layout was not saved. Check that the hub is running, then try again.';
+      markIssue('degraded', {
+        code: 'layout_save_failed',
+        severity: 'warning',
+        title: 'Layout not saved',
+        message: 'Jute could not save the dashboard layout.'
+      });
+    } finally {
+      savingLayout = false;
+    }
+  }
+
+  function cancelEdit() {
+    draftLayout = undefined;
+    editIssue = '';
     mode = 'dashboard';
+  }
+
+  async function resetLayout() {
+    if (savingLayout || dashboard.stale) {
+      return;
+    }
+    savingLayout = true;
+    editIssue = '';
+    try {
+      const reset = await resetWidgetLayout(fetch, dashboardForView.layout.profileId);
+      dashboard = {
+        ...dashboard,
+        layout: reset,
+        connectionState: 'connected',
+        stale: false,
+        issue: undefined,
+        loadedAt: new Date().toISOString()
+      };
+      draftLayout = cloneLayout(reset);
+    } catch {
+      editIssue = 'Default layout could not be restored.';
+      markIssue('degraded', {
+        code: 'layout_reset_failed',
+        severity: 'warning',
+        title: 'Layout not reset',
+        message: 'Jute could not reset the dashboard layout.'
+      });
+    } finally {
+      savingLayout = false;
+    }
+  }
+
+  function addWidget(kind: string) {
+    if (!draftLayout) {
+      return;
+    }
+    const item = widgetCatalog.find((candidate) => candidate.kind === kind);
+    if (!item) {
+      editIssue = 'That widget is not available in this display build.';
+      return;
+    }
+
+    const layout = cloneLayout(draftLayout);
+    const targetRow = nextWidgetRow(layout);
+    let widget = layout.widgets.find((candidate) => candidate.kind === item.kind);
+    if (widget && !item.allowMultiple) {
+      widget.visible = true;
+      widget.title = widget.title || item.defaultTitle;
+      widget.w = item.defaultW;
+      widget.h = item.defaultH;
+      widget.minW = item.minW;
+      widget.minH = item.minH;
+      widget.size = item.defaultSize;
+    } else {
+      widget = {
+        id: uniqueWidgetId(layout, item.kind),
+        kind: item.kind,
+        title: item.defaultTitle,
+        x: 0,
+        y: nextWidgetRow(layout),
+        w: item.defaultW,
+        h: item.defaultH,
+        minW: item.minW,
+        minH: item.minH,
+        size: item.defaultSize,
+        settings: {},
+        visible: true
+      };
+      layout.widgets = [...layout.widgets, widget];
+    }
+    widget.x = 0;
+    widget.y = targetRow;
+    draftLayout = packLayout(layout, widget.id);
+    editIssue = '';
+  }
+
+  function moveWidget(widgetId: string, x: number, y: number) {
+    if (!draftLayout) {
+      return;
+    }
+    const layout = cloneLayout(draftLayout);
+    const widget = layout.widgets.find((item) => item.id === widgetId);
+    if (!widget) {
+      return;
+    }
+    widget.x = x;
+    widget.y = y;
+    draftLayout = packLayout(layout, widgetId);
+  }
+
+  function resizeWidget(widgetId: string, w: number, h: number) {
+    if (!draftLayout) {
+      return;
+    }
+    const layout = cloneLayout(draftLayout);
+    const widget = layout.widgets.find((item) => item.id === widgetId);
+    if (!widget) {
+      return;
+    }
+    widget.w = w;
+    widget.h = h;
+    widget.size = sizeFromDimensions(w, h);
+    draftLayout = packLayout(layout, widgetId);
+  }
+
+  function removeWidget(widgetId: string) {
+    if (!draftLayout) {
+      return;
+    }
+    const layout = cloneLayout(draftLayout);
+    const widget = layout.widgets.find((item) => item.id === widgetId);
+    if (!widget) {
+      return;
+    }
+    widget.visible = false;
+    draftLayout = packLayout(layout);
   }
 
   function startLongPress(event: PointerEvent) {
@@ -93,7 +277,7 @@
     }
     clearLongPress();
     longPressTimer = window.setTimeout(() => {
-      mode = 'edit';
+      void enterEdit();
     }, 650);
   }
 
@@ -228,6 +412,110 @@
     }
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
+
+  function cloneLayout(layout: WidgetLayout): WidgetLayout {
+    return JSON.parse(JSON.stringify(layout)) as WidgetLayout;
+  }
+
+  function uniqueWidgetId(layout: WidgetLayout, kind: string) {
+    const base = kind.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
+    if (!layout.widgets.some((widget) => widget.id === base)) {
+      return base;
+    }
+    let counter = 2;
+    while (layout.widgets.some((widget) => widget.id === `${base}-${counter}`)) {
+      counter += 1;
+    }
+    return `${base}-${counter}`;
+  }
+
+  function nextWidgetRow(layout: WidgetLayout) {
+    return layout.widgets.reduce((row, widget) => (widget.visible ? Math.max(row, widget.y + widget.h) : row), 0);
+  }
+
+  function sizeFromDimensions(w: number, h: number): WidgetInstance['size'] {
+    if (w >= 3 || h >= 3) {
+      return 'large';
+    }
+    if (w >= 2 && h >= 2) {
+      return 'medium';
+    }
+    if (w >= 2) {
+      return 'wide';
+    }
+    return 'small';
+  }
+
+  function packLayout(layout: WidgetLayout, activeId = ''): WidgetLayout {
+    const next = cloneLayout(layout);
+    const visible = next.widgets.filter((widget) => widget.visible);
+    const ordered = visible.sort((a, b) => {
+      if (a.id === activeId) {
+        return -1;
+      }
+      if (b.id === activeId) {
+        return 1;
+      }
+      return a.y - b.y || a.x - b.x || a.id.localeCompare(b.id);
+    });
+    const occupied: boolean[][] = [];
+
+    for (const widget of ordered) {
+      clampWidget(widget);
+      if (widget.id === activeId) {
+        occupy(occupied, widget);
+        continue;
+      }
+      const spot = firstOpenSpot(occupied, widget.w, widget.h);
+      widget.x = spot.x;
+      widget.y = spot.y;
+      occupy(occupied, widget);
+    }
+    return next;
+  }
+
+  function clampWidget(widget: WidgetInstance) {
+    const columns = 4;
+    widget.minW = Math.min(Math.max(widget.minW || 1, 1), columns);
+    widget.minH = Math.min(Math.max(widget.minH || 1, 1), 6);
+    widget.w = Math.min(Math.max(widget.w || widget.minW, widget.minW), columns);
+    widget.h = Math.min(Math.max(widget.h || widget.minH, widget.minH), 6);
+    widget.x = Math.min(Math.max(widget.x, 0), columns - widget.w);
+    widget.y = Math.min(Math.max(widget.y, 0), 99 - widget.h + 1);
+    widget.size = sizeFromDimensions(widget.w, widget.h);
+    widget.settings = widget.settings ?? {};
+  }
+
+  function firstOpenSpot(occupied: boolean[][], w: number, h: number) {
+    for (let y = 0; y < 100; y += 1) {
+      for (let x = 0; x <= 4 - w; x += 1) {
+        if (canPlace(occupied, x, y, w, h)) {
+          return { x, y };
+        }
+      }
+    }
+    return { x: 0, y: 99 - h + 1 };
+  }
+
+  function canPlace(occupied: boolean[][], x: number, y: number, w: number, h: number) {
+    for (let row = y; row < y + h; row += 1) {
+      for (let column = x; column < x + w; column += 1) {
+        if (occupied[row]?.[column]) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function occupy(occupied: boolean[][], widget: WidgetInstance) {
+    for (let row = widget.y; row < widget.y + widget.h; row += 1) {
+      occupied[row] = occupied[row] ?? [];
+      for (let column = widget.x; column < widget.x + widget.w; column += 1) {
+        occupied[row][column] = true;
+      }
+    }
+  }
 </script>
 
 <svelte:head>
@@ -260,16 +548,25 @@
     />
 
     <DashboardView
-      data={dashboard}
+      data={dashboardForView}
       editMode={mode === 'edit'}
       {messages}
       theme={activeTheme}
       stale={dashboard.stale}
       selectedAgent={selectedAgent}
       selectedAvailability={selectedAvailability}
+      {widgetCatalog}
+      {editIssue}
+      {savingLayout}
       onOpenChat={() => openChat()}
       onEnterEdit={enterEdit}
-      onExitEdit={exitEdit}
+      onSaveEdit={saveEdit}
+      onCancelEdit={cancelEdit}
+      onResetLayout={resetLayout}
+      onAddWidget={addWidget}
+      onMoveWidget={moveWidget}
+      onResizeWidget={resizeWidget}
+      onRemoveWidget={removeWidget}
     />
 
     {#if mode === 'chat'}

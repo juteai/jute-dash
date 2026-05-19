@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { MessageCircle, Mic, Pencil, Settings, X } from 'lucide-svelte';
+  import { MessageCircle, Mic, Pencil, RotateCcw, Settings, X } from 'lucide-svelte';
   import DashboardGrid from '$lib/components/display/DashboardGrid.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
-  import type { Agent, AgentAvailability, ChatMessage, DashboardData } from '$lib/types';
+  import type { Agent, AgentAvailability, ChatMessage, DashboardData, WidgetCatalogItem } from '$lib/types';
 
   export let data: DashboardData;
   export let editMode = false;
@@ -12,9 +12,31 @@
   export let stale = false;
   export let selectedAgent: Agent | undefined;
   export let selectedAvailability: AgentAvailability = 'unknown';
+  export let widgetCatalog: WidgetCatalogItem[] = [];
+  export let editIssue = '';
+  export let savingLayout = false;
   export let onOpenChat: () => void = () => {};
   export let onEnterEdit: () => void = () => {};
-  export let onExitEdit: () => void = () => {};
+  export let onSaveEdit: () => void = () => {};
+  export let onCancelEdit: () => void = () => {};
+  export let onResetLayout: () => void = () => {};
+  export let onAddWidget: (kind: string) => void = () => {};
+  export let onMoveWidget: (widgetId: string, x: number, y: number) => void = () => {};
+  export let onResizeWidget: (widgetId: string, w: number, h: number) => void = () => {};
+  export let onRemoveWidget: (widgetId: string) => void = () => {};
+
+  let showCatalog = false;
+
+  $: saveDisabled = savingLayout || stale;
+
+  function canAddWidget(item: WidgetCatalogItem) {
+    return item.allowMultiple || !data.layout.widgets.some((widget) => widget.kind === item.kind && widget.visible);
+  }
+
+  function addWidget(kind: string) {
+    onAddWidget(kind);
+    showCatalog = false;
+  }
 </script>
 
 <section class="dashboard-view" aria-label="Jute dashboard">
@@ -33,9 +55,12 @@
 
     <div class="dashboard-actions">
       {#if editMode}
-        <Button variant="outline" on:click={onExitEdit}>
+        <Button variant="outline" disabled={saveDisabled} on:click={onSaveEdit}>
+          <span>{savingLayout ? 'Saving' : 'Done'}</span>
+        </Button>
+        <Button variant="ghost" disabled={savingLayout} on:click={onCancelEdit}>
           <X size={17} />
-          <span>Done</span>
+          <span>Cancel</span>
         </Button>
       {:else}
         <IconButton label="Open chat" variant="outline" on:click={onOpenChat}>
@@ -58,10 +83,52 @@
     <div class="edit-toolbar" role="status">
       <div>
         <strong>Edit dashboard</strong>
-        <span>Move, resize, add, and configure controls land in the next layout slice.</span>
+        <span>
+          {#if editIssue}
+            {editIssue}
+          {:else if stale}
+            Reconnect to the hub before saving layout changes.
+          {:else}
+            Drag handles, use keyboard buttons, add widgets, then save.
+          {/if}
+        </span>
       </div>
-      <Button size="sm" variant="secondary">Add widget</Button>
+      <div class="edit-toolbar-actions">
+        <Button size="sm" variant="secondary" disabled={savingLayout || stale} on:click={() => (showCatalog = !showCatalog)}>Add widget</Button>
+        <Button size="sm" variant="outline" disabled={savingLayout || stale} on:click={onResetLayout}>
+          <RotateCcw size={16} />
+          <span>Reset</span>
+        </Button>
+      </div>
     </div>
+
+    {#if showCatalog}
+      <div class="widget-catalog-sheet" aria-label="Widget catalog">
+        <div class="widget-catalog-header">
+          <strong>Add widget</strong>
+          <IconButton label="Close widget catalog" variant="ghost" on:click={() => (showCatalog = false)}>
+            <X size={18} />
+          </IconButton>
+        </div>
+        <div class="widget-catalog-grid">
+          {#each widgetCatalog as item}
+            <article class="widget-catalog-item">
+              <div>
+                <strong>{item.name}</strong>
+                <p>{item.description}</p>
+                <span>{item.defaultW}x{item.defaultH} · {item.defaultSize}</span>
+              </div>
+              <Button size="sm" disabled={!canAddWidget(item)} on:click={() => addWidget(item.kind)}>
+                {canAddWidget(item) ? 'Add' : 'Added'}
+              </Button>
+            </article>
+          {/each}
+          {#if widgetCatalog.length === 0}
+            <p class="widget-catalog-empty">Widget catalog is unavailable.</p>
+          {/if}
+        </div>
+      </div>
+    {/if}
   {/if}
 
   <DashboardGrid
@@ -72,5 +139,8 @@
     {selectedAgent}
     {selectedAvailability}
     {onOpenChat}
+    {onMoveWidget}
+    {onResizeWidget}
+    {onRemoveWidget}
   />
 </section>

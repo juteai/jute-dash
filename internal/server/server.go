@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -17,14 +18,21 @@ import (
 )
 
 type Server struct {
-	cfg      config.Config
-	registry registry.Registry
-	weather  weather.Provider
-	messages a2aclient.MessageSender
-	setup    store.SetupStatus
-	layout   store.WidgetLayout
-	started  time.Time
-	version  string
+	cfg         config.Config
+	registry    registry.Registry
+	weather     weather.Provider
+	messages    a2aclient.MessageSender
+	setup       store.SetupStatus
+	layout      store.WidgetLayout
+	layoutStore WidgetLayoutStore
+	started     time.Time
+	version     string
+}
+
+type WidgetLayoutStore interface {
+	WidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error)
+	SaveWidgetLayout(ctx context.Context, layout store.WidgetLayout) (store.WidgetLayout, error)
+	ResetWidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error)
 }
 
 type HealthResponse struct {
@@ -50,11 +58,11 @@ func New(cfg config.Config, version string) http.Handler {
 }
 
 func NewWithWeatherProvider(cfg config.Config, version string, weatherProvider weather.Provider) http.Handler {
-	return newServer(cfg, version, weatherProvider, nil, store.SetupStatus{Complete: true, Missing: []string{}}, store.DefaultWidgetLayout())
+	return newServer(cfg, version, weatherProvider, nil, store.SetupStatus{Complete: true, Missing: []string{}}, store.DefaultWidgetLayout(), nil)
 }
 
 func NewWithMessageSender(cfg config.Config, version string, messageSender a2aclient.MessageSender) http.Handler {
-	return newServer(cfg, version, weather.NewClient(), messageSender, store.SetupStatus{Complete: true, Missing: []string{}}, store.DefaultWidgetLayout())
+	return newServer(cfg, version, weather.NewClient(), messageSender, store.SetupStatus{Complete: true, Missing: []string{}}, store.DefaultWidgetLayout(), nil)
 }
 
 func NewWithSetupStatus(cfg config.Config, version string, setup store.SetupStatus) http.Handler {
@@ -62,10 +70,20 @@ func NewWithSetupStatus(cfg config.Config, version string, setup store.SetupStat
 }
 
 func NewWithSetupStatusAndLayout(cfg config.Config, version string, setup store.SetupStatus, layout store.WidgetLayout) http.Handler {
-	return newServer(cfg, version, weather.NewClient(), nil, setup, layout)
+	return newServer(cfg, version, weather.NewClient(), nil, setup, layout, nil)
 }
 
-func newServer(cfg config.Config, version string, weatherProvider weather.Provider, messageSender a2aclient.MessageSender, setup store.SetupStatus, layout store.WidgetLayout) http.Handler {
+func NewWithSetupStatusAndLayoutStore(cfg config.Config, version string, setup store.SetupStatus, layoutStore WidgetLayoutStore) http.Handler {
+	layout := store.DefaultWidgetLayout()
+	if layoutStore != nil {
+		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
+			layout = loaded
+		}
+	}
+	return newServer(cfg, version, weather.NewClient(), nil, setup, layout, layoutStore)
+}
+
+func newServer(cfg config.Config, version string, weatherProvider weather.Provider, messageSender a2aclient.MessageSender, setup store.SetupStatus, layout store.WidgetLayout, layoutStore WidgetLayoutStore) http.Handler {
 	if weatherProvider == nil {
 		weatherProvider = weather.NewClient()
 	}
@@ -73,14 +91,15 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 		messageSender = a2aclient.NewJSONRPCClient()
 	}
 	server := &Server{
-		cfg:      cfg,
-		registry: registry.New(cfg.Agents),
-		weather:  weatherProvider,
-		messages: messageSender,
-		setup:    normalizeSetupStatus(setup),
-		layout:   normalizeWidgetLayout(layout),
-		started:  time.Now().UTC(),
-		version:  version,
+		cfg:         cfg,
+		registry:    registry.New(cfg.Agents),
+		weather:     weatherProvider,
+		messages:    messageSender,
+		setup:       normalizeSetupStatus(setup),
+		layout:      normalizeWidgetLayout(layout),
+		layoutStore: layoutStore,
+		started:     time.Now().UTC(),
+		version:     version,
 	}
 
 	mux := http.NewServeMux()
@@ -90,7 +109,9 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 	mux.HandleFunc("/api/v1/agents", server.handleAgents)
 	mux.HandleFunc("/api/v1/messages", server.handleMessages)
 	mux.HandleFunc("/api/v1/setup/status", server.handleSetupStatus)
+	mux.HandleFunc("/api/v1/widgets/catalog", server.handleWidgetCatalog)
 	mux.HandleFunc("/api/v1/widgets/layout", server.handleWidgetLayout)
+	mux.HandleFunc("/api/v1/widgets/layout/reset", server.handleWidgetLayoutReset)
 
 	return withCommonHeaders(mux)
 }
@@ -158,11 +179,105 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.setup)
 }
 
-func (s *Server) handleWidgetLayout(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleWidgetCatalog(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.layout)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"widgets": store.WidgetCatalog(),
+	})
+}
+
+func (s *Server) handleWidgetLayout(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		layout, err := s.currentWidgetLayout(r.Context(), r.URL.Query().Get("profileId"))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "widget layout is unavailable")
+			return
+		}
+		writeJSON(w, http.StatusOK, layout)
+	case http.MethodPut:
+		var layout store.WidgetLayout
+		if err := json.NewDecoder(r.Body).Decode(&layout); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON request body")
+			return
+		}
+		if strings.TrimSpace(layout.ProfileID) == "" {
+			layout.ProfileID = s.layout.ProfileID
+		}
+		saved, err := s.saveWidgetLayout(r.Context(), layout)
+		if err != nil {
+			if errors.Is(err, store.ErrInvalidLayout) {
+				writeError(w, http.StatusBadRequest, "invalid widget layout")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "widget layout could not be saved")
+			return
+		}
+		writeJSON(w, http.StatusOK, saved)
+	default:
+		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut)
+	}
+}
+
+func (s *Server) handleWidgetLayoutReset(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	profileID := strings.TrimSpace(r.URL.Query().Get("profileId"))
+	if profileID == "" {
+		profileID = s.layout.ProfileID
+	}
+	layout := store.DefaultWidgetLayout()
+	layout.ProfileID = profileID
+
+	var saved store.WidgetLayout
+	var err error
+	if s.layoutStore != nil {
+		saved, err = s.layoutStore.ResetWidgetLayout(r.Context(), profileID)
+	} else {
+		saved, err = store.NormalizeWidgetLayout(layout)
+		if err == nil {
+			s.layout = saved
+		}
+	}
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidLayout) {
+			writeError(w, http.StatusBadRequest, "invalid widget layout")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "widget layout could not be reset")
+		return
+	}
+	writeJSON(w, http.StatusOK, saved)
+}
+
+func (s *Server) currentWidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error) {
+	if s.layoutStore == nil {
+		return normalizeWidgetLayout(s.layout), nil
+	}
+	layout, err := s.layoutStore.WidgetLayout(ctx, profileID)
+	if err != nil {
+		return store.WidgetLayout{}, err
+	}
+	s.layout = normalizeWidgetLayout(layout)
+	return s.layout, nil
+}
+
+func (s *Server) saveWidgetLayout(ctx context.Context, layout store.WidgetLayout) (store.WidgetLayout, error) {
+	var saved store.WidgetLayout
+	var err error
+	if s.layoutStore != nil {
+		saved, err = s.layoutStore.SaveWidgetLayout(ctx, layout)
+	} else {
+		saved, err = store.NormalizeWidgetLayout(layout)
+	}
+	if err != nil {
+		return store.WidgetLayout{}, err
+	}
+	s.layout = normalizeWidgetLayout(saved)
+	return s.layout, nil
 }
 
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
@@ -262,7 +377,7 @@ func agentBearerToken(agent config.AgentConfig) (string, bool) {
 func withCommonHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		w.Header().Set("Cache-Control", "no-store")
 		if r.Method == http.MethodOptions {
@@ -277,9 +392,13 @@ func requireMethod(w http.ResponseWriter, r *http.Request, method string) bool {
 	if r.Method == method {
 		return true
 	}
-	w.Header().Set("Allow", method)
-	writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	writeMethodNotAllowed(w, method)
 	return false
+}
+
+func writeMethodNotAllowed(w http.ResponseWriter, allow string) {
+	w.Header().Set("Allow", allow)
+	writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

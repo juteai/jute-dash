@@ -194,7 +194,7 @@ button {
 
 .dashboard-view {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   height: 100%;
   padding: 16px;
   gap: 12px;
@@ -270,6 +270,14 @@ button {
   background: var(--surface-muted);
 }
 
+.edit-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .edit-toolbar span {
   display: block;
   margin-top: 2px;
@@ -277,8 +285,58 @@ button {
   font-size: 0.86rem;
 }
 
+.widget-catalog-sheet {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 12px 40px var(--shadow);
+}
+
+.widget-catalog-header,
+.widget-catalog-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.widget-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.widget-catalog-item {
+  align-items: flex-start;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.widget-catalog-item p,
+.widget-catalog-item span,
+.widget-catalog-empty {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.widget-catalog-item p {
+  margin: 4px 0 8px;
+  line-height: 1.35;
+}
+
+.widget-catalog-item span {
+  font-weight: 700;
+}
+
 .dashboard-canvas {
   position: relative;
+  grid-row: -2 / -1;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-auto-flow: dense;
@@ -345,6 +403,8 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .widget-frame-body {
@@ -376,6 +436,10 @@ select:focus-visible {
   border-radius: 8px;
   background: var(--surface-muted);
   color: var(--foreground);
+}
+
+.widget-frame-handle--danger {
+  color: var(--danger);
 }
 
 .widget-resize-handle {
@@ -961,6 +1025,10 @@ select {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .widget-catalog-grid {
+    grid-template-columns: 1fr;
+  }
+
   .dashboard-widget-slot {
     grid-column: span 2 !important;
   }
@@ -995,6 +1063,7 @@ select {
   }
 
   .dashboard-actions,
+  .edit-toolbar-actions,
   .chat-controls {
     width: 100%;
     justify-content: flex-start;
