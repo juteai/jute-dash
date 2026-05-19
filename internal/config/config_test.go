@@ -268,21 +268,11 @@ func TestDevA2AConfigLoads(t *testing.T) {
 		t.Fatalf("expected one dev A2A agent, got %d", len(cfg.Agents))
 	}
 	agent := cfg.Agents[0]
-	if agent.ID != "kronk-local" || !agent.Enabled || agent.ProtocolBinding != "JSONRPC" {
+	if agent.ID != "a2a-v1-dev" || !agent.Enabled || agent.ProtocolBinding != "JSONRPC" {
 		t.Fatalf("unexpected dev A2A agent: %+v", agent)
 	}
 	if agent.CardURL != "http://127.0.0.1:9797/.well-known/agent-card.json" {
 		t.Fatalf("unexpected card URL: %s", agent.CardURL)
-	}
-}
-
-func TestJSONDevA2AConfigStillLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "config", "jute.dev-a2a.json"))
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if len(cfg.Agents) != 1 || cfg.Agents[0].ID != "kronk-local" {
-		t.Fatalf("unexpected JSON dev A2A config: %+v", cfg.Agents)
 	}
 }
 

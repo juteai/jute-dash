@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	jsonRPCVersion     = "2.0"
-	methodMessageSend  = "message/send"
-	methodSendMessage  = "SendMessage"
-	methodNotFoundCode = -32601
+	jsonRPCVersion             = "2.0"
+	methodSendMessage          = "SendMessage"
+	methodSendStreamingMessage = "SendStreamingMessage"
+	methodNotFoundCode         = -32601
 )
 
 var (
@@ -30,18 +30,40 @@ var (
 type SendMessageRequest struct {
 	EndpointURL     string
 	ProtocolBinding string
+	ProtocolVersion string
 	Text            string
 	BearerToken     string
+	ConversationID  string
+	TaskID          string
+	Extensions      []string
+	Metadata        map[string]any
 }
 
 type SendMessageResult struct {
 	ConversationID string
+	TaskID         string
 	Status         string
 	Text           string
 }
 
 type MessageSender interface {
 	SendMessage(ctx context.Context, req SendMessageRequest) (SendMessageResult, error)
+}
+
+type StreamEvent struct {
+	ConversationID string
+	TaskID         string
+	Status         string
+	Text           string
+	Append         bool
+	Terminal       bool
+}
+
+type StreamHandler func(StreamEvent) error
+
+type StreamingMessageSender interface {
+	SendMessage(ctx context.Context, req SendMessageRequest) (SendMessageResult, error)
+	StreamMessage(ctx context.Context, req SendMessageRequest, handler StreamHandler) error
 }
 
 type JSONRPCClient struct {
@@ -65,12 +87,7 @@ func (c *JSONRPCClient) SendMessage(ctx context.Context, req SendMessageRequest)
 		return SendMessageResult{}, errors.New("a2a message text is required")
 	}
 
-	result, err := c.send(ctx, req, methodMessageSend)
-	var rpcErr *RPCError
-	if errors.As(err, &rpcErr) && rpcErr.Code == methodNotFoundCode {
-		return c.send(ctx, req, methodSendMessage)
-	}
-	return result, err
+	return c.send(ctx, req)
 }
 
 type RPCError struct {
@@ -84,41 +101,17 @@ func (e *RPCError) Error() string {
 	return ErrAgentRPCFailure.Error()
 }
 
-func (c *JSONRPCClient) send(ctx context.Context, req SendMessageRequest, method string) (SendMessageResult, error) {
-	payload := jsonRPCRequest{
-		JSONRPC: jsonRPCVersion,
-		ID:      newID(),
-		Method:  method,
-		Params: sendParams{
-			Message: message{
-				Kind:      "message",
-				MessageID: newID(),
-				Role:      "user",
-				Parts: []part{
-					{Kind: "text", Text: req.Text},
-				},
-			},
-			Configuration: sendConfiguration{
-				Blocking:            true,
-				AcceptedOutputModes: []string{"text/plain"},
-			},
-		},
-	}
+func (c *JSONRPCClient) send(ctx context.Context, req SendMessageRequest) (SendMessageResult, error) {
+	payload := newSendRequest(req, methodSendMessage)
 
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return SendMessageResult{}, fmt.Errorf("encode a2a request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, req.EndpointURL, bytes.NewReader(body))
+	httpReq, err := newHTTPRequest(ctx, req, body)
 	if err != nil {
-		return SendMessageResult{}, fmt.Errorf("build a2a request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/json")
-	httpReq.Header.Set("A2A-Version", "0.3")
-	if strings.TrimSpace(req.BearerToken) != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(req.BearerToken))
+		return SendMessageResult{}, err
 	}
 
 	httpClient := c.HTTPClient
@@ -154,6 +147,47 @@ func (c *JSONRPCClient) send(ctx context.Context, req SendMessageRequest, method
 	return extractResult(rpcResp.Result)
 }
 
+func newSendRequest(req SendMessageRequest, method string) jsonRPCRequest {
+	return jsonRPCRequest{
+		JSONRPC: jsonRPCVersion,
+		ID:      newID(),
+		Method:  method,
+		Params: sendParams{
+			Message: message{
+				MessageID: newID(),
+				ContextID: strings.TrimSpace(req.ConversationID),
+				TaskID:    strings.TrimSpace(req.TaskID),
+				Role:      "ROLE_USER",
+				Parts: []part{
+					{Text: req.Text},
+				},
+				Metadata: cleanMetadata(req.Metadata),
+			},
+			Configuration: sendConfiguration{
+				ReturnImmediately:   boolPtr(false),
+				AcceptedOutputModes: []string{"text/plain"},
+			},
+		},
+	}
+}
+
+func newHTTPRequest(ctx context.Context, req SendMessageRequest, body []byte) (*http.Request, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, req.EndpointURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build a2a request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("A2A-Version", fallbackID(req.ProtocolVersion, ProtocolVersion10))
+	if len(req.Extensions) > 0 {
+		httpReq.Header.Set("A2A-Extensions", strings.Join(req.Extensions, ","))
+	}
+	if strings.TrimSpace(req.BearerToken) != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(req.BearerToken))
+	}
+	return httpReq, nil
+}
+
 type jsonRPCRequest struct {
 	JSONRPC string     `json:"jsonrpc"`
 	ID      string     `json:"id"`
@@ -167,7 +201,7 @@ type sendParams struct {
 }
 
 type sendConfiguration struct {
-	Blocking            bool     `json:"blocking"`
+	ReturnImmediately   *bool    `json:"returnImmediately,omitempty"`
 	AcceptedOutputModes []string `json:"acceptedOutputModes,omitempty"`
 }
 
@@ -187,11 +221,19 @@ type resultKind struct {
 	Kind string `json:"kind"`
 }
 
+type sendMessageResponse struct {
+	Message *message `json:"message,omitempty"`
+	Task    *task    `json:"task,omitempty"`
+}
+
 type message struct {
-	Kind      string `json:"kind,omitempty"`
-	MessageID string `json:"messageId,omitempty"`
-	Role      string `json:"role,omitempty"`
-	Parts     []part `json:"parts,omitempty"`
+	Kind      string         `json:"kind,omitempty"`
+	MessageID string         `json:"messageId,omitempty"`
+	ContextID string         `json:"contextId,omitempty"`
+	TaskID    string         `json:"taskId,omitempty"`
+	Role      string         `json:"role,omitempty"`
+	Parts     []part         `json:"parts,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
 type task struct {
@@ -218,6 +260,16 @@ type part struct {
 }
 
 func extractResult(raw json.RawMessage) (SendMessageResult, error) {
+	var wrapped sendMessageResponse
+	if err := json.Unmarshal(raw, &wrapped); err == nil {
+		switch {
+		case wrapped.Message != nil:
+			return resultFromMessage(*wrapped.Message), nil
+		case wrapped.Task != nil:
+			return resultFromTask(*wrapped.Task), nil
+		}
+	}
+
 	var kind resultKind
 	if err := json.Unmarshal(raw, &kind); err != nil {
 		return SendMessageResult{}, fmt.Errorf("decode a2a result kind: %w", err)
@@ -229,15 +281,7 @@ func extractResult(raw json.RawMessage) (SendMessageResult, error) {
 		if err := json.Unmarshal(raw, &msg); err != nil {
 			return SendMessageResult{}, fmt.Errorf("decode a2a message result: %w", err)
 		}
-		text := textFromMessage(msg)
-		if text == "" {
-			text = "Agent returned an empty message."
-		}
-		return SendMessageResult{
-			ConversationID: fallbackID(msg.MessageID, "local-a2a"),
-			Status:         "completed",
-			Text:           text,
-		}, nil
+		return resultFromMessage(msg), nil
 	case "task":
 		var task task
 		if err := json.Unmarshal(raw, &task); err != nil {
@@ -249,34 +293,49 @@ func extractResult(raw json.RawMessage) (SendMessageResult, error) {
 	}
 }
 
+func resultFromMessage(msg message) SendMessageResult {
+	text := textFromMessage(msg)
+	if text == "" {
+		text = "Agent returned an empty message."
+	}
+	return SendMessageResult{
+		ConversationID: fallbackID(msg.ContextID, msg.MessageID, "local-a2a"),
+		TaskID:         msg.TaskID,
+		Status:         "completed",
+		Text:           text,
+	}
+}
+
 func resultFromTask(t task) SendMessageResult {
 	status := strings.TrimSpace(t.Status.State)
 	if status == "" {
 		status = "unknown"
 	}
 	if text := textFromOptionalMessage(t.Status.Message); text != "" {
-		return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), Status: status, Text: text}
+		return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), TaskID: t.ID, Status: status, Text: text}
 	}
 	for i := len(t.History) - 1; i >= 0; i-- {
-		if t.History[i].Role != "agent" {
+		role := strings.TrimSpace(t.History[i].Role)
+		if role != "agent" && role != "ROLE_AGENT" {
 			continue
 		}
 		if text := textFromMessage(t.History[i]); text != "" {
-			return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), Status: status, Text: text}
+			return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), TaskID: t.ID, Status: status, Text: text}
 		}
 	}
 	for i := len(t.History) - 1; i >= 0; i-- {
 		if text := textFromMessage(t.History[i]); text != "" {
-			return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), Status: status, Text: text}
+			return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), TaskID: t.ID, Status: status, Text: text}
 		}
 	}
 	for i := len(t.Artifacts) - 1; i >= 0; i-- {
 		if text := textFromParts(t.Artifacts[i].Parts); text != "" {
-			return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), Status: status, Text: text}
+			return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), TaskID: t.ID, Status: status, Text: text}
 		}
 	}
 	return SendMessageResult{
 		ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"),
+		TaskID:         t.ID,
 		Status:         status,
 		Text:           fmt.Sprintf("Agent task is %s.", status),
 	}
@@ -312,6 +371,27 @@ func fallbackID(candidates ...string) string {
 		}
 	}
 	return "local-a2a"
+}
+
+func cleanMetadata(metadata map[string]any) map[string]any {
+	if len(metadata) == 0 {
+		return nil
+	}
+	cleaned := make(map[string]any, len(metadata))
+	for key, value := range metadata {
+		if strings.TrimSpace(key) == "" || value == nil {
+			continue
+		}
+		cleaned[key] = value
+	}
+	if len(cleaned) == 0 {
+		return nil
+	}
+	return cleaned
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
 
 func newID() string {

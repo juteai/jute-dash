@@ -40,14 +40,13 @@ make dev
 
 The hub runs at `http://127.0.0.1:8787` and the web UI runs at `http://127.0.0.1:5173` by default. The web UI expects the hub at `http://127.0.0.1:8787`; override that with `VITE_JUTE_API_URL`.
 
-To run the dashboard against the local Kronk-backed A2A test agent:
+To run the dashboard against a lightweight local A2A 1.0 test agent:
 
 ```sh
-make kronk-a2a-setup
 make dev-a2a
 ```
 
-`make dev-a2a` starts the Kronk A2A server, waits for its Agent Card, then starts the hub with `config/jute.dev-a2a.yaml` and the web UI. First run may take a while because Kronk can download model/runtime assets. Reset only that dev store with:
+`make dev-a2a` starts the standard-library A2A 1.0 dev agent, waits for its Agent Card, resets the dedicated `.jute/dev-a2a` store so the current bootstrap config is applied, then starts the hub with `config/jute.dev-a2a.yaml` and the web UI. Reset only that dev store without starting the stack with:
 
 ```sh
 make dev-a2a-reset
@@ -70,10 +69,8 @@ make check      # Go tests and Svelte checks
 Optional local agent examples:
 
 ```sh
-make kronk-a2a-setup  # download dependencies for the Kronk A2A example module
-make kronk-a2a        # run the local Kronk-backed A2A test agent
-make kronk-a2a-server # run only the local A2A server for Jute integration tests
-make kronk-a2a-check  # compile/test the isolated example module
+make a2a-v1-dev       # run the lightweight A2A 1.0 JSON-RPC fixture
+make a2a-v1-dev-check # compile/test the lightweight fixture
 ```
 
 ## Project Layout
@@ -101,8 +98,16 @@ examples/agents/       Optional local test agents and integration fixtures
 - `GET /api/v1/agents`
 - `GET /api/v1/setup/status`
 - `POST /api/v1/messages`
+- `GET /api/v1/conversations`
+- `POST /api/v1/conversations`
+- `GET /api/v1/conversations/{id}`
+- `DELETE /api/v1/conversations/{id}`
+- `POST /api/v1/conversations/{id}/turns`
+- `GET /api/v1/events`
 
-`POST /api/v1/messages` sends a blocking JSON-RPC A2A turn for enabled `JSONRPC` agents. Streaming task events are still future work.
+`POST /api/v1/conversations/{id}/turns` is the primary chat path. It persists user and assistant messages in SQLite, uses A2A `SendStreamingMessage` when the selected Agent Card supports streaming, falls back to blocking `SendMessage`, and publishes replayable updates over `/api/v1/events`.
+
+`POST /api/v1/messages` remains as a blocking compatibility endpoint for simple smoke tests.
 
 ## A2A Assumptions
 

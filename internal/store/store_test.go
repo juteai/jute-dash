@@ -39,7 +39,7 @@ func TestInitializeMigratesAndSeedsEmptyDB(t *testing.T) {
 		t.Fatalf("expected home.name missing field, got %+v", result.Setup.Missing)
 	}
 
-	assertCount(t, st, "schema_migrations", 2)
+	assertCount(t, st, "schema_migrations", 4)
 	assertCount(t, st, "household_settings", 1)
 	assertCount(t, st, "device_profiles", 1)
 	assertCount(t, st, "layout_profiles", 1)
@@ -182,7 +182,16 @@ func TestVoiceMuteAndCancelUpdateState(t *testing.T) {
 func TestVoiceProvidersDefaultsToEmptyList(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
-	if _, err := st.Initialize(context.Background(), config.Default(), false); err != nil {
+	bootstrap := config.Default()
+	bootstrap.Agents = []config.AgentConfig{{
+		ID:              "dev-agent",
+		Name:            "Dev Agent",
+		CardURL:         "http://127.0.0.1:9797/.well-known/agent-card.json",
+		EndpointURL:     "http://127.0.0.1:9797/invoke",
+		ProtocolBinding: a2a.ProtocolJSONRPC,
+		Enabled:         true,
+	}}
+	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
 	providers, err := st.VoiceProviders(context.Background())
@@ -191,6 +200,60 @@ func TestVoiceProvidersDefaultsToEmptyList(t *testing.T) {
 	}
 	if len(providers) != 0 {
 		t.Fatalf("expected no voice providers, got %+v", providers)
+	}
+}
+
+func TestAgentCardCachePersistsSelectedInterface(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+
+	bootstrap := config.Default()
+	bootstrap.Agents = []config.AgentConfig{{
+		ID:              "dev",
+		Name:            "Dev Agent",
+		CardURL:         "http://127.0.0.1:9797/.well-known/agent-card.json",
+		EndpointURL:     "http://127.0.0.1:9797/invoke",
+		ProtocolBinding: a2a.ProtocolJSONRPC,
+		Enabled:         true,
+	}}
+	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	card := a2a.AgentCard{
+		Name: "Dev Agent",
+		Skills: []a2a.AgentSkill{{
+			ID:   "chat",
+			Name: "Chat",
+		}},
+	}
+	raw, err := json.Marshal(card)
+	if err != nil {
+		t.Fatalf("marshal card: %v", err)
+	}
+	err = st.SaveAgentCardCache(context.Background(), AgentCardCache{
+		AgentID:                   "dev",
+		CardJSON:                  string(raw),
+		CardStatus:                "available",
+		SelectedEndpointURL:       "http://127.0.0.1:9797/invoke",
+		SelectedProtocolBinding:   a2a.ProtocolJSONRPC,
+		SelectedProtocolVersion:   a2a.ProtocolVersion10,
+		Streaming:                 true,
+		DashboardContextSupported: true,
+	})
+	if err != nil {
+		t.Fatalf("SaveAgentCardCache() error = %v", err)
+	}
+
+	cache, err := st.AgentCardCache(context.Background(), "dev")
+	if err != nil {
+		t.Fatalf("AgentCardCache() error = %v", err)
+	}
+	if cache.CardStatus != "available" || cache.SelectedProtocolVersion != a2a.ProtocolVersion10 || !cache.Streaming || !cache.DashboardContextSupported {
+		t.Fatalf("unexpected cache: %+v", cache)
+	}
+	if len(cache.Skills) != 1 || cache.Skills[0].Name != "Chat" {
+		t.Fatalf("unexpected cached skills: %+v", cache.Skills)
 	}
 }
 
@@ -463,6 +526,85 @@ func TestResetWidgetLayoutRestoresDefaults(t *testing.T) {
 	}
 	if len(reset.Widgets) != 3 || !reset.Widgets[0].Visible || reset.Widgets[0].X != 0 {
 		t.Fatalf("unexpected reset layout: %+v", reset)
+	}
+}
+
+func TestConversationHistoryPersistsMessagesAndEvents(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	bootstrap := config.Default()
+	bootstrap.Agents = []config.AgentConfig{{
+		ID:              "dev-agent",
+		Name:            "Dev Agent",
+		CardURL:         "http://127.0.0.1:9797/.well-known/agent-card.json",
+		EndpointURL:     "http://127.0.0.1:9797/invoke",
+		ProtocolBinding: a2a.ProtocolJSONRPC,
+		Enabled:         true,
+	}}
+	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	conversation, err := st.CreateConversation(context.Background(), Conversation{
+		ID:      "conversation-test",
+		AgentID: "dev-agent",
+		Title:   "Kitchen lights",
+	})
+	if err != nil {
+		t.Fatalf("CreateConversation() error = %v", err)
+	}
+	user, err := st.AddConversationMessage(context.Background(), ConversationMessage{
+		ID:             "message-user",
+		ConversationID: conversation.ID,
+		AgentID:        "dev-agent",
+		Role:           "user",
+		Content:        "Turn on the kitchen lights",
+		Status:         "sent",
+	})
+	if err != nil {
+		t.Fatalf("AddConversationMessage(user) error = %v", err)
+	}
+	assistant, err := st.AddConversationMessage(context.Background(), ConversationMessage{
+		ID:             "message-assistant",
+		ConversationID: conversation.ID,
+		AgentID:        "dev-agent",
+		Role:           "assistant",
+		Status:         "streaming",
+	})
+	if err != nil {
+		t.Fatalf("AddConversationMessage(assistant) error = %v", err)
+	}
+	assistant, err = st.UpdateConversationMessage(context.Background(), assistant.ID, "Done", "sent", "task-1", true)
+	if err != nil {
+		t.Fatalf("UpdateConversationMessage() error = %v", err)
+	}
+	if assistant.Content != "Done" || assistant.A2ATaskID != "task-1" {
+		t.Fatalf("unexpected assistant message: %+v", assistant)
+	}
+
+	event, err := st.AddConversationEvent(context.Background(), ConversationEvent{
+		Type:           "conversation.message.updated",
+		ConversationID: conversation.ID,
+		MessageID:      assistant.ID,
+		Payload:        map[string]any{"messageId": assistant.ID},
+	})
+	if err != nil {
+		t.Fatalf("AddConversationEvent() error = %v", err)
+	}
+	events, err := st.ConversationEventsSince(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("ConversationEventsSince() error = %v", err)
+	}
+	if len(events) != 1 || events[0].ID != event.ID || events[0].Payload["messageId"] != assistant.ID {
+		t.Fatalf("unexpected events: %+v", events)
+	}
+
+	detail, err := st.Conversation(context.Background(), conversation.ID)
+	if err != nil {
+		t.Fatalf("Conversation() error = %v", err)
+	}
+	if len(detail.Messages) != 2 || detail.Messages[0].ID != user.ID || detail.Messages[1].Content != "Done" {
+		t.Fatalf("unexpected conversation detail: %+v", detail)
 	}
 }
 

@@ -1,17 +1,29 @@
 package registry
 
-import "jute-dash/internal/config"
+import (
+	"jute-dash/internal/a2a"
+	"jute-dash/internal/config"
+)
 
 type Agent struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	Description     string   `json:"description"`
-	CardURL         string   `json:"cardUrl"`
-	EndpointURL     string   `json:"endpointUrl"`
-	ProtocolBinding string   `json:"protocolBinding"`
-	Enabled         bool     `json:"enabled"`
-	Capabilities    []string `json:"capabilities"`
-	AuthConfigured  bool     `json:"authConfigured"`
+	ID                        string           `json:"id"`
+	Name                      string           `json:"name"`
+	Description               string           `json:"description"`
+	CardURL                   string           `json:"cardUrl"`
+	EndpointURL               string           `json:"endpointUrl"`
+	ProtocolBinding           string           `json:"protocolBinding"`
+	Enabled                   bool             `json:"enabled"`
+	Capabilities              []string         `json:"capabilities"`
+	AuthConfigured            bool             `json:"authConfigured"`
+	CardStatus                string           `json:"cardStatus,omitempty"`
+	CardFetchedAt             string           `json:"cardFetchedAt,omitempty"`
+	CardError                 string           `json:"cardError,omitempty"`
+	SelectedEndpointURL       string           `json:"selectedEndpointUrl,omitempty"`
+	SelectedProtocolBinding   string           `json:"selectedProtocolBinding,omitempty"`
+	SelectedProtocolVersion   string           `json:"selectedProtocolVersion,omitempty"`
+	Skills                    []a2a.AgentSkill `json:"skills,omitempty"`
+	Streaming                 bool             `json:"streaming"`
+	DashboardContextSupported bool             `json:"dashboardContextSupported"`
 }
 
 type Registry struct {

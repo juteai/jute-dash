@@ -5,12 +5,29 @@
   import DashboardView from '$lib/components/display/DashboardView.svelte';
   import OfflineState from '$lib/components/display/OfflineState.svelte';
   import StatusRibbon from '$lib/components/display/StatusRibbon.svelte';
-  import { getDashboard, getWidgetCatalog, muteVoice, resetWidgetLayout, saveWidgetLayout, sendMessage, unmuteVoice } from '$lib/api';
+  import {
+    createConversation,
+    deleteConversation,
+    getConversation,
+    getConversations,
+    getDashboard,
+    getWidgetCatalog,
+    hubURL,
+    muteVoice,
+    resetWidgetLayout,
+    saveWidgetLayout,
+    sendConversationTurn,
+    unmuteVoice
+  } from '$lib/api';
   import { firstAvailableAgent, getAgentAvailability, isAgentAvailable } from '$lib/agents';
   import type {
     Agent,
     ChatMessage,
     ChatState,
+    Conversation,
+    ConversationDetail,
+    ConversationEvent,
+    ConversationMessage,
     DashboardData,
     DisplayMode,
     UserFacingIssue,
@@ -31,6 +48,10 @@
   let mode: DisplayMode = 'dashboard';
   let chatState: ChatState = 'idle';
   let messages: ChatMessage[] = [];
+  let conversations: Conversation[] = [];
+  let selectedConversationId = '';
+  let lastEventId = 0;
+  let eventSource: EventSource | undefined;
   let voiceIssue = '';
   let selectedAgentId = '';
   let prefersDark = false;
@@ -64,10 +85,13 @@
     };
     updateTheme();
     query.addEventListener('change', updateTheme);
+    void loadConversationHistory();
+    connectEvents();
 
     return () => {
       query.removeEventListener('change', updateTheme);
       clearLongPress();
+      eventSource?.close();
     };
   });
 
@@ -93,6 +117,184 @@
   function closeChat() {
     chatState = 'idle';
     mode = 'dashboard';
+  }
+
+  async function loadConversationHistory(preferredConversationId = selectedConversationId) {
+    try {
+      const loaded = await getConversations(fetch);
+      conversations = loaded;
+      const candidate =
+        loaded.find((conversation) => conversation.id === preferredConversationId) ??
+        loaded.find((conversation) => conversation.agentId === selectedAgentId) ??
+        loaded.find((conversation) => conversation.agentId === availableAgent?.id) ??
+        loaded[0];
+      if (candidate) {
+        await loadConversation(candidate.id);
+      } else {
+        selectedConversationId = '';
+        messages = [];
+      }
+      markConnected();
+    } catch {
+      markIssue('degraded', {
+        code: 'conversation_history_unavailable',
+        severity: 'warning',
+        title: 'Conversation history unavailable',
+        message: 'Jute could not load saved conversations.'
+      });
+    }
+  }
+
+  async function loadConversation(conversationId: string) {
+    const detail = await getConversation(fetch, conversationId);
+    applyConversationDetail(detail);
+  }
+
+  function applyConversationDetail(detail: ConversationDetail) {
+    selectedConversationId = detail.conversation.id;
+    selectedAgentId = detail.conversation.agentId || selectedAgentId;
+    messages = detail.messages.map(conversationMessageToChatMessage);
+    chatState = detail.conversation.status === 'streaming' ? 'streaming' : detail.conversation.status === 'failed' ? 'error' : 'idle';
+    conversations = upsertConversation(conversations, detail.conversation);
+  }
+
+  function conversationMessageToChatMessage(message: ConversationMessage): ChatMessage {
+    return {
+      id: message.id,
+      conversationId: message.conversationId,
+      role: message.role,
+      content: message.content,
+      createdAt: message.createdAt,
+      status: message.status === 'streaming' ? 'sending' : message.status === 'failed' ? 'failed' : 'sent',
+      retryText: message.status === 'failed' && message.role === 'user' ? message.content : undefined,
+      agentId: message.agentId
+    };
+  }
+
+  function upsertConversation(existing: Conversation[], conversation: Conversation) {
+    const withoutCurrent = existing.filter((item) => item.id !== conversation.id);
+    return [conversation, ...withoutCurrent].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  function connectEvents() {
+    if (!browser) {
+      return;
+    }
+    eventSource?.close();
+    const url = `${hubURL()}/api/v1/events${lastEventId > 0 ? `?since=${lastEventId}` : ''}`;
+    const source = new EventSource(url);
+    eventSource = source;
+    source.onopen = () => {
+      markConnected();
+    };
+    source.onmessage = (event) => {
+      try {
+        const conversationEvent = JSON.parse(event.data) as ConversationEvent;
+        lastEventId = Math.max(lastEventId, conversationEvent.id);
+        void handleConversationEvent(conversationEvent);
+      } catch {
+        // Ignore malformed event payloads; the next refresh will repair visible state.
+      }
+    };
+    source.onerror = () => {
+      if (eventSource === source) {
+        markIssue('reconnecting', {
+          code: 'event_stream_reconnecting',
+          severity: 'warning',
+          title: 'Reconnecting',
+          message: 'Live updates paused while Jute reconnects to the hub.'
+        });
+      }
+    };
+  }
+
+  async function handleConversationEvent(event: ConversationEvent) {
+    if (event.conversationId) {
+      if (!selectedConversationId || event.conversationId === selectedConversationId) {
+        try {
+          await loadConversation(event.conversationId);
+          markConnected();
+          return;
+        } catch {
+          // Fall through to a lightweight list refresh below.
+        }
+      }
+    }
+    try {
+      conversations = await getConversations(fetch);
+      markConnected();
+    } catch {
+      markIssue('degraded', {
+        code: 'conversation_refresh_failed',
+        severity: 'warning',
+        title: 'Conversation refresh failed',
+        message: 'Saved chat updates are temporarily unavailable.'
+      });
+    }
+  }
+
+  async function ensureConversation(agent: Agent) {
+    if (selectedConversationId) {
+      const current = conversations.find((conversation) => conversation.id === selectedConversationId);
+      if (current?.agentId === agent.id) {
+        return selectedConversationId;
+      }
+    }
+    const existing = conversations.find((conversation) => conversation.agentId === agent.id);
+    if (existing) {
+      await loadConversation(existing.id);
+      return existing.id;
+    }
+    const detail = await createConversation(fetch, agent.id);
+    applyConversationDetail(detail);
+    return detail.conversation.id;
+  }
+
+  async function createNewConversation() {
+    const agent = agents.find((item) => item.id === selectedAgentId) ?? availableAgent;
+    if (!agent || !isAgentAvailable(agent)) {
+      chatState = 'error';
+      messages = [systemMessage('No available agent is connected yet.')];
+      return;
+    }
+    try {
+      const detail = await createConversation(fetch, agent.id);
+      applyConversationDetail(detail);
+      mode = 'chat';
+      markConnected();
+    } catch {
+      markIssue('degraded', {
+        code: 'conversation_create_failed',
+        severity: 'warning',
+        title: 'Conversation not created',
+        message: 'Jute could not start a new saved conversation.'
+      });
+    }
+  }
+
+  async function deleteSelectedConversation(conversationId: string) {
+    try {
+      await deleteConversation(fetch, conversationId);
+      conversations = conversations.filter((conversation) => conversation.id !== conversationId);
+      if (selectedConversationId === conversationId) {
+        const next = conversations.find((conversation) => conversation.id !== conversationId);
+        if (next) {
+          await loadConversation(next.id);
+        } else {
+          selectedConversationId = '';
+          messages = [];
+          chatState = 'idle';
+        }
+      }
+      markConnected();
+    } catch {
+      markIssue('degraded', {
+        code: 'conversation_delete_failed',
+        severity: 'warning',
+        title: 'Conversation not deleted',
+        message: 'Jute could not delete that conversation.'
+      });
+    }
   }
 
   async function enterEdit() {
@@ -297,29 +499,26 @@
       return;
     }
 
-    const userMessageId = retryMessageId ?? makeID();
-    if (retryMessageId) {
-      messages = messages.map((message) =>
-        message.id === retryMessageId
-          ? { ...message, status: 'sending', retryText: text, agentId: agent.id }
-          : message
-      );
-    } else {
-      messages = [...messages, makeMessage('user', text, { id: userMessageId, status: 'sending', retryText: text, agentId: agent.id })];
-    }
+    const temporaryMessageId = retryMessageId ?? makeID();
+    messages = [
+      ...messages.filter((message) => message.id !== retryMessageId),
+      makeMessage('user', text, {
+        id: temporaryMessageId,
+        status: 'sending',
+        retryText: text,
+        agentId: agent.id
+      })
+    ];
     chatState = 'thinking';
 
     try {
-      const response = await sendMessage(fetch, agent.id, text);
-      messages = messages.map((message) =>
-        message.id === userMessageId ? { ...message, status: 'sent', retryText: undefined } : message
-      );
-      messages = [...messages, makeMessage('assistant', response.message, { status: 'sent', agentId: agent.id })];
+      const conversationId = await ensureConversation(agent);
+      const detail = await sendConversationTurn(fetch, conversationId, text);
+      applyConversationDetail(detail);
       markConnected();
-      chatState = 'idle';
     } catch {
       messages = messages.map((message) =>
-        message.id === userMessageId ? { ...message, status: 'failed', retryText: text } : message
+        message.id === temporaryMessageId ? { ...message, status: 'failed', retryText: text } : message
       );
       messages = [...messages, systemMessage('Message not sent. Check that the hub and local A2A agent are running, then retry.')];
       markIssue('degraded', {
@@ -378,6 +577,8 @@
     retrying = true;
     try {
       dashboard = await getDashboard(fetch);
+      await loadConversationHistory();
+      connectEvents();
       markConnected();
     } catch {
       markIssue(hasConnected ? 'reconnecting' : 'offline', {
@@ -426,7 +627,8 @@
       createdAt: overrides.createdAt ?? new Date().toISOString(),
       status: overrides.status,
       retryText: overrides.retryText,
-      agentId: overrides.agentId
+      agentId: overrides.agentId,
+      conversationId: overrides.conversationId
     };
   }
 
@@ -604,14 +806,27 @@
         <ChatView
           {agents}
           {messages}
+          {conversations}
           state={chatState}
           voice={dashboard.voice}
           {voiceIssue}
           {selectedAgentId}
+          {selectedConversationId}
           {selectedAvailability}
           onAgentChange={(agentId) => {
             selectedAgentId = agentId;
+            const nextConversation = conversations.find((conversation) => conversation.agentId === agentId);
+            if (nextConversation) {
+              void loadConversation(nextConversation.id);
+            } else {
+              selectedConversationId = '';
+              messages = [];
+              chatState = 'idle';
+            }
           }}
+          onConversationSelect={(conversationId) => loadConversation(conversationId)}
+          onNewConversation={createNewConversation}
+          onDeleteConversation={deleteSelectedConversation}
           onSubmit={(value) => submitMessage(value)}
           onRetry={retryMessage}
           onClose={closeChat}

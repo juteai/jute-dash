@@ -66,6 +66,15 @@ Voice turns follow the same path after transcription. The Jute Voice Service sen
 
 For agents that support streaming, Jute uses the streaming operation for responsive dashboard updates. For agents without streaming, the hub polls task state or waits for push notification support in later releases.
 
+Current implementation status:
+
+- JSON-RPC A2A 1.0 blocking chat is implemented with `SendMessage`.
+- JSON-RPC A2A 1.0 streaming chat is implemented with `SendStreamingMessage` when the selected Agent Card advertises streaming support.
+- The hub sends `A2A-Version: 1.0`.
+- The hub persists conversations, messages, returned `contextId` values, and latest task IDs in SQLite so follow-up turns can continue the same A2A context.
+- The display uses `/api/v1/conversations`, `/api/v1/conversations/{id}/turns`, and `/api/v1/events` for durable chat history and live updates.
+- Polling and task subscriptions remain future work.
+
 ## Agent Card Caching
 
 The hub honors standard HTTP caching headers when fetching Agent Cards:
@@ -76,6 +85,11 @@ The hub honors standard HTTP caching headers when fetching Agent Cards:
 - refresh manually when the user asks or when a task fails due to capability mismatch.
 
 Cached cards live in SQLite with fetch time, expiry, ETag, content hash, and selected interface.
+
+Current implementation status:
+
+- The hub fetches configured Agent Cards, selects A2A 1.0 `JSONRPC` first, and caches the selected interface, skills, streaming flag, dashboard-context support, and safe card status in SQLite.
+- The development `make dev-a2a` path uses the lightweight `examples/agents/a2a-v1-dev` fixture.
 
 ## Jute Dashboard-Context Extension
 

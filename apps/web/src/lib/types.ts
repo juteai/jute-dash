@@ -20,6 +20,25 @@ export type Agent = {
   enabled: boolean;
   capabilities: string[];
   authConfigured: boolean;
+  cardStatus?: 'available' | 'unavailable' | 'unknown' | string;
+  cardFetchedAt?: string;
+  cardError?: string;
+  selectedEndpointUrl?: string;
+  selectedProtocolBinding?: string;
+  selectedProtocolVersion?: string;
+  skills?: AgentSkill[];
+  streaming?: boolean;
+  dashboardContextSupported?: boolean;
+};
+
+export type AgentSkill = {
+  id?: string;
+  name: string;
+  description?: string;
+  tags?: string[];
+  examples?: string[];
+  inputModes?: string[];
+  outputModes?: string[];
 };
 
 export type AppConnectionState = 'starting' | 'connected' | 'reconnecting' | 'offline' | 'degraded';
@@ -185,6 +204,7 @@ export type ChatMessageRole = 'user' | 'assistant' | 'system';
 
 export type ChatMessage = {
   id: string;
+  conversationId?: string;
   role: ChatMessageRole;
   content: string;
   createdAt: string;
@@ -193,8 +213,47 @@ export type ChatMessage = {
   agentId?: string;
 };
 
+export type Conversation = {
+  id: string;
+  agentId: string;
+  title: string;
+  status: 'idle' | 'streaming' | 'completed' | 'failed' | string;
+  a2aContextId: string;
+  latestTaskId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ConversationMessage = {
+  id: string;
+  conversationId: string;
+  agentId: string;
+  role: ChatMessageRole;
+  content: string;
+  status: 'sending' | 'streaming' | 'sent' | 'failed' | string;
+  a2aMessageId: string;
+  a2aTaskId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ConversationDetail = {
+  conversation: Conversation;
+  messages: ConversationMessage[];
+};
+
+export type ConversationEvent = {
+  id: number;
+  type: string;
+  conversationId?: string;
+  messageId?: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+};
+
 export type MessageResponse = {
   conversationId: string;
+  taskId?: string;
   agentId: string;
   status: string;
   message: string;

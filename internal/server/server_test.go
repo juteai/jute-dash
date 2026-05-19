@@ -95,6 +95,74 @@ func TestMessageEndpointAcceptsEnabledAgent(t *testing.T) {
 	}
 }
 
+func TestMessageEndpointUsesDiscoveredA2A10InterfaceAndDashboardContext(t *testing.T) {
+	agentCardServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"name":        "Discovered Agent",
+			"description": "Test card",
+			"version":     "1.0.0",
+			"supportedInterfaces": []map[string]string{
+				{"url": "http://agent.local/invoke", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+			},
+			"capabilities": map[string]any{
+				"streaming": false,
+				"extensions": []map[string]any{
+					{"uri": a2a.DashboardContextExtensionURI},
+				},
+			},
+			"defaultInputModes":  []string{"text/plain"},
+			"defaultOutputModes": []string{"text/plain"},
+			"skills": []map[string]any{
+				{"id": "chat", "name": "Chat", "description": "Talk", "tags": []string{"chat"}},
+			},
+		})
+	}))
+	defer agentCardServer.Close()
+
+	cfg := testConfig()
+	cfg.Agents[0].CardURL = agentCardServer.URL
+	cfg.Agents[0].EndpointURL = "http://configured.local/legacy"
+	runtimeStore, err := store.Open(filepath.Join(t.TempDir(), "jute.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer runtimeStore.Close()
+	result, err := runtimeStore.Initialize(context.Background(), cfg, true)
+	if err != nil {
+		t.Fatalf("initialize store: %v", err)
+	}
+	sender := &fakeMessageSender{result: a2a.SendMessageResult{
+		ConversationID: "ctx-discovered",
+		Status:         "completed",
+		Text:           "Context received.",
+	}}
+	handler := newServer(result.Config, "test", weather.NewClient(), sender, result.Setup, store.DefaultWidgetLayout(), runtimeStore)
+
+	payload := bytes.NewBufferString(`{"agentId":"house","text":"What can you see?","conversationId":"ctx-existing"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !sender.called {
+		t.Fatal("sender was not called")
+	}
+	if sender.last.EndpointURL != "http://agent.local/invoke" || sender.last.ProtocolVersion != a2a.ProtocolVersion10 {
+		t.Fatalf("unexpected selected interface: %+v", sender.last)
+	}
+	if sender.last.ConversationID != "ctx-existing" {
+		t.Fatalf("unexpected conversation ID: %+v", sender.last)
+	}
+	if len(sender.last.Extensions) != 1 || sender.last.Extensions[0] != a2a.DashboardContextExtensionURI {
+		t.Fatalf("dashboard extension not activated: %+v", sender.last.Extensions)
+	}
+	if sender.last.Metadata[a2a.DashboardContextExtensionURI] == nil {
+		t.Fatalf("dashboard metadata missing: %+v", sender.last.Metadata)
+	}
+}
+
 func TestMessageEndpointReturnsSafeAgentFailure(t *testing.T) {
 	handler := NewWithMessageSender(testConfig(), "test", &fakeMessageSender{err: errors.New("raw remote failure with internal details")})
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"What needs attention?"}`)
@@ -471,6 +539,73 @@ func TestStoreBackedConfigWorksWithExistingEndpoints(t *testing.T) {
 	}
 	if len(body.Agents) != 2 || body.Agents[0].ID != "energy" || body.Agents[1].ID != "house" {
 		t.Fatalf("unexpected store-backed agents response: %+v", body.Agents)
+	}
+}
+
+func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
+	agentCardServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"name":        "Discovered Agent",
+			"description": "Test card",
+			"version":     "1.0.0",
+			"supportedInterfaces": []map[string]string{
+				{"url": "http://agent.local/invoke", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+			},
+			"capabilities": map[string]any{
+				"streaming": true,
+				"extensions": []map[string]any{
+					{"uri": a2a.DashboardContextExtensionURI},
+				},
+			},
+			"defaultInputModes":  []string{"text/plain"},
+			"defaultOutputModes": []string{"text/plain"},
+			"skills": []map[string]any{
+				{"id": "chat", "name": "Chat", "description": "Talk", "tags": []string{"chat"}},
+			},
+		})
+	}))
+	defer agentCardServer.Close()
+
+	cfg := testConfig()
+	cfg.Agents = cfg.Agents[:1]
+	cfg.Agents[0].CardURL = agentCardServer.URL
+	runtimeStore, err := store.Open(filepath.Join(t.TempDir(), "jute.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer runtimeStore.Close()
+	result, err := runtimeStore.Initialize(context.Background(), cfg, true)
+	if err != nil {
+		t.Fatalf("initialize store: %v", err)
+	}
+	handler := NewWithSetupStatusAndLayoutStore(result.Config, "test", result.Setup, runtimeStore)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Agents []struct {
+			ID                        string           `json:"id"`
+			CardStatus                string           `json:"cardStatus"`
+			SelectedEndpointURL       string           `json:"selectedEndpointUrl"`
+			SelectedProtocolVersion   string           `json:"selectedProtocolVersion"`
+			DashboardContextSupported bool             `json:"dashboardContextSupported"`
+			Streaming                 bool             `json:"streaming"`
+			Skills                    []a2a.AgentSkill `json:"skills"`
+		} `json:"agents"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Agents) != 1 || body.Agents[0].CardStatus != "available" || body.Agents[0].SelectedEndpointURL != "http://agent.local/invoke" {
+		t.Fatalf("unexpected agent discovery response: %+v", body.Agents)
+	}
+	if !body.Agents[0].DashboardContextSupported || !body.Agents[0].Streaming || len(body.Agents[0].Skills) != 1 {
+		t.Fatalf("missing discovered metadata: %+v", body.Agents[0])
 	}
 }
 

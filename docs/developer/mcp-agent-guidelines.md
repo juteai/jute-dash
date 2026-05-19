@@ -115,14 +115,7 @@ If MCP disconnects mid-task, retry once when appropriate. If it still fails, con
 
 ## Local Test Agent
 
-Jute includes an optional Kronk-backed A2A test agent in `examples/agents/kronk-a2a`.
-
-Use it to test A2A discovery and, later, the MCP Bridge:
-
-```sh
-make kronk-a2a-setup
-make kronk-a2a
-```
+Jute includes a lightweight A2A 1.0 test agent in `examples/agents/a2a-v1-dev`.
 
 For the normal Jute development loop, use:
 
@@ -130,7 +123,7 @@ For the normal Jute development loop, use:
 make dev-a2a
 ```
 
-That target runs the example in server-only mode, starts the hub with `config/jute.dev-a2a.yaml`, and then starts the Svelte display. MCP is not required for this flow.
+That target runs the example agent, starts the hub with `config/jute.dev-a2a.yaml`, and then starts the Svelte display. MCP is not required for this flow.
 
 The example binds to `127.0.0.1:9797` by default and publishes an Agent Card at:
 
@@ -138,7 +131,7 @@ The example binds to `127.0.0.1:9797` by default and publishes an Agent Card at:
 http://127.0.0.1:9797/.well-known/agent-card.json
 ```
 
-When the MCP Bridge is enabled later, set `JUTE_MCP_URL` and, if required, `JUTE_MCP_TOKEN`. The example remains a developer fixture and is not part of the production hub dependency graph.
+When the MCP Bridge is enabled later, the fixture can grow MCP-aware behavior behind explicit local config. The example remains a developer fixture and is not part of the production hub dependency graph.
 
 ## Security
 

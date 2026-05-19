@@ -7,13 +7,17 @@ export function getAgentAvailability(agent: Agent | undefined): AgentAvailabilit
   if (!agent.enabled) {
     return 'disabled';
   }
-  if (agent.protocolBinding !== 'JSONRPC') {
+  const binding = agent.selectedProtocolBinding || agent.protocolBinding;
+  if (binding !== 'JSONRPC') {
     return 'unsupported_binding';
   }
   if (agent.authConfigured) {
     return 'missing_credentials';
   }
-  if (!agent.endpointUrl || !agent.cardUrl) {
+  if (agent.cardStatus && agent.cardStatus !== 'available') {
+    return 'offline';
+  }
+  if (!(agent.selectedEndpointUrl || agent.endpointUrl) || !agent.cardUrl) {
     return 'unknown';
   }
   return 'available';
@@ -45,13 +49,13 @@ export function availabilityLabel(availability: AgentAvailability) {
 export function availabilityDescription(availability: AgentAvailability) {
   switch (availability) {
     case 'available':
-      return 'Ready for local A2A chat.';
+      return 'Ready for A2A 1.0 chat.';
     case 'disabled':
       return 'This agent is configured but disabled.';
     case 'missing_credentials':
       return 'This agent needs credentials before Jute can send messages.';
     case 'unsupported_binding':
-      return 'This display can test JSON-RPC agents right now.';
+      return 'Jute can send JSON-RPC A2A 1.0 turns right now.';
     case 'unhealthy':
       return 'The agent health check failed.';
     case 'offline':

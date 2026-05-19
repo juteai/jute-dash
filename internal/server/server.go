@@ -19,18 +19,22 @@ import (
 )
 
 type Server struct {
-	cfg         config.Config
-	registry    registry.Registry
-	weather     weather.Provider
-	messages    a2aclient.MessageSender
-	setup       store.SetupStatus
-	layout      store.WidgetLayout
-	layoutStore WidgetLayoutStore
-	voice       config.VoiceConfig
-	voiceStore  VoiceSettingsStore
-	mu          sync.Mutex
-	started     time.Time
-	version     string
+	cfg           config.Config
+	registry      registry.Registry
+	weather       weather.Provider
+	messages      a2aclient.MessageSender
+	cardFetcher   *a2aclient.AgentCardFetcher
+	setup         store.SetupStatus
+	layout        store.WidgetLayout
+	layoutStore   WidgetLayoutStore
+	cardStore     AgentCardStore
+	conversations ConversationStore
+	events        *EventBroker
+	voice         config.VoiceConfig
+	voiceStore    VoiceSettingsStore
+	mu            sync.Mutex
+	started       time.Time
+	version       string
 }
 
 type WidgetLayoutStore interface {
@@ -46,6 +50,23 @@ type VoiceSettingsStore interface {
 	VoiceProviders(ctx context.Context) ([]store.VoiceProviderPack, error)
 }
 
+type AgentCardStore interface {
+	AgentCardCache(ctx context.Context, agentID string) (store.AgentCardCache, error)
+	SaveAgentCardCache(ctx context.Context, cache store.AgentCardCache) error
+}
+
+type ConversationStore interface {
+	CreateConversation(ctx context.Context, conversation store.Conversation) (store.Conversation, error)
+	ListConversations(ctx context.Context) ([]store.Conversation, error)
+	Conversation(ctx context.Context, id string) (store.ConversationDetail, error)
+	AddConversationMessage(ctx context.Context, message store.ConversationMessage) (store.ConversationMessage, error)
+	UpdateConversationMessage(ctx context.Context, messageID, content, status, taskID string, appendContent bool) (store.ConversationMessage, error)
+	UpdateConversationState(ctx context.Context, conversationID, status, a2aContextID, taskID string) (store.Conversation, error)
+	DeleteConversation(ctx context.Context, id string) error
+	AddConversationEvent(ctx context.Context, event store.ConversationEvent) (store.ConversationEvent, error)
+	ConversationEventsSince(ctx context.Context, sinceID int64) ([]store.ConversationEvent, error)
+}
+
 type HealthResponse struct {
 	Status    string    `json:"status"`
 	Version   string    `json:"version"`
@@ -53,12 +74,14 @@ type HealthResponse struct {
 }
 
 type MessageRequest struct {
-	AgentID string `json:"agentId"`
-	Text    string `json:"text"`
+	AgentID        string `json:"agentId"`
+	Text           string `json:"text"`
+	ConversationID string `json:"conversationId,omitempty"`
 }
 
 type MessageResponse struct {
 	ConversationID string `json:"conversationId"`
+	TaskID         string `json:"taskId,omitempty"`
 	AgentID        string `json:"agentId"`
 	Status         string `json:"status"`
 	Message        string `json:"message"`
@@ -125,18 +148,30 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 	if candidate, ok := layoutStore.(VoiceSettingsStore); ok {
 		voiceStore = candidate
 	}
+	var cardStore AgentCardStore
+	if candidate, ok := layoutStore.(AgentCardStore); ok {
+		cardStore = candidate
+	}
+	var conversationStore ConversationStore
+	if candidate, ok := layoutStore.(ConversationStore); ok {
+		conversationStore = candidate
+	}
 	server := &Server{
-		cfg:         cfg,
-		registry:    registry.New(cfg.Agents),
-		weather:     weatherProvider,
-		messages:    messageSender,
-		setup:       normalizeSetupStatus(setup),
-		layout:      normalizeWidgetLayout(layout),
-		layoutStore: layoutStore,
-		voice:       cfg.Voice,
-		voiceStore:  voiceStore,
-		started:     time.Now().UTC(),
-		version:     version,
+		cfg:           cfg,
+		registry:      registry.New(cfg.Agents),
+		weather:       weatherProvider,
+		messages:      messageSender,
+		cardFetcher:   a2aclient.NewAgentCardFetcher(),
+		setup:         normalizeSetupStatus(setup),
+		layout:        normalizeWidgetLayout(layout),
+		layoutStore:   layoutStore,
+		cardStore:     cardStore,
+		conversations: conversationStore,
+		events:        NewEventBroker(),
+		voice:         cfg.Voice,
+		voiceStore:    voiceStore,
+		started:       time.Now().UTC(),
+		version:       version,
 	}
 
 	mux := http.NewServeMux()
@@ -144,7 +179,11 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 	mux.HandleFunc("/api/v1/config", server.handleConfig)
 	mux.HandleFunc("/api/v1/home", server.handleHome)
 	mux.HandleFunc("/api/v1/agents", server.handleAgents)
+	mux.HandleFunc("/api/v1/agents/", server.handleAgentSubroutes)
 	mux.HandleFunc("/api/v1/messages", server.handleMessages)
+	mux.HandleFunc("/api/v1/conversations", server.handleConversations)
+	mux.HandleFunc("/api/v1/conversations/", server.handleConversationSubroutes)
+	mux.HandleFunc("/api/v1/events", server.handleEvents)
 	mux.HandleFunc("/api/v1/setup/status", server.handleSetupStatus)
 	mux.HandleFunc("/api/v1/widgets/catalog", server.handleWidgetCatalog)
 	mux.HandleFunc("/api/v1/widgets/layout", server.handleWidgetLayout)
@@ -210,8 +249,29 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"agents": s.registry.List(),
+		"agents": s.agentsWithDiscovery(r.Context(), true),
 	})
+}
+
+func (s *Server) handleAgentSubroutes(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/agents/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 2 || parts[1] != "refresh-card" {
+		writeError(w, http.StatusNotFound, "agent route not found")
+		return
+	}
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	agentID := strings.TrimSpace(parts[0])
+	agent, ok := s.registry.Find(agentID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "agent not found")
+		return
+	}
+	cache := s.refreshAgentCard(r.Context(), agent)
+	enriched := s.agentWithDiscovery(agent, cache)
+	writeJSON(w, http.StatusOK, enriched)
 }
 
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
@@ -530,7 +590,8 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "agent not found")
 		return
 	}
-	if configuredAgent.ProtocolBinding != a2aclient.ProtocolJSONRPC {
+	selected := s.selectedAgentInterface(r.Context(), agent)
+	if selected.ProtocolBinding != a2aclient.ProtocolJSONRPC {
 		writeError(w, http.StatusNotImplemented, "agent protocol binding is not implemented yet")
 		return
 	}
@@ -542,10 +603,14 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := s.messages.SendMessage(r.Context(), a2aclient.SendMessageRequest{
-		EndpointURL:     configuredAgent.EndpointURL,
-		ProtocolBinding: configuredAgent.ProtocolBinding,
+		EndpointURL:     selected.EndpointURL,
+		ProtocolBinding: selected.ProtocolBinding,
+		ProtocolVersion: selected.ProtocolVersion,
 		Text:            req.Text,
 		BearerToken:     bearerToken,
+		ConversationID:  strings.TrimSpace(req.ConversationID),
+		Extensions:      selected.Extensions,
+		Metadata:        selected.Metadata,
 	})
 	if err != nil {
 		status := http.StatusBadGateway
@@ -558,10 +623,201 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, MessageResponse{
 		ConversationID: result.ConversationID,
+		TaskID:         result.TaskID,
 		AgentID:        agent.ID,
 		Status:         result.Status,
 		Message:        result.Text,
 	})
+}
+
+type selectedAgentInterface struct {
+	EndpointURL     string
+	ProtocolBinding string
+	ProtocolVersion string
+	Streaming       bool
+	Extensions      []string
+	Metadata        map[string]any
+}
+
+func (s *Server) selectedAgentInterface(ctx context.Context, agent registry.Agent) selectedAgentInterface {
+	selected := selectedAgentInterface{
+		EndpointURL:     agent.EndpointURL,
+		ProtocolBinding: agent.ProtocolBinding,
+		ProtocolVersion: a2aclient.ProtocolVersion10,
+	}
+	cache, ok := s.currentAgentCardCache(ctx, agent)
+	if ok && cache.SelectedEndpointURL != "" {
+		selected.EndpointURL = cache.SelectedEndpointURL
+		selected.ProtocolBinding = cache.SelectedProtocolBinding
+		selected.ProtocolVersion = cache.SelectedProtocolVersion
+		selected.Streaming = cache.Streaming
+		if cache.DashboardContextSupported {
+			selected.Extensions = []string{a2aclient.DashboardContextExtensionURI}
+			selected.Metadata = map[string]any{
+				a2aclient.DashboardContextExtensionURI: s.dashboardContext(ctx),
+			}
+		}
+	}
+	return selected
+}
+
+func (s *Server) agentsWithDiscovery(ctx context.Context, refreshMissing bool) []registry.Agent {
+	agents := s.registry.List()
+	for i := range agents {
+		var cache store.AgentCardCache
+		var ok bool
+		if refreshMissing {
+			cache, ok = s.currentAgentCardCache(ctx, agents[i])
+		} else if s.cardStore != nil {
+			cache, ok = s.loadAgentCardCache(ctx, agents[i].ID)
+		}
+		if ok {
+			agents[i] = s.agentWithDiscovery(agents[i], cache)
+		}
+	}
+	return agents
+}
+
+func (s *Server) agentWithDiscovery(agent registry.Agent, cache store.AgentCardCache) registry.Agent {
+	agent.CardStatus = cache.CardStatus
+	agent.CardFetchedAt = cache.FetchedAt
+	agent.CardError = cache.CardError
+	agent.SelectedEndpointURL = cache.SelectedEndpointURL
+	agent.SelectedProtocolBinding = cache.SelectedProtocolBinding
+	agent.SelectedProtocolVersion = cache.SelectedProtocolVersion
+	agent.Skills = append([]a2aclient.AgentSkill(nil), cache.Skills...)
+	agent.Streaming = cache.Streaming
+	agent.DashboardContextSupported = cache.DashboardContextSupported
+	if agent.SelectedEndpointURL != "" {
+		agent.EndpointURL = agent.SelectedEndpointURL
+	}
+	if agent.SelectedProtocolBinding != "" {
+		agent.ProtocolBinding = agent.SelectedProtocolBinding
+	}
+	return agent
+}
+
+func (s *Server) currentAgentCardCache(ctx context.Context, agent registry.Agent) (store.AgentCardCache, bool) {
+	if s.cardStore == nil {
+		return store.AgentCardCache{}, false
+	}
+	if cache, ok := s.loadAgentCardCache(ctx, agent.ID); ok && cache.CardStatus == "available" {
+		return cache, true
+	}
+	return s.refreshAgentCard(ctx, agent), true
+}
+
+func (s *Server) loadAgentCardCache(ctx context.Context, agentID string) (store.AgentCardCache, bool) {
+	if s.cardStore == nil {
+		return store.AgentCardCache{}, false
+	}
+	cache, err := s.cardStore.AgentCardCache(ctx, agentID)
+	if err != nil {
+		return store.AgentCardCache{}, false
+	}
+	return cache, true
+}
+
+func (s *Server) refreshAgentCard(ctx context.Context, agent registry.Agent) store.AgentCardCache {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	cache := store.AgentCardCache{
+		AgentID:                 agent.ID,
+		CardStatus:              "unavailable",
+		CardError:               "agent card is unavailable",
+		SelectedEndpointURL:     agent.EndpointURL,
+		SelectedProtocolBinding: agent.ProtocolBinding,
+		SelectedProtocolVersion: a2aclient.ProtocolVersion10,
+		FetchedAt:               now,
+		ExpiresAt:               now,
+	}
+	configuredAgent, _ := s.configuredAgent(agent.ID)
+	bearerToken, _ := agentBearerToken(configuredAgent)
+	result, err := s.cardFetcher.Fetch(ctx, agent.CardURL, bearerToken)
+	if err != nil {
+		cache.CardError = "agent card could not be fetched"
+		s.saveAgentCardCache(ctx, cache)
+		return cache
+	}
+	selected, err := a2aclient.SelectInterface(result.Card, agent.EndpointURL, agent.ProtocolBinding)
+	if err != nil {
+		cache.CardJSON = result.Raw
+		cache.CardError = "agent card has no compatible A2A 1.0 interface"
+		cache.FetchedAt = result.FetchedAt.Format(time.RFC3339Nano)
+		cache.ExpiresAt = result.FetchedAt.Add(10 * time.Minute).Format(time.RFC3339Nano)
+		cache.Skills = result.Card.Skills
+		cache.Streaming = result.Card.Capabilities.Streaming
+		cache.DashboardContextSupported = a2aclient.SupportsDashboardContext(result.Card)
+		s.saveAgentCardCache(ctx, cache)
+		return cache
+	}
+	cache.CardJSON = result.Raw
+	cache.CardStatus = "available"
+	cache.CardError = ""
+	cache.SelectedEndpointURL = selected.EndpointURL
+	cache.SelectedProtocolBinding = selected.ProtocolBinding
+	cache.SelectedProtocolVersion = selected.ProtocolVersion
+	cache.Streaming = result.Card.Capabilities.Streaming
+	cache.DashboardContextSupported = a2aclient.SupportsDashboardContext(result.Card)
+	cache.Skills = result.Card.Skills
+	cache.FetchedAt = result.FetchedAt.Format(time.RFC3339Nano)
+	cache.ExpiresAt = result.FetchedAt.Add(10 * time.Minute).Format(time.RFC3339Nano)
+	s.saveAgentCardCache(ctx, cache)
+	return cache
+}
+
+func (s *Server) saveAgentCardCache(ctx context.Context, cache store.AgentCardCache) {
+	if s.cardStore == nil {
+		return
+	}
+	_ = s.cardStore.SaveAgentCardCache(ctx, cache)
+}
+
+func (s *Server) dashboardContext(ctx context.Context) map[string]any {
+	layout, err := s.currentWidgetLayout(ctx, "")
+	if err != nil {
+		layout = s.layout
+	}
+	visibleIDs := []string{}
+	widgets := []map[string]any{}
+	for _, widget := range layout.Widgets {
+		if !widget.Visible {
+			continue
+		}
+		visibleIDs = append(visibleIDs, widget.ID)
+		publicContext := map[string]any{}
+		switch widget.Kind {
+		case "weather":
+			publicContext["locationName"] = s.cfg.Weather.LocationName
+			publicContext["provider"] = s.cfg.Weather.Provider
+		case "date-time":
+			publicContext["timezone"] = s.cfg.Home.Timezone
+			publicContext["locale"] = s.cfg.Home.Locale
+		case "chat-history":
+			publicContext["conversationHistoryVisible"] = true
+		}
+		widgets = append(widgets, map[string]any{
+			"id":            widget.ID,
+			"kind":          widget.Kind,
+			"title":         widget.Title,
+			"size":          widget.Size,
+			"publicContext": publicContext,
+		})
+	}
+	return map[string]any{
+		"schema": a2aclient.DashboardContextExtensionURI,
+		"display": map[string]any{
+			"deviceId":        "default-display",
+			"profile":         layout.ProfileID,
+			"locale":          s.cfg.Home.Locale,
+			"timezone":        s.cfg.Home.Timezone,
+			"interactionMode": "touch",
+		},
+		"dashboard": map[string]any{
+			"layoutId":         layout.ProfileID,
+			"visibleWidgetIds": visibleIDs,
+		},
+		"widgets": widgets,
+	}
 }
 
 func (s *Server) configuredAgent(id string) (config.AgentConfig, bool) {
@@ -590,8 +846,8 @@ func agentBearerToken(agent config.AgentConfig) (string, bool) {
 func withCommonHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Last-Event-ID")
 		w.Header().Set("Cache-Control", "no-store")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

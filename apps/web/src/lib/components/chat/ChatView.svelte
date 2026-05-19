@@ -1,21 +1,27 @@
 <script lang="ts">
-  import { ChevronDown, Mic, VolumeX } from 'lucide-svelte';
+  import { ChevronDown, Mic, Plus, Trash2, VolumeX } from 'lucide-svelte';
   import AssistantActivity from '$lib/components/chat/AssistantActivity.svelte';
   import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import { availabilityDescription, availabilityLabel, availabilityTone, getAgentAvailability } from '$lib/agents';
   import Badge from '$lib/components/ui/Badge.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
-  import type { Agent, AgentAvailability, ChatMessage, ChatState, VoiceStatus } from '$lib/types';
+  import type { Agent, AgentAvailability, ChatMessage, ChatState, Conversation, VoiceStatus } from '$lib/types';
 
   export let agents: Agent[] = [];
   export let messages: ChatMessage[] = [];
+  export let conversations: Conversation[] = [];
   export let state: ChatState = 'idle';
   export let voice: VoiceStatus;
   export let voiceIssue = '';
   export let selectedAgentId = '';
+  export let selectedConversationId = '';
   export let selectedAvailability: AgentAvailability = 'unknown';
   export let onAgentChange: (agentId: string) => void = () => {};
+  export let onConversationSelect: (conversationId: string) => Promise<void> | void = () => {};
+  export let onNewConversation: () => Promise<void> | void = () => {};
+  export let onDeleteConversation: (conversationId: string) => Promise<void> | void = () => {};
   export let onSubmit: (value: string) => Promise<void> | void = () => {};
   export let onRetry: (message: ChatMessage) => Promise<void> | void = () => {};
   export let onClose: () => void = () => {};
@@ -29,6 +35,9 @@
   $: selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
   $: agentAvailability = selectedAgent ? getAgentAvailability(selectedAgent) : selectedAvailability;
   $: composerDisabled = agentAvailability !== 'available';
+  $: selectedBinding = selectedAgent?.selectedProtocolBinding || selectedAgent?.protocolBinding;
+  $: selectedVersion = selectedAgent?.selectedProtocolVersion || '1.0';
+  $: selectedConversation = conversations.find((conversation) => conversation.id === selectedConversationId);
   $: voiceReady = voice?.serviceStatus === 'ready';
   $: voiceLabel = voiceReady
     ? voice.muted
@@ -36,6 +45,15 @@
       : 'Wake listening'
     : 'Voice not configured';
   $: statusTone = state === 'error' ? 'danger' : state === 'idle' ? 'neutral' : 'active';
+
+  function formatConversationTime(value: string) {
+    if (!value) {
+      return '';
+    }
+    return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(
+      new Date(value)
+    );
+  }
 </script>
 
 <section class="chat-view" aria-label="Agent conversation">
@@ -46,7 +64,11 @@
         <Badge tone={statusTone}>{state}</Badge>
         {#if selectedAgent}
           <Badge tone={availabilityTone(agentAvailability)}>{availabilityLabel(agentAvailability)}</Badge>
-          <span>{selectedAgent.protocolBinding}</span>
+          <span>{selectedBinding}</span>
+          <span>A2A {selectedVersion}</span>
+          {#if selectedAgent.dashboardContextSupported}
+            <span>screen context</span>
+          {/if}
           {#if selectedAgent.authConfigured}
             <span>auth</span>
           {/if}
@@ -54,6 +76,11 @@
       </div>
       {#if selectedAgent}
         <p class="chat-agent-description">{selectedAgent.description || availabilityDescription(agentAvailability)}</p>
+        {#if selectedAgent.skills && selectedAgent.skills.length > 0}
+          <p class="chat-agent-description">
+            Skills: {selectedAgent.skills.slice(0, 3).map((skill) => skill.name).join(', ')}
+          </p>
+        {/if}
       {/if}
     </div>
 
@@ -110,19 +137,80 @@
     </span>
   </div>
 
-  <MessageList
-    {messages}
-    emptyTitle={selectedAgent ? 'Ask Jute anything' : 'No agent connected'}
-    emptyMessage={selectedAgent ? 'Choose an agent and start with a short request.' : 'Add an A2A agent to start conversations.'}
-    {onRetry}
-  />
+  <div class="chat-body">
+    <aside class="conversation-sidebar" aria-label="Conversation history">
+      <div class="conversation-sidebar-header">
+        <div>
+          <strong>History</strong>
+          <span>{conversations.length} saved</span>
+        </div>
+        <IconButton label="New conversation" variant="outline" disabled={composerDisabled} on:click={onNewConversation}>
+          <Plus size={17} />
+        </IconButton>
+      </div>
 
-  <MessageComposer
-    {state}
-    disabled={composerDisabled}
-    {voice}
-    {onSubmit}
-    {onCancel}
-    onVoiceClick={onToggleVoiceMute}
-  />
+      <div class="conversation-list">
+        {#if conversations.length === 0}
+          <div class="conversation-empty">
+            {#if composerDisabled}
+              No available agent yet.
+            {:else}
+              Start a conversation to save it here.
+            {/if}
+          </div>
+        {:else}
+          {#each conversations as conversation}
+            <button
+              type="button"
+              class:conversation-item--active={conversation.id === selectedConversationId}
+              class="conversation-item"
+              on:click={() => onConversationSelect(conversation.id)}
+            >
+              <span>{conversation.title || 'Conversation'}</span>
+              <small>{formatConversationTime(conversation.updatedAt)}</small>
+            </button>
+          {/each}
+        {/if}
+      </div>
+    </aside>
+
+    <div class="chat-thread">
+      <div class="conversation-thread-header">
+        <div>
+          <strong>{selectedConversation?.title || 'New conversation'}</strong>
+          <span>
+            {#if selectedConversation}
+              {selectedConversation.status}
+            {:else if selectedAgent}
+              Ready to start with {selectedAgent.name}
+            {:else}
+              No agent connected
+            {/if}
+          </span>
+        </div>
+        {#if selectedConversation}
+          <Button size="sm" variant="ghost" on:click={() => onDeleteConversation(selectedConversation.id)}>
+            <Trash2 size={15} />
+            <span>Delete</span>
+          </Button>
+        {/if}
+      </div>
+
+      <MessageList
+        {messages}
+        emptyTitle={selectedAgent ? 'Ask Jute anything' : 'No agent connected'}
+        emptyMessage={selectedAgent ? 'Choose an agent and start with a short request.' : 'Add an A2A agent to start conversations.'}
+        {onRetry}
+      />
+
+      <MessageComposer
+        {state}
+        disabled={composerDisabled}
+        {voice}
+        {onSubmit}
+        {onCancel}
+        onVoiceClick={onToggleVoiceMute}
+      />
+    </div>
+  </div>
 </section>

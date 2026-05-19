@@ -22,6 +22,8 @@ Jute prefers protocol bindings in this order:
 2. `HTTP+JSON`
 3. `GRPC`
 
+The first implemented send path is blocking JSON-RPC A2A 1.0. Agents used with the current dashboard chat should expose a `JSONRPC` interface with `protocolVersion: "1.0"` and implement `SendMessage`.
+
 Example:
 
 ```json
@@ -81,6 +83,8 @@ The context arrives in A2A message metadata and includes:
 
 Agents must treat context as advisory, not authoritative. The hub remains responsible for device control, permissions, and action execution.
 
+When Jute activates the extension, it sends `A2A-Extensions: https://jute.dev/a2a/extensions/dashboard-context/v1` and places the redacted context under the same URI key in message metadata.
+
 ## Privacy Expectations
 
 Agents must not assume they are entitled to hidden or private dashboard data. If context is missing, ask the user or continue with the visible user message.
@@ -115,4 +119,3 @@ Agents should continue to work when:
 - Jute selects a non-preferred binding;
 - streaming is unavailable;
 - context fields are redacted.
-

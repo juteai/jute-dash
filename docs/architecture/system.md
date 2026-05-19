@@ -85,7 +85,7 @@ Initial API families:
 - `/api/v1/home`: current normalized home state.
 - `/api/v1/widgets`: widget catalog, layouts, widget state, and widget permissions. The current v1 surface includes `GET /api/v1/widgets/catalog`, `GET /api/v1/widgets/layout`, `PUT /api/v1/widgets/layout`, and `POST /api/v1/widgets/layout/reset`.
 - `/api/v1/agents`: configured agents, cached cards, skills, health, and selected bindings.
-- `/api/v1/messages`: user turns that become A2A tasks.
+- `/api/v1/messages`: compatibility endpoint for simple blocking user turns that become A2A tasks.
 - `/api/v1/setup`: future first-run setup status and completion.
 - `/api/v1/status`: future setup, store, event stream, agent, widget, voice, provider, and degraded health summary.
 - `/api/v1/devices`: future device profile and per-device settings.
@@ -93,8 +93,8 @@ Initial API families:
 - `/api/v1/voice/mute`, `/api/v1/voice/unmute`, `/api/v1/voice/cancel`: current voice state controls.
 - `/api/v1/voice/providers`: current provider-list response shape and future STT/TTS provider pack discovery, details, and health tests.
 - `/api/v1/tts`: future voice listing, preview, speak, and stop controls.
-- `/api/v1/conversations`: future multi-turn conversation APIs for typed, push-to-talk, and wake-word turns.
-- `/api/v1/events`: Server-Sent Events stream for home, widget, agent, and task updates.
+- `/api/v1/conversations`: current durable multi-turn conversation APIs for typed turns, with voice and wake-word turns planned to use the same pipeline.
+- `/api/v1/events`: Server-Sent Events stream for replayable conversation updates and future home, widget, agent, and task updates.
 - `/api/v1/settings`: household, device profile, theme, and layout settings.
 - `/healthz`: existing minimal hub process reachability check.
 
@@ -161,7 +161,7 @@ Persisted data:
 - widget installation records, permissions, and state;
 - cached Agent Cards, ETags, selected bindings, and health checks;
 - room/device mappings and adapter metadata;
-- conversation/task summaries when history is enabled;
+- conversations, conversation messages, replayable conversation events, returned A2A context IDs, and latest task IDs;
 - voice settings, wake-word model IDs, provider pack choices, STT/TTS model IDs, TTS voice IDs, follow-up windows, cloud opt-in, command-provider enablement, sensitive-output speech policy, and microphone profiles;
 - voice provider pack installation records, manifests, health state, and non-secret settings;
 - MCP bridge enablement, auth references, endpoint settings, and per-agent MCP scopes;

@@ -20,18 +20,19 @@
 
 ## Phase 1: Local Dashboard MVP
 
-- Implement the JSON-RPC A2A client transport.
+- Implement the JSON-RPC A2A 1.0 client transport.
 - Add MCP bridge settings and per-agent MCP scopes, disabled by default.
-- Resolve and cache Agent Cards.
+- Resolve and cache Agent Cards, selected interfaces, skills, and dashboard-context extension support.
 - Persist runtime state in SQLite using migrations and safe first-run defaults.
 - Add setup status API and settings APIs for household and device profile configuration.
 - Add `/api/v1/events` for dashboard and task updates.
 - Replace POC dashboard UI with the clean-slate dashboard, edit mode, WidgetFrame, and chat mode.
 - Add display resilience UX: startup offline screen, runtime reconnect ribbon, stale dashboard styling, no-agent chat state, and widget error frames.
 - Add voice foundation state: persisted voice settings, status/mute/cancel APIs, provider-list response shape, and display microphone status controls.
+- Add durable SQLite conversations, messages, replayable conversation events, and full chat history UI.
 - Implement Widget Pack manifest validation and iframe host runtime.
 - Show agent skills in the UI.
-- Send user prompts to a selected agent.
+- Send user prompts to a selected A2A 1.0 JSON-RPC agent.
 - Stream task updates back to the display through hub events.
 - Add a read-only MCP Bridge with dashboard/widget resources and safe context tools for local agents.
 - Add settings UI for home name, rooms, tiles, and agent registration.
@@ -46,8 +47,8 @@
 
 ## Phase 3: Voice And Presence
 
-- Add conversation state and voice/conversation SSE events on top of the Phase 1 voice foundation.
-- Add Echo Show-style conversation UI to the display.
+- Extend the existing conversation pipeline with voice-specific SSE events and follow-up listening.
+- Add Echo Show-style voice conversation UI refinements to the display.
 - Add local display-device voice service with VAD, openWakeWord, and pre-roll buffering.
 - Add Voice Provider Pack manifest validation and discovery.
 - Add speech-to-text provider selection with Wyoming local/LAN as the first practical path.

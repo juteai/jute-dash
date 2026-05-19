@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"jute-dash/internal/a2a"
 	"jute-dash/internal/config"
 
 	_ "modernc.org/sqlite"
@@ -99,6 +100,21 @@ type VoiceProviderPack struct {
 	TransportType string `json:"transportType"`
 	HealthStatus  string `json:"healthStatus"`
 	UpdatedAt     string `json:"updatedAt"`
+}
+
+type AgentCardCache struct {
+	AgentID                   string           `json:"agentId"`
+	CardJSON                  string           `json:"cardJson"`
+	CardStatus                string           `json:"cardStatus"`
+	CardError                 string           `json:"cardError"`
+	SelectedEndpointURL       string           `json:"selectedEndpointUrl"`
+	SelectedProtocolBinding   string           `json:"selectedProtocolBinding"`
+	SelectedProtocolVersion   string           `json:"selectedProtocolVersion"`
+	Streaming                 bool             `json:"streaming"`
+	DashboardContextSupported bool             `json:"dashboardContextSupported"`
+	Skills                    []a2a.AgentSkill `json:"skills"`
+	FetchedAt                 string           `json:"fetchedAt"`
+	ExpiresAt                 string           `json:"expiresAt"`
 }
 
 var ErrInvalidLayout = errors.New("invalid widget layout")
@@ -193,6 +209,8 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 	migrations := []migration{
 		{version: 1, name: "initial runtime settings", sql: initialMigrationSQL},
 		{version: 2, name: "voice settings runtime state", sql: voiceSettingsMigrationSQL},
+		{version: 3, name: "agent card discovery cache", sql: agentCardCacheMigrationSQL},
+		{version: 4, name: "durable conversations", sql: conversationMigrationSQL},
 	}
 	for _, item := range migrations {
 		applied, err := s.migrationApplied(ctx, item.version)
@@ -468,6 +486,97 @@ ORDER BY name, id`)
 		return nil, fmt.Errorf("iterate voice providers: %w", err)
 	}
 	return providers, nil
+}
+
+func (s *Store) AgentCardCache(ctx context.Context, agentID string) (AgentCardCache, error) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return AgentCardCache{}, errors.New("agent id is required")
+	}
+	var cache AgentCardCache
+	var streaming, dashboardContextSupported int
+	if err := s.db.QueryRowContext(ctx, `
+SELECT agent_id, card_json, card_status, card_error, selected_endpoint_url,
+       selected_protocol_binding, selected_protocol_version, streaming,
+       dashboard_context_supported, fetched_at, expires_at
+FROM agent_card_cache
+WHERE agent_id = ?`, agentID).Scan(
+		&cache.AgentID,
+		&cache.CardJSON,
+		&cache.CardStatus,
+		&cache.CardError,
+		&cache.SelectedEndpointURL,
+		&cache.SelectedProtocolBinding,
+		&cache.SelectedProtocolVersion,
+		&streaming,
+		&dashboardContextSupported,
+		&cache.FetchedAt,
+		&cache.ExpiresAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return AgentCardCache{}, sql.ErrNoRows
+		}
+		return AgentCardCache{}, fmt.Errorf("load agent card cache: %w", err)
+	}
+	cache.Streaming = streaming == 1
+	cache.DashboardContextSupported = dashboardContextSupported == 1
+	if strings.TrimSpace(cache.CardJSON) != "" {
+		var card a2a.AgentCard
+		if err := json.Unmarshal([]byte(cache.CardJSON), &card); err != nil {
+			return AgentCardCache{}, fmt.Errorf("decode cached agent card for %s: %w", agentID, err)
+		}
+		cache.Skills = card.Skills
+	}
+	return cache, nil
+}
+
+func (s *Store) SaveAgentCardCache(ctx context.Context, cache AgentCardCache) error {
+	cache.AgentID = strings.TrimSpace(cache.AgentID)
+	if cache.AgentID == "" {
+		return errors.New("agent id is required")
+	}
+	if strings.TrimSpace(cache.FetchedAt) == "" {
+		cache.FetchedAt = nowUTC()
+	}
+	if strings.TrimSpace(cache.ExpiresAt) == "" {
+		cache.ExpiresAt = cache.FetchedAt
+	}
+	if strings.TrimSpace(cache.CardStatus) == "" {
+		cache.CardStatus = "unknown"
+	}
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO agent_card_cache (
+  agent_id, card_json, etag, content_hash, fetched_at, expires_at,
+  card_status, card_error, selected_endpoint_url, selected_protocol_binding,
+  selected_protocol_version, streaming, dashboard_context_supported
+) VALUES (?, ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(agent_id) DO UPDATE SET
+  card_json = excluded.card_json,
+  fetched_at = excluded.fetched_at,
+  expires_at = excluded.expires_at,
+  card_status = excluded.card_status,
+  card_error = excluded.card_error,
+  selected_endpoint_url = excluded.selected_endpoint_url,
+  selected_protocol_binding = excluded.selected_protocol_binding,
+  selected_protocol_version = excluded.selected_protocol_version,
+  streaming = excluded.streaming,
+  dashboard_context_supported = excluded.dashboard_context_supported`,
+		cache.AgentID,
+		cache.CardJSON,
+		cache.FetchedAt,
+		cache.ExpiresAt,
+		cache.CardStatus,
+		cache.CardError,
+		cache.SelectedEndpointURL,
+		cache.SelectedProtocolBinding,
+		cache.SelectedProtocolVersion,
+		boolToInt(cache.Streaming),
+		boolToInt(cache.DashboardContextSupported),
+	)
+	if err != nil {
+		return fmt.Errorf("save agent card cache: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) SaveWidgetLayout(ctx context.Context, layout WidgetLayout) (WidgetLayout, error) {
@@ -1366,4 +1475,56 @@ ALTER TABLE voice_settings ADD COLUMN enabled INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE voice_settings ADD COLUMN muted INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE voice_settings ADD COLUMN preferred_agent_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE voice_settings ADD COLUMN last_state_updated_at TEXT NOT NULL DEFAULT '';
+`
+
+const agentCardCacheMigrationSQL = `
+ALTER TABLE agent_card_cache ADD COLUMN card_status TEXT NOT NULL DEFAULT 'unknown';
+ALTER TABLE agent_card_cache ADD COLUMN card_error TEXT NOT NULL DEFAULT '';
+ALTER TABLE agent_card_cache ADD COLUMN selected_endpoint_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE agent_card_cache ADD COLUMN selected_protocol_binding TEXT NOT NULL DEFAULT '';
+ALTER TABLE agent_card_cache ADD COLUMN selected_protocol_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE agent_card_cache ADD COLUMN streaming INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE agent_card_cache ADD COLUMN dashboard_context_supported INTEGER NOT NULL DEFAULT 0;
+`
+
+const conversationMigrationSQL = `
+CREATE TABLE IF NOT EXISTS conversations (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL,
+  a2a_context_id TEXT NOT NULL DEFAULT '',
+  latest_task_id TEXT NOT NULL DEFAULT '',
+  deleted_at TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  status TEXT NOT NULL,
+  a2a_message_id TEXT NOT NULL DEFAULT '',
+  a2a_task_id TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS conversation_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  conversation_id TEXT NOT NULL DEFAULT '',
+  message_id TEXT NOT NULL DEFAULT '',
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_agent_updated ON conversations(agent_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation ON conversation_messages(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_conversation_events_conversation ON conversation_events(conversation_id, id);
 `
