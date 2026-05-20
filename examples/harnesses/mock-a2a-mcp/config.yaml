@@ -58,6 +58,13 @@ agents:
       - conversation
       - mock-a2a
       - dashboard-context
+    mcp-scopes:
+      - dashboard:read
+      - widgets:read
+      - skills:read
+      - skills:context_read
+      - skills:prompt_read
+      - skills:action_invoke
 
 rooms: []
 tiles: []

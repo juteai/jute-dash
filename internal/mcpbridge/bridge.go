@@ -21,6 +21,8 @@ import (
 const (
 	ProtocolVersion = "2025-11-25"
 	jsonRPCVersion  = "2.0"
+
+	callerAgentHeader = "X-Jute-Agent-ID"
 )
 
 type SnapshotProvider interface {
@@ -93,7 +95,7 @@ func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, rpcErr := h.dispatch(r.Context(), req.Method, req.Params)
+	result, rpcErr := h.dispatch(r.Context(), r, req.Method, req.Params)
 	if rpcErr != nil {
 		writeRPCError(w, http.StatusOK, req.ID, rpcErr.Code, rpcErr.Message)
 		return
@@ -101,7 +103,7 @@ func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
 	writeRPCResult(w, req.ID, result)
 }
 
-func (h *Handler) dispatch(ctx context.Context, method string, params json.RawMessage) (any, *rpcError) {
+func (h *Handler) dispatch(ctx context.Context, r *http.Request, method string, params json.RawMessage) (any, *rpcError) {
 	switch method {
 	case "initialize":
 		return h.initializeResult(), nil
@@ -110,29 +112,49 @@ func (h *Handler) dispatch(ctx context.Context, method string, params json.RawMe
 		if err != nil {
 			return nil, internalError()
 		}
-		return map[string]any{"resources": resourcesList(snapshot)}, nil
+		caller, rpcErr := h.callerForRequest(snapshot, r)
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return map[string]any{"resources": resourcesList(snapshot, caller)}, nil
 	case "resources/read":
 		var req resourceReadParams
 		if err := decodeParams(params, &req); err != nil {
 			return nil, invalidParams(err)
 		}
-		return h.readResource(ctx, req.URI)
+		return h.readResource(ctx, r, req.URI)
 	case "tools/list":
-		return map[string]any{"tools": toolsList()}, nil
+		snapshot, err := h.snapshot(ctx)
+		if err != nil {
+			return nil, internalError()
+		}
+		caller, rpcErr := h.callerForRequest(snapshot, r)
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return map[string]any{"tools": toolsList(caller)}, nil
 	case "tools/call":
 		var req toolCallParams
 		if err := decodeParams(params, &req); err != nil {
 			return nil, invalidParams(err)
 		}
-		return h.callTool(ctx, req)
+		return h.callTool(ctx, r, req)
 	case "prompts/list":
-		return map[string]any{"prompts": promptsList()}, nil
+		snapshot, err := h.snapshot(ctx)
+		if err != nil {
+			return nil, internalError()
+		}
+		caller, rpcErr := h.callerForRequest(snapshot, r)
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return map[string]any{"prompts": promptsList(caller)}, nil
 	case "prompts/get":
 		var req promptGetParams
 		if err := decodeParams(params, &req); err != nil {
 			return nil, invalidParams(err)
 		}
-		return h.getPrompt(ctx, req.Name, req.Arguments)
+		return h.getPrompt(ctx, r, req.Name, req.Arguments)
 	default:
 		return nil, &rpcError{Code: -32601, Message: "method not found"}
 	}
@@ -155,10 +177,17 @@ func (h *Handler) initializeResult() map[string]any {
 	}
 }
 
-func (h *Handler) readResource(ctx context.Context, uri string) (any, *rpcError) {
+func (h *Handler) readResource(ctx context.Context, r *http.Request, uri string) (any, *rpcError) {
 	snapshot, err := h.snapshot(ctx)
 	if err != nil {
 		return nil, internalError()
+	}
+	caller, rpcErr := h.callerForRequest(snapshot, r)
+	if rpcErr != nil {
+		return nil, rpcErr
+	}
+	if rpcErr := requireResourceScope(caller, uri); rpcErr != nil {
+		return nil, rpcErr
 	}
 	var value any
 	switch {
@@ -217,10 +246,17 @@ func (h *Handler) readResource(ctx context.Context, uri string) (any, *rpcError)
 	}, nil
 }
 
-func (h *Handler) callTool(ctx context.Context, req toolCallParams) (any, *rpcError) {
+func (h *Handler) callTool(ctx context.Context, r *http.Request, req toolCallParams) (any, *rpcError) {
 	snapshot, err := h.snapshot(ctx)
 	if err != nil {
 		return nil, internalError()
+	}
+	caller, rpcErr := h.callerForRequest(snapshot, r)
+	if rpcErr != nil {
+		return nil, rpcErr
+	}
+	if rpcErr := requireToolScope(caller, req.Name); rpcErr != nil {
+		return nil, rpcErr
 	}
 	var value any
 	switch req.Name {
@@ -292,10 +328,17 @@ func (h *Handler) callTool(ctx context.Context, req toolCallParams) (any, *rpcEr
 	}, nil
 }
 
-func (h *Handler) getPrompt(ctx context.Context, name string, arguments map[string]any) (any, *rpcError) {
+func (h *Handler) getPrompt(ctx context.Context, r *http.Request, name string, arguments map[string]any) (any, *rpcError) {
 	snapshot, err := h.snapshot(ctx)
 	if err != nil {
 		return nil, internalError()
+	}
+	caller, rpcErr := h.callerForRequest(snapshot, r)
+	if rpcErr != nil {
+		return nil, rpcErr
+	}
+	if !caller.has(config.MCPScopeSkillsPromptRead) {
+		return nil, missingScope(config.MCPScopeSkillsPromptRead)
 	}
 	var text string
 	switch name {
@@ -333,6 +376,51 @@ func (h *Handler) snapshot(ctx context.Context) (widgetskills.Snapshot, error) {
 	return h.provider.Snapshot(ctx)
 }
 
+type caller struct {
+	AgentID   string
+	Anonymous bool
+	Scopes    map[string]struct{}
+}
+
+func (h *Handler) callerForRequest(snapshot widgetskills.Snapshot, r *http.Request) (caller, *rpcError) {
+	agentID := strings.TrimSpace(r.Header.Get(callerAgentHeader))
+	if agentID == "" {
+		if h.cfg.Auth.Mode == "none" {
+			return newCaller("", true, config.DefaultMCPReadScopes()), nil
+		}
+		return caller{}, unauthorized("mcp caller identity is required")
+	}
+	for _, agent := range snapshot.Config.Agents {
+		if agent.ID != agentID {
+			continue
+		}
+		if !agent.Enabled {
+			return caller{}, unauthorized("mcp caller is not enabled")
+		}
+		return newCaller(agent.ID, false, agent.MCPScopes), nil
+	}
+	return caller{}, unauthorized("mcp caller is not authorized")
+}
+
+func newCaller(agentID string, anonymous bool, scopes []string) caller {
+	if len(scopes) == 0 {
+		scopes = config.DefaultMCPReadScopes()
+	}
+	scopeSet := make(map[string]struct{}, len(scopes))
+	for _, scope := range scopes {
+		scope = strings.TrimSpace(scope)
+		if scope != "" {
+			scopeSet[scope] = struct{}{}
+		}
+	}
+	return caller{AgentID: agentID, Anonymous: anonymous, Scopes: scopeSet}
+}
+
+func (c caller) has(scope string) bool {
+	_, ok := c.Scopes[scope]
+	return ok
+}
+
 func (h *Handler) validOrigin(r *http.Request) bool {
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
 	if origin == "" {
@@ -363,20 +451,32 @@ func (h *Handler) authorized(r *http.Request) bool {
 	return r.Header.Get("Authorization") == "Bearer "+token
 }
 
-func resourcesList(snapshot widgetskills.Snapshot) []map[string]any {
-	resources := []map[string]any{
-		resource("jute://dashboard/current", "dashboard-current", "Current Dashboard Context", "Safe current dashboard context and visible Widget Skills."),
-		resource("jute://widgets/visible", "widgets-visible", "Visible Widgets", "Visible dashboard widgets and their Widget Skill mappings."),
-		resource("jute://skills", "widget-skills", "Widget Skills", "Available Widget Skills for this display."),
-		resource("jute://home/state", "home-state", "Home State", "Normalized non-secret home state summary."),
+func resourcesList(snapshot widgetskills.Snapshot, caller caller) []map[string]any {
+	resources := []map[string]any{}
+	add := func(scope string, value map[string]any) {
+		if caller.has(scope) {
+			resources = append(resources, value)
+		}
 	}
+	add(config.MCPScopeDashboardRead, resource("jute://dashboard/current", "dashboard-current", "Current Dashboard Context", "Safe current dashboard context and visible Widget Skills."))
+	add(config.MCPScopeWidgetsRead, resource("jute://widgets/visible", "widgets-visible", "Visible Widgets", "Visible dashboard widgets and their Widget Skill mappings."))
+	add(config.MCPScopeSkillsRead, resource("jute://skills", "widget-skills", "Widget Skills", "Available Widget Skills for this display."))
+	add(config.MCPScopeDashboardRead, resource("jute://home/state", "home-state", "Home State", "Normalized non-secret home state summary."))
 	for _, skill := range widgetskills.Available(snapshot) {
-		resources = append(resources,
-			resource("jute://skills/"+skill.SkillID, "skill-"+skill.SkillID, skill.DisplayName+" Skill", skill.Summary),
-			resource("jute://skills/"+skill.SkillID+"/context", "skill-"+skill.SkillID+"-context", skill.DisplayName+" Context", "Current public context for "+skill.DisplayName+"."),
-			resource("jute://widgets/"+skill.WidgetInstanceID+"/skill", "widget-"+skill.WidgetInstanceID+"-skill", skill.WidgetTitle+" Skill", "Widget instance to Widget Skill mapping."),
-			resource("jute://widgets/"+skill.WidgetInstanceID+"/context", "widget-"+skill.WidgetInstanceID+"-context", skill.WidgetTitle+" Context", "Current public Widget Skill context for "+skill.WidgetTitle+"."),
-		)
+		if caller.has(config.MCPScopeSkillsRead) {
+			resources = append(resources,
+				resource("jute://skills/"+skill.SkillID, "skill-"+skill.SkillID, skill.DisplayName+" Skill", skill.Summary),
+				resource("jute://widgets/"+skill.WidgetInstanceID+"/skill", "widget-"+skill.WidgetInstanceID+"-skill", skill.WidgetTitle+" Skill", "Widget instance to Widget Skill mapping."),
+			)
+		}
+		if caller.has(config.MCPScopeSkillsContextRead) {
+			resources = append(resources,
+				resource("jute://skills/"+skill.SkillID+"/context", "skill-"+skill.SkillID+"-context", skill.DisplayName+" Context", "Current public context for "+skill.DisplayName+"."),
+			)
+			if caller.has(config.MCPScopeWidgetsRead) {
+				resources = append(resources, resource("jute://widgets/"+skill.WidgetInstanceID+"/context", "widget-"+skill.WidgetInstanceID+"-context", skill.WidgetTitle+" Context", "Current public Widget Skill context for "+skill.WidgetTitle+"."))
+			}
+		}
 	}
 	return resources
 }
@@ -391,32 +491,37 @@ func resource(uri, name, title, description string) map[string]any {
 	}
 }
 
-func toolsList() []map[string]any {
-	return []map[string]any{
-		tool("jute_dashboard_context_get", "Get Dashboard Context", "Return safe current Jute dashboard context.", emptySchema()),
-		tool("jute_skill_list", "List Widget Skills", "List available Jute Widget Skills.", emptySchema()),
-		tool("jute_skill_read_context", "Read Widget Skill Context", "Read public context for a Widget Skill.", objectSchema(map[string]any{
-			"skillId":          map[string]any{"type": "string"},
-			"widgetInstanceId": map[string]any{"type": "string"},
-		}, []string{"skillId"})),
-		tool("jute_skill_invoke_action", "Invoke Widget Skill Action", "Invoke a declared low-risk Widget Skill action through the hub.", objectSchema(map[string]any{
-			"skillId":          map[string]any{"type": "string"},
-			"widgetInstanceId": map[string]any{"type": "string"},
-			"actionId":         map[string]any{"type": "string"},
-		}, []string{"skillId", "actionId"})),
-		tool("jute_skill_prompt_get", "Get Widget Skill Prompt", "Get hub-approved prompt guidance for a Widget Skill.", objectSchema(map[string]any{
-			"skillId":  map[string]any{"type": "string"},
-			"promptId": map[string]any{"type": "string"},
-		}, []string{"skillId", "promptId"})),
-		tool("jute_display_notification", "Display Notification", "Show a short hub-sanitized notification on the Jute display.", objectSchema(map[string]any{
-			"message":  map[string]any{"type": "string"},
-			"severity": map[string]any{"type": "string", "enum": []string{"info", "success", "warning", "error"}},
-		}, []string{"message"})),
-		tool("jute_display_focus_widget", "Focus Widget", "Ask the Jute display to highlight a visible widget instance.", objectSchema(map[string]any{
-			"widgetInstanceId": map[string]any{"type": "string"},
-			"reason":           map[string]any{"type": "string"},
-		}, []string{"widgetInstanceId"})),
+func toolsList(caller caller) []map[string]any {
+	tools := []map[string]any{}
+	add := func(scope string, value map[string]any) {
+		if caller.has(scope) {
+			tools = append(tools, value)
+		}
 	}
+	add(config.MCPScopeDashboardRead, tool("jute_dashboard_context_get", "Get Dashboard Context", "Return safe current Jute dashboard context.", emptySchema()))
+	add(config.MCPScopeSkillsRead, tool("jute_skill_list", "List Widget Skills", "List available Jute Widget Skills.", emptySchema()))
+	add(config.MCPScopeSkillsContextRead, tool("jute_skill_read_context", "Read Widget Skill Context", "Read public context for a Widget Skill.", objectSchema(map[string]any{
+		"skillId":          map[string]any{"type": "string"},
+		"widgetInstanceId": map[string]any{"type": "string"},
+	}, []string{"skillId"})))
+	add(config.MCPScopeSkillsActionInvoke, tool("jute_skill_invoke_action", "Invoke Widget Skill Action", "Invoke a declared low-risk Widget Skill action through the hub.", objectSchema(map[string]any{
+		"skillId":          map[string]any{"type": "string"},
+		"widgetInstanceId": map[string]any{"type": "string"},
+		"actionId":         map[string]any{"type": "string"},
+	}, []string{"skillId", "actionId"})))
+	add(config.MCPScopeSkillsPromptRead, tool("jute_skill_prompt_get", "Get Widget Skill Prompt", "Get hub-approved prompt guidance for a Widget Skill.", objectSchema(map[string]any{
+		"skillId":  map[string]any{"type": "string"},
+		"promptId": map[string]any{"type": "string"},
+	}, []string{"skillId", "promptId"})))
+	add(config.MCPScopeDisplayWrite, tool("jute_display_notification", "Display Notification", "Show a short hub-sanitized notification on the Jute display.", objectSchema(map[string]any{
+		"message":  map[string]any{"type": "string"},
+		"severity": map[string]any{"type": "string", "enum": []string{"info", "success", "warning", "error"}},
+	}, []string{"message"})))
+	add(config.MCPScopeDisplayFocusWidget, tool("jute_display_focus_widget", "Focus Widget", "Ask the Jute display to highlight a visible widget instance.", objectSchema(map[string]any{
+		"widgetInstanceId": map[string]any{"type": "string"},
+		"reason":           map[string]any{"type": "string"},
+	}, []string{"widgetInstanceId"})))
+	return tools
 }
 
 func tool(name, title, description string, inputSchema map[string]any) map[string]any {
@@ -428,7 +533,10 @@ func tool(name, title, description string, inputSchema map[string]any) map[strin
 	}
 }
 
-func promptsList() []map[string]any {
+func promptsList(caller caller) []map[string]any {
+	if !caller.has(config.MCPScopeSkillsPromptRead) {
+		return []map[string]any{}
+	}
 	return []map[string]any{
 		{
 			"name":        "jute_home_assistant_guidance",
@@ -445,6 +553,61 @@ func promptsList() []map[string]any {
 			},
 		},
 	}
+}
+
+func requireResourceScope(caller caller, uri string) *rpcError {
+	switch {
+	case uri == "jute://dashboard/current", uri == "jute://home/state":
+		return requireScope(caller, config.MCPScopeDashboardRead)
+	case uri == "jute://widgets/visible":
+		return requireScope(caller, config.MCPScopeWidgetsRead)
+	case strings.HasPrefix(uri, "jute://widgets/") && strings.HasSuffix(uri, "/context"):
+		if err := requireScope(caller, config.MCPScopeWidgetsRead); err != nil {
+			return err
+		}
+		return requireScope(caller, config.MCPScopeSkillsContextRead)
+	case strings.HasPrefix(uri, "jute://widgets/") && strings.HasSuffix(uri, "/skill"):
+		if err := requireScope(caller, config.MCPScopeWidgetsRead); err != nil {
+			return err
+		}
+		return requireScope(caller, config.MCPScopeSkillsRead)
+	case uri == "jute://skills":
+		return requireScope(caller, config.MCPScopeSkillsRead)
+	case strings.HasPrefix(uri, "jute://skills/") && strings.HasSuffix(uri, "/context"):
+		return requireScope(caller, config.MCPScopeSkillsContextRead)
+	case strings.HasPrefix(uri, "jute://skills/"):
+		return requireScope(caller, config.MCPScopeSkillsRead)
+	default:
+		return nil
+	}
+}
+
+func requireToolScope(caller caller, name string) *rpcError {
+	switch name {
+	case "jute_dashboard_context_get":
+		return requireScope(caller, config.MCPScopeDashboardRead)
+	case "jute_skill_list":
+		return requireScope(caller, config.MCPScopeSkillsRead)
+	case "jute_skill_read_context":
+		return requireScope(caller, config.MCPScopeSkillsContextRead)
+	case "jute_skill_invoke_action":
+		return requireScope(caller, config.MCPScopeSkillsActionInvoke)
+	case "jute_skill_prompt_get":
+		return requireScope(caller, config.MCPScopeSkillsPromptRead)
+	case "jute_display_notification":
+		return requireScope(caller, config.MCPScopeDisplayWrite)
+	case "jute_display_focus_widget":
+		return requireScope(caller, config.MCPScopeDisplayFocusWidget)
+	default:
+		return nil
+	}
+}
+
+func requireScope(caller caller, scope string) *rpcError {
+	if caller.has(scope) {
+		return nil
+	}
+	return missingScope(scope)
 }
 
 func emptySchema() map[string]any {
@@ -504,6 +667,14 @@ func writeRPCError(w http.ResponseWriter, status int, id json.RawMessage, code i
 
 func invalidParams(err error) *rpcError {
 	return &rpcError{Code: -32602, Message: fmt.Sprintf("invalid params: %v", err)}
+}
+
+func unauthorized(message string) *rpcError {
+	return &rpcError{Code: -32003, Message: message}
+}
+
+func missingScope(scope string) *rpcError {
+	return unauthorized("missing MCP scope: " + scope)
 }
 
 func notFound(message string) *rpcError {

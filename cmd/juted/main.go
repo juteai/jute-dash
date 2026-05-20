@@ -79,12 +79,10 @@ func main() {
 	var mcpServer *http.Server
 	if cfg.MCP.Enabled {
 		mcpProvider := &mcpSnapshotProvider{
-			cfg:     cfg,
-			store:   runtimeStore,
-			weather: weather.NewClient(),
-			getAgents: func() []config.AgentConfig {
-				return cfg.Agents
-			},
+			cfg:        cfg,
+			configPath: *configPath,
+			store:      runtimeStore,
+			weather:    weather.NewClient(),
 		}
 		mcpMux := http.NewServeMux()
 		mcpMux.Handle(cfg.MCP.Path, mcpbridge.NewHandler(cfg.MCP, version, mcpProvider, displayActions))
@@ -118,19 +116,20 @@ func main() {
 }
 
 type mcpSnapshotProvider struct {
-	cfg       config.Config
-	store     *store.Store
-	weather   weather.Provider
-	getAgents func() []config.AgentConfig
+	cfg        config.Config
+	configPath string
+	store      *store.Store
+	weather    weather.Provider
 }
 
 func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapshot, error) {
+	cfg := p.currentConfig()
 	layout, err := p.store.WidgetLayout(ctx, "")
 	if err != nil {
 		return widgetskills.Snapshot{}, err
 	}
 	agents := []widgetskills.Agent{}
-	for _, agent := range p.getAgents() {
+	for _, agent := range cfg.Agents {
 		agents = append(agents, widgetskills.Agent{
 			ID:              agent.ID,
 			Name:            agent.Name,
@@ -142,10 +141,23 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 		})
 	}
 	return widgetskills.Snapshot{
-		Config:      p.cfg,
+		Config:      cfg,
 		Layout:      layout,
-		Weather:     p.weather.Current(ctx, p.cfg.Weather),
+		Weather:     p.weather.Current(ctx, cfg.Weather),
 		Agents:      agents,
 		GeneratedAt: time.Now().UTC(),
 	}, nil
+}
+
+func (p *mcpSnapshotProvider) currentConfig() config.Config {
+	if strings.TrimSpace(p.configPath) == "" {
+		return p.cfg
+	}
+	cfg, err := config.Load(p.configPath)
+	if err != nil {
+		return p.cfg
+	}
+	cfg.Server = p.cfg.Server
+	cfg.MCP = p.cfg.MCP
+	return cfg
 }

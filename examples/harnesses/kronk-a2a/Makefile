@@ -13,6 +13,7 @@ AGENT_CARD_URL ?= http://127.0.0.1:9797/.well-known/agent-card.json
 AGENT_RPC_URL ?= http://127.0.0.1:9797/invoke
 HUB_URL ?= http://127.0.0.1:8787
 MCP_URL ?= http://127.0.0.1:8790/mcp
+JUTE_MCP_AGENT_ID ?= kronk-local
 WEB_URL ?= http://127.0.0.1:5173
 NPM ?= npm
 
@@ -36,6 +37,7 @@ dev-mcp:
 	@STACK_NAME="Kronk A2A + MCP full-stack harness" \
 	ROOT_DIR="$(ROOT_DIR)" WEB_DIR="$(WEB_DIR)" FIXTURE_DIR="$(FIXTURE_DIR)" \
 	CONFIG="$(MCP_CONFIG)" DATA_DIR="$(MCP_DATA_DIR)" AGENT_TARGET="server-mcp" MCP_ENABLED="true" \
+	JUTE_MCP_AGENT_ID="$(JUTE_MCP_AGENT_ID)" \
 	AGENT_CARD_URL="$(AGENT_CARD_URL)" AGENT_RPC_URL="$(AGENT_RPC_URL)" \
 	HUB_URL="$(HUB_URL)" MCP_URL="$(MCP_URL)" WEB_URL="$(WEB_URL)" NPM="$(NPM)" \
 	$(RUNNER)

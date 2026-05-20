@@ -19,6 +19,7 @@ export type Agent = {
   protocolBinding: string;
   enabled: boolean;
   capabilities: string[];
+  mcpScopes?: string[];
   authConfigured: boolean;
   cardStatus?: 'available' | 'unavailable' | 'unknown' | string;
   cardFetchedAt?: string;

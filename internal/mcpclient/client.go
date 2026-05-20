@@ -23,6 +23,7 @@ var (
 type Config struct {
 	URL         string
 	BearerToken string
+	AgentID     string
 	Timeout     time.Duration
 	HTTPClient  *http.Client
 }
@@ -30,6 +31,7 @@ type Config struct {
 type Client struct {
 	url         string
 	bearerToken string
+	agentID     string
 	httpClient  *http.Client
 }
 
@@ -101,6 +103,7 @@ func New(cfg Config) (*Client, error) {
 	return &Client{
 		url:         strings.TrimSpace(cfg.URL),
 		bearerToken: strings.TrimSpace(cfg.BearerToken),
+		agentID:     strings.TrimSpace(cfg.AgentID),
 		httpClient:  httpClient,
 	}, nil
 }
@@ -221,6 +224,9 @@ func (c *Client) call(ctx context.Context, method string, params any, target any
 	req.Header.Set("Accept", "application/json")
 	if c.bearerToken != "" {
 		req.Header.Set("Authorization", "Bearer "+c.bearerToken)
+	}
+	if c.agentID != "" {
+		req.Header.Set("X-Jute-Agent-ID", c.agentID)
 	}
 
 	resp, err := c.httpClient.Do(req)

@@ -59,6 +59,7 @@ func NewFromEnv() (*Client, bool, error) {
 	client, err := New(Config{
 		URL:         url,
 		BearerToken: os.Getenv("JUTE_MCP_TOKEN"),
+		AgentID:     os.Getenv("JUTE_MCP_AGENT_ID"),
 		Timeout:     timeout,
 	})
 	return client, true, err

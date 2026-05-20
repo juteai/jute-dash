@@ -25,6 +25,7 @@ Rules:
 - connect only when the user or config has enabled MCP;
 - use the configured transport, defaulting to Streamable HTTP;
 - provide the configured local token when auth is enabled;
+- send `X-Jute-Agent-ID` with the configured A2A agent ID so the hub can apply per-agent MCP scopes;
 - do not assume LAN or remote access is available;
 - do not ask users to paste raw MCP tokens into prompts.
 
@@ -156,6 +157,7 @@ http://127.0.0.1:8790/mcp
 ```
 
 The dev profile uses `auth.mode: none` for quick local testing. Production-style configs should keep MCP disabled by default or use local-token auth.
+The harness passes `JUTE_MCP_AGENT_ID=mock-a2a-agent`, which the fixture forwards as `X-Jute-Agent-ID`.
 
 The embedded mock fixture binds to `127.0.0.1:9797` by default and publishes an Agent Card at:
 
@@ -197,6 +199,7 @@ When `JUTE_MCP_URL` is set, the Kronk fixture exposes ADK function tools backed 
 - `jute_skill_prompt_get`
 
 When `JUTE_MCP_URL` is unset, it runs as a normal A2A server fixture.
+The MCP-enabled Kronk harness passes `JUTE_MCP_AGENT_ID=kronk-local` so the bridge applies the `kronk-local` scopes from `config.mcp.yaml`.
 
 ## Security
 

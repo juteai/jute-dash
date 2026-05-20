@@ -58,6 +58,12 @@ agents:
       - conversation
       - home-summary
       - reminders
+    mcp-scopes:
+      - dashboard:read
+      - widgets:read
+      - skills:read
+      - skills:context_read
+      - skills:prompt_read
     auth:
       type: bearer
       env-token: JUTE_HOUSE_CONCIERGE_TOKEN
@@ -71,6 +77,11 @@ agents:
     capabilities:
       - energy
       - forecasting
+    mcp-scopes:
+      - dashboard:read
+      - widgets:read
+      - skills:read
+      - skills:context_read
 
 rooms:
   - id: kitchen

@@ -1,6 +1,7 @@
 SHELL := /bin/bash
 
 JUTE_MCP_URL ?= http://127.0.0.1:8790/mcp
+JUTE_MCP_AGENT_ID ?=
 
 .PHONY: setup check server server-mcp
 
@@ -14,4 +15,4 @@ server:
 	go run .
 
 server-mcp:
-	JUTE_MCP_URL="$(JUTE_MCP_URL)" go run .
+	JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="$(JUTE_MCP_AGENT_ID)" go run .

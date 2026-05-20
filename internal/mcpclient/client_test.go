@@ -20,6 +20,9 @@ func TestClientSendsJSONRPCAndBearerAuth(t *testing.T) {
 		if auth := r.Header.Get("Authorization"); auth != "Bearer secret" {
 			t.Fatalf("unexpected auth header %q", auth)
 		}
+		if agentID := r.Header.Get("X-Jute-Agent-ID"); agentID != "house" {
+			t.Fatalf("unexpected agent id header %q", agentID)
+		}
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
@@ -27,7 +30,7 @@ func TestClientSendsJSONRPCAndBearerAuth(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := New(Config{URL: server.URL, BearerToken: "secret"})
+	client, err := New(Config{URL: server.URL, BearerToken: "secret", AgentID: "house"})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

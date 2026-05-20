@@ -79,6 +79,7 @@ v1 default:
 - default address: `127.0.0.1:8790`;
 - default path: `/mcp`;
 - auth mode: local bearer token by environment-variable reference;
+- caller identity: pre-v1 local agents send `X-Jute-Agent-ID`;
 - disabled unless explicitly enabled.
 
 STDIO is not the default v1 path. It may be added later for CLI tools, tests, or MCP Inspector workflows, but it is awkward for a long-running hub and carries local process execution risks.
@@ -143,6 +144,8 @@ Future approval-gated scopes:
 - `voice:status_read`: read voice state without raw audio or transcripts.
 
 Agents without a required scope receive a safe authorization error. They should degrade gracefully and continue the A2A conversation without that context or action.
+
+Pre-v1 caller identity is intentionally simple. A local agent includes `X-Jute-Agent-ID: <configured-agent-id>` on MCP requests. The hub then applies that configured agent's scopes after the normal MCP transport/auth checks. When `auth.mode: none` is used for local dev and the header is absent, the bridge treats the caller as anonymous read-only. When token auth is enabled, scoped calls require the header. This is not a remote internet trust model; per-agent tokens can replace or strengthen it later.
 
 ## MCP Resources
 

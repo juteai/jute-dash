@@ -14,6 +14,7 @@ type Agent struct {
 	ProtocolBinding           string           `json:"protocolBinding"`
 	Enabled                   bool             `json:"enabled"`
 	Capabilities              []string         `json:"capabilities"`
+	MCPScopes                 []string         `json:"mcpScopes"`
 	AuthConfigured            bool             `json:"authConfigured"`
 	CardStatus                string           `json:"cardStatus,omitempty"`
 	CardFetchedAt             string           `json:"cardFetchedAt,omitempty"`
@@ -45,6 +46,7 @@ func New(configured []config.AgentConfig) Registry {
 			ProtocolBinding: item.ProtocolBinding,
 			Enabled:         item.Enabled,
 			Capabilities:    append([]string(nil), item.Capabilities...),
+			MCPScopes:       append([]string(nil), item.MCPScopes...),
 			AuthConfigured:  item.Auth != nil,
 		}
 		agents = append(agents, agent)

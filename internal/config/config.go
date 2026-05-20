@@ -93,6 +93,7 @@ type AgentConfig struct {
 	ProtocolBinding string      `json:"protocolBinding" yaml:"protocol-binding"`
 	Enabled         bool        `json:"enabled" yaml:"enabled"`
 	Capabilities    []string    `json:"capabilities" yaml:"capabilities"`
+	MCPScopes       []string    `json:"mcpScopes" yaml:"mcp-scopes"`
 	Auth            *AuthConfig `json:"auth,omitempty" yaml:"auth,omitempty"`
 }
 
@@ -133,7 +134,44 @@ type PublicAgentConfig struct {
 	ProtocolBinding string   `json:"protocolBinding" yaml:"protocol-binding"`
 	Enabled         bool     `json:"enabled" yaml:"enabled"`
 	Capabilities    []string `json:"capabilities" yaml:"capabilities"`
+	MCPScopes       []string `json:"mcpScopes" yaml:"mcp-scopes"`
 	AuthConfigured  bool     `json:"authConfigured" yaml:"auth-configured"`
+}
+
+const (
+	MCPScopeDashboardRead      = "dashboard:read"
+	MCPScopeWidgetsRead        = "widgets:read"
+	MCPScopeSkillsRead         = "skills:read"
+	MCPScopeSkillsContextRead  = "skills:context_read"
+	MCPScopeSkillsPromptRead   = "skills:prompt_read"
+	MCPScopeSkillsActionInvoke = "skills:action_invoke"
+	MCPScopeDisplayWrite       = "display:write_ephemeral"
+	MCPScopeDisplayFocusWidget = "display:focus_widget"
+)
+
+func DefaultMCPReadScopes() []string {
+	return []string{
+		MCPScopeDashboardRead,
+		MCPScopeWidgetsRead,
+		MCPScopeSkillsRead,
+		MCPScopeSkillsContextRead,
+	}
+}
+
+func IsKnownMCPScope(scope string) bool {
+	switch strings.TrimSpace(scope) {
+	case MCPScopeDashboardRead,
+		MCPScopeWidgetsRead,
+		MCPScopeSkillsRead,
+		MCPScopeSkillsContextRead,
+		MCPScopeSkillsPromptRead,
+		MCPScopeSkillsActionInvoke,
+		MCPScopeDisplayWrite,
+		MCPScopeDisplayFocusWidget:
+		return true
+	default:
+		return false
+	}
 }
 
 func Default() Config {
@@ -300,6 +338,21 @@ func Validate(cfg Config) error {
 		if agent.Auth != nil && strings.TrimSpace(agent.Auth.EnvToken) == "" {
 			problems = append(problems, location+".auth.envToken is required when auth is configured")
 		}
+		seenScopes := map[string]struct{}{}
+		for j, scope := range agent.MCPScopes {
+			scopeLocation := fmt.Sprintf("%s.mcpScopes[%d]", location, j)
+			if strings.TrimSpace(scope) == "" {
+				problems = append(problems, scopeLocation+" is required")
+				continue
+			}
+			if !IsKnownMCPScope(scope) {
+				problems = append(problems, scopeLocation+" is not supported")
+			}
+			if _, exists := seenScopes[scope]; exists {
+				problems = append(problems, scopeLocation+" duplicates another MCP scope")
+			}
+			seenScopes[scope] = struct{}{}
+		}
 	}
 
 	validateUniqueIDs("rooms", cfg.Rooms, func(room RoomConfig) string { return room.ID }, &problems)
@@ -323,6 +376,7 @@ func (cfg Config) Public() PublicConfig {
 			ProtocolBinding: agent.ProtocolBinding,
 			Enabled:         agent.Enabled,
 			Capabilities:    append([]string(nil), agent.Capabilities...),
+			MCPScopes:       append([]string(nil), agent.MCPScopes...),
 			AuthConfigured:  agent.Auth != nil,
 		})
 	}
@@ -395,6 +449,9 @@ func applyDefaults(cfg *Config) {
 	for i := range cfg.Agents {
 		if strings.TrimSpace(cfg.Agents[i].ProtocolBinding) == "" {
 			cfg.Agents[i].ProtocolBinding = a2a.ProtocolJSONRPC
+		}
+		if len(cfg.Agents[i].MCPScopes) == 0 {
+			cfg.Agents[i].MCPScopes = DefaultMCPReadScopes()
 		}
 	}
 }

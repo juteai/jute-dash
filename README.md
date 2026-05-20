@@ -68,6 +68,7 @@ make dev-mcp
 ```
 
 MCP-enabled harnesses run the bridge at `http://127.0.0.1:8790/mcp` with loopback-only, no-token dev auth. Production-style config keeps MCP disabled by default and supports local bearer-token auth through `JUTE_MCP_TOKEN`.
+MCP clients should send `X-Jute-Agent-ID` so the hub can apply the configured agent's MCP scopes.
 
 ## Current UI Status
 
@@ -90,6 +91,7 @@ Optional MCP smoke request:
 ```sh
 curl -s http://127.0.0.1:8790/mcp \
   -H 'Content-Type: application/json' \
+  -H 'X-Jute-Agent-ID: mock-a2a-agent' \
   -d '{"jsonrpc":"2.0","id":1,"method":"resources/list"}'
 ```
 

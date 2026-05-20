@@ -90,7 +90,7 @@ func TestResourceAndToolMethodsExposeWidgetSkills(t *testing.T) {
 func TestToolCallReadsSkillContextAndInvokesAction(t *testing.T) {
 	handler := testHandler(config.MCPConfig{Auth: config.MCPAuthConfig{Mode: "none"}})
 
-	read := postRPC(t, handler, map[string]any{
+	read := rpcRequestWithHeaders(t, handler, map[string]any{
 		"jsonrpc": "2.0",
 		"id":      1,
 		"method":  "tools/call",
@@ -98,12 +98,12 @@ func TestToolCallReadsSkillContextAndInvokesAction(t *testing.T) {
 			"name":      "jute_skill_read_context",
 			"arguments": map[string]any{"skillId": widgetskills.WeatherSkillID},
 		},
-	})
+	}, agentHeader("house"))
 	if read.Code != http.StatusOK || !bytes.Contains(read.Body.Bytes(), []byte("London")) {
 		t.Fatalf("skill read failed: %d %s", read.Code, read.Body.String())
 	}
 
-	action := postRPC(t, handler, map[string]any{
+	action := rpcRequestWithHeaders(t, handler, map[string]any{
 		"jsonrpc": "2.0",
 		"id":      2,
 		"method":  "tools/call",
@@ -114,7 +114,7 @@ func TestToolCallReadsSkillContextAndInvokesAction(t *testing.T) {
 				"actionId": "refresh",
 			},
 		},
-	})
+	}, agentHeader("house"))
 	if action.Code != http.StatusOK || !bytes.Contains(action.Body.Bytes(), []byte("completed")) {
 		t.Fatalf("skill action failed: %d %s", action.Code, action.Body.String())
 	}
@@ -124,12 +124,12 @@ func TestDisplayActionToolsQueueEvents(t *testing.T) {
 	actions := &fakeDisplayActions{}
 	handler := testHandlerWithActions(config.MCPConfig{Auth: config.MCPAuthConfig{Mode: "none"}}, actions)
 
-	tools := postRPC(t, handler, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+	tools := rpcRequestWithHeaders(t, handler, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, agentHeader("house"))
 	if tools.Code != http.StatusOK || !bytes.Contains(tools.Body.Bytes(), []byte("jute_display_notification")) || !bytes.Contains(tools.Body.Bytes(), []byte("jute_display_focus_widget")) {
 		t.Fatalf("tools/list did not include display action tools: %d %s", tools.Code, tools.Body.String())
 	}
 
-	notification := postRPC(t, handler, map[string]any{
+	notification := rpcRequestWithHeaders(t, handler, map[string]any{
 		"jsonrpc": "2.0",
 		"id":      2,
 		"method":  "tools/call",
@@ -137,7 +137,7 @@ func TestDisplayActionToolsQueueEvents(t *testing.T) {
 			"name":      "jute_display_notification",
 			"arguments": map[string]any{"message": "Hello display", "severity": "success"},
 		},
-	})
+	}, agentHeader("house"))
 	if notification.Code != http.StatusOK || !bytes.Contains(notification.Body.Bytes(), []byte("display.notification")) {
 		t.Fatalf("notification tool failed: %d %s", notification.Code, notification.Body.String())
 	}
@@ -145,7 +145,7 @@ func TestDisplayActionToolsQueueEvents(t *testing.T) {
 		t.Fatalf("notification action not called: %+v", actions)
 	}
 
-	focus := postRPC(t, handler, map[string]any{
+	focus := rpcRequestWithHeaders(t, handler, map[string]any{
 		"jsonrpc": "2.0",
 		"id":      3,
 		"method":  "tools/call",
@@ -153,7 +153,7 @@ func TestDisplayActionToolsQueueEvents(t *testing.T) {
 			"name":      "jute_display_focus_widget",
 			"arguments": map[string]any{"widgetInstanceId": "weather", "reason": "weather question"},
 		},
-	})
+	}, agentHeader("house"))
 	if focus.Code != http.StatusOK || !bytes.Contains(focus.Body.Bytes(), []byte("display.focus_widget")) {
 		t.Fatalf("focus widget tool failed: %d %s", focus.Code, focus.Body.String())
 	}
@@ -166,7 +166,7 @@ func TestDisplayFocusRejectsHiddenWidget(t *testing.T) {
 	actions := &fakeDisplayActions{}
 	handler := testHandlerWithActions(config.MCPConfig{Auth: config.MCPAuthConfig{Mode: "none"}}, actions)
 
-	focus := postRPC(t, handler, map[string]any{
+	focus := rpcRequestWithHeaders(t, handler, map[string]any{
 		"jsonrpc": "2.0",
 		"id":      1,
 		"method":  "tools/call",
@@ -174,7 +174,7 @@ func TestDisplayFocusRejectsHiddenWidget(t *testing.T) {
 			"name":      "jute_display_focus_widget",
 			"arguments": map[string]any{"widgetInstanceId": "not-visible"},
 		},
-	})
+	}, agentHeader("house"))
 	if focus.Code != http.StatusOK || !bytes.Contains(focus.Body.Bytes(), []byte("skill or action not found")) {
 		t.Fatalf("expected hidden widget rejection, got %d %s", focus.Code, focus.Body.String())
 	}
@@ -183,19 +183,74 @@ func TestDisplayFocusRejectsHiddenWidget(t *testing.T) {
 	}
 }
 
+func TestAnonymousCallerIsReadOnly(t *testing.T) {
+	handler := testHandler(config.MCPConfig{Auth: config.MCPAuthConfig{Mode: "none"}})
+
+	resources := postRPC(t, handler, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "resources/list"})
+	if resources.Code != http.StatusOK || !bytes.Contains(resources.Body.Bytes(), []byte("jute://skills")) {
+		t.Fatalf("anonymous caller should see read resources: %d %s", resources.Code, resources.Body.String())
+	}
+
+	action := postRPC(t, handler, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "jute_skill_invoke_action",
+			"arguments": map[string]any{"skillId": widgetskills.WeatherSkillID, "actionId": "refresh"},
+		},
+	})
+	if action.Code != http.StatusOK || !bytes.Contains(action.Body.Bytes(), []byte("missing MCP scope: skills:action_invoke")) {
+		t.Fatalf("anonymous caller should not invoke actions: %d %s", action.Code, action.Body.String())
+	}
+
+	prompt := postRPC(t, handler, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "prompts/get",
+		"params":  map[string]any{"name": "jute_home_assistant_guidance"},
+	})
+	if prompt.Code != http.StatusOK || !bytes.Contains(prompt.Body.Bytes(), []byte("missing MCP scope: skills:prompt_read")) {
+		t.Fatalf("anonymous caller should not read prompts: %d %s", prompt.Code, prompt.Body.String())
+	}
+}
+
+func TestUnknownAgentCallerRejected(t *testing.T) {
+	handler := testHandler(config.MCPConfig{Auth: config.MCPAuthConfig{Mode: "none"}})
+
+	rec := rpcRequestWithHeaders(t, handler, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "resources/list"}, agentHeader("missing"))
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte("mcp caller is not authorized")) {
+		t.Fatalf("expected unknown caller rejection, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestTokenAuthRequiresCallerIdentityForScopedCalls(t *testing.T) {
+	t.Setenv("TEST_JUTE_MCP_TOKEN", "secret")
+	handler := testHandler(config.MCPConfig{
+		Auth: config.MCPAuthConfig{Mode: "local-token", EnvToken: "TEST_JUTE_MCP_TOKEN"},
+	})
+
+	rec := rpcRequestWithHeaders(t, handler, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "resources/list"}, map[string]string{
+		"Authorization": "Bearer secret",
+	})
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte("mcp caller identity is required")) {
+		t.Fatalf("expected missing caller identity rejection, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPrompts(t *testing.T) {
 	handler := testHandler(config.MCPConfig{Auth: config.MCPAuthConfig{Mode: "none"}})
 
-	list := postRPC(t, handler, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "prompts/list"})
+	list := rpcRequestWithHeaders(t, handler, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "prompts/list"}, agentHeader("house"))
 	if list.Code != http.StatusOK || !bytes.Contains(list.Body.Bytes(), []byte("jute_home_assistant_guidance")) {
 		t.Fatalf("prompts/list failed: %d %s", list.Code, list.Body.String())
 	}
-	get := postRPC(t, handler, map[string]any{
+	get := rpcRequestWithHeaders(t, handler, map[string]any{
 		"jsonrpc": "2.0",
 		"id":      2,
 		"method":  "prompts/get",
 		"params":  map[string]any{"name": "jute_home_assistant_guidance"},
-	})
+	}, agentHeader("house"))
 	if get.Code != http.StatusOK || !bytes.Contains(get.Body.Bytes(), []byte("Widget Skills")) {
 		t.Fatalf("prompts/get failed: %d %s", get.Code, get.Body.String())
 	}
@@ -214,8 +269,9 @@ func TestAuthAndOrigin(t *testing.T) {
 	}
 
 	authorized := rpcRequestWithHeaders(t, handler, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, map[string]string{
-		"Authorization": "Bearer secret",
-		"Origin":        "http://localhost:5173",
+		"Authorization":   "Bearer secret",
+		"Origin":          "http://localhost:5173",
+		"X-Jute-Agent-ID": "house",
 	})
 	if authorized.Code != http.StatusOK {
 		t.Fatalf("expected authorized status 200, got %d: %s", authorized.Code, authorized.Body.String())
@@ -276,6 +332,10 @@ func rpcRequestWithHeaders(t *testing.T, handler http.Handler, payload map[strin
 	return rec
 }
 
+func agentHeader(agentID string) map[string]string {
+	return map[string]string{callerAgentHeader: agentID}
+}
+
 func decodeJSON(t *testing.T, body []byte, target any) {
 	t.Helper()
 	if err := json.Unmarshal(body, target); err != nil {
@@ -330,6 +390,24 @@ func testSnapshot() widgetskills.Snapshot {
 	cfg.Home.Timezone = "Europe/London"
 	cfg.Home.Locale = "en-GB"
 	cfg.Voice.PreferredAgentID = "house"
+	cfg.Agents = []config.AgentConfig{{
+		ID:              "house",
+		Name:            "House",
+		CardURL:         "http://127.0.0.1:9797/.well-known/agent-card.json",
+		EndpointURL:     "http://127.0.0.1:9797/invoke",
+		ProtocolBinding: a2a.ProtocolJSONRPC,
+		Enabled:         true,
+		MCPScopes: []string{
+			config.MCPScopeDashboardRead,
+			config.MCPScopeWidgetsRead,
+			config.MCPScopeSkillsRead,
+			config.MCPScopeSkillsContextRead,
+			config.MCPScopeSkillsPromptRead,
+			config.MCPScopeSkillsActionInvoke,
+			config.MCPScopeDisplayWrite,
+			config.MCPScopeDisplayFocusWidget,
+		},
+	}}
 	layout := store.DefaultWidgetLayout()
 	temp := 18.5
 	return widgetskills.Snapshot{

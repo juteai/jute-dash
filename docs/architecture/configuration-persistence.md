@@ -253,6 +253,8 @@ Future MCP settings APIs:
 - `GET /api/v1/agents/{id}/mcp-scopes`
 - `PATCH /api/v1/agents/{id}/mcp-scopes`
 
+Pre-v1 MCP scopes are configured on each YAML/JSON agent record as `mcp-scopes` / `mcpScopes`. Missing values default to read-only scopes. The bridge uses `X-Jute-Agent-ID` to select the configured agent and apply those scopes.
+
 Settings writes go through the hub, update SQLite, and emit relevant events.
 
 Settings-related events:

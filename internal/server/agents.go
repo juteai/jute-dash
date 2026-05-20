@@ -52,6 +52,7 @@ func (s *Server) addAgentFromCard(ctx context.Context, cardURL string) (registry
 		ProtocolBinding: selected.ProtocolBinding,
 		Enabled:         true,
 		Capabilities:    []string{"conversation"},
+		MCPScopes:       config.DefaultMCPReadScopes(),
 	}
 	next := s.cfg
 	next.Agents = append(append([]config.AgentConfig(nil), s.cfg.Agents...), agent)

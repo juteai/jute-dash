@@ -87,6 +87,12 @@ agents:
     endpoint-url: https://agent.example.com/a2a/v1
     protocol-binding: JSONRPC
     enabled: true
+    mcp-scopes:
+      - dashboard:read
+      - widgets:read
+      - skills:read
+      - skills:context_read
+      - skills:prompt_read
     auth:
       type: bearer
       env-token: HOUSE_AGENT_TOKEN
@@ -109,6 +115,9 @@ tiles: []
 	}
 	if len(cfg.Agents) != 1 || cfg.Agents[0].CardURL == "" || cfg.Agents[0].Auth.EnvToken != "HOUSE_AGENT_TOKEN" {
 		t.Fatalf("unexpected YAML agent: %+v", cfg.Agents)
+	}
+	if got := strings.Join(cfg.Agents[0].MCPScopes, ","); got != "dashboard:read,widgets:read,skills:read,skills:context_read,skills:prompt_read" {
+		t.Fatalf("unexpected YAML MCP scopes: %s", got)
 	}
 	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" || cfg.Voice.FollowupWindowSeconds != 9 {
 		t.Fatalf("unexpected YAML voice config: %+v", cfg.Voice)
@@ -323,6 +332,60 @@ tiles: []
 	}
 }
 
+func TestLoadRejectsInvalidAgentMCPScopes(t *testing.T) {
+	path := writeYAMLConfig(t, `
+home:
+  name: Workshop
+agents:
+  - id: agent
+    name: Agent
+    card-url: https://agent.example.com/.well-known/agent-card.json
+    endpoint-url: https://agent.example.com/a2a/v1
+    protocol-binding: JSONRPC
+    enabled: true
+    mcp-scopes:
+      - dashboard:read
+      - dashboard:read
+      - home:destroy
+rooms: []
+tiles: []
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load() expected invalid MCP scope error")
+	}
+	if !strings.Contains(err.Error(), "mcpScopes") || !strings.Contains(err.Error(), "not supported") || !strings.Contains(err.Error(), "duplicates another MCP scope") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAgentMCPScopesDefaultToReadOnly(t *testing.T) {
+	path := writeJSONConfig(t, `{
+		"home": {"name": "Workshop"},
+		"agents": [
+			{
+				"id": "agent",
+				"name": "Agent",
+				"cardUrl": "https://agent.example.com/.well-known/agent-card.json",
+				"endpointUrl": "https://agent.example.com/a2a/v1",
+				"protocolBinding": "JSONRPC",
+				"enabled": true
+			}
+		],
+		"rooms": [],
+		"tiles": []
+	}`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := strings.Join(cfg.Agents[0].MCPScopes, ","), strings.Join(DefaultMCPReadScopes(), ","); got != want {
+		t.Fatalf("unexpected default scopes: got %s want %s", got, want)
+	}
+}
+
 func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 	cfg := Default()
 	cfg.Agents = []AgentConfig{
@@ -333,6 +396,7 @@ func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 			EndpointURL:     "https://agent.example.com/a2a/v1",
 			ProtocolBinding: "JSONRPC",
 			Enabled:         true,
+			MCPScopes:       []string{MCPScopeDashboardRead},
 			Auth:            &AuthConfig{Type: "bearer", EnvToken: "SECRET_TOKEN"},
 		},
 	}
@@ -343,6 +407,9 @@ func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 	}
 	if !public.Agents[0].AuthConfigured {
 		t.Fatal("expected authConfigured to be true")
+	}
+	if strings.Join(public.Agents[0].MCPScopes, ",") != MCPScopeDashboardRead {
+		t.Fatalf("unexpected public MCP scopes: %+v", public.Agents[0].MCPScopes)
 	}
 }
 

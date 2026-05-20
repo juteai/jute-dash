@@ -12,6 +12,7 @@ set -euo pipefail
 HUB_URL="${HUB_URL:-http://127.0.0.1:8787}"
 WEB_URL="${WEB_URL:-http://127.0.0.1:5173}"
 MCP_URL="${MCP_URL:-http://127.0.0.1:8790/mcp}"
+JUTE_MCP_AGENT_ID="${JUTE_MCP_AGENT_ID:-}"
 AGENT_CARD_URL="${AGENT_CARD_URL:-http://127.0.0.1:9797/.well-known/agent-card.json}"
 AGENT_RPC_URL="${AGENT_RPC_URL:-http://127.0.0.1:9797/invoke}"
 MCP_ENABLED="${MCP_ENABLED:-false}"
@@ -104,8 +105,11 @@ wait_mcp() {
 	local timeout="${1:-120}"
 	local elapsed=0
 	while (( elapsed < timeout )); do
-		if curl -fsS "$MCP_URL" \
-			-H 'Content-Type: application/json' \
+		local headers=(-H 'Content-Type: application/json')
+		if [[ -n "$JUTE_MCP_AGENT_ID" ]]; then
+			headers+=(-H "X-Jute-Agent-ID: $JUTE_MCP_AGENT_ID")
+		fi
+		if curl -fsS "$MCP_URL" "${headers[@]}" \
 			-d '{"jsonrpc":"2.0","id":1,"method":"resources/list"}' >/dev/null 2>&1; then
 			return 0
 		fi
@@ -135,7 +139,10 @@ echo "$STACK_NAME"
 echo "  Config:         $CONFIG"
 echo "  Data dir:       $DATA_DIR"
 echo "  Jute hub:       $HUB_URL"
-if [[ "$MCP_ENABLED" == "true" ]]; then echo "  Jute MCP:       $MCP_URL"; fi
+if [[ "$MCP_ENABLED" == "true" ]]; then
+	echo "  Jute MCP:       $MCP_URL"
+	if [[ -n "$JUTE_MCP_AGENT_ID" ]]; then echo "  MCP agent ID:   $JUTE_MCP_AGENT_ID"; fi
+fi
 echo "  Fixture Card:   $AGENT_CARD_URL"
 echo "  Fixture RPC:    $AGENT_RPC_URL"
 echo "  Jute web:       $WEB_URL"
@@ -164,7 +171,7 @@ if [[ "$MCP_ENABLED" == "true" ]]; then
 fi
 
 echo "Starting A2A fixture."
-(cd "$FIXTURE_DIR" && make "$AGENT_TARGET" JUTE_MCP_URL="$MCP_URL") & AGENT_PID=$!
+(cd "$FIXTURE_DIR" && make "$AGENT_TARGET" JUTE_MCP_URL="$MCP_URL" JUTE_MCP_AGENT_ID="$JUTE_MCP_AGENT_ID") & AGENT_PID=$!
 wait_http_get "A2A fixture" "$AGENT_CARD_URL" "$AGENT_PID" 900
 
 echo "Starting web UI."

@@ -58,6 +58,7 @@
       "protocolBinding": "JSONRPC",
       "enabled": true,
       "capabilities": ["conversation", "home-summary", "reminders"],
+      "mcpScopes": ["dashboard:read", "widgets:read", "skills:read", "skills:context_read", "skills:prompt_read"],
       "auth": {
         "type": "bearer",
         "envToken": "JUTE_HOUSE_CONCIERGE_TOKEN"
@@ -71,7 +72,8 @@
       "endpointUrl": "https://energy.example.com/a2a/v1",
       "protocolBinding": "JSONRPC",
       "enabled": false,
-      "capabilities": ["energy", "forecasting"]
+      "capabilities": ["energy", "forecasting"],
+      "mcpScopes": ["dashboard:read", "widgets:read", "skills:read", "skills:context_read"]
     }
   ],
   "rooms": [

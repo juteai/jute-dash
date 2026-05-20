@@ -1,6 +1,7 @@
 SHELL := /bin/bash
 
 JUTE_MCP_URL ?= http://127.0.0.1:8790/mcp
+JUTE_MCP_AGENT_ID ?=
 
 # Local stability defaults for the Go 1.26 + macOS 26 (Tahoe) + Apple
 # Silicon + kronk/yzma/llama.cpp stack. Each can be overridden from the
@@ -82,7 +83,7 @@ server:
 server-mcp:
 	@chosen=$$($(MAKE) -s probe-processor); \
 	printf 'kronk: starting A2A server (MCP-enabled) with processor=%s\n' "$$chosen" >&2; \
-	$(KRONK_RUN_ENV) KRONK_PROCESSOR="$$chosen" JUTE_MCP_URL="$(JUTE_MCP_URL)" KRONK_A2A_MODE=server $(KRONK_GO_RUN)
+	$(KRONK_RUN_ENV) KRONK_PROCESSOR="$$chosen" JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="$(JUTE_MCP_AGENT_ID)" KRONK_A2A_MODE=server $(KRONK_GO_RUN)
 
 console:
 	@chosen=$$($(MAKE) -s probe-processor); \
