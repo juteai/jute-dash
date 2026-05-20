@@ -161,6 +161,102 @@ func TestJSONRPCClientExtractsLatestTaskHistoryText(t *testing.T) {
 	}
 }
 
+func TestJSONRPCClientNormalizesA2A10TaskStates(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeRPCResult(t, w, `{
+			"task":{
+				"id":"task-9",
+				"contextId":"ctx-9",
+				"status":{"state":"TASK_STATE_COMPLETED"},
+				"artifacts":[{"parts":[{"text":"Hi there"}]}]
+			}
+		}`)
+	}))
+	defer server.Close()
+
+	result, err := NewJSONRPCClient().SendMessage(t.Context(), SendMessageRequest{
+		EndpointURL:     server.URL,
+		ProtocolBinding: ProtocolJSONRPC,
+		Text:            "Status",
+	})
+	if err != nil {
+		t.Fatalf("SendMessage() error = %v", err)
+	}
+	if result.Status != "completed" {
+		t.Fatalf("status = %q, want completed (normalized from TASK_STATE_COMPLETED)", result.Status)
+	}
+	if result.Text != "Hi there" {
+		t.Fatalf("text = %q, want artifact-derived reply", result.Text)
+	}
+}
+
+func TestJSONRPCClientGetTaskIncludesArtifactReply(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeRPCResult(t, w, `{"task":{
+			"id":"task-art",
+			"contextId":"ctx-art",
+			"status":{"state":"TASK_STATE_COMPLETED"},
+			"history":[
+				{"kind":"message","messageId":"msg-user","role":"ROLE_USER","parts":[{"text":"hello"}]}
+			],
+			"artifacts":[{"parts":[{"text":"Hello back"}]}]
+		}}`)
+	}))
+	defer server.Close()
+
+	task, err := NewJSONRPCClient().GetTask(t.Context(), GetTaskRequest{
+		EndpointURL:     server.URL,
+		ProtocolBinding: ProtocolJSONRPC,
+		TaskID:          "task-art",
+	})
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if task.Status != "completed" {
+		t.Fatalf("task.Status = %q, want completed", task.Status)
+	}
+	if len(task.Messages) != 2 {
+		t.Fatalf("expected 2 messages (user + agent from artifact), got %+v", task.Messages)
+	}
+	if task.Messages[0].Role != "user" || task.Messages[0].Text != "hello" {
+		t.Fatalf("unexpected user message: %+v", task.Messages[0])
+	}
+	if task.Messages[1].Role != "assistant" || task.Messages[1].Text != "Hello back" {
+		t.Fatalf("unexpected synthesised assistant message: %+v", task.Messages[1])
+	}
+}
+
+func TestJSONRPCClientStreamNormalizesA2A10States(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		writeRPCSSE(t, w, `{"statusUpdate":{"taskId":"task-x","contextId":"ctx-x","status":{"state":"TASK_STATE_WORKING"}}}`)
+		writeRPCSSE(t, w, `{"statusUpdate":{"taskId":"task-x","contextId":"ctx-x","status":{"state":"TASK_STATE_COMPLETED"},"final":true}}`)
+	}))
+	defer server.Close()
+
+	var events []StreamEvent
+	err := NewJSONRPCClient().StreamMessage(t.Context(), SendMessageRequest{
+		EndpointURL:     server.URL,
+		ProtocolBinding: ProtocolJSONRPC,
+		Text:            "Hello",
+	}, func(event StreamEvent) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamMessage() error = %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %+v", events)
+	}
+	if events[0].Status != "working" || events[0].Terminal {
+		t.Fatalf("first event = %+v, want working/non-terminal", events[0])
+	}
+	if events[1].Status != "completed" || !events[1].Terminal {
+		t.Fatalf("second event = %+v, want completed/terminal", events[1])
+	}
+}
+
 func TestJSONRPCClientMapsRPCErrorSafely(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeRPCError(t, w, -32000, "secret backend stack trace")

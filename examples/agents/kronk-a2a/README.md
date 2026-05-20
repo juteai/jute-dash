@@ -21,11 +21,15 @@ make check
 make server
 make server-mcp
 make console
+make reset-probe
 ```
 
 - `make server` starts only the local A2A server.
 - `make server-mcp` starts the local A2A server with `JUTE_MCP_URL` set.
 - `make console` starts the local A2A server and a simple console loop against the same Kronk agent.
+- `make reset-probe` clears the cached Metal-vs-CPU choice so the next `make server` re-probes.
+
+On first run (and any time the cache is cleared) the agent target probes whether Metal works on the current host by spinning the model up in `KRONK_A2A_MODE=selftest`, running one short inference, and falling back to CPU if the probe aborts. The result is cached in `.kronk-processor.choice`. Set `KRONK_PROCESSOR=metal` or `KRONK_PROCESSOR=cpu` to bypass the probe entirely.
 
 ## Environment
 
@@ -36,6 +40,28 @@ make console
 - `JUTE_MCP_URL`: optional Jute MCP Bridge URL, for example `http://127.0.0.1:8790/mcp`.
 - `JUTE_MCP_TOKEN`: optional bearer token for local-token MCP auth.
 - `JUTE_MCP_TIMEOUT`: optional timeout such as `5s`.
+
+### Local stability defaults
+
+The Makefile sets a few conservative defaults so `make server` / `make
+server-mcp` are stable on Go 1.26 + macOS 26 (Tahoe) + Apple Silicon, which
+otherwise hits a native `SIGABRT` inside the first `llama_tokenize` call.
+Override any of them when running on a different host or once upstream
+fixes ship.
+
+- `KRONK_LIB_VERSION` (default `b9194`): pins llama.cpp to the build the
+  bundled `yzma` v1.14.0 expects. Without a pin, kronk auto-upgrades the
+  on-disk library on every checkout and can drift away from yzma's FFI
+  signatures.
+- `KRONK_PROCESSOR` (no default; autodetected): when unset, the agent
+  target probes Metal first and falls back to CPU on any abort. Set
+  this explicitly to `metal` or `cpu` to skip the probe.
+- `KRONK_A2A_GO_LDFLAGS` (default `-linkmode=external`): rsc's
+  recommended Go 1.26 workaround in
+  [golang/go#77917](https://github.com/golang/go/issues/77917); forces
+  the external linker so the binary picks up the host macOS SDK version
+  in `LC_BUILD_VERSION` instead of the Go default of 12.0. Required for
+  Metal to compile its newer shader kernels at all on this stack.
 
 ## Jute Config
 

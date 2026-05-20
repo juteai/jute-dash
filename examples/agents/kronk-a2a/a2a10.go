@@ -68,7 +68,12 @@ func newKronkA2AServer(a agent.Agent, baseURL string) (*kronkA2AServer, error) {
 			SessionService:    sessionService,
 			AutoCreateSession: true,
 		},
-		RunConfig: agent.RunConfig{StreamingMode: agent.StreamingModeNone},
+		// SSE streaming lets the Kronk LLM emit token deltas; OutputArtifactPerEvent
+		// turns each partial session event into an Append=true artifact update so the
+		// hub (and any other A2A 1.0 client) can accumulate the response chunk by
+		// chunk instead of waiting for the final TurnComplete event.
+		RunConfig:  agent.RunConfig{StreamingMode: agent.StreamingModeSSE},
+		OutputMode: adka2a.OutputArtifactPerEvent,
 	})
 	requestHandler := a2asrv.NewHandler(
 		executor,
@@ -120,9 +125,12 @@ func (s *kronkA2AServer) handleInvoke(w http.ResponseWriter, r *http.Request) {
 
 func (s *kronkA2AServer) generateAnswer(ctx context.Context, contextID, text string) (string, error) {
 	userMessage := genai.NewContentFromText(text, genai.RoleUser)
-	finalText := ""
-	allText := []string{}
-	for event, err := range s.runner.Run(ctx, "jute-user", contextID, userMessage, agent.RunConfig{StreamingMode: agent.StreamingModeNone}) {
+	var (
+		finalText  string
+		streamed   strings.Builder
+		lastPartialText string
+	)
+	for event, err := range s.runner.Run(ctx, "jute-user", contextID, userMessage, agent.RunConfig{StreamingMode: agent.StreamingModeSSE}) {
 		if err != nil {
 			return "", err
 		}
@@ -133,16 +141,23 @@ func (s *kronkA2AServer) generateAnswer(ctx context.Context, contextID, text str
 		if strings.TrimSpace(eventText) == "" {
 			continue
 		}
-		allText = append(allText, eventText)
 		if event.IsFinalResponse() {
 			finalText = eventText
+			continue
 		}
+		// Kronk partials carry only the new delta, so accumulate them here in
+		// case the runner ends without a TurnComplete event.
+		streamed.WriteString(eventText)
+		lastPartialText = eventText
 	}
 	if strings.TrimSpace(finalText) != "" {
 		return finalText, nil
 	}
-	if len(allText) > 0 {
-		return allText[len(allText)-1], nil
+	if streamed.Len() > 0 {
+		return streamed.String(), nil
+	}
+	if lastPartialText != "" {
+		return lastPartialText, nil
 	}
 	return "Kronk returned an empty response.", nil
 }

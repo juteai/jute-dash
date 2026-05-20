@@ -192,27 +192,50 @@ func taskRecord(t task) TaskRecord {
 	}
 }
 
+// taskMessages collects the user-visible message thread for a task. Many
+// agents (notably ADK-based ones using OutputArtifactPerRun) put the user
+// message in t.History but emit the agent's reply as an artifact, so we
+// also synthesise an assistant message from t.Status.Message or
+// t.Artifacts whenever history doesn't already contain one.
 func taskMessages(t task) []TaskMessage {
 	messages := make([]TaskMessage, 0, len(t.History)+1)
+	hasAgentMessage := false
 	for _, item := range t.History {
 		text := textFromMessage(item)
 		if text == "" {
 			continue
 		}
+		role := normalizeRole(item.Role)
+		if role == "assistant" {
+			hasAgentMessage = true
+		}
 		messages = append(messages, TaskMessage{
 			ID:   item.MessageID,
-			Role: normalizeRole(item.Role),
+			Role: role,
 			Text: text,
 		})
 	}
-	if len(messages) == 0 {
-		if text := textFromOptionalMessage(t.Status.Message); text != "" {
-			messages = append(messages, TaskMessage{Role: "assistant", Text: text})
-		} else if text := resultFromTask(t).Text; text != "" {
+	if !hasAgentMessage {
+		if text := agentReplyText(t); text != "" {
 			messages = append(messages, TaskMessage{Role: "assistant", Text: text})
 		}
 	}
 	return messages
+}
+
+// agentReplyText returns the latest agent-authored text from the task's
+// status message or artifacts, used as a fallback when the task history
+// doesn't contain an explicit assistant turn.
+func agentReplyText(t task) string {
+	if text := textFromOptionalMessage(t.Status.Message); text != "" {
+		return text
+	}
+	for i := len(t.Artifacts) - 1; i >= 0; i-- {
+		if text := textFromParts(t.Artifacts[i].Parts); text != "" {
+			return text
+		}
+	}
+	return ""
 }
 
 func normalizeRole(role string) string {
@@ -224,4 +247,40 @@ func normalizeRole(role string) string {
 	default:
 		return "assistant"
 	}
+}
+
+// normalizeTaskState collapses the verbose A2A 1.0 task state names
+// (TASK_STATE_COMPLETED, TASK_STATE_WORKING, ...) into the short form
+// the hub and display use throughout the rest of the codebase. Short
+// values from older agents pass through unchanged.
+func normalizeTaskState(state string) string {
+	trimmed := strings.TrimSpace(state)
+	if trimmed == "" {
+		return ""
+	}
+	upper := strings.ToUpper(trimmed)
+	switch upper {
+	case "TASK_STATE_UNSPECIFIED":
+		return ""
+	case "TASK_STATE_SUBMITTED":
+		return "submitted"
+	case "TASK_STATE_WORKING":
+		return "working"
+	case "TASK_STATE_INPUT_REQUIRED":
+		return "input-required"
+	case "TASK_STATE_COMPLETED":
+		return "completed"
+	case "TASK_STATE_CANCELED", "TASK_STATE_CANCELLED":
+		return "canceled"
+	case "TASK_STATE_FAILED":
+		return "failed"
+	case "TASK_STATE_REJECTED":
+		return "rejected"
+	case "TASK_STATE_AUTH_REQUIRED":
+		return "auth-required"
+	}
+	if strings.HasPrefix(upper, "TASK_STATE_") {
+		return strings.ToLower(strings.TrimPrefix(upper, "TASK_STATE_"))
+	}
+	return strings.ToLower(trimmed)
 }

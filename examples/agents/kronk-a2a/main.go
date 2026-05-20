@@ -58,16 +58,41 @@ func run() error {
 	}
 	defer closeAgent()
 
-	if mode == "server" {
+	switch mode {
+	case "server":
 		log.Printf("Kronk A2A server mode; waiting for shutdown signal")
 		<-ctx.Done()
 		return nil
-	}
-	if mode != "console" && mode != "launcher" {
+	case "selftest":
+		return runSelftest(ctx, a2aServer)
+	case "console", "launcher":
+		return runConsole(ctx, a2aServer)
+	default:
 		return fmt.Errorf("unsupported KRONK_A2A_MODE %q", mode)
 	}
+}
 
-	return runConsole(ctx, a2aServer)
+// runSelftest loads the model and runs a single end-to-end inference so the
+// caller can validate that the active processor (KRONK_PROCESSOR) actually
+// completes a chat without aborting. The harness Makefile uses this to probe
+// Metal vs CPU on first run. Any native abort() inside libllama terminates
+// the process with a nonzero exit, which is exactly what the probe needs.
+func runSelftest(ctx context.Context, server *kronkA2AServer) error {
+	processor := strings.TrimSpace(os.Getenv("KRONK_PROCESSOR"))
+	if processor == "" {
+		processor = "(default)"
+	}
+	log.Printf("Kronk selftest: running a single inference with processor=%s", processor)
+
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	answer, err := server.generateAnswer(ctx, "selftest-"+newID(), "Reply with one short word.")
+	if err != nil {
+		return fmt.Errorf("selftest inference failed: %w", err)
+	}
+	log.Printf("Kronk selftest: success (answer=%q)", strings.TrimSpace(answer))
+	return nil
 }
 
 func startKronkAgentServer(ctx context.Context) (*kronkA2AServer, func(), error) {

@@ -16,3 +16,6 @@ apps/web/.env.*
 data/
 .jute/
 *.local.json
+
+# Per-checkout kronk-a2a Metal-vs-CPU probe cache
+examples/agents/kronk-a2a/.kronk-processor.choice
