@@ -20,11 +20,13 @@ This fixture now serves the A2A 1.0 Agent Card and JSON-RPC method shapes that t
 make setup
 make check
 make server
-make run
+make server-mcp
+make console
 ```
 
 - `make server` starts only the local A2A server.
-- `make run` starts the local A2A server and a simple console loop against the same Kronk agent.
+- `make server-mcp` starts the local A2A server with `JUTE_MCP_URL` set.
+- `make console` starts the local A2A server and a simple console loop against the same Kronk agent.
 
 ## Environment
 
@@ -62,3 +64,11 @@ When `JUTE_MCP_URL` is set, the agent receives ADK function tools backed by Jute
 - `jute_skill_prompt_get`
 
 These tools are optional. If MCP is unset, the Kronk agent still runs as a normal A2A agent.
+
+For the full local loops:
+
+```sh
+cd ../../harnesses/kronk-a2a
+make dev
+make dev-mcp
+```

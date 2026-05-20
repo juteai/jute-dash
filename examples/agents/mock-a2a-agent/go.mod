@@ -1,4 +1,4 @@
-module jute-dash/examples/agents/a2a-v1-dev
+module jute-dash/examples/agents/mock-a2a-agent
 
 go 1.22
 

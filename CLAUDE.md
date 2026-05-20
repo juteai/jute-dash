@@ -74,10 +74,16 @@ Key docs:
 ```sh
 make setup
 make dev
-make dev-a2a-mcp
 make test
 make web-check
 make check
+```
+
+Agent-backed dev stacks live in `examples/harnesses`, for example:
+
+```sh
+cd examples/harnesses/mock-a2a-mcp
+make dev
 ```
 
 ## Documentation Discipline

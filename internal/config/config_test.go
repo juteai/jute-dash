@@ -346,30 +346,55 @@ func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 	}
 }
 
-func TestDevA2AConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "config", "jute.dev-a2a.yaml"))
+func TestDevMockA2AConfigLoads(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "config", "jute.dev-mock-a2a.yaml"))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if len(cfg.Agents) != 1 {
-		t.Fatalf("expected one dev A2A agent, got %d", len(cfg.Agents))
-	}
-	agent := cfg.Agents[0]
-	if agent.ID != "a2a-v1-dev" || !agent.Enabled || agent.ProtocolBinding != "JSONRPC" {
-		t.Fatalf("unexpected dev A2A agent: %+v", agent)
-	}
-	if agent.CardURL != "http://127.0.0.1:9797/.well-known/agent-card.json" {
-		t.Fatalf("unexpected card URL: %s", agent.CardURL)
-	}
+	assertSingleDevAgent(t, cfg, "mock-a2a-agent")
 }
 
-func TestDevA2AMCPConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "config", "jute.dev-a2a-mcp.yaml"))
+func TestDevMockA2AMCPConfigLoads(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "config", "jute.dev-mock-a2a-mcp.yaml"))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if !cfg.MCP.Enabled || cfg.MCP.Auth.Mode != "none" || cfg.MCP.ListenAddress != "127.0.0.1:8790" {
 		t.Fatalf("unexpected dev MCP config: %+v", cfg.MCP)
+	}
+	assertSingleDevAgent(t, cfg, "mock-a2a-agent")
+}
+
+func TestDevKronkA2AConfigLoads(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "config", "jute.dev-kronk-a2a.yaml"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	assertSingleDevAgent(t, cfg, "kronk-local")
+}
+
+func TestDevKronkA2AMCPConfigLoads(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "config", "jute.dev-kronk-a2a-mcp.yaml"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.MCP.Enabled || cfg.MCP.Auth.Mode != "none" || cfg.MCP.ListenAddress != "127.0.0.1:8790" {
+		t.Fatalf("unexpected dev MCP config: %+v", cfg.MCP)
+	}
+	assertSingleDevAgent(t, cfg, "kronk-local")
+}
+
+func assertSingleDevAgent(t *testing.T, cfg Config, wantID string) {
+	t.Helper()
+	if len(cfg.Agents) != 1 {
+		t.Fatalf("expected one dev A2A agent, got %d", len(cfg.Agents))
+	}
+	agent := cfg.Agents[0]
+	if agent.ID != wantID || !agent.Enabled || agent.ProtocolBinding != "JSONRPC" {
+		t.Fatalf("unexpected dev A2A agent: %+v", agent)
+	}
+	if agent.CardURL != "http://127.0.0.1:9797/.well-known/agent-card.json" {
+		t.Fatalf("unexpected card URL: %s", agent.CardURL)
 	}
 }
 

@@ -80,7 +80,7 @@ type rpcResponse struct {
 }
 
 func main() {
-	listen := strings.TrimSpace(os.Getenv("A2A_V1_DEV_LISTEN"))
+	listen := strings.TrimSpace(os.Getenv("MOCK_A2A_LISTEN"))
 	if listen == "" {
 		listen = "127.0.0.1:9797"
 	}
@@ -94,8 +94,8 @@ func main() {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"name":        "Jute A2A 1.0 Dev Agent",
-			"description": "A tiny local A2A 1.0 fixture for testing Jute Dash chat and dashboard context.",
+			"name":        "Jute Mock A2A Agent",
+			"description": "A deterministic local A2A 1.0 fixture for testing Jute Dash chat and dashboard context.",
 			"version":     "1.0.0",
 			"supportedInterfaces": []map[string]string{
 				{"url": baseURL + "/invoke", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
@@ -124,8 +124,8 @@ func main() {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	log.Printf("A2A 1.0 dev agent card: %s/.well-known/agent-card.json", baseURL)
-	log.Printf("A2A 1.0 JSON-RPC endpoint: %s/invoke", baseURL)
+	log.Printf("Mock A2A agent card: %s/.well-known/agent-card.json", baseURL)
+	log.Printf("Mock A2A JSON-RPC endpoint: %s/invoke", baseURL)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("serve: %v", err)
 	}
@@ -179,7 +179,7 @@ func handleSend(w http.ResponseWriter, r *http.Request, req rpcRequest) {
 		contextStatus = "dashboard context received"
 	}
 	mcpStatus := mcpContextForTurn(r.Context()).Sentence()
-	answer := fmt.Sprintf("Dev A2A reply: %s. I saw %s. MCP: %s.", text, contextStatus, mcpStatus)
+	answer := fmt.Sprintf("Mock A2A reply: %s. I saw %s. MCP: %s.", text, contextStatus, mcpStatus)
 	taskID := "task-" + newID()
 	record := task{
 		ID:        taskID,

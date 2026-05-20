@@ -1,0 +1,64 @@
+home:
+  name: Jute Kronk A2A Dev
+  timezone: Europe/London
+  locale: en-GB
+
+server:
+  listen-address: 127.0.0.1:8787
+
+mcp:
+  enabled: false
+  transport: streamable-http
+  listen-address: 127.0.0.1:8790
+  path: /mcp
+  allow-lan: false
+  auth:
+    mode: local-token
+    env-token: JUTE_MCP_TOKEN
+
+display:
+  theme: system
+  accent-color: teal
+  idle-mode: ambient
+
+weather:
+  enabled: true
+  provider: open-meteo
+  location-name: London
+  latitude: 51.5072
+  longitude: -0.1276
+  temperature-unit: celsius
+  wind-speed-unit: kmh
+
+voice:
+  enabled: false
+  muted-by-default: true
+  wake-word-model-id: ""
+  stt-provider-id: ""
+  tts-provider-id: ""
+  stt-model-id: ""
+  tts-model-id: ""
+  tts-voice-id: ""
+  preferred-agent-id: kronk-local
+  cloud-opt-in: false
+  command-providers-enabled: false
+  sensitive-output-policy: visual_only_sensitive
+  followup-window-seconds: 8
+  microphone-profile: ""
+
+agents:
+  - id: kronk-local
+    name: Kronk Local
+    description: Local Kronk-backed A2A assistant.
+    card-url: http://127.0.0.1:9797/.well-known/agent-card.json
+    endpoint-url: http://127.0.0.1:9797/invoke
+    protocol-binding: JSONRPC
+    enabled: true
+    capabilities:
+      - conversation
+      - local-a2a
+      - kronk
+      - dashboard-context
+
+rooms: []
+tiles: []

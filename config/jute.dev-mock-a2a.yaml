@@ -1,5 +1,5 @@
 home:
-  name: Jute A2A MCP Dev
+  name: Jute Mock A2A Dev
   timezone: Europe/London
   locale: en-GB
 
@@ -7,13 +7,13 @@ server:
   listen-address: 127.0.0.1:8787
 
 mcp:
-  enabled: true
+  enabled: false
   transport: streamable-http
   listen-address: 127.0.0.1:8790
   path: /mcp
   allow-lan: false
   auth:
-    mode: none
+    mode: local-token
     env-token: JUTE_MCP_TOKEN
 
 display:
@@ -39,7 +39,7 @@ voice:
   stt-model-id: ""
   tts-model-id: ""
   tts-voice-id: ""
-  preferred-agent-id: a2a-v1-dev
+  preferred-agent-id: mock-a2a-agent
   cloud-opt-in: false
   command-providers-enabled: false
   sensitive-output-policy: visual_only_sensitive
@@ -47,16 +47,16 @@ voice:
   microphone-profile: ""
 
 agents:
-  - id: a2a-v1-dev
-    name: A2A 1.0 Dev Agent
-    description: Lightweight local A2A 1.0 test agent with dashboard-context support.
+  - id: mock-a2a-agent
+    name: Mock A2A Agent
+    description: Deterministic mock A2A 1.0 test agent with dashboard-context support.
     card-url: http://127.0.0.1:9797/.well-known/agent-card.json
     endpoint-url: http://127.0.0.1:9797/invoke
     protocol-binding: JSONRPC
     enabled: true
     capabilities:
       - conversation
-      - local-a2a
+      - mock-a2a
       - dashboard-context
 
 rooms: []

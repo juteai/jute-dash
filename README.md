@@ -41,25 +41,33 @@ make dev
 
 The hub runs at `http://127.0.0.1:8787` and the web UI runs at `http://127.0.0.1:5173` by default. The web UI expects the hub at `http://127.0.0.1:8787`; override that with `VITE_JUTE_API_URL`.
 
-To run the dashboard against a lightweight local A2A 1.0 test agent:
+The root `Makefile` is intentionally core-only. Agent-backed development stacks live under `examples/harnesses`.
+
+To run the dashboard against the deterministic mock A2A 1.0 agent:
 
 ```sh
-make dev-a2a
+cd examples/harnesses/mock-a2a
+make dev
 ```
 
-`make dev-a2a` starts the standard-library A2A 1.0 dev agent, waits for its Agent Card, resets the dedicated `.jute/dev-a2a` store so the current bootstrap config is applied, then starts the hub with `config/jute.dev-a2a.yaml` and the web UI. Reset only that dev store without starting the stack with:
+That harness starts the mock agent, waits for its Agent Card, resets the dedicated `.jute/dev-mock-a2a` store so the current bootstrap config is applied, then starts the hub with `config/jute.dev-mock-a2a.yaml` and the web UI.
+
+To run the same mock stack with the Jute MCP Bridge enabled:
 
 ```sh
-make dev-a2a-reset
+cd examples/harnesses/mock-a2a-mcp
+make dev
 ```
 
-To run the same local stack with the Jute MCP Bridge enabled:
+To run the local Kronk-backed A2A 1.0 model harness:
 
 ```sh
-make dev-a2a-mcp
+cd examples/harnesses/kronk-a2a
+make dev
+make dev-mcp
 ```
 
-The MCP bridge runs at `http://127.0.0.1:8790/mcp` in that dev profile with loopback-only, no-token dev auth. Production-style config keeps MCP disabled by default and supports local bearer-token auth through `JUTE_MCP_TOKEN`.
+MCP-enabled harnesses run the bridge at `http://127.0.0.1:8790/mcp` with loopback-only, no-token dev auth. Production-style config keeps MCP disabled by default and supports local bearer-token auth through `JUTE_MCP_TOKEN`.
 
 ## Current UI Status
 
@@ -75,11 +83,12 @@ make web-check  # Svelte checks
 make check      # Go tests and Svelte checks
 ```
 
-Optional local agent examples:
+Optional local agent examples can be run directly when you only need the agent process:
 
 ```sh
-make a2a-v1-dev       # run the lightweight A2A 1.0 JSON-RPC fixture
-make a2a-v1-dev-check # compile/test the lightweight fixture
+cd examples/agents/mock-a2a-agent
+make server
+make check
 ```
 
 Optional Kronk-backed A2A 1.0 model example:
@@ -87,7 +96,8 @@ Optional Kronk-backed A2A 1.0 model example:
 ```sh
 cd examples/agents/kronk-a2a
 make check
-JUTE_MCP_URL=http://127.0.0.1:8790/mcp make server
+make server
+make server-mcp
 ```
 
 The Kronk example serves its own standard-library A2A 1.0 Agent Card and JSON-RPC endpoint, then routes turns through the local Kronk-backed ADK agent. ADK still brings older A2A packages into its transitive module graph, but the fixture does not use ADK's older A2A server adapter.
@@ -118,6 +128,7 @@ apps/web/              SvelteKit dashboard app, currently throwaway POC UI
 config/                Example local configuration
 docs/                  Architecture notes, roadmap, and decisions
 examples/agents/       Optional local test agents and integration fixtures
+examples/harnesses/    Complete local dev stacks built from example agents
 ```
 
 ## Widget Development

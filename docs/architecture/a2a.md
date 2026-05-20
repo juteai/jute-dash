@@ -90,7 +90,7 @@ Cached cards are refreshable implementation detail. The current pre-v1 hub keeps
 Current implementation status:
 
 - The hub fetches configured Agent Cards, selects A2A 1.0 `JSONRPC` first, and exposes the selected interface, skills, streaming flag, dashboard-context support, and safe card status to the UI.
-- The development `make dev-a2a` path uses the lightweight `examples/agents/a2a-v1-dev` fixture.
+- The development harnesses under `examples/harnesses/` use either the deterministic `examples/agents/mock-a2a-agent` fixture or the optional Kronk-backed `examples/agents/kronk-a2a` fixture.
 
 ## Jute Dashboard-Context Extension
 

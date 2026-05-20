@@ -120,10 +120,18 @@ Run the hub and web app together:
 make dev
 ```
 
-Run the local A2A dev stack with the MCP bridge enabled:
+Run local A2A dev stacks from the harness directories, not the root `Makefile`:
 
 ```sh
-make dev-a2a-mcp
+cd examples/harnesses/mock-a2a
+make dev
+
+cd ../mock-a2a-mcp
+make dev
+
+cd ../kronk-a2a
+make dev
+make dev-mcp
 ```
 
 Run Svelte checks after dependencies are installed:
