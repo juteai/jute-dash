@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"jute-dash/internal/mcpclient"
 )
 
 const dashboardContextExtensionURI = "https://jute.dev/a2a/extensions/dashboard-context/v1"
@@ -175,7 +178,8 @@ func handleSend(w http.ResponseWriter, r *http.Request, req rpcRequest) {
 	if hasExtensionHeader && hasMetadata {
 		contextStatus = "dashboard context received"
 	}
-	answer := fmt.Sprintf("Dev A2A reply: %s. I saw %s.", text, contextStatus)
+	mcpStatus := mcpContextForTurn(r.Context()).Sentence()
+	answer := fmt.Sprintf("Dev A2A reply: %s. I saw %s. MCP: %s.", text, contextStatus, mcpStatus)
 	taskID := "task-" + newID()
 	record := task{
 		ID:        taskID,
@@ -207,6 +211,17 @@ func handleSend(w http.ResponseWriter, r *http.Request, req rpcRequest) {
 			},
 		},
 	})
+}
+
+func mcpContextForTurn(ctx context.Context) mcpclient.JuteContext {
+	client, configured, err := mcpclient.NewFromEnv()
+	if !configured {
+		return mcpclient.JuteContext{Unavailable: "MCP not configured"}
+	}
+	if err != nil {
+		return mcpclient.JuteContext{Unavailable: "MCP config invalid"}
+	}
+	return client.CollectJuteContext(ctx)
 }
 
 func writeStream(w http.ResponseWriter, id json.RawMessage, record task) {

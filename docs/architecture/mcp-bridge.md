@@ -342,7 +342,8 @@ If a requested widget is no longer visible, the bridge returns a safe not-found 
 2. Document and implement the Widget Skill registry for built-in widgets. **Done for built-in POC widgets.**
 3. Add boot-time MCP config, local token auth, and loopback Streamable HTTP transport. **Done for pre-v1.**
 4. Add an MCP bridge with skill resources, skill context tools, and hub guidance prompts. **Done for the first POC slice.**
-5. Add SQLite fields for MCP settings and per-agent scopes.
-6. Add low-risk display mutation tools.
-7. Add notifications.
-8. Add future approval-gated configure and home-action tools.
+5. Add MCP-aware local A2A examples for deterministic and model-backed development loops. **Done for developer fixtures.**
+6. Add SQLite fields for MCP settings and per-agent scopes.
+7. Add low-risk display mutation tools.
+8. Add notifications.
+9. Add future approval-gated configure and home-action tools.

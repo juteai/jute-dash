@@ -164,7 +164,31 @@ The example binds to `127.0.0.1:9797` by default and publishes an Agent Card at:
 http://127.0.0.1:9797/.well-known/agent-card.json
 ```
 
-The first bridge slice exposes Widget Skills as resources, tools, and prompts. The example remains a developer fixture and is not part of the production hub dependency graph.
+The first bridge slice exposes Widget Skills as resources, tools, and prompts. The lightweight fixture reads those resources directly through Jute's small stdlib MCP client and reports what it saw in its A2A response.
+
+## Kronk Test Agent
+
+Jute also maintains an optional Kronk-backed example in `examples/agents/kronk-a2a`.
+
+Use it when you want a more realistic local model loop:
+
+```sh
+cd examples/agents/kronk-a2a
+make check
+JUTE_MCP_URL=http://127.0.0.1:8790/mcp make server
+```
+
+The Kronk example has its own Go module and Makefile. It is not part of root `make check`, and it must not add ADK, Kronk, MCP SDK, or model-runtime dependencies to the production hub module.
+
+When `JUTE_MCP_URL` is set, the Kronk agent exposes ADK function tools backed by Jute MCP:
+
+- `jute_dashboard_context_get`
+- `jute_skill_list`
+- `jute_skill_read_context`
+- `jute_skill_invoke_action`
+- `jute_skill_prompt_get`
+
+When `JUTE_MCP_URL` is unset, it runs as a normal A2A agent.
 
 ## Security
 

@@ -82,6 +82,16 @@ make a2a-v1-dev       # run the lightweight A2A 1.0 JSON-RPC fixture
 make a2a-v1-dev-check # compile/test the lightweight fixture
 ```
 
+Optional Kronk-backed A2A example:
+
+```sh
+cd examples/agents/kronk-a2a
+make check
+JUTE_MCP_URL=http://127.0.0.1:8790/mcp make server
+```
+
+The Kronk example has its own module and Makefile so model/runtime dependencies stay out of the root hub.
+
 Optional MCP smoke request:
 
 ```sh
@@ -98,6 +108,7 @@ internal/a2a/          A2A protocol-facing types and constants
 internal/config/       Config loading, defaults, validation, public config projection
 internal/home/         Home dashboard state assembled from config
 internal/mcpbridge/    Optional local MCP bridge for Widget Skills and dashboard context
+internal/mcpclient/    Small stdlib MCP client used by local developer agents
 internal/registry/     Runtime view of configured agents
 internal/server/       HTTP API surface consumed by the UI and future clients
 internal/store/        SQLite runtime store, migrations, seeding, and setup status

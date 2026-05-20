@@ -36,6 +36,7 @@
 - Stream task updates back to the display through hub events.
 - Revisit whether Jute needs an optional local transcript mirror after agent-backed history has been tested with real agents.
 - Add an MCP Bridge with dashboard resources, Widget Skill resources, safe skill context tools, and low-risk display actions for local agents.
+- Maintain MCP-aware local A2A examples for deterministic fixture testing and optional model-backed Kronk testing.
 - Add settings UI for home name, rooms, tiles, and agent registration.
 
 ## Phase 2: Home Context
