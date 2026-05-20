@@ -9,7 +9,7 @@ check:
 	go test ./...
 
 run:
-	go run .
+	KRONK_A2A_MODE=console go run .
 
 server:
 	KRONK_A2A_MODE=server go run .

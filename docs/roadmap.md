@@ -28,6 +28,7 @@
 - Keep `/api/v1/events` as a minimal SSE surface, then expand it for dashboard and task updates.
 - Replace POC dashboard UI with the clean-slate dashboard, edit mode, WidgetFrame, and chat mode.
 - Add display resilience UX: startup offline screen, runtime reconnect ribbon, stale dashboard styling, no-agent chat state, and widget error frames.
+- Improve A2A error UX so incompatible agents, unsupported methods, stream-shape mismatches, empty responses, and timeouts become clear safe messages instead of blank assistant turns or ambiguous `working` states.
 - Add voice foundation state: persisted voice settings, status/mute/cancel APIs, provider-list response shape, and display microphone status controls.
 - Add A2A agent-backed conversation history using `ListTasks` and `GetTask`, with a clear unsupported state for agents that do not expose history.
 - Implement Widget Pack manifest validation and iframe host runtime.

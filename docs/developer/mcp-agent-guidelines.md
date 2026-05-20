@@ -168,9 +168,17 @@ The first bridge slice exposes Widget Skills as resources, tools, and prompts. T
 
 ## Kronk Test Agent
 
-Jute also maintains an optional Kronk-backed example in `examples/agents/kronk-a2a`.
+Jute includes an optional Kronk-backed A2A 1.0 example in `examples/agents/kronk-a2a`.
 
-Use it when you want a more realistic local model loop:
+Use it when you want a local model-backed loop instead of the deterministic lightweight fixture.
+
+The Kronk fixture serves its own standard-library A2A 1.0 layer:
+
+- Agent Card declares `supportedInterfaces` with `protocolVersion: "1.0"`;
+- JSON-RPC endpoint supports `SendMessage`, `SendStreamingMessage`, `ListTasks`, and `GetTask`;
+- ADK still provides the Kronk agent and optional MCP function tools, but ADK's older A2A server adapter is not used.
+
+Run it with:
 
 ```sh
 cd examples/agents/kronk-a2a

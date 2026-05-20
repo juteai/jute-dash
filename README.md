@@ -82,7 +82,7 @@ make a2a-v1-dev       # run the lightweight A2A 1.0 JSON-RPC fixture
 make a2a-v1-dev-check # compile/test the lightweight fixture
 ```
 
-Optional Kronk-backed A2A example:
+Optional Kronk-backed A2A 1.0 model example:
 
 ```sh
 cd examples/agents/kronk-a2a
@@ -90,7 +90,7 @@ make check
 JUTE_MCP_URL=http://127.0.0.1:8790/mcp make server
 ```
 
-The Kronk example has its own module and Makefile so model/runtime dependencies stay out of the root hub.
+The Kronk example serves its own standard-library A2A 1.0 Agent Card and JSON-RPC endpoint, then routes turns through the local Kronk-backed ADK agent. ADK still brings older A2A packages into its transitive module graph, but the fixture does not use ADK's older A2A server adapter.
 
 Optional MCP smoke request:
 

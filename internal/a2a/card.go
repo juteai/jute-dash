@@ -88,19 +88,8 @@ func (f *AgentCardFetcher) Fetch(ctx context.Context, cardURL, bearerToken strin
 
 func SelectInterface(card AgentCard, fallbackURL, fallbackBinding string) (SelectedInterface, error) {
 	interfaces := append([]AgentInterface(nil), card.SupportedInterfaces...)
-	if len(interfaces) == 0 && strings.TrimSpace(card.URL) != "" {
-		interfaces = append(interfaces, AgentInterface{
-			URL:             card.URL,
-			ProtocolBinding: firstNonEmpty(card.PreferredTransport, fallbackBinding),
-			ProtocolVersion: firstNonEmpty(card.ProtocolVersion, ProtocolVersion10),
-		})
-	}
-	if len(interfaces) == 0 && strings.TrimSpace(fallbackURL) != "" {
-		interfaces = append(interfaces, AgentInterface{
-			URL:             fallbackURL,
-			ProtocolBinding: fallbackBinding,
-			ProtocolVersion: ProtocolVersion10,
-		})
+	if len(interfaces) == 0 {
+		return SelectedInterface{}, ErrNoSupportedInterface
 	}
 
 	for _, preferred := range []string{ProtocolJSONRPC, ProtocolHTTPJSON, ProtocolGRPC} {

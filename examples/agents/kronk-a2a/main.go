@@ -1,7 +1,8 @@
-// Command kronk-a2a exposes a local Kronk-backed ADK agent through A2A.
+// Command kronk-a2a exposes a local Kronk-backed ADK agent through A2A 1.0.
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,8 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/a2aproject/a2a-go/a2a"
-	"github.com/a2aproject/a2a-go/a2asrv"
 	krnk "github.com/ardanlabs/kronk/sdk/kronk"
 	krnkmodel "github.com/ardanlabs/kronk/sdk/kronk/model"
 	"github.com/ardanlabs/kronk/sdk/tools/defaults"
@@ -24,12 +23,6 @@ import (
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
-	"google.golang.org/adk/agent/remoteagent"
-	"google.golang.org/adk/cmd/launcher"
-	"google.golang.org/adk/cmd/launcher/full"
-	"google.golang.org/adk/runner"
-	"google.golang.org/adk/server/adka2a"
-	"google.golang.org/adk/session"
 	adktool "google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 	"google.golang.org/genai"
@@ -57,9 +50,9 @@ func run() error {
 
 	mode := strings.TrimSpace(os.Getenv("KRONK_A2A_MODE"))
 	if mode == "" {
-		mode = "launcher"
+		mode = "server"
 	}
-	a2aServerAddress, closeAgent, err := startKronkAgentServer(ctx)
+	a2aServer, closeAgent, err := startKronkAgentServer(ctx)
 	if err != nil {
 		return err
 	}
@@ -70,33 +63,17 @@ func run() error {
 		<-ctx.Done()
 		return nil
 	}
-	if mode != "launcher" {
+	if mode != "console" && mode != "launcher" {
 		return fmt.Errorf("unsupported KRONK_A2A_MODE %q", mode)
 	}
 
-	remoteAgent, err := remoteagent.NewA2A(remoteagent.A2AConfig{
-		Name:            "A2A Kronk assistant",
-		Description:     "A remote ADK agent served over A2A and backed by a local Kronk model.",
-		AgentCardSource: a2aServerAddress,
-	})
-	if err != nil {
-		return fmt.Errorf("create remote agent: %w", err)
-	}
-
-	launcherCfg := &launcher.Config{
-		AgentLoader: agent.NewSingleLoader(remoteAgent),
-	}
-	l := full.NewLauncher()
-	if err := l.Execute(ctx, launcherCfg, os.Args[1:]); err != nil {
-		return fmt.Errorf("run failed: %w\n\n%s", err, l.CommandLineSyntax())
-	}
-	return nil
+	return runConsole(ctx, a2aServer)
 }
 
-func startKronkAgentServer(ctx context.Context) (string, func(), error) {
+func startKronkAgentServer(ctx context.Context) (*kronkA2AServer, func(), error) {
 	a, closeAgent, err := newKronkAgent(ctx)
 	if err != nil {
-		return "", nil, fmt.Errorf("create Kronk agent: %w", err)
+		return nil, nil, fmt.Errorf("create Kronk agent: %w", err)
 	}
 
 	listenAddress := strings.TrimSpace(os.Getenv("KRONK_A2A_LISTEN"))
@@ -106,33 +83,20 @@ func startKronkAgentServer(ctx context.Context) (string, func(), error) {
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", listenAddress)
 	if err != nil {
 		closeAgent()
-		return "", nil, fmt.Errorf("bind A2A server: %w", err)
+		return nil, nil, fmt.Errorf("bind A2A server: %w", err)
 	}
 
 	baseURL := &url.URL{Scheme: "http", Host: listener.Addr().String()}
 	agentPath := "/invoke"
-	agentCard := &a2a.AgentCard{
-		Name:               a.Name(),
-		Description:        a.Description(),
-		DefaultInputModes:  []string{"text/plain"},
-		DefaultOutputModes: []string{"text/plain"},
-		Skills:             adka2a.BuildAgentSkills(a),
-		PreferredTransport: a2a.TransportProtocolJSONRPC,
-		URL:                baseURL.JoinPath(agentPath).String(),
-		Capabilities:       a2a.AgentCapabilities{Streaming: true},
+	a2aServer, err := newKronkA2AServer(a, baseURL.String())
+	if err != nil {
+		closeAgent()
+		return nil, nil, err
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle(a2asrv.WellKnownAgentCardPath, a2asrv.NewStaticAgentCardHandler(agentCard))
-	executor := adka2a.NewExecutor(adka2a.ExecutorConfig{
-		RunnerConfig: runner.Config{
-			AppName:        a.Name(),
-			Agent:          a,
-			SessionService: session.InMemoryService(),
-		},
-	})
-	requestHandler := a2asrv.NewHandler(executor)
-	mux.Handle(agentPath, a2asrv.NewJSONRPCHandler(requestHandler))
+	mux.HandleFunc("/.well-known/agent-card.json", a2aServer.handleAgentCard)
+	mux.HandleFunc(agentPath, a2aServer.handleInvoke)
 
 	httpServer := &http.Server{
 		Handler:           mux,
@@ -143,8 +107,8 @@ func startKronkAgentServer(ctx context.Context) (string, func(), error) {
 	}
 
 	go func() {
-		log.Printf("Kronk A2A Agent Card: %s", baseURL.JoinPath(a2asrv.WellKnownAgentCardPath).String())
-		log.Printf("Kronk A2A JSON-RPC endpoint: %s", baseURL.JoinPath(agentPath).String())
+		log.Printf("Kronk A2A 1.0 Agent Card: %s", baseURL.JoinPath(".well-known", "agent-card.json").String())
+		log.Printf("Kronk A2A 1.0 JSON-RPC endpoint: %s", baseURL.JoinPath(agentPath).String())
 		if serveErr := httpServer.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
 			log.Printf("A2A server stopped unexpectedly: %v", serveErr)
 		}
@@ -158,7 +122,32 @@ func startKronkAgentServer(ctx context.Context) (string, func(), error) {
 		}
 		closeAgent()
 	}
-	return baseURL.String(), closeAll, nil
+	return a2aServer, closeAll, nil
+}
+
+func runConsole(ctx context.Context, server *kronkA2AServer) error {
+	log.Printf("Kronk console mode; the A2A 1.0 server remains available while you chat locally")
+	scanner := bufio.NewScanner(os.Stdin)
+	sessionID := "console-" + newID()
+	fmt.Print("\nUser -> ")
+	for scanner.Scan() {
+		text := strings.TrimSpace(scanner.Text())
+		if text == "" {
+			fmt.Print("\nUser -> ")
+			continue
+		}
+		answer, err := server.generateAnswer(ctx, sessionID, text)
+		if err != nil {
+			fmt.Printf("\nAgent error: %v\n", err)
+		} else {
+			fmt.Printf("\nAgent -> %s\n", answer)
+		}
+		fmt.Print("\nUser -> ")
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read console input: %w", err)
+	}
+	return nil
 }
 
 func newKronkAgent(ctx context.Context) (agent.Agent, func(), error) {

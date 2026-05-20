@@ -188,6 +188,28 @@ The hub is reconnecting. Try again when Jute is connected.
 
 For future A2A task failures, show the safe public error from the hub, not the raw remote error.
 
+## A2A Compatibility Errors
+
+A2A integration failures must be obvious and actionable. The display should never show a blank assistant response, an indefinite `working` state, or a successful turn when the hub could not parse or negotiate the agent response.
+
+Known pre-v1 gap: when an older or incompatible local agent responds with a legacy JSON-RPC shape, the current UX can feel ambiguous unless the hub maps that failure to a safe issue. The next error-handling implementation slice should add explicit states for:
+
+- incompatible Agent Card;
+- unsupported A2A protocol version;
+- unsupported JSON-RPC method;
+- streaming response shape mismatch;
+- empty agent response;
+- agent timeout.
+
+Recommended copy:
+
+```text
+Agent response not supported
+This agent is reachable, but it does not speak the A2A version Jute expects.
+```
+
+The hub should expose these as stable issue codes. The display should render them in the chat header, the failed turn row, and the agent details panel without showing raw JSON-RPC payloads.
+
 ## Widget Error States
 
 All widgets render inside `WidgetFrame` and use the same state vocabulary:

@@ -70,3 +70,16 @@ func TestSelectInterfaceRejectsUnsupportedVersions(t *testing.T) {
 		t.Fatal("expected unsupported interface error")
 	}
 }
+
+func TestSelectInterfaceRejectsLegacyCardWithoutSupportedInterfaces(t *testing.T) {
+	card := AgentCard{
+		Name:               "Legacy Kronk Agent",
+		URL:                "http://127.0.0.1:9797/invoke",
+		PreferredTransport: ProtocolJSONRPC,
+		Capabilities:       AgentCapabilities{Streaming: true},
+	}
+
+	if _, err := SelectInterface(card, "http://127.0.0.1:9797/invoke", ProtocolJSONRPC); err == nil {
+		t.Fatal("expected unsupported interface error")
+	}
+}
