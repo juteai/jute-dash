@@ -12,6 +12,7 @@ import (
 	"time"
 
 	a2aclient "jute-dash/internal/a2a"
+	"jute-dash/internal/displayactions"
 	"jute-dash/internal/registry"
 )
 
@@ -295,13 +296,52 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "event stream is unavailable")
+		return
+	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Connection", "keep-alive")
-	if flusher, ok := w.(http.Flusher); ok {
-		_, _ = w.Write([]byte(": no local event replay; conversations are agent-backed\n\n"))
-		flusher.Flush()
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	sendDisplaySSE(w, flusher, "hub.connected", map[string]any{
+		"connectedAt": time.Now().UTC().Format(time.RFC3339Nano),
+	})
+
+	events := s.display.Subscribe(r.Context())
+	heartbeat := time.NewTicker(25 * time.Second)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+			sendDisplayEventSSE(w, flusher, event)
+		case <-heartbeat.C:
+			_, _ = w.Write([]byte(": heartbeat\n\n"))
+			flusher.Flush()
+		}
 	}
+}
+
+func sendDisplayEventSSE(w http.ResponseWriter, flusher http.Flusher, event displayactions.Event) {
+	sendDisplaySSE(w, flusher, event.Type, event.Data)
+}
+
+func sendDisplaySSE(w http.ResponseWriter, flusher http.Flusher, event string, data any) {
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "event: %s\n", event)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", bytes)
+	flusher.Flush()
 }
 
 func (s *Server) agentForHistoryRequest(w http.ResponseWriter, r *http.Request) (registry.Agent, selectedAgentInterface, string, bool) {

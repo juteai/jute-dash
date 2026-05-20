@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"jute-dash/internal/config"
+	"jute-dash/internal/displayactions"
 	"jute-dash/internal/widgetskills"
 )
 
@@ -26,14 +27,25 @@ type SnapshotProvider interface {
 	Snapshot(context.Context) (widgetskills.Snapshot, error)
 }
 
-type Handler struct {
-	cfg      config.MCPConfig
-	version  string
-	provider SnapshotProvider
+type DisplayActions interface {
+	Notify(message, severity string) (displayactions.Notification, error)
+	FocusWidget(widgetInstanceID, reason string) (displayactions.FocusWidget, error)
 }
 
-func NewHandler(cfg config.MCPConfig, version string, provider SnapshotProvider) http.Handler {
-	return &Handler{cfg: cfg, version: version, provider: provider}
+type Handler struct {
+	cfg     config.MCPConfig
+	version string
+
+	provider SnapshotProvider
+	display  DisplayActions
+}
+
+func NewHandler(cfg config.MCPConfig, version string, provider SnapshotProvider, display ...DisplayActions) http.Handler {
+	var actionSink DisplayActions
+	if len(display) > 0 {
+		actionSink = display[0]
+	}
+	return &Handler{cfg: cfg, version: version, provider: provider, display: actionSink}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -228,6 +240,36 @@ func (h *Handler) callTool(ctx context.Context, req toolCallParams) (any, *rpcEr
 		} else {
 			value = map[string]any{"text": text}
 		}
+	case "jute_display_notification":
+		if h.display == nil {
+			return nil, &rpcError{Code: -32005, Message: "display actions are unavailable"}
+		}
+		notification, actionErr := h.display.Notify(stringArg(req.Arguments, "message"), stringArg(req.Arguments, "severity"))
+		if actionErr != nil {
+			err = actionErr
+		} else {
+			value = map[string]any{
+				"status":       "queued",
+				"eventType":    displayactions.EventNotification,
+				"notification": notification,
+			}
+		}
+	case "jute_display_focus_widget":
+		if h.display == nil {
+			return nil, &rpcError{Code: -32005, Message: "display actions are unavailable"}
+		}
+		widgetID := stringArg(req.Arguments, "widgetInstanceId")
+		if _, err = widgetskills.WidgetContext(snapshot, widgetID); err == nil {
+			var focus displayactions.FocusWidget
+			focus, err = h.display.FocusWidget(widgetID, stringArg(req.Arguments, "reason"))
+			if err == nil {
+				value = map[string]any{
+					"status":    "queued",
+					"eventType": displayactions.EventFocusWidget,
+					"focus":     focus,
+				}
+			}
+		}
 	default:
 		return nil, notFound("tool not found")
 	}
@@ -366,6 +408,14 @@ func toolsList() []map[string]any {
 			"skillId":  map[string]any{"type": "string"},
 			"promptId": map[string]any{"type": "string"},
 		}, []string{"skillId", "promptId"})),
+		tool("jute_display_notification", "Display Notification", "Show a short hub-sanitized notification on the Jute display.", objectSchema(map[string]any{
+			"message":  map[string]any{"type": "string"},
+			"severity": map[string]any{"type": "string", "enum": []string{"info", "success", "warning", "error"}},
+		}, []string{"message"})),
+		tool("jute_display_focus_widget", "Focus Widget", "Ask the Jute display to highlight a visible widget instance.", objectSchema(map[string]any{
+			"widgetInstanceId": map[string]any{"type": "string"},
+			"reason":           map[string]any{"type": "string"},
+		}, []string{"widgetInstanceId"})),
 	}
 }
 

@@ -69,9 +69,6 @@ Initial implemented tools:
 - `jute_skill_read_context`
 - `jute_skill_invoke_action`
 - `jute_skill_prompt_get`
-
-Planned display tools:
-
 - `jute_display_notification`
 - `jute_display_focus_widget`
 

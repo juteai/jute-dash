@@ -5,6 +5,7 @@
 
   export let widget: WidgetInstance;
   export let editMode = false;
+  export let focused = false;
   export let overflow: 'clip' | 'scroll' | 'expand' = 'clip';
   export let onMoveStart: (event: PointerEvent) => void = () => {};
   export let onResizeStart: (event: PointerEvent) => void = () => {};
@@ -14,6 +15,7 @@
 
 <section
   class={cn('widget-frame', `widget-frame--${widget.size}`, `widget-frame--overflow-${overflow}`, className)}
+  class:widget-frame--focused={focused}
   aria-label={widget.title}
 >
   <header class="widget-frame-header">

@@ -318,6 +318,10 @@ export function hubURL() {
   return API_BASE;
 }
 
+export function eventsURL() {
+  return `${API_BASE}/api/v1/events`;
+}
+
 function shortHubUrl(value: string) {
   return value.replace(/^https?:\/\//, '');
 }

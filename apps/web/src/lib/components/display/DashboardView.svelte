@@ -12,6 +12,7 @@
   export let stale = false;
   export let selectedAgent: Agent | undefined;
   export let selectedAvailability: AgentAvailability = 'unknown';
+  export let focusedWidgetId = '';
   export let voice: VoiceStatus;
   export let widgetCatalog: WidgetCatalogItem[] = [];
   export let editIssue = '';
@@ -157,6 +158,7 @@
     {stale}
     {selectedAgent}
     {selectedAvailability}
+    {focusedWidgetId}
     {onOpenChat}
     {onMoveWidget}
     {onResizeWidget}

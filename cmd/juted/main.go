@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"jute-dash/internal/config"
+	"jute-dash/internal/displayactions"
 	"jute-dash/internal/mcpbridge"
 	"jute-dash/internal/server"
 	"jute-dash/internal/store"
@@ -71,7 +72,8 @@ func main() {
 		cfg.Server.ListenAddress = *listenOverride
 	}
 
-	handler := server.NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg, version, result.Setup, runtimeStore, *configPath)
+	displayActions := displayactions.NewDispatcher()
+	handler := server.NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(cfg, version, result.Setup, runtimeStore, *configPath, displayActions)
 	log.Printf("jute data directory: %s", dataDir)
 
 	var mcpServer *http.Server
@@ -85,7 +87,7 @@ func main() {
 			},
 		}
 		mcpMux := http.NewServeMux()
-		mcpMux.Handle(cfg.MCP.Path, mcpbridge.NewHandler(cfg.MCP, version, mcpProvider))
+		mcpMux.Handle(cfg.MCP.Path, mcpbridge.NewHandler(cfg.MCP, version, mcpProvider, displayActions))
 		mcpServer = &http.Server{
 			Addr:              cfg.MCP.ListenAddress,
 			Handler:           mcpMux,

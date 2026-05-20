@@ -13,6 +13,7 @@
   export let stale = false;
   export let selectedAgent: Agent | undefined;
   export let selectedAvailability: AgentAvailability = 'unknown';
+  export let focusedWidgetId = '';
   export let onOpenChat: () => void = () => {};
   export let onMoveWidget: (widgetId: string, x: number, y: number) => void = () => {};
   export let onResizeWidget: (widgetId: string, w: number, h: number) => void = () => {};
@@ -103,10 +104,11 @@
 
 <section bind:this={canvasEl} class:dashboard-grid-edit={editMode} class="dashboard-canvas" aria-label="Widget dashboard">
   {#each widgets as widget}
-    <div class="dashboard-widget-slot" style={gridStyle(widget)}>
+    <div class="dashboard-widget-slot" style={gridStyle(widget)} data-widget-id={widget.id}>
       <WidgetFrame
         {widget}
         {editMode}
+        focused={focusedWidgetId === widget.id}
         overflow={widget.kind === 'chat-history' ? 'scroll' : 'clip'}
         onMoveStart={(event) => startDrag(widget, 'move', event)}
         onResizeStart={(event) => startDrag(widget, 'resize', event)}

@@ -11,6 +11,7 @@ import (
 
 	"jute-dash/internal/a2a"
 	"jute-dash/internal/config"
+	"jute-dash/internal/displayactions"
 	"jute-dash/internal/store"
 	"jute-dash/internal/weather"
 	"jute-dash/internal/widgetskills"
@@ -119,6 +120,69 @@ func TestToolCallReadsSkillContextAndInvokesAction(t *testing.T) {
 	}
 }
 
+func TestDisplayActionToolsQueueEvents(t *testing.T) {
+	actions := &fakeDisplayActions{}
+	handler := testHandlerWithActions(config.MCPConfig{Auth: config.MCPAuthConfig{Mode: "none"}}, actions)
+
+	tools := postRPC(t, handler, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+	if tools.Code != http.StatusOK || !bytes.Contains(tools.Body.Bytes(), []byte("jute_display_notification")) || !bytes.Contains(tools.Body.Bytes(), []byte("jute_display_focus_widget")) {
+		t.Fatalf("tools/list did not include display action tools: %d %s", tools.Code, tools.Body.String())
+	}
+
+	notification := postRPC(t, handler, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "jute_display_notification",
+			"arguments": map[string]any{"message": "Hello display", "severity": "success"},
+		},
+	})
+	if notification.Code != http.StatusOK || !bytes.Contains(notification.Body.Bytes(), []byte("display.notification")) {
+		t.Fatalf("notification tool failed: %d %s", notification.Code, notification.Body.String())
+	}
+	if actions.notificationMessage != "Hello display" || actions.notificationSeverity != "success" {
+		t.Fatalf("notification action not called: %+v", actions)
+	}
+
+	focus := postRPC(t, handler, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "jute_display_focus_widget",
+			"arguments": map[string]any{"widgetInstanceId": "weather", "reason": "weather question"},
+		},
+	})
+	if focus.Code != http.StatusOK || !bytes.Contains(focus.Body.Bytes(), []byte("display.focus_widget")) {
+		t.Fatalf("focus widget tool failed: %d %s", focus.Code, focus.Body.String())
+	}
+	if actions.focusWidgetID != "weather" || actions.focusReason != "weather question" {
+		t.Fatalf("focus action not called: %+v", actions)
+	}
+}
+
+func TestDisplayFocusRejectsHiddenWidget(t *testing.T) {
+	actions := &fakeDisplayActions{}
+	handler := testHandlerWithActions(config.MCPConfig{Auth: config.MCPAuthConfig{Mode: "none"}}, actions)
+
+	focus := postRPC(t, handler, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "jute_display_focus_widget",
+			"arguments": map[string]any{"widgetInstanceId": "not-visible"},
+		},
+	})
+	if focus.Code != http.StatusOK || !bytes.Contains(focus.Body.Bytes(), []byte("skill or action not found")) {
+		t.Fatalf("expected hidden widget rejection, got %d %s", focus.Code, focus.Body.String())
+	}
+	if actions.focusWidgetID != "" {
+		t.Fatalf("focus action should not be called for hidden widget: %+v", actions)
+	}
+}
+
 func TestPrompts(t *testing.T) {
 	handler := testHandler(config.MCPConfig{Auth: config.MCPAuthConfig{Mode: "none"}})
 
@@ -178,10 +242,17 @@ func TestNotificationAccepted(t *testing.T) {
 }
 
 func testHandler(cfg config.MCPConfig) http.Handler {
+	return testHandlerWithActions(cfg, nil)
+}
+
+func testHandlerWithActions(cfg config.MCPConfig, actions DisplayActions) http.Handler {
 	if cfg.Auth.Mode == "" {
 		cfg.Auth.Mode = "none"
 	}
-	return NewHandler(cfg, "test", staticProvider{snapshot: testSnapshot()})
+	if actions == nil {
+		return NewHandler(cfg, "test", staticProvider{snapshot: testSnapshot()})
+	}
+	return NewHandler(cfg, "test", staticProvider{snapshot: testSnapshot()}, actions)
 }
 
 func postRPC(t *testing.T, handler http.Handler, payload map[string]any) *httptest.ResponseRecorder {
@@ -222,6 +293,36 @@ type staticProvider struct {
 
 func (p staticProvider) Snapshot(context.Context) (widgetskills.Snapshot, error) {
 	return p.snapshot, nil
+}
+
+type fakeDisplayActions struct {
+	notificationMessage  string
+	notificationSeverity string
+	focusWidgetID        string
+	focusReason          string
+}
+
+func (f *fakeDisplayActions) Notify(message, severity string) (displayactions.Notification, error) {
+	f.notificationMessage = message
+	f.notificationSeverity = severity
+	return displayactions.Notification{
+		ID:        "notification-test",
+		Message:   message,
+		Severity:  severity,
+		CreatedAt: time.Date(2026, 5, 20, 10, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+		ExpiresAt: time.Date(2026, 5, 20, 10, 0, 6, 0, time.UTC).Format(time.RFC3339Nano),
+	}, nil
+}
+
+func (f *fakeDisplayActions) FocusWidget(widgetInstanceID, reason string) (displayactions.FocusWidget, error) {
+	f.focusWidgetID = widgetInstanceID
+	f.focusReason = reason
+	return displayactions.FocusWidget{
+		ID:               "focus-test",
+		WidgetInstanceID: widgetInstanceID,
+		Reason:           reason,
+		CreatedAt:        time.Date(2026, 5, 20, 10, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
+	}, nil
 }
 
 func testSnapshot() widgetskills.Snapshot {

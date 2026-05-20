@@ -9,6 +9,7 @@
     addAgent,
     createConversation,
     deleteAgent,
+    eventsURL,
     getConversation,
     getConversations,
     getDashboard,
@@ -31,6 +32,8 @@
     ConversationMessage,
     ConversationStreamEvent,
     DashboardData,
+    DisplayFocusWidget,
+    DisplayNotification,
     DisplayMode,
     UserFacingIssue,
     WidgetCatalogItem,
@@ -64,6 +67,11 @@
   let hasConnected = data.connectionState === 'connected';
   let retrying = false;
   let longPressTimer: number | undefined;
+  let eventSource: EventSource | undefined;
+  let displayNotifications: DisplayNotification[] = [];
+  let notificationTimers: number[] = [];
+  let focusedWidgetId = '';
+  let focusTimer: number | undefined;
 
   $: agents = dashboard.agents;
   $: availableAgent = firstAvailableAgent(agents);
@@ -96,11 +104,14 @@
     updateTheme();
     query.addEventListener('change', updateTheme);
     void loadConversationHistory('', selectedAgentId);
+    connectDisplayEvents();
 
     return () => {
       mounted = false;
       query.removeEventListener('change', updateTheme);
       clearLongPress();
+      disconnectDisplayEvents();
+      clearFocusTimer();
     };
   });
 
@@ -478,6 +489,101 @@
     }
   }
 
+  function connectDisplayEvents() {
+    if (!browser || eventSource) {
+      return;
+    }
+    eventSource = new EventSource(eventsURL());
+    eventSource.addEventListener('open', () => {
+      if (hasConnected) {
+        markConnected();
+      }
+    });
+    eventSource.addEventListener('error', () => {
+      if (mounted && hasConnected) {
+        markIssue('reconnecting', {
+          code: 'event_stream_disconnected',
+          severity: 'warning',
+          title: 'Reconnecting',
+          message: 'Jute lost the live display event stream. Dashboard data may be stale.'
+        });
+      }
+    });
+    eventSource.addEventListener('display.notification', (event) => {
+      const notification = parseDisplayEvent<DisplayNotification>(event);
+      if (notification) {
+        addDisplayNotification(notification);
+      }
+    });
+    eventSource.addEventListener('display.focus_widget', (event) => {
+      const focus = parseDisplayEvent<DisplayFocusWidget>(event);
+      if (focus) {
+        focusWidget(focus);
+      }
+    });
+    eventSource.addEventListener('hub.connected', () => {
+      if (hasConnected) {
+        markConnected();
+      }
+    });
+  }
+
+  function disconnectDisplayEvents() {
+    eventSource?.close();
+    eventSource = undefined;
+    for (const timer of notificationTimers) {
+      window.clearTimeout(timer);
+    }
+    notificationTimers = [];
+  }
+
+  function parseDisplayEvent<T>(event: Event): T | undefined {
+    try {
+      return JSON.parse((event as MessageEvent).data) as T;
+    } catch {
+      return undefined;
+    }
+  }
+
+  function addDisplayNotification(notification: DisplayNotification) {
+    displayNotifications = [notification, ...displayNotifications.filter((item) => item.id !== notification.id)].slice(0, 3);
+    const expiry = Date.parse(notification.expiresAt);
+    const delay = Number.isFinite(expiry) ? Math.max(2500, expiry - Date.now()) : 6000;
+    const timer = window.setTimeout(() => {
+      displayNotifications = displayNotifications.filter((item) => item.id !== notification.id);
+    }, delay);
+    notificationTimers = [...notificationTimers, timer];
+  }
+
+  function focusWidget(focus: DisplayFocusWidget) {
+    focusedWidgetId = focus.widgetInstanceId;
+    if (mode === 'chat') {
+      mode = 'dashboard';
+    }
+    clearFocusTimer();
+    focusTimer = window.setTimeout(() => {
+      focusedWidgetId = '';
+      focusTimer = undefined;
+    }, 4500);
+    window.setTimeout(() => {
+      document.querySelector(`[data-widget-id="${cssEscape(focus.widgetInstanceId)}"]`)?.scrollIntoView({
+        block: 'center',
+        behavior: 'smooth'
+      });
+    }, 0);
+  }
+
+  function clearFocusTimer() {
+    if (focusTimer) {
+      window.clearTimeout(focusTimer);
+      focusTimer = undefined;
+    }
+  }
+
+  function cssEscape(value: string) {
+    return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(value) : value.replace(/"/g, '\\"');
+  }
+
   async function submitMessage(text: string, retryMessageId?: string) {
     const agent = agents.find((item) => item.id === selectedAgentId);
     if (!agent || !isAgentAvailable(agent)) {
@@ -844,6 +950,7 @@
       stale={dashboard.stale}
       selectedAgent={selectedAgent}
       selectedAvailability={selectedAvailability}
+      {focusedWidgetId}
       voice={dashboard.voice}
       {widgetCatalog}
       {editIssue}
@@ -928,6 +1035,17 @@
           onCancel={cancelChatTurn}
           onToggleVoiceMute={toggleVoiceMute}
         />
+      </div>
+    {/if}
+
+    {#if displayNotifications.length > 0}
+      <div class="display-notification-stack" aria-live="polite" aria-label="Display notifications">
+        {#each displayNotifications as notification (notification.id)}
+          <section class={`display-notification display-notification--${notification.severity}`}>
+            <strong>{notification.severity}</strong>
+            <span>{notification.message}</span>
+          </section>
+        {/each}
       </div>
     {/if}
   {/if}

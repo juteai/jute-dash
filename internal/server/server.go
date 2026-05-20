@@ -12,6 +12,7 @@ import (
 
 	a2aclient "jute-dash/internal/a2a"
 	"jute-dash/internal/config"
+	"jute-dash/internal/displayactions"
 	"jute-dash/internal/home"
 	"jute-dash/internal/registry"
 	"jute-dash/internal/store"
@@ -31,6 +32,7 @@ type Server struct {
 	voiceStore  VoiceSettingsStore
 	configPath  string
 	agentCards  map[string]agentCardCache
+	display     *displayactions.Dispatcher
 	mu          sync.Mutex
 	started     time.Time
 	version     string
@@ -114,16 +116,20 @@ func NewWithSetupStatusAndLayoutStore(cfg config.Config, version string, setup s
 }
 
 func NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg config.Config, version string, setup store.SetupStatus, layoutStore WidgetLayoutStore, configPath string) http.Handler {
+	return NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(cfg, version, setup, layoutStore, configPath, nil)
+}
+
+func NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(cfg config.Config, version string, setup store.SetupStatus, layoutStore WidgetLayoutStore, configPath string, display *displayactions.Dispatcher) http.Handler {
 	layout := store.DefaultWidgetLayout()
 	if layoutStore != nil {
 		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
 			layout = loaded
 		}
 	}
-	return newServer(cfg, version, weather.NewClient(), nil, setup, layout, layoutStore, configPath)
+	return newServer(cfg, version, weather.NewClient(), nil, setup, layout, layoutStore, configPath, display)
 }
 
-func newServer(cfg config.Config, version string, weatherProvider weather.Provider, messageSender a2aclient.MessageSender, setup store.SetupStatus, layout store.WidgetLayout, layoutStore WidgetLayoutStore, configPath ...string) http.Handler {
+func newServer(cfg config.Config, version string, weatherProvider weather.Provider, messageSender a2aclient.MessageSender, setup store.SetupStatus, layout store.WidgetLayout, layoutStore WidgetLayoutStore, args ...any) http.Handler {
 	if weatherProvider == nil {
 		weatherProvider = weather.NewClient()
 	}
@@ -135,8 +141,17 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 		voiceStore = candidate
 	}
 	activeConfigPath := ""
-	if len(configPath) > 0 {
-		activeConfigPath = configPath[0]
+	var display *displayactions.Dispatcher
+	for _, arg := range args {
+		switch value := arg.(type) {
+		case string:
+			activeConfigPath = value
+		case *displayactions.Dispatcher:
+			display = value
+		}
+	}
+	if display == nil {
+		display = displayactions.NewDispatcher()
 	}
 	server := &Server{
 		cfg:         cfg,
@@ -151,6 +166,7 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 		voiceStore:  voiceStore,
 		configPath:  activeConfigPath,
 		agentCards:  map[string]agentCardCache{},
+		display:     display,
 		started:     time.Now().UTC(),
 		version:     version,
 	}

@@ -92,6 +92,50 @@ button {
   border-style: dashed;
 }
 
+.display-notification-stack {
+  position: absolute;
+  z-index: 70;
+  right: 18px;
+  bottom: 18px;
+  display: grid;
+  width: min(380px, calc(100% - 36px));
+  gap: 8px;
+}
+
+.display-notification {
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 12px 40px var(--shadow);
+}
+
+.display-notification strong {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.display-notification span {
+  color: var(--foreground);
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.display-notification--success {
+  border-color: var(--success);
+}
+
+.display-notification--warning {
+  border-color: var(--warning);
+}
+
+.display-notification--error {
+  border-color: var(--danger);
+}
+
 .offline-state {
   display: grid;
   min-height: 100%;
@@ -372,12 +416,28 @@ button {
 }
 
 .widget-frame:focus-within,
+.widget-frame--focused,
 .ui-button:focus-visible,
 .ui-icon-button:focus-visible,
 .ui-textarea:focus-visible,
 select:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
+}
+
+.widget-frame--focused {
+  animation: widget-focus-pulse 1.5s ease-in-out 2;
+}
+
+@keyframes widget-focus-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--focus) 18%, transparent);
+  }
 }
 
 .widget-frame-header {

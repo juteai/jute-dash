@@ -162,6 +162,35 @@ export type DashboardData = {
 
 export type DisplayMode = 'dashboard' | 'edit' | 'chat';
 
+export type DisplayNotification = {
+  id: string;
+  message: string;
+  severity: 'info' | 'success' | 'warning' | 'error' | string;
+  createdAt: string;
+  expiresAt: string;
+};
+
+export type DisplayFocusWidget = {
+  id: string;
+  widgetInstanceId: string;
+  reason?: string;
+  createdAt: string;
+};
+
+export type DisplayEvent =
+  | {
+      type: 'display.notification';
+      data: DisplayNotification;
+    }
+  | {
+      type: 'display.focus_widget';
+      data: DisplayFocusWidget;
+    }
+  | {
+      type: 'hub.connected';
+      data: { connectedAt: string };
+    };
+
 export type WidgetKind = 'date-time' | 'weather' | 'chat-history' | string;
 
 export type WidgetLayout = {

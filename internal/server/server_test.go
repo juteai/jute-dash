@@ -17,6 +17,7 @@ import (
 
 	a2a "jute-dash/internal/a2a"
 	"jute-dash/internal/config"
+	"jute-dash/internal/displayactions"
 	"jute-dash/internal/store"
 	"jute-dash/internal/weather"
 )
@@ -37,6 +38,56 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 	if body.Status != "ok" || body.Version != "test" {
 		t.Fatalf("unexpected response: %+v", body)
+	}
+}
+
+func TestEventsStreamDisplayActions(t *testing.T) {
+	dispatcher := displayactions.NewDispatcher()
+	handler := newServer(testConfig(), "test", weather.NewClient(), nil, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, dispatcher)
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/v1/events", nil)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("open event stream: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	for i := 0; i < 8; i++ {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read initial event stream: %v", err)
+		}
+		if strings.Contains(line, "event: hub.connected") {
+			break
+		}
+	}
+	if _, err := dispatcher.Notify("Hello dashboard", "info"); err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	var sawNotification bool
+	for i := 0; i < 20; i++ {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read event stream: %v", err)
+		}
+		if strings.Contains(line, "event: display.notification") {
+			sawNotification = true
+			break
+		}
+	}
+	if !sawNotification {
+		t.Fatal("event stream did not include display.notification")
 	}
 }
 
