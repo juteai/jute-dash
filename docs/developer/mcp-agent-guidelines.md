@@ -62,13 +62,16 @@ Do not infer hidden widgets, private widget state, raw adapter data, exact prese
 
 ## Tools
 
-Initial tools:
+Initial implemented tools:
 
 - `jute_dashboard_context_get`
 - `jute_skill_list`
 - `jute_skill_read_context`
 - `jute_skill_invoke_action`
 - `jute_skill_prompt_get`
+
+Planned display tools:
+
 - `jute_display_notification`
 - `jute_display_focus_widget`
 
@@ -141,13 +144,27 @@ make dev-a2a
 
 That target runs the example agent, starts the hub with `config/jute.dev-a2a.yaml`, and then starts the Svelte display. MCP is not required for this flow.
 
+For the same local stack with the MCP Bridge enabled, use:
+
+```sh
+make dev-a2a-mcp
+```
+
+That target starts the example A2A agent with `JUTE_MCP_URL` set, resets the dedicated `.jute/dev-a2a-mcp` store, starts the hub with `config/jute.dev-a2a-mcp.yaml`, and then starts the Svelte display. The dev profile binds MCP to:
+
+```text
+http://127.0.0.1:8790/mcp
+```
+
+The dev profile uses `auth.mode: none` for quick local testing. Production-style configs should keep MCP disabled by default or use local-token auth.
+
 The example binds to `127.0.0.1:9797` by default and publishes an Agent Card at:
 
 ```text
 http://127.0.0.1:9797/.well-known/agent-card.json
 ```
 
-When the MCP Bridge is enabled later, the fixture can grow MCP-aware behavior behind explicit local config. The example remains a developer fixture and is not part of the production hub dependency graph.
+The first bridge slice exposes Widget Skills as resources, tools, and prompts. The example remains a developer fixture and is not part of the production hub dependency graph.
 
 ## Security
 

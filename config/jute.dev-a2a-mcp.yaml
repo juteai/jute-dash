@@ -1,5 +1,5 @@
 home:
-  name: Jute A2A Dev
+  name: Jute A2A MCP Dev
   timezone: Europe/London
   locale: en-GB
 
@@ -7,13 +7,13 @@ server:
   listen-address: 127.0.0.1:8787
 
 mcp:
-  enabled: false
+  enabled: true
   transport: streamable-http
   listen-address: 127.0.0.1:8790
   path: /mcp
   allow-lan: false
   auth:
-    mode: local-token
+    mode: none
     env-token: JUTE_MCP_TOKEN
 
 display:

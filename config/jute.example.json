@@ -7,6 +7,17 @@
   "server": {
     "listenAddress": "127.0.0.1:8787"
   },
+  "mcp": {
+    "enabled": false,
+    "transport": "streamable-http",
+    "listenAddress": "127.0.0.1:8790",
+    "path": "/mcp",
+    "allowLan": false,
+    "auth": {
+      "mode": "local-token",
+      "envToken": "JUTE_MCP_TOKEN"
+    }
+  },
   "display": {
     "theme": "system",
     "accentColor": "teal",

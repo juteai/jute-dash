@@ -120,6 +120,12 @@ Run the hub and web app together:
 make dev
 ```
 
+Run the local A2A dev stack with the MCP bridge enabled:
+
+```sh
+make dev-a2a-mcp
+```
+
 Run Svelte checks after dependencies are installed:
 
 ```sh

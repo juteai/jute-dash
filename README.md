@@ -53,6 +53,14 @@ make dev-a2a
 make dev-a2a-reset
 ```
 
+To run the same local stack with the Jute MCP Bridge enabled:
+
+```sh
+make dev-a2a-mcp
+```
+
+The MCP bridge runs at `http://127.0.0.1:8790/mcp` in that dev profile with loopback-only, no-token dev auth. Production-style config keeps MCP disabled by default and supports local bearer-token auth through `JUTE_MCP_TOKEN`.
+
 ## Current UI Status
 
 The current `apps/web` dashboard is throwaway proof-of-concept UI. It is useful for checking the hub contract, but its CSS, layout, side panel, tile structure, and visual styling are not canonical. Future frontend work should follow [Display UX](docs/architecture/display-ux.md) and may replace the POC UI wholesale.
@@ -74,6 +82,14 @@ make a2a-v1-dev       # run the lightweight A2A 1.0 JSON-RPC fixture
 make a2a-v1-dev-check # compile/test the lightweight fixture
 ```
 
+Optional MCP smoke request:
+
+```sh
+curl -s http://127.0.0.1:8790/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"resources/list"}'
+```
+
 ## Project Layout
 
 ```text
@@ -81,10 +97,12 @@ cmd/juted/             Go entrypoint for the local hub
 internal/a2a/          A2A protocol-facing types and constants
 internal/config/       Config loading, defaults, validation, public config projection
 internal/home/         Home dashboard state assembled from config
+internal/mcpbridge/    Optional local MCP bridge for Widget Skills and dashboard context
 internal/registry/     Runtime view of configured agents
 internal/server/       HTTP API surface consumed by the UI and future clients
 internal/store/        SQLite runtime store, migrations, seeding, and setup status
 internal/weather/      Open-Meteo weather client and weather state mapping
+internal/widgetskills/ Hub-owned Widget Skill registry exposed through MCP
 apps/web/              SvelteKit dashboard app, currently throwaway POC UI
 config/                Example local configuration
 docs/                  Architecture notes, roadmap, and decisions
@@ -120,6 +138,8 @@ Widgets must render inside `WidgetFrame`, communicate through the Widget SDK mes
 - `GET /api/v1/conversations/{id}`
 - `POST /api/v1/conversations/{id}/turns`
 - `GET /api/v1/events`
+
+The optional MCP bridge is a separate local surface, not part of `/api/v1`. When enabled, it exposes Widget Skills and dashboard context through MCP Streamable HTTP at the configured path, defaulting to `/mcp`.
 
 `POST /api/v1/conversations/{id}/turns` is the primary chat path. It uses A2A `SendStreamingMessage` when the selected Agent Card supports streaming, falls back to blocking `SendMessage`, and reads conversation history back from the selected agent with A2A `ListTasks` and `GetTask` when that agent supports task history. Jute does not store conversation transcripts locally in this pre-v1 slice; unsupported agents show a clear history-unavailable state.
 

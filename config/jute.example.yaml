@@ -6,6 +6,16 @@ home:
 server:
   listen-address: 127.0.0.1:8787
 
+mcp:
+  enabled: false
+  transport: streamable-http
+  listen-address: 127.0.0.1:8790
+  path: /mcp
+  allow-lan: false
+  auth:
+    mode: local-token
+    env-token: JUTE_MCP_TOKEN
+
 display:
   theme: system
   accent-color: teal

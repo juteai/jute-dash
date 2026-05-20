@@ -89,7 +89,7 @@ Remote internet exposure is not a v1 feature.
 
 ## Configuration
 
-Planned bootstrap/import-export shape:
+Bootstrap/import-export shape:
 
 ```yaml
 mcp:
@@ -104,6 +104,8 @@ mcp:
 ```
 
 Runtime settings live in SQLite. YAML is the preferred bootstrap/import/export format, and JSON remains supported for compatibility.
+
+Current pre-v1 implementation treats MCP settings as boot-time YAML/JSON config. SQLite persistence and settings UI for MCP can follow once the bridge behavior has settled.
 
 MCP settings classification:
 
@@ -337,10 +339,10 @@ If a requested widget is no longer visible, the bridge returns a safe not-found 
 ## Implementation Order
 
 1. Document this architecture.
-2. Document and implement the Widget Skill registry for built-in widgets.
-3. Add config and SQLite fields for MCP settings and per-agent scopes.
-4. Add an MCP bridge with skill resources, skill context tools, and hub guidance prompts.
-5. Add local token auth and loopback transport.
-6. Add low-risk display and skill action invocation tools.
+2. Document and implement the Widget Skill registry for built-in widgets. **Done for built-in POC widgets.**
+3. Add boot-time MCP config, local token auth, and loopback Streamable HTTP transport. **Done for pre-v1.**
+4. Add an MCP bridge with skill resources, skill context tools, and hub guidance prompts. **Done for the first POC slice.**
+5. Add SQLite fields for MCP settings and per-agent scopes.
+6. Add low-risk display mutation tools.
 7. Add notifications.
 8. Add future approval-gated configure and home-action tools.

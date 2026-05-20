@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 type Config struct {
 	Home    HomeConfig    `json:"home" yaml:"home"`
 	Server  ServerConfig  `json:"server" yaml:"server"`
+	MCP     MCPConfig     `json:"mcp" yaml:"mcp"`
 	Display DisplayConfig `json:"display" yaml:"display"`
 	Weather WeatherConfig `json:"weather" yaml:"weather"`
 	Voice   VoiceConfig   `json:"voice" yaml:"voice"`
@@ -33,6 +35,20 @@ type HomeConfig struct {
 
 type ServerConfig struct {
 	ListenAddress string `json:"listenAddress" yaml:"listen-address"`
+}
+
+type MCPConfig struct {
+	Enabled       bool          `json:"enabled" yaml:"enabled"`
+	Transport     string        `json:"transport" yaml:"transport"`
+	ListenAddress string        `json:"listenAddress" yaml:"listen-address"`
+	Path          string        `json:"path" yaml:"path"`
+	AllowLAN      bool          `json:"allowLan" yaml:"allow-lan"`
+	Auth          MCPAuthConfig `json:"auth" yaml:"auth"`
+}
+
+type MCPAuthConfig struct {
+	Mode     string `json:"mode" yaml:"mode"`
+	EnvToken string `json:"envToken" yaml:"env-token"`
 }
 
 type DisplayConfig struct {
@@ -130,6 +146,17 @@ func Default() Config {
 		Server: ServerConfig{
 			ListenAddress: "127.0.0.1:8787",
 		},
+		MCP: MCPConfig{
+			Enabled:       false,
+			Transport:     "streamable-http",
+			ListenAddress: "127.0.0.1:8790",
+			Path:          "/mcp",
+			AllowLAN:      false,
+			Auth: MCPAuthConfig{
+				Mode:     "local-token",
+				EnvToken: "JUTE_MCP_TOKEN",
+			},
+		},
 		Display: DisplayConfig{
 			Theme:       "system",
 			AccentColor: "teal",
@@ -200,6 +227,26 @@ func Validate(cfg Config) error {
 	}
 	if strings.TrimSpace(cfg.Server.ListenAddress) == "" {
 		problems = append(problems, "server.listenAddress is required")
+	}
+	if strings.TrimSpace(cfg.MCP.Transport) != "streamable-http" {
+		problems = append(problems, "mcp.transport must be streamable-http")
+	}
+	if strings.TrimSpace(cfg.MCP.ListenAddress) == "" {
+		problems = append(problems, "mcp.listenAddress is required")
+	}
+	if strings.TrimSpace(cfg.MCP.Path) == "" || !strings.HasPrefix(cfg.MCP.Path, "/") {
+		problems = append(problems, "mcp.path must start with /")
+	}
+	if cfg.MCP.Auth.Mode != "none" && cfg.MCP.Auth.Mode != "local-token" {
+		problems = append(problems, "mcp.auth.mode must be none or local-token")
+	}
+	if cfg.MCP.Enabled {
+		if !cfg.MCP.AllowLAN && !isLoopbackListenAddress(cfg.MCP.ListenAddress) {
+			problems = append(problems, "mcp.listenAddress must be loopback unless mcp.allowLan is true")
+		}
+		if cfg.MCP.Auth.Mode == "local-token" && strings.TrimSpace(cfg.MCP.Auth.EnvToken) == "" {
+			problems = append(problems, "mcp.auth.envToken is required when local-token auth is enabled")
+		}
 	}
 	if cfg.Weather.Enabled {
 		if cfg.Weather.Provider != "open-meteo" {
@@ -303,6 +350,21 @@ func applyDefaults(cfg *Config) {
 	if strings.TrimSpace(cfg.Server.ListenAddress) == "" {
 		cfg.Server.ListenAddress = defaults.Server.ListenAddress
 	}
+	if strings.TrimSpace(cfg.MCP.Transport) == "" {
+		cfg.MCP.Transport = defaults.MCP.Transport
+	}
+	if strings.TrimSpace(cfg.MCP.ListenAddress) == "" {
+		cfg.MCP.ListenAddress = defaults.MCP.ListenAddress
+	}
+	if strings.TrimSpace(cfg.MCP.Path) == "" {
+		cfg.MCP.Path = defaults.MCP.Path
+	}
+	if strings.TrimSpace(cfg.MCP.Auth.Mode) == "" {
+		cfg.MCP.Auth.Mode = defaults.MCP.Auth.Mode
+	}
+	if strings.TrimSpace(cfg.MCP.Auth.EnvToken) == "" {
+		cfg.MCP.Auth.EnvToken = defaults.MCP.Auth.EnvToken
+	}
 	if strings.TrimSpace(cfg.Display.Theme) == "" {
 		cfg.Display.Theme = defaults.Display.Theme
 	}
@@ -352,6 +414,15 @@ func validateHTTPURL(raw string) error {
 		return errors.New("must include a host")
 	}
 	return nil
+}
+
+func isLoopbackListenAddress(address string) bool {
+	host := address
+	if parsedHost, _, err := net.SplitHostPort(address); err == nil {
+		host = parsedHost
+	}
+	host = strings.Trim(host, "[]")
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 func isSupportedTemperatureUnit(unit string) bool {

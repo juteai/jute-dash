@@ -49,6 +49,13 @@ home:
   locale: en-GB
 server:
   listen-address: 127.0.0.1:9999
+mcp:
+  enabled: true
+  transport: streamable-http
+  listen-address: 127.0.0.1:8790
+  path: /mcp
+  auth:
+    mode: none
 display:
   theme: dark
   accent-color: neutral
@@ -93,6 +100,9 @@ tiles: []
 	}
 	if cfg.Server.ListenAddress != "127.0.0.1:9999" {
 		t.Fatalf("unexpected listen address: %s", cfg.Server.ListenAddress)
+	}
+	if !cfg.MCP.Enabled || cfg.MCP.Auth.Mode != "none" || cfg.MCP.Path != "/mcp" {
+		t.Fatalf("unexpected MCP config: %+v", cfg.MCP)
 	}
 	if cfg.Display.AccentColor != "neutral" || cfg.Weather.LocationName != "York" {
 		t.Fatalf("kebab-case YAML fields were not decoded: %+v", cfg)
@@ -148,6 +158,83 @@ tiles: []
 	}
 	if !strings.Contains(err.Error(), "voice.followupWindowSeconds") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidMCPConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "bad transport",
+			body: `
+home:
+  name: Workshop
+mcp:
+  transport: stdio
+agents: []
+rooms: []
+tiles: []
+`,
+			want: "mcp.transport",
+		},
+		{
+			name: "bad path",
+			body: `
+home:
+  name: Workshop
+mcp:
+  path: mcp
+agents: []
+rooms: []
+tiles: []
+`,
+			want: "mcp.path",
+		},
+		{
+			name: "bad auth",
+			body: `
+home:
+  name: Workshop
+mcp:
+  auth:
+    mode: password
+agents: []
+rooms: []
+tiles: []
+`,
+			want: "mcp.auth.mode",
+		},
+		{
+			name: "lan without allow",
+			body: `
+home:
+  name: Workshop
+mcp:
+  enabled: true
+  listen-address: 0.0.0.0:8790
+  auth:
+    mode: none
+agents: []
+rooms: []
+tiles: []
+`,
+			want: "mcp.listenAddress",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeYAMLConfig(t, tt.body)
+			_, err := Load(path)
+			if err == nil {
+				t.Fatal("Load() expected MCP validation error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected %q in error, got %v", tt.want, err)
+			}
+		})
 	}
 }
 
@@ -273,6 +360,16 @@ func TestDevA2AConfigLoads(t *testing.T) {
 	}
 	if agent.CardURL != "http://127.0.0.1:9797/.well-known/agent-card.json" {
 		t.Fatalf("unexpected card URL: %s", agent.CardURL)
+	}
+}
+
+func TestDevA2AMCPConfigLoads(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "config", "jute.dev-a2a-mcp.yaml"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.MCP.Enabled || cfg.MCP.Auth.Mode != "none" || cfg.MCP.ListenAddress != "127.0.0.1:8790" {
+		t.Fatalf("unexpected dev MCP config: %+v", cfg.MCP)
 	}
 }
 

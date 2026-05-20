@@ -74,6 +74,7 @@ Key docs:
 ```sh
 make setup
 make dev
+make dev-a2a-mcp
 make test
 make web-check
 make check
