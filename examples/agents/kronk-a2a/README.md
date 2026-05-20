@@ -10,9 +10,8 @@ This fixture now serves the A2A 1.0 Agent Card and JSON-RPC method shapes that t
 
 - Agent Card declares `supportedInterfaces` with `protocolVersion: "1.0"`.
 - JSON-RPC endpoint supports `SendMessage`, `SendStreamingMessage`, `ListTasks`, and `GetTask`.
-- The A2A serving layer is standard-library code in this example, not ADK's older A2A adapter.
-
-`google.golang.org/adk v1.2.0` still brings the old A2A Go module into the transitive module graph, but this example no longer imports or uses that server adapter.
+- The A2A serving layer uses `google.golang.org/adk v1.3.0`, `google.golang.org/adk/server/adka2a/v2`, and `github.com/a2aproject/a2a-go/v2`.
+- The example module imports and pins A2A v2 directly; it does not depend on the old non-v2 `github.com/a2aproject/a2a-go` module.
 
 ## Commands
 

@@ -174,11 +174,12 @@ Jute includes an optional Kronk-backed A2A 1.0 example in `examples/agents/kronk
 
 Use it when you want a local model-backed loop instead of the deterministic lightweight fixture.
 
-The Kronk fixture serves its own standard-library A2A 1.0 layer:
+The Kronk fixture serves an ADK-backed A2A 1.0 layer:
 
 - Agent Card declares `supportedInterfaces` with `protocolVersion: "1.0"`;
 - JSON-RPC endpoint supports `SendMessage`, `SendStreamingMessage`, `ListTasks`, and `GetTask`;
-- ADK still provides the Kronk agent and optional MCP function tools, but ADK's older A2A server adapter is not used.
+- ADK 1.3 provides the Kronk agent and `server/adka2a/v2` bridge, backed by `a2a-go/v2`;
+- optional MCP function tools remain layered on top of the agent and are not required for plain A2A chat.
 
 Run it with:
 

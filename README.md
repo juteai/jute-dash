@@ -100,7 +100,7 @@ make server
 make server-mcp
 ```
 
-The Kronk example serves its own standard-library A2A 1.0 Agent Card and JSON-RPC endpoint, then routes turns through the local Kronk-backed ADK agent. ADK still brings older A2A packages into its transitive module graph, but the fixture does not use ADK's older A2A server adapter.
+The Kronk example serves an A2A 1.0 Agent Card and JSON-RPC endpoint through ADK 1.3's `server/adka2a/v2` adapter and `a2a-go/v2`, then routes turns through the local Kronk-backed ADK agent.
 
 Optional MCP smoke request:
 
