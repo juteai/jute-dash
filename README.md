@@ -41,16 +41,16 @@ make dev
 
 The hub runs at `http://127.0.0.1:8787` and the web UI runs at `http://127.0.0.1:5173` by default. The web UI expects the hub at `http://127.0.0.1:8787`; override that with `VITE_JUTE_API_URL`.
 
-The root `Makefile` is intentionally core-only. Agent-backed development stacks live under `examples/harnesses`.
+The root `Makefile` is intentionally core-only. Fixture-backed development stacks live under `examples/harnesses`.
 
-To run the dashboard against the deterministic mock A2A 1.0 agent:
+To run the dashboard against the deterministic mock A2A 1.0 fixture:
 
 ```sh
 cd examples/harnesses/mock-a2a
 make dev
 ```
 
-That harness starts the mock agent, waits for its Agent Card, resets the dedicated `.jute/dev-mock-a2a` store so the current bootstrap config is applied, then starts the hub with `config/jute.dev-mock-a2a.yaml` and the web UI.
+That self-contained harness owns its fixture, config, and `.jute/dev-mock-a2a` store. `make dev` installs missing dependencies, starts the hub, starts the embedded fixture, waits for readiness, and then starts the web UI.
 
 To run the same mock stack with the Jute MCP Bridge enabled:
 
@@ -83,24 +83,7 @@ make web-check  # Svelte checks
 make check      # Go tests and Svelte checks
 ```
 
-Optional local agent examples can be run directly when you only need the agent process:
-
-```sh
-cd examples/agents/mock-a2a-agent
-make server
-make check
-```
-
-Optional Kronk-backed A2A 1.0 model example:
-
-```sh
-cd examples/agents/kronk-a2a
-make check
-make server
-make server-mcp
-```
-
-The Kronk example serves an A2A 1.0 Agent Card and JSON-RPC endpoint through ADK 1.3's `server/adka2a/v2` adapter and `a2a-go/v2`, then routes turns through the local Kronk-backed ADK agent.
+Each harness includes its own `fixture/` module. Run `make server` inside that module only when you intentionally want the agent process without the full Jute stack.
 
 Optional MCP smoke request:
 
@@ -125,10 +108,9 @@ internal/store/        SQLite runtime store, migrations, seeding, and setup stat
 internal/weather/      Open-Meteo weather client and weather state mapping
 internal/widgetskills/ Hub-owned Widget Skill registry exposed through MCP
 apps/web/              SvelteKit dashboard app, currently throwaway POC UI
-config/                Example local configuration
+config/                Generic example local configuration
 docs/                  Architecture notes, roadmap, and decisions
-examples/agents/       Optional local test agents and integration fixtures
-examples/harnesses/    Complete local dev stacks built from example agents
+examples/harnesses/    Self-contained local dev stacks with embedded fixtures
 ```
 
 ## Widget Development
@@ -149,10 +131,10 @@ Widgets must render inside `WidgetFrame`, communicate through the Widget SDK mes
 - `GET /healthz`
 - `GET /api/v1/config`
 - `GET /api/v1/home`
-- `GET /api/v1/agents`
-- `POST /api/v1/agents`
-- `PATCH /api/v1/agents/{id}`
-- `DELETE /api/v1/agents/{id}`
+- `GET /api/v1/fixtures`
+- `POST /api/v1/fixtures`
+- `PATCH /api/v1/fixtures/{id}`
+- `DELETE /api/v1/fixtures/{id}`
 - `GET /api/v1/setup/status`
 - `POST /api/v1/messages`
 - `GET /api/v1/conversations`

@@ -79,7 +79,7 @@ make web-check
 make check
 ```
 
-Agent-backed dev stacks live in `examples/harnesses`, for example:
+Self-contained fixture-backed dev stacks live in `examples/harnesses`, for example:
 
 ```sh
 cd examples/harnesses/mock-a2a-mcp

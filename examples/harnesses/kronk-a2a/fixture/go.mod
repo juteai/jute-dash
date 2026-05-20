@@ -1,4 +1,4 @@
-module jute-dash/examples/agents/kronk-a2a
+module jute-dash/examples/harnesses/kronk-a2a/fixture
 
 go 1.26.0
 
@@ -111,4 +111,4 @@ require (
 	rsc.io/ordered v1.1.1 // indirect
 )
 
-replace jute-dash => ../../..
+replace jute-dash => ../../../..

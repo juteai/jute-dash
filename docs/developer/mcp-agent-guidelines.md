@@ -132,9 +132,9 @@ If MCP is disabled, unavailable, or unreachable:
 
 If MCP disconnects mid-task, retry once when appropriate. If it still fails, continue without MCP and surface a calm explanation only if the missing context affects the answer.
 
-## Local Test Agent
+## Local Test Harnesses
 
-Jute includes a deterministic mock A2A 1.0 test agent in `examples/agents/mock-a2a-agent`.
+Jute includes self-contained full-stack harnesses under `examples/harnesses/`. Each harness owns its config, runtime data path, and embedded `fixture/` module.
 
 For the normal mock A2A development loop, use:
 
@@ -143,7 +143,7 @@ cd examples/harnesses/mock-a2a
 make dev
 ```
 
-That harness runs the example agent, starts the hub with `config/jute.dev-mock-a2a.yaml`, and then starts the Svelte display. MCP is not required for this flow.
+That harness runs its embedded mock A2A fixture, starts the hub with its local `config.yaml`, and then starts the Svelte display. MCP is not required for this flow.
 
 For the same local stack with the MCP Bridge enabled, use:
 
@@ -152,7 +152,7 @@ cd examples/harnesses/mock-a2a-mcp
 make dev
 ```
 
-That harness starts the example A2A agent with `JUTE_MCP_URL` set, resets the dedicated `.jute/dev-mock-a2a-mcp` store, starts the hub with `config/jute.dev-mock-a2a-mcp.yaml`, and then starts the Svelte display. The dev profile binds MCP to:
+That harness starts the hub with its local `config.yaml`, waits for the MCP Bridge, then starts its embedded mock A2A fixture with `JUTE_MCP_URL` set. The dev profile binds MCP to:
 
 ```text
 http://127.0.0.1:8790/mcp
@@ -160,7 +160,7 @@ http://127.0.0.1:8790/mcp
 
 The dev profile uses `auth.mode: none` for quick local testing. Production-style configs should keep MCP disabled by default or use local-token auth.
 
-The mock agent binds to `127.0.0.1:9797` by default and publishes an Agent Card at:
+The embedded mock fixture binds to `127.0.0.1:9797` by default and publishes an Agent Card at:
 
 ```text
 http://127.0.0.1:9797/.well-known/agent-card.json
@@ -168,9 +168,9 @@ http://127.0.0.1:9797/.well-known/agent-card.json
 
 The first bridge slice exposes Widget Skills as resources, tools, and prompts. The mock fixture reads those resources directly through Jute's small stdlib MCP client and reports what it saw in its A2A response.
 
-## Kronk Test Agent
+## Kronk Test Fixture
 
-Jute includes an optional Kronk-backed A2A 1.0 example in `examples/agents/kronk-a2a`.
+Jute includes an optional Kronk-backed A2A 1.0 harness in `examples/harnesses/kronk-a2a`.
 
 Use it when you want a local model-backed loop instead of the deterministic lightweight fixture.
 
@@ -189,9 +189,9 @@ make dev
 make dev-mcp
 ```
 
-The Kronk example has its own Go module and Makefile. It is not part of root `make check`, and it must not add ADK, Kronk, MCP SDK, or model-runtime dependencies to the production hub module.
+The Kronk harness has an embedded `fixture/` Go module and Makefile. It is not part of root `make check`, and it must not add ADK, Kronk, MCP SDK, or model-runtime dependencies to the production hub module.
 
-When `JUTE_MCP_URL` is set, the Kronk agent exposes ADK function tools backed by Jute MCP:
+When `JUTE_MCP_URL` is set, the Kronk fixture exposes ADK function tools backed by Jute MCP:
 
 - `jute_dashboard_context_get`
 - `jute_skill_list`
@@ -199,7 +199,7 @@ When `JUTE_MCP_URL` is set, the Kronk agent exposes ADK function tools backed by
 - `jute_skill_invoke_action`
 - `jute_skill_prompt_get`
 
-When `JUTE_MCP_URL` is unset, it runs as a normal A2A agent.
+When `JUTE_MCP_URL` is unset, it runs as a normal A2A server fixture.
 
 ## Security
 

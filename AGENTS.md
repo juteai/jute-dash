@@ -120,7 +120,7 @@ Run the hub and web app together:
 make dev
 ```
 
-Run local A2A dev stacks from the harness directories, not the root `Makefile`:
+Run self-contained local A2A dev stacks from the harness directories, not the root `Makefile`:
 
 ```sh
 cd examples/harnesses/mock-a2a

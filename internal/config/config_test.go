@@ -347,7 +347,7 @@ func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 }
 
 func TestDevMockA2AConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "config", "jute.dev-mock-a2a.yaml"))
+	cfg, err := Load(filepath.Join("..", "..", "examples", "harnesses", "mock-a2a", "config.yaml"))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -355,7 +355,7 @@ func TestDevMockA2AConfigLoads(t *testing.T) {
 }
 
 func TestDevMockA2AMCPConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "config", "jute.dev-mock-a2a-mcp.yaml"))
+	cfg, err := Load(filepath.Join("..", "..", "examples", "harnesses", "mock-a2a-mcp", "config.yaml"))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -366,7 +366,7 @@ func TestDevMockA2AMCPConfigLoads(t *testing.T) {
 }
 
 func TestDevKronkA2AConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "config", "jute.dev-kronk-a2a.yaml"))
+	cfg, err := Load(filepath.Join("..", "..", "examples", "harnesses", "kronk-a2a", "config.yaml"))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -374,7 +374,7 @@ func TestDevKronkA2AConfigLoads(t *testing.T) {
 }
 
 func TestDevKronkA2AMCPConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "config", "jute.dev-kronk-a2a-mcp.yaml"))
+	cfg, err := Load(filepath.Join("..", "..", "examples", "harnesses", "kronk-a2a", "config.mcp.yaml"))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
