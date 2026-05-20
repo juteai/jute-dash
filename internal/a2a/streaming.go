@@ -144,7 +144,7 @@ func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
 			Kind:           "task",
 			ConversationID: task.ContextID,
 			TaskID:         task.ID,
-			Status:         fallbackID(task.Status.State, "working"),
+			Status:         fallbackID(normalizeTaskState(task.Status.State), "working"),
 			Text:           textFromOptionalMessage(task.Status.Message),
 			Terminal:       isTerminalTaskState(task.Status.State),
 		}, true, nil
@@ -154,7 +154,7 @@ func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
 			Kind:           "status",
 			ConversationID: update.ContextID,
 			TaskID:         update.TaskID,
-			Status:         fallbackID(update.Status.State, "working"),
+			Status:         fallbackID(normalizeTaskState(update.Status.State), "working"),
 			Text:           textFromOptionalMessage(update.Status.Message),
 			Terminal:       update.Final || isTerminalTaskState(update.Status.State),
 		}, true, nil
@@ -175,8 +175,8 @@ func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
 }
 
 func isTerminalTaskState(state string) bool {
-	switch strings.ToLower(strings.TrimSpace(state)) {
-	case "completed", "failed", "canceled", "cancelled", "rejected":
+	switch normalizeTaskState(state) {
+	case "completed", "failed", "canceled", "rejected":
 		return true
 	default:
 		return false

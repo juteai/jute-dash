@@ -315,7 +315,7 @@ func resultFromMessage(msg message) SendMessageResult {
 }
 
 func resultFromTask(t task) SendMessageResult {
-	status := strings.TrimSpace(t.Status.State)
+	status := normalizeTaskState(t.Status.State)
 	if status == "" {
 		status = "unknown"
 	}

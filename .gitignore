@@ -16,3 +16,7 @@ apps/web/.env.*
 data/
 .jute/
 *.local.json
+
+# Per-checkout kronk-a2a Metal-vs-CPU probe cache and local build binary
+examples/harnesses/kronk-a2a/fixture/.kronk-processor.choice
+examples/harnesses/kronk-a2a/fixture/kronk-a2a
