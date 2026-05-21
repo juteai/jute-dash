@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"jute-dash/internal/config"
@@ -23,6 +24,23 @@ const (
 )
 
 var ErrNotFound = errors.New("widget skill not found")
+
+type ContextFunc func(snapshot Snapshot, instanceID string) map[string]any
+
+var (
+	registryMu   sync.RWMutex
+	customDefs   = make(map[string]Definition)
+	contextFuncs = make(map[string]ContextFunc)
+)
+
+func Register(def Definition, contextFn ContextFunc) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	customDefs[def.WidgetKind] = def
+	if contextFn != nil {
+		contextFuncs[def.SkillID] = contextFn
+	}
+}
 
 type Agent struct {
 	ID              string   `json:"id"`
@@ -479,16 +497,127 @@ func findSkill(snapshot Snapshot, skillID string, widgetID string) (Skill, error
 }
 
 func contextForSkill(snapshot Snapshot, skill Skill) map[string]any {
-	switch skill.SkillID {
-	case DateTimeSkillID:
-		return dateTimeContext(snapshot)
-	case WeatherSkillID:
-		return weatherContext(snapshot)
-	case ChatHistorySkillID:
-		return chatHistoryContext(snapshot)
-	default:
-		return map[string]any{}
+	registryMu.RLock()
+	fn, exists := contextFuncs[skill.SkillID]
+	registryMu.RUnlock()
+
+	if exists && fn != nil {
+		return fn(snapshot, skill.WidgetInstanceID)
 	}
+
+	return defaultContextExtractor(snapshot, skill)
+}
+
+func defaultContextExtractor(snapshot Snapshot, skill Skill) map[string]any {
+	ctxMap := make(map[string]any)
+
+	// Find the widget instance in the layout
+	var targetWidget *store.WidgetInstance
+	for i := range snapshot.Layout.Widgets {
+		if snapshot.Layout.Widgets[i].ID == skill.WidgetInstanceID {
+			targetWidget = &snapshot.Layout.Widgets[i]
+			break
+		}
+	}
+
+	if targetWidget == nil {
+		return ctxMap
+	}
+
+	// Copy declared ContextFields from the instance's Settings
+	for _, field := range skill.ContextFields {
+		if val, exists := targetWidget.Settings[field.Name]; exists {
+			ctxMap[field.Name] = val
+		} else if field.Nullable {
+			ctxMap[field.Name] = nil
+		}
+	}
+
+	return ctxMap
+}
+
+func init() {
+	Register(Definition{
+		SkillID:             DateTimeSkillID,
+		WidgetKind:          "date-time",
+		DisplayName:         "Date & Time",
+		Summary:             "Read the configured household date, time, timezone, locale, and display format.",
+		RequiredPermissions: []string{"agent:skill"},
+		VisibilityPolicy:    "visible_or_focused",
+		ContextFields: []Field{
+			{Name: "timezone", Type: "string", Description: "Configured IANA timezone.", Sensitivity: "public"},
+			{Name: "locale", Type: "string", Description: "Configured locale.", Sensitivity: "public"},
+			{Name: "date", Type: "string", Description: "Localized date.", Sensitivity: "public"},
+			{Name: "time", Type: "string", Description: "Localized 24-hour time.", Sensitivity: "public"},
+			{Name: "weekday", Type: "string", Description: "Localized weekday.", Sensitivity: "public"},
+			{Name: "isoTime", Type: "datetime", Description: "Current time in RFC3339 format.", Sensitivity: "public"},
+		},
+		Actions: []Action{readAction("read", "Read date and time context", "Return the current public date and time context.")},
+		Prompts: []Prompt{{
+			ID:      "date_time_context",
+			Title:   "Use date and time context",
+			Purpose: "Guide an agent when answering time-sensitive household questions.",
+		}},
+		SupportedWidgetSizes: []string{"small", "medium", "wide"},
+	}, func(snapshot Snapshot, instanceID string) map[string]any {
+		return dateTimeContext(snapshot)
+	})
+
+	Register(Definition{
+		SkillID:             WeatherSkillID,
+		WidgetKind:          "weather",
+		DisplayName:         "Weather",
+		Summary:             "Read current weather, temperature, humidity, wind, sunrise, sunset, and freshness for the configured location.",
+		RequiredPermissions: []string{"agent:skill"},
+		VisibilityPolicy:    "visible_or_focused",
+		ContextFields: []Field{
+			{Name: "locationName", Type: "string", Description: "Configured weather location.", Sensitivity: "public"},
+			{Name: "condition", Type: "string", Description: "Current weather condition.", Sensitivity: "public"},
+			{Name: "temperature", Type: "number", Description: "Current temperature.", Nullable: true, Sensitivity: "public"},
+			{Name: "temperatureUnit", Type: "string", Description: "Temperature unit.", Sensitivity: "public"},
+			{Name: "humidity", Type: "integer", Description: "Current relative humidity percentage.", Nullable: true, Sensitivity: "public"},
+			{Name: "windSpeed", Type: "number", Description: "Current wind speed.", Nullable: true, Sensitivity: "public"},
+			{Name: "windSpeedUnit", Type: "string", Description: "Wind speed unit.", Sensitivity: "public"},
+			{Name: "sunrise", Type: "datetime", Description: "Today's sunrise time when available.", Nullable: true, Sensitivity: "public"},
+			{Name: "sunset", Type: "datetime", Description: "Today's sunset time when available.", Nullable: true, Sensitivity: "public"},
+			{Name: "status", Type: "enum", Description: "Weather provider status.", EnumValues: []string{"available", "unavailable", "disabled"}, Sensitivity: "public"},
+			{Name: "updatedAt", Type: "datetime", Description: "Provider update time when available.", Nullable: true, Sensitivity: "public"},
+		},
+		Actions: []Action{readAction("refresh", "Refresh weather context", "Return the latest public weather context available to the hub.")},
+		Prompts: []Prompt{{
+			ID:      "weather_briefing",
+			Title:   "Use weather context",
+			Purpose: "Guide an agent when answering weather, clothing, travel, or daylight questions.",
+		}},
+		SupportedWidgetSizes: []string{"small", "medium", "wide"},
+	}, func(snapshot Snapshot, instanceID string) map[string]any {
+		return weatherContext(snapshot)
+	})
+
+	Register(Definition{
+		SkillID:             ChatHistorySkillID,
+		WidgetKind:          "chat-history",
+		DisplayName:         "Chat History",
+		Summary:             "Read available agents, selected agent preference, and conversation history availability.",
+		RequiredPermissions: []string{"agent:skill"},
+		VisibilityPolicy:    "visible_or_focused",
+		ContextFields: []Field{
+			{Name: "agentCount", Type: "integer", Description: "Number of configured agents.", Sensitivity: "public"},
+			{Name: "enabledAgentCount", Type: "integer", Description: "Number of enabled agents.", Sensitivity: "public"},
+			{Name: "preferredAgentId", Type: "string", Description: "Configured preferred agent ID when present.", Nullable: true, Sensitivity: "public"},
+			{Name: "historySource", Type: "string", Description: "Current conversation history source.", Sensitivity: "public"},
+			{Name: "agents", Type: "array", Description: "Safe summaries of configured agents.", Sensitivity: "public"},
+		},
+		Actions: []Action{readAction("read", "Read chat status context", "Return public agent and chat history context.")},
+		Prompts: []Prompt{{
+			ID:      "conversation_status",
+			Title:   "Use conversation availability",
+			Purpose: "Guide an agent when explaining available agents and conversation state.",
+		}},
+		SupportedWidgetSizes: []string{"medium", "wide", "large"},
+	}, func(snapshot Snapshot, instanceID string) map[string]any {
+		return chatHistoryContext(snapshot)
+	})
 }
 
 func dateTimeContext(snapshot Snapshot) map[string]any {
@@ -558,10 +687,11 @@ func chatHistoryContext(snapshot Snapshot) map[string]any {
 }
 
 func definitionsByKind() map[string]Definition {
-	defs := BuiltInDefinitions()
-	byKind := make(map[string]Definition, len(defs))
-	for _, def := range defs {
-		byKind[def.WidgetKind] = def
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	byKind := make(map[string]Definition, len(customDefs))
+	for k, def := range customDefs {
+		byKind[k] = def
 	}
 	return byKind
 }

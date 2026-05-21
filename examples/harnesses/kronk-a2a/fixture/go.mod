@@ -6,9 +6,9 @@ require (
 	github.com/a2aproject/a2a-go/v2 v2.3.1
 	github.com/ardanlabs/kronk v1.25.8
 	github.com/craigh33/adk-go-kronk v0.2.2
+	github.com/modelcontextprotocol/go-sdk v1.6.0
 	google.golang.org/adk v1.3.0
 	google.golang.org/genai v1.57.0
-	jute-dash v0.0.0
 )
 
 require (
@@ -77,8 +77,11 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
+	github.com/segmentio/asm v1.2.1 // indirect
+	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.43.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0 // indirect

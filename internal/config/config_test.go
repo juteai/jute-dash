@@ -466,7 +466,7 @@ func assertSingleDevAgent(t *testing.T, cfg Config, wantID string) {
 }
 
 func TestExampleYAMLConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "config", "jute.example.yaml"))
+	cfg, err := Load(filepath.Join("..", "..", "examples", "config", "jute.example.yaml"))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}

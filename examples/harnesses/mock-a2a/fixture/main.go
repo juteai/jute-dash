@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -9,11 +10,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"jute-dash/internal/mcpclient"
 )
 
 const dashboardContextExtensionURI = "https://jute.dev/a2a/extensions/dashboard-context/v1"
@@ -213,16 +213,289 @@ func handleSend(w http.ResponseWriter, r *http.Request, req rpcRequest) {
 	})
 }
 
-func mcpContextForTurn(ctx context.Context) mcpclient.JuteContext {
-	client, configured, err := mcpclient.NewFromEnv()
-	if !configured {
-		return mcpclient.JuteContext{Unavailable: "MCP not configured"}
-	}
-	if err != nil {
-		return mcpclient.JuteContext{Unavailable: "MCP config invalid"}
-	}
-	return client.CollectJuteContext(ctx)
+type JuteContext struct {
+	Available      bool
+	Unavailable    string
+	DashboardRead  bool
+	SkillCount     int
+	SkillIDs       []string
+	Weather        WeatherContext
+	WeatherRefresh string
+	Prompt         string
 }
+
+type WeatherContext struct {
+	LocationName string
+	Condition    string
+	Temperature  string
+	Status       string
+}
+
+type SkillList struct {
+	Skills []SkillResult `json:"skills"`
+}
+
+type SkillResult struct {
+	SkillID     string         `json:"skillId"`
+	DisplayName string         `json:"displayName"`
+	Actions     []string       `json:"actions"`
+	Context     map[string]any `json:"context"`
+}
+
+func mcpContextForTurn(ctx context.Context) JuteContext {
+	mcpURL := strings.TrimSpace(os.Getenv("JUTE_MCP_URL"))
+	if mcpURL == "" {
+		return JuteContext{Unavailable: "MCP not configured"}
+	}
+	token := strings.TrimSpace(os.Getenv("JUTE_MCP_TOKEN"))
+	agentID := strings.TrimSpace(os.Getenv("JUTE_MCP_AGENT_ID"))
+
+	var initResult struct {
+		ProtocolVersion string `json:"protocolVersion"`
+	}
+	err := mcpCall(ctx, mcpURL, token, agentID, "initialize", map[string]any{
+		"protocolVersion": "2025-11-25",
+		"clientInfo": map[string]any{
+			"name":    "jute-dev-agent",
+			"version": "dev",
+		},
+	}, &initResult)
+	if err != nil {
+		return JuteContext{Unavailable: "MCP initialize failed"}
+	}
+
+	var dashboardResult struct {
+		Contents []struct {
+			URI      string `json:"uri"`
+			MimeType string `json:"mimeType"`
+			Text     string `json:"text"`
+		} `json:"contents"`
+	}
+	dashboardRead := false
+	if err := mcpCall(ctx, mcpURL, token, agentID, "resources/read", map[string]any{"uri": "jute://dashboard/current"}, &dashboardResult); err == nil {
+		dashboardRead = true
+	}
+
+	var skillsResult struct {
+		Contents []struct {
+			URI      string `json:"uri"`
+			MimeType string `json:"mimeType"`
+			Text     string `json:"text"`
+		} `json:"contents"`
+	}
+	if err := mcpCall(ctx, mcpURL, token, agentID, "resources/read", map[string]any{"uri": "jute://skills"}, &skillsResult); err != nil {
+		return JuteContext{Unavailable: "MCP skills unavailable"}
+	}
+	var text string
+	for _, content := range skillsResult.Contents {
+		if strings.TrimSpace(content.Text) != "" {
+			text = content.Text
+			break
+		}
+	}
+	if text == "" {
+		return JuteContext{Unavailable: "MCP skills unavailable"}
+	}
+	var skills SkillList
+	if err := json.Unmarshal([]byte(text), &skills); err != nil {
+		return JuteContext{Unavailable: "MCP skills could not be decoded"}
+	}
+
+	summary := JuteContext{
+		Available:     true,
+		DashboardRead: dashboardRead,
+		SkillCount:    len(skills.Skills),
+	}
+	for _, skill := range skills.Skills {
+		summary.SkillIDs = append(summary.SkillIDs, skill.SkillID)
+		if skill.SkillID == "jute.weather.current" {
+			summary.Weather = weatherFromContext(skill.Context)
+			if contains(skill.Actions, "refresh") {
+				var toolResult struct {
+					Content []struct {
+						Type string `json:"type"`
+						Text string `json:"text"`
+					} `json:"content"`
+					IsError bool `json:"isError"`
+				}
+				err := mcpCall(ctx, mcpURL, token, agentID, "tools/call", map[string]any{
+					"name": "jute_skill_invoke_action",
+					"arguments": map[string]any{
+						"skillId":  "jute.weather.current",
+						"actionId": "refresh",
+					},
+				}, &toolResult)
+				if err == nil && !toolResult.IsError {
+					summary.WeatherRefresh = "completed"
+				} else {
+					summary.WeatherRefresh = "unavailable"
+				}
+			}
+		}
+	}
+
+	var promptResult struct {
+		Description string `json:"description"`
+		Messages    []struct {
+			Role    string `json:"role"`
+			Content struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	if err := mcpCall(ctx, mcpURL, token, agentID, "prompts/get", map[string]any{
+		"name":      "jute_home_assistant_guidance",
+		"arguments": map[string]any{},
+	}, &promptResult); err == nil && len(promptResult.Messages) > 0 {
+		summary.Prompt = truncate(promptResult.Messages[0].Content.Text, 160)
+	}
+
+	return summary
+}
+
+func mcpCall(ctx context.Context, mcpURL, token, agentID, method string, params any, result any) error {
+	payload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      fmt.Sprintf("%d", time.Now().UnixNano()),
+		"method":  method,
+	}
+	if params != nil {
+		payload["params"] = params
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, mcpURL, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if agentID != "" {
+		req.Header.Set("X-Jute-Agent-ID", agentID)
+	}
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+	var rpcResp struct {
+		Result json.RawMessage `json:"result"`
+		Error  *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return err
+	}
+	if rpcResp.Error != nil {
+		return fmt.Errorf("rpc error code %d", rpcResp.Error.Code)
+	}
+	if result != nil && len(rpcResp.Result) > 0 {
+		return json.Unmarshal(rpcResp.Result, result)
+	}
+	return nil
+}
+
+func (s JuteContext) Sentence() string {
+	if !s.Available {
+		if s.Unavailable == "" {
+			return "MCP not configured"
+		}
+		return s.Unavailable
+	}
+	parts := []string{fmt.Sprintf("MCP saw %d widget skills", s.SkillCount)}
+	if s.DashboardRead {
+		parts = append(parts, "dashboard context read")
+	}
+	if len(s.SkillIDs) > 0 {
+		parts = append(parts, "skills: "+strings.Join(s.SkillIDs, ", "))
+	}
+	if s.Weather.LocationName != "" || s.Weather.Condition != "" {
+		weather := strings.TrimSpace(strings.Join(nonEmpty([]string{s.Weather.LocationName, s.Weather.Condition, s.Weather.Temperature, s.Weather.Status}), " "))
+		if weather != "" {
+			parts = append(parts, "weather: "+weather)
+		}
+	}
+	if s.WeatherRefresh != "" {
+		parts = append(parts, "weather refresh: "+s.WeatherRefresh)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func weatherFromContext(context map[string]any) WeatherContext {
+	return WeatherContext{
+		LocationName: stringValue(context["locationName"]),
+		Condition:    stringValue(context["condition"]),
+		Temperature:  temperatureValue(context["temperature"], stringValue(context["temperatureUnit"])),
+		Status:       stringValue(context["status"]),
+	}
+}
+
+func stringValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case nil:
+		return ""
+	default:
+		return fmt.Sprint(typed)
+	}
+}
+
+func temperatureValue(value any, unit string) string {
+	if value == nil {
+		return ""
+	}
+	var number string
+	switch typed := value.(type) {
+	case float64:
+		number = strconv.FormatFloat(typed, 'f', -1, 64)
+	case int:
+		number = strconv.Itoa(typed)
+	default:
+		number = fmt.Sprint(typed)
+	}
+	return strings.TrimSpace(number + " " + unit)
+}
+
+func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func nonEmpty(values []string) []string {
+	out := []string{}
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			out = append(out, strings.TrimSpace(value))
+		}
+	}
+	return out
+}
+
+func truncate(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	return strings.TrimSpace(value[:limit]) + "..."
+}
+
 
 func writeStream(w http.ResponseWriter, id json.RawMessage, record task) {
 	flusher, ok := w.(http.Flusher)

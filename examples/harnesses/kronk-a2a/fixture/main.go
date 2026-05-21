@@ -3,9 +3,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,13 +23,13 @@ import (
 	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	adktool "google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/tool/mcptoolset"
 	"google.golang.org/genai"
-
-	"jute-dash/internal/mcpclient"
 
 	kronkllm "github.com/craigh33/adk-go-kronk/kronk"
 )
@@ -206,14 +208,33 @@ func newKronkAgent(ctx context.Context) (agent.Agent, func(), error) {
 		}
 	}
 
-	tools, err := juteMCPTools()
-	if err != nil {
-		closeAgent()
-		return nil, nil, err
+	mcpURL := strings.TrimSpace(os.Getenv("JUTE_MCP_URL"))
+	mcpToken := strings.TrimSpace(os.Getenv("JUTE_MCP_TOKEN"))
+	mcpAgentID := strings.TrimSpace(os.Getenv("JUTE_MCP_AGENT_ID"))
+
+	var toolsets []adktool.Toolset
+	if mcpURL != "" {
+		log.Printf("MCP tools enabled via JUTE_MCP_URL: %s", mcpURL)
+		transport := &HTTPPostTransport{
+			URL:         mcpURL,
+			BearerToken: mcpToken,
+			AgentID:     mcpAgentID,
+		}
+		mcpToolset, err := mcptoolset.New(mcptoolset.Config{
+			Transport: transport,
+		})
+		if err != nil {
+			closeAgent()
+			return nil, nil, fmt.Errorf("failed to create MCP toolset: %w", err)
+		}
+		toolsets = append(toolsets, mcpToolset)
+	} else {
+		log.Printf("JUTE_MCP_URL unset; Kronk agent will run without MCP tools")
 	}
+
 	instruction := "You reply briefly and clearly using only the information the user provides."
-	if len(tools) > 0 {
-		instruction += " You may use the Jute MCP tools to inspect visible dashboard Widget Skills and safe public widget context. Do not infer hidden widgets, secrets, raw microphone audio, camera frames, or private household state."
+	if len(toolsets) > 0 {
+		instruction += " You may use the provided tools to query the environment and take actions. Do not infer details not returned by tools."
 	}
 
 	a, err := llmagent.New(llmagent.Config{
@@ -221,7 +242,7 @@ func newKronkAgent(ctx context.Context) (agent.Agent, func(), error) {
 		Description: "A helpful assistant running on a local Kronk model and exposed over A2A.",
 		Model:       llm,
 		Instruction: instruction,
-		Tools:       tools,
+		Toolsets:    toolsets,
 		GenerateContentConfig: &genai.GenerateContentConfig{
 			MaxOutputTokens: 512,
 		},
@@ -233,125 +254,136 @@ func newKronkAgent(ctx context.Context) (agent.Agent, func(), error) {
 	return a, closeAgent, nil
 }
 
-func juteMCPTools() ([]adktool.Tool, error) {
-	client, configured, err := mcpclient.NewFromEnv()
-	if !configured {
-		log.Printf("JUTE_MCP_URL unset; Kronk agent will run without Jute MCP tools")
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("configure Jute MCP tools: %w", err)
-	}
-	log.Printf("Jute MCP tools enabled via JUTE_MCP_URL")
+// HTTPPostTransport implements a custom mcp.Transport for HTTP POST JSON-RPC.
+type HTTPPostTransport struct {
+	URL         string
+	BearerToken string
+	AgentID     string
+	HTTPClient  *http.Client
+}
 
-	tools := []adktool.Tool{}
-	add := func(t adktool.Tool, err error) error {
-		if err != nil {
-			return err
+// Connect creates a new mcp.Connection.
+func (t *HTTPPostTransport) Connect(ctx context.Context) (mcp.Connection, error) {
+	client := t.HTTPClient
+	if client == nil {
+		client = &http.Client{
+			Timeout: 10 * time.Second,
 		}
-		tools = append(tools, t)
+	}
+	return &httpConnection{
+		url:         t.URL,
+		bearerToken: t.BearerToken,
+		agentID:     t.AgentID,
+		httpClient:  client,
+		incoming:    make(chan jsonrpc.Message, 16),
+		closed:      make(chan struct{}),
+	}, nil
+}
+
+type httpConnection struct {
+	url         string
+	bearerToken string
+	agentID     string
+	httpClient  *http.Client
+
+	mu       sync.Mutex
+	incoming chan jsonrpc.Message
+	closed   chan struct{}
+	isClosed bool
+}
+
+func (c *httpConnection) SessionID() string {
+	return ""
+}
+
+func (c *httpConnection) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.isClosed {
+		c.isClosed = true
+		close(c.closed)
+	}
+	return nil
+}
+
+func (c *httpConnection) Read(ctx context.Context) (jsonrpc.Message, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.closed:
+		return nil, io.EOF
+	case msg, ok := <-c.incoming:
+		if !ok {
+			return nil, io.EOF
+		}
+		return msg, nil
+	}
+}
+
+func (c *httpConnection) Write(ctx context.Context, msg jsonrpc.Message) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.closed:
+		return io.ErrClosedPipe
+	default:
+	}
+
+	reqBytes, err := jsonrpc.EncodeMessage(msg)
+	if err != nil {
+		return fmt.Errorf("encode message: %w", err)
+	}
+
+	var hasID bool
+	if req, ok := msg.(*jsonrpc.Request); ok && req.ID.IsValid() {
+		hasID = true
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(reqBytes))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
+	if c.bearerToken != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.bearerToken)
+	}
+	if c.agentID != "" {
+		httpReq.Header.Set("X-Jute-Agent-ID", c.agentID)
+	}
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("http post failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("bad status code: %d", resp.StatusCode)
+	}
+
+	if !hasID {
 		return nil
 	}
-	if err := add(functiontool.New[emptyArgs, map[string]any](functiontool.Config{
-		Name:        "jute_dashboard_context_get",
-		Description: "Get safe current Jute dashboard context and visible Widget Skills.",
-	}, func(ctx adktool.Context, args emptyArgs) (map[string]any, error) {
-		text, err := client.ReadResourceText(ctx, "jute://dashboard/current")
-		return textResult(text, err)
-	})); err != nil {
-		return nil, err
-	}
-	if err := add(functiontool.New[emptyArgs, map[string]any](functiontool.Config{
-		Name:        "jute_skill_list",
-		Description: "List visible Jute Widget Skills and their public summaries.",
-	}, func(ctx adktool.Context, args emptyArgs) (map[string]any, error) {
-		text, err := client.ReadResourceText(ctx, "jute://skills")
-		return textResult(text, err)
-	})); err != nil {
-		return nil, err
-	}
-	if err := add(functiontool.New[skillContextArgs, map[string]any](functiontool.Config{
-		Name:        "jute_skill_read_context",
-		Description: "Read public context for a visible Jute Widget Skill.",
-	}, func(ctx adktool.Context, args skillContextArgs) (map[string]any, error) {
-		result, err := client.CallTool(ctx, "jute_skill_read_context", map[string]any{
-			"skillId":          args.SkillID,
-			"widgetInstanceId": args.WidgetInstanceID,
-		})
-		return toolResult(result, err)
-	})); err != nil {
-		return nil, err
-	}
-	if err := add(functiontool.New[skillActionArgs, map[string]any](functiontool.Config{
-		Name:        "jute_skill_invoke_action",
-		Description: "Invoke a declared low-risk Jute Widget Skill action through the hub.",
-	}, func(ctx adktool.Context, args skillActionArgs) (map[string]any, error) {
-		result, err := client.CallTool(ctx, "jute_skill_invoke_action", map[string]any{
-			"skillId":          args.SkillID,
-			"widgetInstanceId": args.WidgetInstanceID,
-			"actionId":         args.ActionID,
-		})
-		return toolResult(result, err)
-	})); err != nil {
-		return nil, err
-	}
-	if err := add(functiontool.New[skillPromptArgs, map[string]any](functiontool.Config{
-		Name:        "jute_skill_prompt_get",
-		Description: "Get hub-approved prompt guidance for a Jute Widget Skill.",
-	}, func(ctx adktool.Context, args skillPromptArgs) (map[string]any, error) {
-		result, err := client.CallTool(ctx, "jute_skill_prompt_get", map[string]any{
-			"skillId":  args.SkillID,
-			"promptId": args.PromptID,
-		})
-		return toolResult(result, err)
-	})); err != nil {
-		return nil, err
-	}
-	return tools, nil
-}
 
-type emptyArgs struct{}
-
-type skillContextArgs struct {
-	SkillID          string `json:"skillId" jsonschema:"Jute Widget Skill ID."`
-	WidgetInstanceID string `json:"widgetInstanceId,omitempty" jsonschema:"Optional widget instance ID."`
-}
-
-type skillActionArgs struct {
-	SkillID          string `json:"skillId" jsonschema:"Jute Widget Skill ID."`
-	WidgetInstanceID string `json:"widgetInstanceId,omitempty" jsonschema:"Optional widget instance ID."`
-	ActionID         string `json:"actionId" jsonschema:"Widget Skill action ID."`
-}
-
-type skillPromptArgs struct {
-	SkillID  string `json:"skillId" jsonschema:"Jute Widget Skill ID."`
-	PromptID string `json:"promptId" jsonschema:"Widget Skill prompt ID."`
-}
-
-func textResult(text string, err error) (map[string]any, error) {
+	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("read response body: %w", err)
 	}
-	return map[string]any{"text": text}, nil
-}
 
-func toolResult(result mcpclient.ToolCallResult, err error) (map[string]any, error) {
+	respMsg, err := jsonrpc.DecodeMessage(respBytes)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("decode response message: %w", err)
 	}
-	out := map[string]any{"isError": result.IsError}
-	if len(result.StructuredContent) > 0 {
-		var structured any
-		if err := json.Unmarshal(result.StructuredContent, &structured); err == nil {
-			out["structuredContent"] = structured
-		} else {
-			out["structuredContent"] = string(result.StructuredContent)
-		}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.closed:
+		return io.ErrClosedPipe
+	case c.incoming <- respMsg:
+		return nil
 	}
-	if len(result.Content) > 0 {
-		out["text"] = result.Content[0].Text
-	}
-	return out, nil
 }
 
 func installSystem(ctx context.Context, modelID, sourceURL string) (models.Path, error) {

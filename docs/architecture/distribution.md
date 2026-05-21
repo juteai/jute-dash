@@ -55,7 +55,7 @@ Raspberry Pi support targets 64-bit Raspberry Pi OS first.
 Run hub and display separately for fast iteration:
 
 ```sh
-go run ./cmd/juted -config config/jute.example.yaml
+go run ./cmd/juted -config examples/config/jute.example.yaml
 cd apps/web && npm run dev
 ```
 

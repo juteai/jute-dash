@@ -140,3 +140,66 @@ func testSnapshot() Snapshot {
 		GeneratedAt: time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC),
 	}
 }
+
+func TestDynamicRegistryAndDefaultExtractor(t *testing.T) {
+	// Register a dynamic widget skill definition
+	dynamicSkillID := "custom.dynamic.skill"
+	dynamicKind := "dynamic-widget"
+
+	Register(Definition{
+		SkillID:     dynamicSkillID,
+		WidgetKind:  dynamicKind,
+		DisplayName: "Dynamic Widget",
+		Summary:     "A custom dynamically registered widget for testing.",
+		ContextFields: []Field{
+			{Name: "customKey", Type: "string", Description: "A custom settings value."},
+			{Name: "missingKey", Type: "string", Description: "A missing key.", Nullable: true},
+		},
+		Actions: []Action{
+			{
+				ID:          "dynamic_action",
+				Title:       "Dynamic Action",
+				Description: "Invokes a dynamic action",
+			},
+		},
+	}, nil) // Passing nil ContextFunc to force fallback to defaultContextExtractor!
+
+	// Create a snapshot with a visible instance of this dynamic widget
+	snapshot := testSnapshot()
+	snapshot.Layout.Widgets = append(snapshot.Layout.Widgets, store.WidgetInstance{
+		ID:      "dynamic_instance_1",
+		Kind:    dynamicKind,
+		Title:   "My Dynamic Widget",
+		Visible: true,
+		Settings: map[string]any{
+			"customKey": "hello-dynamic",
+		},
+	})
+
+	// 1. Verify it is available
+	skills := Available(snapshot)
+	found := false
+	for _, s := range skills {
+		if s.SkillID == dynamicSkillID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected custom dynamic skill %s to be available", dynamicSkillID)
+	}
+
+	// 2. Verify that the context extractor successfully fell back and read Settings
+	context, err := SkillContext(snapshot, dynamicSkillID, "dynamic_instance_1")
+	if err != nil {
+		t.Fatalf("failed to retrieve context: %v", err)
+	}
+	if context.Context["customKey"] != "hello-dynamic" {
+		t.Fatalf("expected customKey value 'hello-dynamic', got %v", context.Context["customKey"])
+	}
+	val, exists := context.Context["missingKey"]
+	if !exists || val != nil {
+		t.Fatalf("expected missingKey to exist and be nil, got %v (exists=%t)", val, exists)
+	}
+}
+

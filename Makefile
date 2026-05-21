@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 
 WEB_DIR := apps/web
-CONFIG ?= config/jute.example.yaml
+CONFIG ?= examples/config/jute.example.yaml
 HUB_URL ?= http://127.0.0.1:8787
 WEB_URL ?= http://127.0.0.1:5173
 NPM ?= npm
