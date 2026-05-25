@@ -524,6 +524,10 @@ func defaultContextExtractor(snapshot Snapshot, skill Skill) map[string]any {
 		return ctxMap
 	}
 
+	if targetWidget.Data != nil {
+		ctxMap["data"] = targetWidget.Data
+	}
+
 	// Copy declared ContextFields from the instance's Settings
 	for _, field := range skill.ContextFields {
 		if val, exists := targetWidget.Settings[field.Name]; exists {

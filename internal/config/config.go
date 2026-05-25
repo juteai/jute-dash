@@ -16,15 +16,32 @@ import (
 )
 
 type Config struct {
-	Home    HomeConfig    `json:"home" yaml:"home"`
-	Server  ServerConfig  `json:"server" yaml:"server"`
-	MCP     MCPConfig     `json:"mcp" yaml:"mcp"`
-	Display DisplayConfig `json:"display" yaml:"display"`
-	Weather WeatherConfig `json:"weather" yaml:"weather"`
-	Voice   VoiceConfig   `json:"voice" yaml:"voice"`
-	Agents  []AgentConfig `json:"agents" yaml:"agents"`
-	Rooms   []RoomConfig  `json:"rooms" yaml:"rooms"`
-	Tiles   []TileConfig  `json:"tiles" yaml:"tiles"`
+	Home      HomeConfig      `json:"home" yaml:"home"`
+	Server    ServerConfig    `json:"server" yaml:"server"`
+	MCP       MCPConfig       `json:"mcp" yaml:"mcp"`
+	Display   DisplayConfig   `json:"display" yaml:"display"`
+	Weather   WeatherConfig   `json:"weather" yaml:"weather"`
+	Voice     VoiceConfig     `json:"voice" yaml:"voice"`
+	Dashboard DashboardConfig `json:"dashboard" yaml:"dashboard"`
+	Agents    []AgentConfig   `json:"agents" yaml:"agents"`
+	Rooms     []RoomConfig    `json:"rooms" yaml:"rooms"`
+	Tiles     []TileConfig    `json:"tiles" yaml:"tiles"`
+}
+
+type DashboardConfig struct {
+	Widgets []DashboardWidgetConfig `json:"widgets" yaml:"widgets"`
+}
+
+type DashboardWidgetConfig struct {
+	ID       string         `json:"id" yaml:"id"`
+	Type     string         `json:"type" yaml:"type"`
+	Title    string         `json:"title" yaml:"title"`
+	X        int            `json:"x" yaml:"x"`
+	Y        int            `json:"y" yaml:"y"`
+	W        int            `json:"w" yaml:"w"`
+	H        int            `json:"h" yaml:"h"`
+	Visible  bool           `json:"visible" yaml:"visible"`
+	Settings map[string]any `json:"settings,omitempty" yaml:"settings,omitempty"`
 }
 
 type HomeConfig struct {
@@ -118,11 +135,12 @@ type TileConfig struct {
 }
 
 type PublicConfig struct {
-	Home    HomeConfig          `json:"home" yaml:"home"`
-	Display DisplayConfig       `json:"display" yaml:"display"`
-	Agents  []PublicAgentConfig `json:"agents" yaml:"agents"`
-	Rooms   []RoomConfig        `json:"rooms" yaml:"rooms"`
-	Tiles   []TileConfig        `json:"tiles" yaml:"tiles"`
+	Home      HomeConfig          `json:"home" yaml:"home"`
+	Display   DisplayConfig       `json:"display" yaml:"display"`
+	Dashboard DashboardConfig     `json:"dashboard" yaml:"dashboard"`
+	Agents    []PublicAgentConfig `json:"agents" yaml:"agents"`
+	Rooms     []RoomConfig        `json:"rooms" yaml:"rooms"`
+	Tiles     []TileConfig        `json:"tiles" yaml:"tiles"`
 }
 
 type PublicAgentConfig struct {
@@ -382,11 +400,12 @@ func (cfg Config) Public() PublicConfig {
 	}
 
 	return PublicConfig{
-		Home:    cfg.Home,
-		Display: cfg.Display,
-		Agents:  publicAgents,
-		Rooms:   append([]RoomConfig(nil), cfg.Rooms...),
-		Tiles:   append([]TileConfig(nil), cfg.Tiles...),
+		Home:      cfg.Home,
+		Display:   cfg.Display,
+		Dashboard: cfg.Dashboard,
+		Agents:    publicAgents,
+		Rooms:     append([]RoomConfig(nil), cfg.Rooms...),
+		Tiles:     append([]TileConfig(nil), cfg.Tiles...),
 	}
 }
 
@@ -445,6 +464,13 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Voice.FollowupWindowSeconds == 0 {
 		cfg.Voice.FollowupWindowSeconds = defaults.Voice.FollowupWindowSeconds
+	}
+	if len(cfg.Dashboard.Widgets) == 0 {
+		cfg.Dashboard.Widgets = []DashboardWidgetConfig{
+			{ID: "date-time", Type: "date-time", Title: "Date & Time", X: 0, Y: 0, W: 2, H: 1, Visible: true},
+			{ID: "weather", Type: "weather", Title: "Weather", X: 2, Y: 0, W: 2, H: 1, Visible: true},
+			{ID: "chat-history", Type: "chat-history", Title: "Chat History", X: 0, Y: 1, W: 2, H: 2, Visible: true},
+		}
 	}
 	for i := range cfg.Agents {
 		if strings.TrimSpace(cfg.Agents[i].ProtocolBinding) == "" {

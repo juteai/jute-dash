@@ -4,7 +4,7 @@
 
 - Choose the stack and repo shape.
 - Complete docs-first architecture pass.
-- Define Widget Pack extensibility and A2A dashboard-context strategy.
+- Define monorepo widgets library and A2A dashboard-context strategy.
 - Define optional MCP Bridge strategy for trusted local agents.
 - Define multi-platform distribution strategy.
 - Define clean-slate display UX and mark the current dashboard as throwaway POC.
@@ -31,7 +31,7 @@
 - Improve A2A error UX so incompatible agents, unsupported methods, stream-shape mismatches, empty responses, and timeouts become clear safe messages instead of blank assistant turns or ambiguous `working` states.
 - Add voice foundation state: persisted voice settings, status/mute/cancel APIs, provider-list response shape, and display microphone status controls.
 - Add A2A agent-backed conversation history using `ListTasks` and `GetTask`, with a clear unsupported state for agents that do not expose history.
-- Implement Widget Pack manifest validation and iframe host runtime.
+- Implement monorepo widgets library layout and dynamic registration.
 - Show agent skills in the UI.
 - Send user prompts to a selected A2A 1.0 JSON-RPC agent.
 - Stream task updates back to the display through hub events.

@@ -2,9 +2,11 @@
   import { onDestroy } from 'svelte';
   import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Minus, Plus, Trash2 } from 'lucide-svelte';
   import WidgetFrame from '$lib/components/display/WidgetFrame.svelte';
-  import ChatHistoryWidget from '$lib/components/widgets/ChatHistoryWidget.svelte';
-  import DateTimeWidget from '$lib/components/widgets/DateTimeWidget.svelte';
-  import WeatherWidget from '$lib/components/widgets/WeatherWidget.svelte';
+  import ChatHistoryWidget from '$widgets/chathistory/ChatHistoryWidget.svelte';
+  import DateTimeWidget from '$widgets/datetime/DateTimeWidget.svelte';
+  import WeatherWidget from '$widgets/weather/WeatherWidget.svelte';
+  import RSSWidget from '$widgets/rss/RSSWidget.svelte';
+  import MarketsWidget from '$widgets/markets/MarketsWidget.svelte';
   import type { Agent, AgentAvailability, ChatMessage, DashboardData, WidgetInstance } from '$lib/types';
 
   export let data: DashboardData;
@@ -141,7 +143,11 @@
         {#if widget.kind === 'date-time'}
           <DateTimeWidget home={data.config.home} {stale} />
         {:else if widget.kind === 'weather'}
-          <WeatherWidget weather={data.home.weather} {stale} />
+          <WeatherWidget weather={widget.data || data.home.weather} {stale} />
+        {:else if widget.kind === 'rss'}
+          <RSSWidget data={widget.data} {stale} />
+        {:else if widget.kind === 'markets'}
+          <MarketsWidget data={widget.data} {stale} />
         {:else if widget.kind === 'chat-history'}
           <ChatHistoryWidget
             agents={data.agents}

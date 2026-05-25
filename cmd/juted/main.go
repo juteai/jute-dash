@@ -16,6 +16,7 @@ import (
 	"jute-dash/internal/store"
 	"jute-dash/internal/weather"
 	"jute-dash/internal/widgetskills"
+	_ "jute-dash/widgets"
 )
 
 var version = "dev"

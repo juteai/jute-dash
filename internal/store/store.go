@@ -70,6 +70,7 @@ type WidgetInstance struct {
 	Size     string         `json:"size"`
 	Settings map[string]any `json:"settings"`
 	Visible  bool           `json:"visible"`
+	Data     any            `json:"data,omitempty"`
 }
 
 type VoiceSettings struct {

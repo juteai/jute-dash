@@ -17,6 +17,13 @@ import (
 	"jute-dash/internal/registry"
 	"jute-dash/internal/store"
 	"jute-dash/internal/weather"
+	"jute-dash/widgets"
+	_ "jute-dash/widgets/chathistory"
+	_ "jute-dash/widgets/datetime"
+	_ "jute-dash/widgets/markets"
+	_ "jute-dash/widgets/rss"
+	_ "jute-dash/widgets/weather"
+	"fmt"
 )
 
 type Server struct {
@@ -329,8 +336,13 @@ func (s *Server) handleWidgetCatalog(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
+	items := widgets.List()
+	catalog := make([]widgets.WidgetCatalogItem, 0, len(items))
+	for _, it := range items {
+		catalog = append(catalog, it.CatalogInfo())
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"widgets": store.WidgetCatalog(),
+		"widgets": catalog,
 	})
 }
 
@@ -459,7 +471,66 @@ func (s *Server) handleVoiceProviders(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"providers": providers})
 }
 
+func (s *Server) currentConfig() config.Config {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.configPath == "" {
+		return s.cfg
+	}
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		return s.cfg
+	}
+	cfg.Server = s.cfg.Server
+	cfg.MCP = s.cfg.MCP
+	s.cfg = cfg
+	return s.cfg
+}
+
 func (s *Server) currentWidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error) {
+	if s.configPath != "" {
+		cfg := s.currentConfig()
+
+		widgetInstances := make([]store.WidgetInstance, 0, len(cfg.Dashboard.Widgets))
+		for _, w := range cfg.Dashboard.Widgets {
+			instance := store.WidgetInstance{
+				ID:       w.ID,
+				Kind:     w.Type,
+				Title:    w.Title,
+				X:        w.X,
+				Y:        w.Y,
+				W:        w.W,
+				H:        w.H,
+				MinW:     1,
+				MinH:     1,
+				Size:     "medium",
+				Visible:  w.Visible,
+				Settings: w.Settings,
+			}
+			if provider, ok := widgets.Get(w.Type); ok {
+				info := provider.CatalogInfo()
+				instance.MinW = info.MinW
+				instance.MinH = info.MinH
+				instance.Size = info.DefaultSize
+
+				data, err := provider.FetchData(ctx, w.Settings)
+				if err == nil {
+					instance.Data = data
+				}
+			}
+			if instance.Settings == nil {
+				instance.Settings = map[string]any{}
+			}
+			widgetInstances = append(widgetInstances, instance)
+		}
+
+		s.layout = store.WidgetLayout{
+			ProfileID: "default",
+			Widgets:   widgetInstances,
+		}
+		return normalizeWidgetLayout(s.layout), nil
+	}
+
 	if s.layoutStore == nil {
 		return normalizeWidgetLayout(s.layout), nil
 	}
@@ -472,6 +543,35 @@ func (s *Server) currentWidgetLayout(ctx context.Context, profileID string) (sto
 }
 
 func (s *Server) saveWidgetLayout(ctx context.Context, layout store.WidgetLayout) (store.WidgetLayout, error) {
+	if s.configPath != "" {
+		s.mu.Lock()
+
+		newWidgets := make([]config.DashboardWidgetConfig, 0, len(layout.Widgets))
+		for _, w := range layout.Widgets {
+			newWidgets = append(newWidgets, config.DashboardWidgetConfig{
+				ID:       w.ID,
+				Type:     w.Kind,
+				Title:    w.Title,
+				X:        w.X,
+				Y:        w.Y,
+				W:        w.W,
+				H:        w.H,
+				Visible:  w.Visible,
+				Settings: w.Settings,
+			})
+		}
+		s.cfg.Dashboard.Widgets = newWidgets
+
+		err := config.SaveYAML(s.configPath, s.cfg)
+		s.mu.Unlock()
+
+		if err != nil {
+			return store.WidgetLayout{}, fmt.Errorf("save config: %w", err)
+		}
+
+		return s.currentWidgetLayout(ctx, layout.ProfileID)
+	}
+
 	var saved store.WidgetLayout
 	var err error
 	if s.layoutStore != nil {
@@ -838,6 +938,9 @@ func (s *Server) dashboardContext(ctx context.Context) map[string]any {
 		}
 		visibleIDs = append(visibleIDs, widget.ID)
 		publicContext := map[string]any{}
+		if widget.Data != nil {
+			publicContext["data"] = widget.Data
+		}
 		switch widget.Kind {
 		case "weather":
 			publicContext["locationName"] = s.cfg.Weather.LocationName

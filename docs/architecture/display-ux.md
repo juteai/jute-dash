@@ -208,7 +208,7 @@ Overflow modes:
 - `scroll`: content scrolls inside the frame.
 - `expand`: widget may request a larger supported size.
 
-Built-in widgets are native Svelte components but use the same frame contract. Custom Widget Packs render in sandboxed iframes inside the frame.
+All widgets are native Svelte components compiled directly into the display application that render inside the same frame contract.
 
 ## First Widgets
 

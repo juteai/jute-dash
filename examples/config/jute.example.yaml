@@ -118,3 +118,62 @@ tiles:
     label: Network
     value: Online
     detail: 42 devices
+
+dashboard:
+  widgets:
+    - id: "date-time-widget"
+      type: "date-time"
+      title: "Clock"
+      x: 0
+      y: 0
+      w: 2
+      h: 1
+      visible: true
+    - id: "weather-widget"
+      type: "weather"
+      title: "Local Weather"
+      x: 2
+      y: 0
+      w: 2
+      h: 1
+      visible: true
+      settings:
+        location: "London"
+        latitude: 51.5072
+        longitude: -0.1276
+        temperature-unit: "celsius"
+        wind-speed-unit: "kmh"
+    - id: "assistant-chat"
+      type: "chat-history"
+      title: "Concierge Chat"
+      x: 0
+      y: 1
+      w: 2
+      h: 2
+      visible: true
+    - id: "hacker-news"
+      type: "rss"
+      title: "Tech News"
+      x: 2
+      y: 1
+      w: 2
+      h: 2
+      visible: true
+      settings:
+        limit: 5
+        feeds:
+          - url: "https://news.ycombinator.com/rss"
+            name: "Hacker News"
+    - id: "stocks-watchlist"
+      type: "markets"
+      title: "Markets"
+      x: 0
+      y: 3
+      w: 2
+      h: 2
+      visible: true
+      settings:
+        tickers:
+          - "AAPL"
+          - "GOOG"
+          - symbol: "BTC-USD"

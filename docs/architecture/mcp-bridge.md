@@ -6,7 +6,7 @@ The Jute MCP Bridge gives local or trusted agents a richer way to understand and
 
 A2A remains the conversation and task protocol. MCP is an optional tool and context surface for agents that can connect to the local hub.
 
-The bridge exposes hub-approved dashboard context, [Widget Skills](widget-skills.md), and hub-mediated display actions. It does not expose raw widget internals, direct widget iframe access, raw adapter payloads, or credentials.
+The bridge exposes hub-approved dashboard context, [Widget Skills](widget-skills.md), and hub-mediated display actions. It does not expose raw widget internals, direct Svelte component DOM access, raw adapter payloads, or credentials.
 
 Primary references:
 
@@ -46,7 +46,7 @@ Reasons:
 
 - the hub already owns configuration, persistence, widget permissions, agent trust, and redaction;
 - the hub is the only process that should decide what dashboard context is safe to expose;
-- agents should not connect directly to the Svelte display or widget iframes;
+- agents should not connect directly to Svelte display internals;
 - a hub-owned bridge keeps MCP and A2A policies consistent.
 
 Do not implement the v1 bridge as an arbitrary plugin process. Future external MCP adapters may exist, but they must call the hub through explicit APIs and must not bypass hub permissions.
@@ -284,7 +284,7 @@ Widgets may expose skills only when:
 - the widget permission is granted;
 - the agent has the required MCP scope.
 
-Widget Skills can include public context, hub-approved prompts, and declared actions. Actions execute through the hub and Widget SDK; MCP clients never call widget iframes directly.
+Widget Skills can include public context, hub-approved prompts, and declared actions. Actions execute through the hub; MCP clients never call widget Svelte components directly.
 
 The bridge never exposes:
 
@@ -318,7 +318,7 @@ Rules:
 - bearer-token auth by default;
 - secrets are references only;
 - no token passthrough;
-- no direct widget iframe access;
+- no direct widget Svelte component access;
 - no direct display DOM access;
 - no raw hub database access;
 - no direct smart-home adapter access;

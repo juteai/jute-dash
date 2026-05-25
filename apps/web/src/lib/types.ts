@@ -226,6 +226,7 @@ export type WidgetInstance = {
   size: 'small' | 'medium' | 'wide' | 'large' | string;
   settings: Record<string, unknown>;
   visible: boolean;
+  data?: any;
 };
 
 export type ChatState = 'idle' | 'listening' | 'thinking' | 'streaming' | 'error';

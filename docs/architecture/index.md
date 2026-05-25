@@ -8,7 +8,7 @@ Jute Dash is a local-first home assistant platform built around a headless-capab
 - [Configuration And Persistence](configuration-persistence.md): local data paths, first-run setup, SQLite runtime store, YAML/JSON bootstrap/import/export, migrations, and secrets.
 - [Display UX](display-ux.md): clean-slate dashboard, widget frame, edit mode, chat mode, brand constants, and first widgets.
 - [Resilience And Error UX](resilience-error-ux.md): hub disconnects, stale data, no-agent states, widget failures, safe error copy, and recovery behavior.
-- [Widgets](widgets.md): built-in widgets, custom Widget Packs, iframe sandboxing, SDK messages, and dashboard context.
+- [Widgets](widgets.md): unified widgets library, Svelte components, Go providers, settings schemas, and dashboard context.
 - [Widget Skills](widget-skills.md): agent-facing widget capabilities, context, prompts, actions, and MCP mapping.
 - [A2A Compatibility](a2a.md): Agent Card discovery, A2A 1.0 bindings, streaming, caching, credentials, and the Jute dashboard-context extension.
 - [MCP Bridge](mcp-bridge.md): optional local MCP tool and context surface for trusted A2A agents.
@@ -30,7 +30,7 @@ Jute Dash is a local-first home assistant platform built around a headless-capab
 - Voice Provider Packs are manifest-driven process or network integrations. Do not use Go in-process dynamic plugins for v1.
 - SQLite is runtime truth. YAML config is preferred for bootstrap, import, and export, while JSON remains supported.
 - Secrets are references only and are not stored in YAML, JSON, or ordinary settings rows.
-- Custom widgets use Widget Packs by default, loaded from a manifest and rendered in sandboxed iframes with a typed postMessage SDK.
+- Widgets are compiled Svelte components managed inside Jute's unified monorepo widgets library and dynamically registered at hub startup.
 - Widgets expose agent-facing capabilities through Widget Skills, which the hub maps to safe MCP resources, prompts, and tools.
 - Jute-specific dashboard context is sent to agents through an optional A2A extension, not a custom A2A protocol binding.
 - The optional Jute MCP Bridge runs inside the Go hub and exposes local dashboard context and safe tools to trusted local agents.

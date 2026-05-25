@@ -11,7 +11,7 @@ Widgets are not just visual panels. A widget may also expose:
 - actions that the hub can safely perform on the widget's behalf;
 - ability metadata that helps the agent choose the right widget for a task.
 
-The hub is the only authority that turns widget declarations into agent-visible capabilities. Widgets never call MCP directly, and agents never call widget iframes directly.
+The hub is the only authority that turns widget declarations into agent-visible capabilities. Widgets never call MCP directly, and agents never call widget components directly.
 
 ## Relationship To A2A And MCP
 
@@ -188,7 +188,7 @@ Action rules:
 
 - every action must have a stable ID and JSON Schema input/output;
 - display, configure, and home actions require opt-in scopes;
-- actions execute through the hub and Widget SDK, not through direct MCP-to-iframe calls;
+- actions execute through the hub, not through direct MCP-to-widget calls;
 - actions return safe public results;
 - failed actions return recoverable safe errors;
 - high-impact actions require confirmation even if an agent has the scope.

@@ -71,8 +71,7 @@ flowchart LR
 - Render the dashboard, ambient mode, settings, widget grid, and agent interaction surface.
 - Render the voice conversation sheet, listening states, mute/cancel controls, and transcript bubbles from hub events.
 - Follow the clean-slate display UX. The current `apps/web` UI is POC work, not canonical.
-- Host built-in widgets as native Svelte components.
-- Host custom Widget Packs in sandboxed iframes.
+- Host widgets as native Svelte components inside Jute's monorepo widgets library.
 - Maintain local-only transient UI state such as open menus and drag state.
 - Persist durable customization by calling the hub API rather than writing browser-local storage as the source of truth.
 

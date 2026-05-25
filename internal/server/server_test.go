@@ -455,8 +455,18 @@ func TestWidgetCatalogEndpoint(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(body.Widgets) != 3 || body.Widgets[0].Kind != "date-time" {
-		t.Fatalf("unexpected catalog response: %+v", body.Widgets)
+	if len(body.Widgets) < 3 {
+		t.Fatalf("unexpected catalog response length: %+v", body.Widgets)
+	}
+	foundDateTime := false
+	for _, it := range body.Widgets {
+		if it.Kind == "date-time" {
+			foundDateTime = true
+			break
+		}
+	}
+	if !foundDateTime {
+		t.Fatalf("catalog response missing date-time widget: %+v", body.Widgets)
 	}
 }
 
