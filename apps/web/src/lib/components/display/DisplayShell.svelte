@@ -18,6 +18,7 @@
     getDashboard,
     getWidgetCatalog,
     muteVoice,
+    refreshAgentCard,
     resetWidgetLayout,
     saveWidgetLayout,
     sendConversationTurn,
@@ -311,6 +312,31 @@
       markConnected();
     } catch {
       agentIssue = 'Agent could not be removed.';
+    }
+  }
+
+  async function refreshSelectedAgentCard(agentId: string) {
+    if (!agentId) {
+      return;
+    }
+    try {
+      const refreshed = await refreshAgentCard(fetch, agentId);
+      dashboard = {
+        ...dashboard,
+        agents: dashboard.agents.map((agent) => (agent.id === refreshed.id ? refreshed : agent)),
+        connectionState: 'connected',
+        stale: false,
+        issue: undefined,
+        loadedAt: new Date().toISOString()
+      };
+      markConnected();
+    } catch {
+      markIssue('degraded', {
+        code: 'agent_card_refresh_failed',
+        severity: 'warning',
+        title: 'Agent Card refresh failed',
+        message: 'Jute could not refresh the selected agent card.'
+      });
     }
   }
 
@@ -742,7 +768,7 @@
         throw new Error('stream ended before completion');
       }
       markConnected();
-    } catch {
+    } catch (err) {
       if (!streamedOutput && !failedFromStream) {
         try {
           const conversationId = selectedConversationId || (await ensureConversation(agent));
@@ -750,19 +776,20 @@
           applyConversationDetail(detail);
           markConnected();
           return;
-        } catch {
+        } catch (fallbackErr) {
+          err = fallbackErr;
           // Fall through to the standard retryable failure state.
         }
       }
       messages = messages.map((message) =>
         message.id === temporaryMessageId ? { ...message, status: 'failed', retryText: text } : message
       );
-      messages = [...messages, systemMessage('Message not sent. Check that the hub and local A2A agent are running, then retry.')];
+      messages = [...messages, systemMessage(chatFailureMessage(err))];
       markIssue('degraded', {
         code: 'message_failed',
         severity: 'warning',
         title: 'Message not sent',
-        message: 'The selected agent did not complete the request.'
+        message: chatFailureIssueMessage(err)
       });
       chatState = 'error';
     }
@@ -908,6 +935,40 @@
 
   function systemMessage(content: string): ChatMessage {
     return makeMessage('system', content);
+  }
+
+  function chatFailureMessage(error: unknown) {
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    if (message.includes('disabled')) {
+      return 'Message not sent. The selected agent is disabled.';
+    }
+    if (message.includes('credentials')) {
+      return 'Message not sent. The selected agent needs credentials before Jute can call it.';
+    }
+    if (message.includes('protocol binding') || message.includes('not implemented')) {
+      return 'Message not sent. The selected agent does not expose a supported A2A JSON-RPC binding.';
+    }
+    if (message.includes('agent card')) {
+      return 'Message not sent. Jute could not refresh that agent’s Agent Card.';
+    }
+    if (message.includes('empty')) {
+      return 'The agent responded, but Jute could not find displayable text.';
+    }
+    return 'Message not sent. Check that the hub and local A2A agent are running, then retry.';
+  }
+
+  function chatFailureIssueMessage(error: unknown) {
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    if (message.includes('credentials')) {
+      return 'The selected agent is missing credentials.';
+    }
+    if (message.includes('protocol binding') || message.includes('not implemented')) {
+      return 'The selected agent does not expose a supported A2A binding.';
+    }
+    if (message.includes('agent card')) {
+      return 'Jute could not refresh the selected agent card.';
+    }
+    return 'The selected agent did not complete the request.';
   }
 
   function makeID() {
@@ -1128,6 +1189,7 @@
           {selectedAgentId}
           {selectedConversationId}
           {selectedAvailability}
+          status={dashboard.status}
           onAgentChange={(agentId) => {
             selectedAgentId = agentId;
             selectedConversationId = '';
@@ -1138,6 +1200,7 @@
           onConversationSelect={(conversationId) => loadConversation(conversationId)}
           onNewConversation={createNewConversation}
           onManageAgents={() => (showAgentManager = true)}
+          onRefreshAgentCard={refreshSelectedAgentCard}
           onSubmit={(value) => submitMessage(value)}
           onRetry={retryMessage}
           onClose={closeChat}

@@ -21,6 +21,7 @@ export type Agent = {
   capabilities: string[];
   mcpScopes?: string[];
   authConfigured: boolean;
+  authAvailable?: boolean;
   cardStatus?: 'available' | 'unavailable' | 'unknown' | string;
   cardFetchedAt?: string;
   cardError?: string;
@@ -62,6 +63,50 @@ export type UserFacingIssue = {
     label: string;
     target: 'retry' | 'settings' | 'setup' | 'details';
   };
+};
+
+export type AppStatus = {
+  status: 'ok' | 'degraded' | string;
+  version: string;
+  startedAt: string;
+  setup: {
+    complete: boolean;
+    missing: string[];
+  };
+  config: {
+    hasBootstrapConfig: boolean;
+    writableYaml: boolean;
+  };
+  eventStream: {
+    available: boolean;
+  };
+  mcp: MCPStatus;
+  agents: AgentStatusSummary;
+  voice: {
+    enabled: boolean;
+    serviceStatus: string;
+    state: string;
+  };
+};
+
+export type MCPStatus = {
+  enabled: boolean;
+  serviceStatus: 'disabled' | 'enabled' | 'misconfigured' | string;
+  transport: string;
+  listenAddress: string;
+  path: string;
+  authMode: string;
+  allowLan: boolean;
+};
+
+export type AgentStatusSummary = {
+  total: number;
+  enabled: number;
+  disabled: number;
+  available: number;
+  unavailable: number;
+  dashboardContextSupported: number;
+  mcpScoped: number;
 };
 
 export type Room = {
@@ -154,6 +199,7 @@ export type DashboardData = {
   agents: Agent[];
   layout: WidgetLayout;
   voice: VoiceStatus;
+  status?: AppStatus;
   connectionState: AppConnectionState;
   stale: boolean;
   hubUrl: string;

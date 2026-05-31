@@ -26,7 +26,23 @@ The display tracks one app-level connection state:
 - `offline`: the hub is unreachable and no fresh data is available.
 - `degraded`: the hub is reachable, but one or more important subsystems are unavailable.
 
-The state is display-local but derived from hub API calls, `/healthz`, future `/api/v1/status`, and future `/api/v1/events` health.
+The state is display-local but derived from hub API calls, `/healthz`, `/api/v1/status`, and `/api/v1/events` health.
+
+## Hub Status API
+
+`GET /api/v1/status` is the display-safe diagnostic summary. It exists so the dashboard can show whether the hub is healthy, degraded, or missing a local subsystem without exposing internal errors.
+
+The status response includes:
+
+- hub version and start time;
+- setup completeness;
+- whether the active config is writable YAML;
+- event stream availability;
+- MCP bridge enabled state, transport, path, auth mode, LAN flag, and service status;
+- aggregate agent counts;
+- high-level voice state.
+
+The status response must not include token values, token environment variable names, raw Agent Cards, raw transport errors, stack traces, full credential references, or full remote payloads.
 
 ## Startup Offline UX
 
@@ -165,6 +181,26 @@ Agent unavailable states are distinct:
 - `unknown`: health has not been checked yet.
 
 Unavailable agents can be listed, but they cannot be selected for new turns unless the state becomes available.
+
+An agent with authentication configured is not automatically unavailable. The hub exposes a safe `authAvailable` boolean so the display can distinguish “credentials are configured and present” from “credentials are required but missing” without revealing the secret reference.
+
+## Agent Diagnostics
+
+The chat UX includes a compact diagnostics surface for local development and troubleshooting.
+
+It may show:
+
+- Agent Card status and safe card error;
+- selected A2A binding and protocol version;
+- selected endpoint host/path without query strings or credentials;
+- streaming support;
+- dashboard-context extension support;
+- discovered Agent Card skills;
+- MCP bridge status;
+- per-agent MCP scope count;
+- safe credential state.
+
+It may offer a `Refresh Agent Card` action. Diagnostics stay behind an explicit user action; the default chat view remains focused on the conversation.
 
 ## Chat Failures
 

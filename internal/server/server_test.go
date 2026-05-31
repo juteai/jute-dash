@@ -315,6 +315,42 @@ func TestSetupStatusEndpoint(t *testing.T) {
 	}
 }
 
+func TestStatusEndpointReturnsSafeSummary(t *testing.T) {
+	cfg := testConfig()
+	cfg.MCP.Enabled = true
+	cfg.MCP.Transport = "streamable-http"
+	cfg.MCP.ListenAddress = "127.0.0.1:8790"
+	cfg.MCP.Path = "/mcp"
+	cfg.MCP.Auth.Mode = "local-token"
+	cfg.MCP.Auth.EnvToken = "VERY_SECRET_ENV_NAME"
+	cfg.Agents[0].Auth = &config.AuthConfig{Type: "bearer", EnvToken: "AGENT_SECRET_TOKEN"}
+	t.Setenv("AGENT_SECRET_TOKEN", "secret-value")
+
+	handler := NewWithSetupStatus(cfg, "test-version", store.SetupStatus{Complete: true})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body StatusResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Version != "test-version" || body.MCP.ServiceStatus != "enabled" || body.MCP.AuthMode != "local-token" {
+		t.Fatalf("unexpected status response: %+v", body)
+	}
+	if body.Agents.Total != 2 || body.Agents.Enabled != 1 || body.EventStream.Available != true {
+		t.Fatalf("unexpected status summary: %+v", body)
+	}
+	raw := rec.Body.String()
+	if strings.Contains(raw, "VERY_SECRET_ENV_NAME") || strings.Contains(raw, "AGENT_SECRET_TOKEN") || strings.Contains(raw, "secret-value") {
+		t.Fatalf("status response leaked secret material: %s", raw)
+	}
+}
+
 func TestVoiceStatusEndpointReturnsSafeDefaults(t *testing.T) {
 	handler := New(testConfig(), "test")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/voice/status", nil)
@@ -672,6 +708,36 @@ func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
 	}
 	if !body.Agents[0].DashboardContextSupported || !body.Agents[0].Streaming || len(body.Agents[0].Skills) != 1 {
 		t.Fatalf("missing discovered metadata: %+v", body.Agents[0])
+	}
+}
+
+func TestAgentsEndpointIncludesSafeAuthAvailability(t *testing.T) {
+	cfg := testConfig()
+	cfg.Agents = cfg.Agents[:1]
+	cfg.Agents[0].Auth = &config.AuthConfig{Type: "bearer", EnvToken: "HOUSE_AGENT_TOKEN"}
+	handler := New(cfg, "test")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Agents []struct {
+			AuthConfigured bool `json:"authConfigured"`
+			AuthAvailable  bool `json:"authAvailable"`
+		} `json:"agents"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Agents) != 1 || !body.Agents[0].AuthConfigured || body.Agents[0].AuthAvailable {
+		t.Fatalf("unexpected auth availability: %+v", body.Agents)
+	}
+	if strings.Contains(rec.Body.String(), "HOUSE_AGENT_TOKEN") {
+		t.Fatalf("agents response leaked auth env reference: %s", rec.Body.String())
 	}
 }
 

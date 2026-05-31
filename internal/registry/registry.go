@@ -16,6 +16,7 @@ type Agent struct {
 	Capabilities              []string         `json:"capabilities"`
 	MCPScopes                 []string         `json:"mcpScopes"`
 	AuthConfigured            bool             `json:"authConfigured"`
+	AuthAvailable             bool             `json:"authAvailable"`
 	CardStatus                string           `json:"cardStatus,omitempty"`
 	CardFetchedAt             string           `json:"cardFetchedAt,omitempty"`
 	CardError                 string           `json:"cardError,omitempty"`
@@ -48,6 +49,7 @@ func New(configured []config.AgentConfig) Registry {
 			Capabilities:    append([]string(nil), item.Capabilities...),
 			MCPScopes:       append([]string(nil), item.MCPScopes...),
 			AuthConfigured:  item.Auth != nil,
+			AuthAvailable:   item.Auth == nil,
 		}
 		agents = append(agents, agent)
 		byID[agent.ID] = agent

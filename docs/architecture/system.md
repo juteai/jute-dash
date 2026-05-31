@@ -86,7 +86,7 @@ Initial API families:
 - `/api/v1/agents`: configured agents, cached cards, skills, health, and selected bindings.
 - `/api/v1/messages`: compatibility endpoint for simple blocking user turns that become A2A tasks.
 - `/api/v1/setup`: future first-run setup status and completion.
-- `/api/v1/status`: future setup, store, event stream, agent, widget, voice, provider, and degraded health summary.
+- `/api/v1/status`: setup, event stream, agent, MCP, voice, and degraded health summary for safe display diagnostics.
 - `/api/v1/devices`: future device profile and per-device settings.
 - `/api/v1/voice/status`: current voice state, provider, mute, and follow-up status foundation.
 - `/api/v1/voice/mute`, `/api/v1/voice/unmute`, `/api/v1/voice/cancel`: current voice state controls.

@@ -11,7 +11,7 @@ export function getAgentAvailability(agent: Agent | undefined): AgentAvailabilit
   if (binding !== 'JSONRPC') {
     return 'unsupported_binding';
   }
-  if (agent.authConfigured) {
+  if (agent.authConfigured && agent.authAvailable === false) {
     return 'missing_credentials';
   }
   if (agent.cardStatus && agent.cardStatus !== 'available') {

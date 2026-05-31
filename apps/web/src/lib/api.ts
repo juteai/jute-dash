@@ -1,5 +1,6 @@
 import type {
   Agent,
+  AppStatus,
   Conversation,
   ConversationDetail,
   ConversationStreamEvent,
@@ -17,12 +18,13 @@ import type {
 const API_BASE = import.meta.env.VITE_JUTE_API_URL ?? 'http://127.0.0.1:8787';
 
 export async function getDashboard(fetcher: typeof fetch): Promise<DashboardData> {
-  const [config, home, agentResponse, layout, voice] = await Promise.all([
+  const [config, home, agentResponse, layout, voice, status] = await Promise.all([
     getJSON<PublicConfig>(fetcher, '/api/v1/config'),
     getJSON<HomeState>(fetcher, '/api/v1/home'),
     getJSON<{ agents: Agent[] }>(fetcher, '/api/v1/agents'),
     getJSON<WidgetLayout>(fetcher, '/api/v1/widgets/layout'),
-    getJSON<VoiceStatus>(fetcher, '/api/v1/voice/status')
+    getJSON<VoiceStatus>(fetcher, '/api/v1/voice/status'),
+    getJSON<AppStatus>(fetcher, '/api/v1/status')
   ]);
 
   return {
@@ -31,10 +33,20 @@ export async function getDashboard(fetcher: typeof fetch): Promise<DashboardData
     agents: agentResponse.agents,
     layout,
     voice,
-    connectionState: 'connected',
+    status,
+    connectionState: status.status === 'ok' ? 'connected' : 'degraded',
     stale: false,
     hubUrl: API_BASE,
-    loadedAt: new Date().toISOString()
+    loadedAt: new Date().toISOString(),
+    issue:
+      status.status === 'ok'
+        ? undefined
+        : {
+            code: 'hub_degraded',
+            severity: 'warning',
+            title: 'Jute is degraded',
+            message: 'One or more local services need attention.'
+          }
   };
 }
 
@@ -202,6 +214,17 @@ export async function deleteAgent(fetcher: typeof fetch, agentId: string): Promi
   }
 }
 
+export async function refreshAgentCard(fetcher: typeof fetch, agentId: string): Promise<Agent> {
+  const response = await fetcher(`${API_BASE}/api/v1/agents/${encodeURIComponent(agentId)}/refresh-card`, {
+    method: 'POST'
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+  }
+  return response.json() as Promise<Agent>;
+}
+
 export async function getWidgetCatalog(fetcher: typeof fetch): Promise<WidgetCatalogItem[]> {
   const response = await getJSON<{ widgets: WidgetCatalogItem[] }>(fetcher, '/api/v1/widgets/catalog');
   return response.widgets;
@@ -297,6 +320,7 @@ export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {
     agents: [],
     layout: fallbackLayout(),
     voice: fallbackVoiceStatus(),
+    status: fallbackStatus(),
     connectionState: 'offline',
     stale: true,
     hubUrl: API_BASE,
@@ -310,6 +334,48 @@ export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {
         label: 'Retry',
         target: 'retry'
       }
+    }
+  };
+}
+
+function fallbackStatus(): AppStatus {
+  return {
+    status: 'offline',
+    version: '',
+    startedAt: '',
+    setup: {
+      complete: false,
+      missing: ['hub']
+    },
+    config: {
+      hasBootstrapConfig: false,
+      writableYaml: false
+    },
+    eventStream: {
+      available: false
+    },
+    mcp: {
+      enabled: false,
+      serviceStatus: 'disabled',
+      transport: '',
+      listenAddress: '',
+      path: '',
+      authMode: '',
+      allowLan: false
+    },
+    agents: {
+      total: 0,
+      enabled: 0,
+      disabled: 0,
+      available: 0,
+      unavailable: 0,
+      dashboardContextSupported: 0,
+      mcpScoped: 0
+    },
+    voice: {
+      enabled: false,
+      serviceStatus: 'not_configured',
+      state: 'muted'
     }
   };
 }

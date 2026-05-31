@@ -120,6 +120,8 @@ MCP settings classification:
 
 Secrets remain references only. Public config may expose whether MCP is enabled and what non-secret endpoint is configured, but not the token value or token environment variable name unless in an explicit admin/debug surface.
 
+The Svelte display does not call the MCP Bridge directly. Browser UI reads MCP status through hub-owned display APIs such as `/api/v1/status`, and trusted local agents call the MCP endpoint themselves. This keeps MCP credentials and per-agent scope decisions inside the hub boundary.
+
 ## Per-Agent Scopes
 
 MCP access is scoped per local agent registration.

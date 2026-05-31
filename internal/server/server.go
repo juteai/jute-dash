@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,53 @@ type HealthResponse struct {
 	Status    string    `json:"status"`
 	Version   string    `json:"version"`
 	StartedAt time.Time `json:"startedAt"`
+}
+
+type StatusResponse struct {
+	Status      string             `json:"status"`
+	Version     string             `json:"version"`
+	StartedAt   time.Time          `json:"startedAt"`
+	Setup       store.SetupStatus  `json:"setup"`
+	Config      ConfigStatus       `json:"config"`
+	EventStream EventStreamStatus  `json:"eventStream"`
+	MCP         MCPStatus          `json:"mcp"`
+	Agents      AgentStatusSummary `json:"agents"`
+	Voice       VoiceStatusSummary `json:"voice"`
+}
+
+type ConfigStatus struct {
+	HasBootstrapConfig bool `json:"hasBootstrapConfig"`
+	WritableYAML       bool `json:"writableYaml"`
+}
+
+type EventStreamStatus struct {
+	Available bool `json:"available"`
+}
+
+type MCPStatus struct {
+	Enabled       bool   `json:"enabled"`
+	ServiceStatus string `json:"serviceStatus"`
+	Transport     string `json:"transport"`
+	ListenAddress string `json:"listenAddress"`
+	Path          string `json:"path"`
+	AuthMode      string `json:"authMode"`
+	AllowLAN      bool   `json:"allowLan"`
+}
+
+type AgentStatusSummary struct {
+	Total                     int `json:"total"`
+	Enabled                   int `json:"enabled"`
+	Disabled                  int `json:"disabled"`
+	Available                 int `json:"available"`
+	Unavailable               int `json:"unavailable"`
+	DashboardContextSupported int `json:"dashboardContextSupported"`
+	MCPScoped                 int `json:"mcpScoped"`
+}
+
+type VoiceStatusSummary struct {
+	Enabled       bool   `json:"enabled"`
+	ServiceStatus string `json:"serviceStatus"`
+	State         string `json:"state"`
 }
 
 type MessageRequest struct {
@@ -180,6 +228,7 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", server.handleHealth)
+	mux.HandleFunc("/api/v1/status", server.handleStatus)
 	mux.HandleFunc("/api/v1/config", server.handleConfig)
 	mux.HandleFunc("/api/v1/home", server.handleHome)
 	mux.HandleFunc("/api/v1/agents", server.handleAgents)
@@ -232,6 +281,80 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		Version:   s.version,
 		StartedAt: s.started,
 	})
+}
+
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	voiceStatus, err := s.currentVoiceStatus(r.Context())
+	if err != nil {
+		voiceStatus = voiceStatusFromConfig(s.voice, time.Now().UTC())
+	}
+	status := StatusResponse{
+		Status:      s.overallStatus(r.Context()),
+		Version:     s.version,
+		StartedAt:   s.started,
+		Setup:       s.setup,
+		Config:      s.configStatus(),
+		EventStream: EventStreamStatus{Available: true},
+		MCP:         mcpStatusFromConfig(s.cfg.MCP),
+		Agents:      s.agentStatusSummary(r.Context()),
+		Voice: VoiceStatusSummary{
+			Enabled:       voiceStatus.Enabled,
+			ServiceStatus: voiceStatus.ServiceStatus,
+			State:         voiceStatus.State,
+		},
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) overallStatus(ctx context.Context) string {
+	if !s.setup.Complete {
+		return "degraded"
+	}
+	mcpStatus := mcpStatusFromConfig(s.cfg.MCP)
+	if mcpStatus.Enabled && mcpStatus.ServiceStatus != "enabled" {
+		return "degraded"
+	}
+	summary := s.agentStatusSummary(ctx)
+	if summary.Enabled > 0 && summary.Unavailable >= summary.Enabled {
+		return "degraded"
+	}
+	return "ok"
+}
+
+func (s *Server) configStatus() ConfigStatus {
+	ext := strings.ToLower(filepath.Ext(s.configPath))
+	return ConfigStatus{
+		HasBootstrapConfig: strings.TrimSpace(s.configPath) != "",
+		WritableYAML:       ext == ".yaml" || ext == ".yml",
+	}
+}
+
+func mcpStatusFromConfig(cfg config.MCPConfig) MCPStatus {
+	status := MCPStatus{
+		Enabled:       cfg.Enabled,
+		ServiceStatus: "disabled",
+		Transport:     cfg.Transport,
+		ListenAddress: cfg.ListenAddress,
+		Path:          cfg.Path,
+		AuthMode:      cfg.Auth.Mode,
+		AllowLAN:      cfg.AllowLAN,
+	}
+	if !cfg.Enabled {
+		return status
+	}
+	if strings.TrimSpace(cfg.Transport) == "" || strings.TrimSpace(cfg.ListenAddress) == "" || strings.TrimSpace(cfg.Path) == "" {
+		status.ServiceStatus = "misconfigured"
+		return status
+	}
+	if strings.TrimSpace(cfg.Auth.Mode) == "" {
+		status.ServiceStatus = "misconfigured"
+		return status
+	}
+	status.ServiceStatus = "enabled"
+	return status
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
@@ -853,6 +976,10 @@ func (s *Server) agentsWithDiscovery(ctx context.Context, refreshMissing bool) [
 	agents := s.registry.List()
 	s.mu.Unlock()
 	for i := range agents {
+		if configured, ok := s.configuredAgent(agents[i].ID); ok {
+			agents[i].AuthConfigured = configured.Auth != nil
+			agents[i].AuthAvailable = agentAuthAvailable(configured)
+		}
 		var cache agentCardCache
 		var ok bool
 		if refreshMissing {
@@ -865,6 +992,31 @@ func (s *Server) agentsWithDiscovery(ctx context.Context, refreshMissing bool) [
 		}
 	}
 	return agents
+}
+
+func (s *Server) agentStatusSummary(ctx context.Context) AgentStatusSummary {
+	agents := s.agentsWithDiscovery(ctx, false)
+	summary := AgentStatusSummary{Total: len(agents)}
+	for _, agent := range agents {
+		if agent.Enabled {
+			summary.Enabled++
+		} else {
+			summary.Disabled++
+		}
+		if agent.Enabled && agent.CardStatus == "available" && agentAuthAvailableFromPublic(agent) {
+			summary.Available++
+		}
+		if agent.Enabled && agent.CardStatus != "" && agent.CardStatus != "available" {
+			summary.Unavailable++
+		}
+		if agent.DashboardContextSupported {
+			summary.DashboardContextSupported++
+		}
+		if len(agent.MCPScopes) > 0 {
+			summary.MCPScoped++
+		}
+	}
+	return summary
 }
 
 func (s *Server) agentWithDiscovery(agent registry.Agent, cache agentCardCache) registry.Agent {
@@ -1027,10 +1179,19 @@ func agentBearerToken(agent config.AgentConfig) (string, bool) {
 	return token, true
 }
 
+func agentAuthAvailable(agent config.AgentConfig) bool {
+	_, ok := agentBearerToken(agent)
+	return ok
+}
+
+func agentAuthAvailableFromPublic(agent registry.Agent) bool {
+	return !agent.AuthConfigured || agent.AuthAvailable
+}
+
 func withCommonHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Last-Event-ID")
 		w.Header().Set("Cache-Control", "no-store")
 		if r.Method == http.MethodOptions {

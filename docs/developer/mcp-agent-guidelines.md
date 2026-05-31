@@ -44,6 +44,8 @@ On connect:
 
 Do not assume a tool exists because another Jute install had it. Tool and resource availability depends on hub version, scopes, widget permissions, and current dashboard state.
 
+The display may show MCP status in its agent diagnostics panel, but agents should not depend on the browser for MCP discovery. Agents connect directly to the hub MCP endpoint when configured and should continue through A2A when the bridge is disabled.
+
 ## Resources
 
 Initial resources:

@@ -1,12 +1,13 @@
 <script lang="ts">
-  import { ChevronDown, Mic, Plus, VolumeX } from 'lucide-svelte';
+  import { ChevronDown, Info, Mic, Plus, RefreshCw, VolumeX } from 'lucide-svelte';
   import AssistantActivity from '$lib/components/chat/AssistantActivity.svelte';
   import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import { availabilityDescription, availabilityLabel, availabilityTone, getAgentAvailability } from '$lib/agents';
   import Badge from '$lib/components/ui/Badge.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
-  import type { Agent, AgentAvailability, ChatMessage, ChatState, Conversation, VoiceStatus } from '$lib/types';
+  import type { Agent, AgentAvailability, AppStatus, ChatMessage, ChatState, Conversation, VoiceStatus } from '$lib/types';
 
   export let agents: Agent[] = [];
   export let messages: ChatMessage[] = [];
@@ -17,10 +18,12 @@
   export let selectedAgentId = '';
   export let selectedConversationId = '';
   export let selectedAvailability: AgentAvailability = 'unknown';
+  export let status: AppStatus | undefined;
   export let onAgentChange: (agentId: string) => void = () => {};
   export let onConversationSelect: (conversationId: string) => Promise<void> | void = () => {};
   export let onNewConversation: () => Promise<void> | void = () => {};
   export let onManageAgents: () => void = () => {};
+  export let onRefreshAgentCard: (agentId: string) => Promise<void> | void = () => {};
   export let onSubmit: (value: string) => Promise<void> | void = () => {};
   export let onRetry: (message: ChatMessage) => Promise<void> | void = () => {};
   export let onClose: () => void = () => {};
@@ -30,12 +33,17 @@
   type BadgeTone = 'danger' | 'neutral' | 'active';
 
   let statusTone: BadgeTone = 'neutral';
+  let showDiagnostics = false;
+  let refreshingCard = false;
 
   $: selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
   $: agentAvailability = selectedAgent ? getAgentAvailability(selectedAgent) : selectedAvailability;
   $: composerDisabled = agentAvailability !== 'available';
   $: selectedBinding = selectedAgent?.selectedProtocolBinding || selectedAgent?.protocolBinding;
   $: selectedVersion = selectedAgent?.selectedProtocolVersion || '1.0';
+  $: selectedEndpoint = selectedAgent?.selectedEndpointUrl || selectedAgent?.endpointUrl || '';
+  $: mcpStatus = status?.mcp;
+  $: mcpLabel = mcpStatus?.enabled ? `MCP ${mcpStatus.serviceStatus}` : 'MCP disabled';
   $: selectedConversation = conversations.find((conversation) => conversation.id === selectedConversationId);
   $: voiceReady = voice?.serviceStatus === 'ready';
   $: voiceLabel = voiceReady
@@ -53,6 +61,30 @@
       new Date(value)
     );
   }
+
+  function endpointHost(value: string) {
+    if (!value) {
+      return 'not selected';
+    }
+    try {
+      const url = new URL(value);
+      return `${url.host}${url.pathname}`;
+    } catch {
+      return value.replace(/^https?:\/\//, '');
+    }
+  }
+
+  async function refreshCard() {
+    if (!selectedAgent || refreshingCard) {
+      return;
+    }
+    refreshingCard = true;
+    try {
+      await onRefreshAgentCard(selectedAgent.id);
+    } finally {
+      refreshingCard = false;
+    }
+  }
 </script>
 
 <section class="chat-view" aria-label="Agent conversation">
@@ -68,6 +100,7 @@
           {#if selectedAgent.dashboardContextSupported}
             <span>screen context</span>
           {/if}
+          <span>{mcpLabel}</span>
           {#if selectedAgent.authConfigured}
             <span>auth</span>
           {/if}
@@ -94,6 +127,9 @@
           </select>
         </label>
       {/if}
+      <IconButton label="Agent diagnostics" variant="outline" pressed={showDiagnostics} on:click={() => (showDiagnostics = !showDiagnostics)}>
+        <Info size={19} />
+      </IconButton>
       <IconButton
         label={voiceLabel}
         variant="outline"
@@ -135,6 +171,70 @@
       {/if}
     </span>
   </div>
+
+  {#if showDiagnostics}
+    <section class="agent-diagnostics" aria-label="Agent diagnostics">
+      {#if selectedAgent}
+        <div class="agent-diagnostics-grid">
+          <div>
+            <span>Agent Card</span>
+            <strong>{selectedAgent.cardStatus || 'unknown'}</strong>
+            {#if selectedAgent.cardError}
+              <small>{selectedAgent.cardError}</small>
+            {:else if selectedAgent.cardFetchedAt}
+              <small>Fetched {formatConversationTime(selectedAgent.cardFetchedAt)}</small>
+            {/if}
+          </div>
+          <div>
+            <span>A2A binding</span>
+            <strong>{selectedBinding || 'not selected'}</strong>
+            <small>A2A {selectedVersion}</small>
+          </div>
+          <div>
+            <span>Endpoint</span>
+            <strong>{endpointHost(selectedEndpoint)}</strong>
+            <small>{selectedAgent.streaming ? 'streaming supported' : 'blocking only'}</small>
+          </div>
+          <div>
+            <span>Context</span>
+            <strong>{selectedAgent.dashboardContextSupported ? 'dashboard context supported' : 'dashboard context unavailable'}</strong>
+            <small>{selectedAgent.mcpScopes?.length ?? 0} MCP scopes</small>
+          </div>
+          <div>
+            <span>MCP bridge</span>
+            <strong>{mcpStatus?.enabled ? mcpStatus.serviceStatus : 'disabled'}</strong>
+            <small>{mcpStatus?.enabled ? `${mcpStatus.transport} · ${mcpStatus.authMode || 'no auth mode'}` : 'A2A still works without MCP'}</small>
+          </div>
+          <div>
+            <span>Credentials</span>
+            <strong>{selectedAgent.authConfigured ? (selectedAgent.authAvailable === false ? 'missing' : 'configured') : 'not required'}</strong>
+            <small>Credential references stay inside the hub</small>
+          </div>
+        </div>
+        {#if selectedAgent.skills && selectedAgent.skills.length > 0}
+          <div class="agent-diagnostics-skills">
+            <span>Skills</span>
+            <div>
+              {#each selectedAgent.skills as skill}
+                <Badge tone="neutral">{skill.name}</Badge>
+              {/each}
+            </div>
+          </div>
+        {:else}
+          <p class="agent-diagnostics-empty">No Agent Card skills discovered yet.</p>
+        {/if}
+        <div class="agent-diagnostics-actions">
+          <Button size="sm" variant="outline" on:click={refreshCard} disabled={refreshingCard}>
+            <RefreshCw size={15} />
+            <span>{refreshingCard ? 'Refreshing' : 'Refresh Agent Card'}</span>
+          </Button>
+          <Button size="sm" variant="ghost" on:click={onManageAgents}>Manage agents</Button>
+        </div>
+      {:else}
+        <p class="agent-diagnostics-empty">Add an A2A agent to see diagnostics.</p>
+      {/if}
+    </section>
+  {/if}
 
   <div class="chat-body">
     <aside class="conversation-sidebar" aria-label="Conversation history">
