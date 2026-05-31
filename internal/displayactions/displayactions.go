@@ -16,6 +16,16 @@ const (
 	EventNotification = "display.notification"
 	EventFocusWidget  = "display.focus_widget"
 
+	EventVoiceStateChanged           = "voice.state_changed"
+	EventVoiceWakeDetected           = "voice.wake_detected"
+	EventVoiceTranscriptPartial      = "voice.transcript.partial"
+	EventVoiceTranscriptFinal        = "voice.transcript.final"
+	EventConversationStarted         = "conversation.started"
+	EventConversationTurnStarted     = "conversation.turn_started"
+	EventConversationTurnCompleted   = "conversation.turn_completed"
+	EventConversationFollowupStarted = "conversation.followup_started"
+	EventConversationEnded           = "conversation.ended"
+
 	defaultNotificationTTL = 6 * time.Second
 	maxMessageRunes        = 180
 	maxReasonRunes         = 120
@@ -46,6 +56,22 @@ type FocusWidget struct {
 	WidgetInstanceID string `json:"widgetInstanceId"`
 	Reason           string `json:"reason,omitempty"`
 	CreatedAt        string `json:"createdAt"`
+}
+
+type VoiceStatePayload struct {
+	Enabled       bool   `json:"enabled"`
+	Muted         bool   `json:"muted"`
+	State         string `json:"state"`
+	ServiceStatus string `json:"serviceStatus"`
+}
+
+type VoiceEvent struct {
+	ID             string `json:"id"`
+	Type           string `json:"type"`
+	CreatedAt      string `json:"createdAt"`
+	DeviceID       string `json:"deviceId"`
+	ConversationID string `json:"conversationId,omitempty"`
+	Payload        any    `json:"payload"`
 }
 
 type Dispatcher struct {
@@ -110,6 +136,59 @@ func (d *Dispatcher) FocusWidget(widgetInstanceID, reason string) (FocusWidget, 
 	}
 	d.publish(Event{Type: EventFocusWidget, Data: focus})
 	return focus, nil
+}
+
+func (d *Dispatcher) EmitVoiceStateChanged(deviceID string, payload VoiceStatePayload) VoiceEvent {
+	event := VoiceEvent{
+		ID:        newID("voice-state"),
+		Type:      EventVoiceStateChanged,
+		CreatedAt: d.now().UTC().Format(time.RFC3339Nano),
+		DeviceID:  deviceID,
+		Payload:   payload,
+	}
+	d.publish(Event{Type: EventVoiceStateChanged, Data: event})
+	return event
+}
+
+func (d *Dispatcher) EmitVoiceWakeDetected(deviceID, conversationID string) VoiceEvent {
+	event := VoiceEvent{
+		ID:             newID("voice-wake"),
+		Type:           EventVoiceWakeDetected,
+		CreatedAt:      d.now().UTC().Format(time.RFC3339Nano),
+		DeviceID:       deviceID,
+		ConversationID: conversationID,
+		Payload:        map[string]any{},
+	}
+	d.publish(Event{Type: EventVoiceWakeDetected, Data: event})
+	return event
+}
+
+func (d *Dispatcher) EmitVoiceTranscript(eventType, deviceID, conversationID, text string) VoiceEvent {
+	event := VoiceEvent{
+		ID:             newID("voice-transcript"),
+		Type:           eventType,
+		CreatedAt:      d.now().UTC().Format(time.RFC3339Nano),
+		DeviceID:       deviceID,
+		ConversationID: conversationID,
+		Payload: map[string]any{
+			"text": text,
+		},
+	}
+	d.publish(Event{Type: eventType, Data: event})
+	return event
+}
+
+func (d *Dispatcher) EmitConversationEvent(eventType, deviceID, conversationID string, payload any) VoiceEvent {
+	event := VoiceEvent{
+		ID:             newID("conversation-event"),
+		Type:           eventType,
+		CreatedAt:      d.now().UTC().Format(time.RFC3339Nano),
+		DeviceID:       deviceID,
+		ConversationID: conversationID,
+		Payload:        payload,
+	}
+	d.publish(Event{Type: eventType, Data: event})
+	return event
 }
 
 func (d *Dispatcher) publish(event Event) {

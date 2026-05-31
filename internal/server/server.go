@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"fmt"
 	a2aclient "jute-dash/internal/a2a"
 	"jute-dash/internal/config"
 	"jute-dash/internal/displayactions"
@@ -23,7 +24,6 @@ import (
 	_ "jute-dash/widgets/markets"
 	_ "jute-dash/widgets/rss"
 	_ "jute-dash/widgets/weather"
-	"fmt"
 )
 
 type Server struct {
@@ -601,32 +601,60 @@ func (s *Server) currentVoiceStatus(ctx context.Context) (VoiceStatusResponse, e
 }
 
 func (s *Server) setVoiceMuted(ctx context.Context, muted bool) (VoiceStatusResponse, error) {
+	var status VoiceStatusResponse
+	var err error
 	if s.voiceStore != nil {
-		settings, err := s.voiceStore.SetVoiceMuted(ctx, "", muted)
-		if err != nil {
-			return VoiceStatusResponse{}, err
+		var settings store.VoiceSettings
+		settings, err = s.voiceStore.SetVoiceMuted(ctx, "", muted)
+		if err == nil {
+			status = voiceStatusFromSettings(settings)
 		}
-		return voiceStatusFromSettings(settings), nil
+	} else {
+		s.mu.Lock()
+		s.voice.MutedByDefault = muted
+		status = voiceStatusFromConfig(s.voice, time.Now().UTC())
+		s.mu.Unlock()
+	}
+	if err != nil {
+		return VoiceStatusResponse{}, err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.voice.MutedByDefault = muted
-	return voiceStatusFromConfig(s.voice, time.Now().UTC()), nil
+	s.display.EmitVoiceStateChanged("default-display", displayactions.VoiceStatePayload{
+		Enabled:       status.Enabled,
+		Muted:         status.Muted,
+		State:         status.State,
+		ServiceStatus: status.ServiceStatus,
+	})
+
+	return status, nil
 }
 
 func (s *Server) cancelVoice(ctx context.Context) (VoiceStatusResponse, error) {
+	var status VoiceStatusResponse
+	var err error
 	if s.voiceStore != nil {
-		settings, err := s.voiceStore.CancelVoice(ctx, "")
-		if err != nil {
-			return VoiceStatusResponse{}, err
+		var settings store.VoiceSettings
+		settings, err = s.voiceStore.CancelVoice(ctx, "")
+		if err == nil {
+			status = voiceStatusFromSettings(settings)
 		}
-		return voiceStatusFromSettings(settings), nil
+	} else {
+		s.mu.Lock()
+		status = voiceStatusFromConfig(s.voice, time.Now().UTC())
+		s.mu.Unlock()
+	}
+	if err != nil {
+		return VoiceStatusResponse{}, err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return voiceStatusFromConfig(s.voice, time.Now().UTC()), nil
+	s.display.EmitVoiceStateChanged("default-display", displayactions.VoiceStatePayload{
+		Enabled:       status.Enabled,
+		Muted:         status.Muted,
+		State:         status.State,
+		ServiceStatus: status.ServiceStatus,
+	})
+
+	return status, nil
 }
 
 func (s *Server) voiceProviders(ctx context.Context) ([]store.VoiceProviderPack, error) {
