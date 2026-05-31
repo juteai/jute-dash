@@ -15,6 +15,7 @@ Architecture docs:
 - [System Architecture](docs/architecture/system.md)
 - [Configuration And Persistence](docs/architecture/configuration-persistence.md)
 - [Display UX](docs/architecture/display-ux.md)
+- [Visual Customization](docs/architecture/visual-customization.md)
 - [Widgets](docs/architecture/widgets.md)
 - [Widget Skills](docs/architecture/widget-skills.md)
 - [A2A Compatibility](docs/architecture/a2a.md)
@@ -125,8 +126,11 @@ Start here:
 - [Widget Skills](docs/architecture/widget-skills.md)
 - [Widget Developer Guidelines](docs/developer/widget-guidelines.md)
 - [Widget Pack Template](docs/developer/widget-pack-template.md)
+- [Theme Developer Guidelines](docs/developer/theme-guidelines.md)
 
 Widgets must render inside `WidgetFrame`, communicate through the Widget SDK message protocol, and never call the hub API, MCP, A2A agents, camera, microphone, filesystem, or raw network directly.
+
+Themes are contributed as data-only Theme Packs. They can change UI tokens, backgrounds, and widget chrome, but not widget behavior or agent-facing capabilities.
 
 ## Current API Surface
 

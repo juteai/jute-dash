@@ -94,9 +94,12 @@ If your widget is agent-visible, define its `Skill()` return structure to declar
 
 ## 4. UI & Styling Guidelines
 
-- **Theme Compliance**: Adhere strictly to the black-on-white (BOW) and white-on-black (WOB) display design system.
+- **Theme Compliance**: Use Jute Theme Pack tokens rather than hard-coded colors. The default theme is `jute-mono` BOW/WOB, but contributed themes can change the full UI token set.
+- **Widget Chrome**: Design for `solid`, `clear`, `smoked`, `frosted`, and `auto` host chrome modes. Do not assume an opaque widget background.
 - **Hover Micro-Animations**: Use smooth CSS transitions (`transition-all`, `hover:scale-[1.01]`) to make interactions feel premium and responsive.
 - **Grids & Layouts**: Design the Svelte component to fit cleanly inside the standard `WidgetFrame` at all supported grid sizes. Expose a clean empty or loading state when data is unavailable.
+
+Visual customization rules are defined in [Visual Customization](../architecture/visual-customization.md). Widgets should leave frame background, transparency, blur, border, and background blending to `WidgetFrame`.
 
 ---
 
@@ -107,4 +110,5 @@ When contributing a new widget:
 2. **Dynamic Boot**: Blank import your package inside `internal/server/server.go`.
 3. **Dashboard Mapping**: Import and map the component inside `DashboardGrid.svelte`.
 4. **Documentation**: Write a `README.md` inside your widget folder detailing its kind, supported sizes, and custom settings schemas.
-5. **Quality Verification**: Run `make check` to verify Go compilation, backend package tests (`go test ./...`), and SvelteKit type checks (`make web-check`).
+5. **Visual Verification**: Check the widget in light and dark mode, and with at least `solid` and `smoked` widget chrome.
+6. **Quality Verification**: Run `make check` to verify Go compilation, backend package tests (`go test ./...`), and SvelteKit type checks (`make web-check`).

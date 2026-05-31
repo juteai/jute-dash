@@ -8,6 +8,7 @@
 - Define optional MCP Bridge strategy for trusted local agents.
 - Define multi-platform distribution strategy.
 - Define clean-slate display UX and mark the current dashboard as throwaway POC.
+- Define code-editor-style visual customization, Theme Packs, background images, and widget chrome.
 - Define voice and wake-word architecture, provider boundaries, follow-up listening, and conversation UI.
 - Define selectable STT/TTS Voice Provider Packs and TTS playback policy.
 - Define local configuration persistence, first-run setup, YAML/JSON bootstrap/import/export, and SQLite runtime ownership.
@@ -39,6 +40,7 @@
 - Add an MCP Bridge with dashboard resources, Widget Skill resources, safe skill context tools, and low-risk display actions for local agents.
 - Maintain MCP-aware local A2A examples for deterministic fixture testing and optional model-backed Kronk testing.
 - Add settings UI for home name, rooms, tiles, and agent registration.
+- Add Theme Pack loading, `jute-mono` tokens, background config, and widget chrome rendering.
 
 ## Phase 2: Home Context
 

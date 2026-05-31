@@ -11,6 +11,8 @@ There are no sandboxed iframes, postMessage bridges, or third-party runtime sand
 
 All widgets are visually hosted in the dashboard `WidgetFrame` specified in [Display UX](display-ux.md).
 
+Widget frame styling, transparency, and background blending are host-owned display concerns specified in [Visual Customization](visual-customization.md). Widget code should not hard-code opaque surfaces when theme tokens or widget chrome classes are available.
+
 Widgets also declare agent-facing capabilities through [Widget Skills](widget-skills.md). The hub uses this contract to expose widget capabilities through A2A dashboard context and the optional MCP Bridge.
 
 ---
@@ -66,6 +68,7 @@ To align monorepo workspace tooling, a symbolic link `widgets/node_modules -> ..
 The widget system is structured around three key contracts:
 
 - **Frame contract**: every widget renders inside a native Svelte `WidgetFrame` and obeys the dashboard grid layout, sizing coordinates (`x`, `y`, `w`, `h`), and edit-mode rules from [Display UX](display-ux.md).
+- **Visual contract**: every widget uses theme tokens and supports the host's `solid`, `clear`, `smoked`, `frosted`, or `auto` widget chrome modes from [Visual Customization](visual-customization.md).
 - **Backend contract**: widgets implement the `Widget` Go interface in `widgets/widget.go` to provide static metadata, fetching and caching logic, and agent-facing skills.
 - **Agent contract**: widgets expose agent-facing context, prompts, and actions through [Widget Skills](widget-skills.md).
 

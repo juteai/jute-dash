@@ -8,6 +8,8 @@ The canonical clean-slate display UX is specified in [Display UX](display-ux.md)
 
 Runtime resilience, hub disconnects, stale data, no-agent states, and safe user-facing error copy are specified in [Resilience And Error UX](resilience-error-ux.md).
 
+Full-display themes, background images, and widget transparency are specified in [Visual Customization](visual-customization.md).
+
 ## Display Surfaces
 
 Supported surfaces:
@@ -82,15 +84,16 @@ The settings UI should show provider health as `available`, `misconfigured`, `of
 
 Theme settings include:
 
+- Theme Pack ID;
 - color mode: `system`, `light`, `dark`;
-- accent color;
 - density: `comfortable`, `compact`, `large-touch`;
 - motion level: `full`, `reduced`, `none`;
 - contrast level: `standard`, `high`;
 - typography scale;
-- background style.
+- background style;
+- default widget chrome.
 
-Use shadcn-svelte conventions for accessible UI primitives and Tailwind tokens for theme application.
+Use shadcn-svelte conventions for accessible UI primitives and stable Theme Pack tokens for theme application. Theme Packs are repo-contributed data records, similar to code editor themes, and must not contain executable code.
 
 ## Widget Customization
 
@@ -100,6 +103,7 @@ Users can:
 - resize widgets to supported sizes;
 - reorder widgets;
 - configure widget settings;
+- override widget chrome as `solid`, `clear`, `smoked`, `frosted`, or `auto`;
 - grant or revoke widget permissions;
 - decide whether a widget can expose public context to agents.
 

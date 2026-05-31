@@ -16,10 +16,12 @@ Key docs:
 - [System Architecture](docs/architecture/system.md)
 - [Configuration And Persistence](docs/architecture/configuration-persistence.md)
 - [Display UX](docs/architecture/display-ux.md)
+- [Visual Customization](docs/architecture/visual-customization.md)
 - [Resilience And Error UX](docs/architecture/resilience-error-ux.md)
 - [Widgets](docs/architecture/widgets.md)
 - [Widget Skills](docs/architecture/widget-skills.md)
 - [Widget Pack Template](docs/developer/widget-pack-template.md)
+- [Theme Developer Guidelines](docs/developer/theme-guidelines.md)
 - [A2A Compatibility](docs/architecture/a2a.md)
 - [MCP Bridge](docs/architecture/mcp-bridge.md)
 - [Voice And Wake Word Architecture](docs/architecture/voice.md)
@@ -34,7 +36,7 @@ Key docs:
 - Keep the hub headless-capable.
 - Keep the display as a client of the hub API.
 - Treat the current `apps/web` dashboard as throwaway POC UI. Do not preserve current CSS, layout, side panel, tile structure, or styling unless it matches Display UX.
-- Use shadcn-svelte conventions and BOW/WOB light/dark mode from Display UX for future frontend work.
+- Use shadcn-svelte conventions and Theme Pack tokens from Visual Customization for future frontend work.
 - Do not call remote A2A agents directly from the Svelte app.
 - Do not put durable settings only in browser storage.
 - Treat SQLite as runtime truth once persistence exists. Treat YAML/JSON config as bootstrap/import/export.
@@ -58,6 +60,9 @@ Key docs:
 - Never send raw microphone audio to A2A agents.
 - Implement STT/TTS integrations as Voice Provider Packs, not Go dynamic plugins.
 - Keep cloud STT/TTS opt-in and command providers disabled unless explicitly enabled.
+- Treat themes as data-only Theme Packs, not executable plugins.
+- Keep widget transparency host-owned through `WidgetFrame` chrome modes: `solid`, `clear`, `smoked`, `frosted`, and `auto`.
+- Keep background images local-first; do not add remote background URLs for v1.
 
 ## Widget Rules
 
@@ -91,6 +96,7 @@ make dev
 - Update docs before implementing new architecture behavior.
 - Do not leave open-ended decisions in architecture docs.
 - When adding display behavior, update Display UX and do not treat the current POC UI as canonical.
+- When adding visual customization behavior, update Visual Customization and Theme Developer Guidelines.
 - When adding resilience or user-facing error behavior, update Resilience And Error UX.
 - When adding A2A behavior, check the current official A2A docs and update Jute docs with links.
 - When adding MCP behavior, check the current official MCP docs and update MCP Bridge, Widget Skills, and MCP Agent Guidelines.

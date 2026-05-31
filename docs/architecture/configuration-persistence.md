@@ -156,6 +156,7 @@ Before adding a new setting, classify it as one of:
 - `household durable`: shared setting stored in SQLite.
 - `device-profile durable`: per-display or per-headless-node override stored in SQLite.
 - `install record`: widget pack, voice provider pack, adapter, or agent registration metadata.
+- `theme install record`: Theme Pack manifest and validated local assets.
 - `cache`: refreshable data such as Agent Cards, health checks, provider status, and weather snapshots.
 - `secret reference`: environment variable name, keyring key, or OAuth credential reference.
 - `transient UI state`: open menus, drag state, local focus state, and unsaved form edits.
@@ -242,6 +243,8 @@ Setup and settings APIs:
 - `PUT /api/v1/settings/tiles`
 
 The current pre-v1 settings UI uses `GET/PATCH /api/v1/settings/household` for home name, locale, timezone, display theme, weather enablement, location, and units. It also uses `GET/PUT /api/v1/settings/rooms` and `GET/PUT /api/v1/settings/tiles` for the home model shown on the dashboard. Store-backed runs persist these records in SQLite. YAML-backed harness runs write the same records back to the active YAML config.
+
+Future visual customization settings are documented in [Visual Customization](visual-customization.md). Theme selection, color mode, background policy, and default widget chrome are durable display settings. Theme Pack manifests are install records. Per-widget chrome overrides are widget settings.
 
 Future setup and settings APIs:
 

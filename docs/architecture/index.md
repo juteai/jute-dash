@@ -7,6 +7,7 @@ Jute Dash is a local-first home assistant platform built around a headless-capab
 - [System Architecture](system.md): hub, display, API boundaries, persistence, event streams, and deployment modes.
 - [Configuration And Persistence](configuration-persistence.md): local data paths, first-run setup, SQLite runtime store, YAML/JSON bootstrap/import/export, migrations, and secrets.
 - [Display UX](display-ux.md): clean-slate dashboard, widget frame, edit mode, chat mode, brand constants, and first widgets.
+- [Visual Customization](visual-customization.md): Theme Packs, code-editor-style UI themes, background images, widget chrome, and contribution rules.
 - [Resilience And Error UX](resilience-error-ux.md): hub disconnects, stale data, no-agent states, widget failures, safe error copy, and recovery behavior.
 - [Widgets](widgets.md): unified widgets library, Svelte components, Go providers, settings schemas, and dashboard context.
 - [Widget Skills](widget-skills.md): agent-facing widget capabilities, context, prompts, actions, and MCP mapping.
@@ -26,6 +27,7 @@ Jute Dash is a local-first home assistant platform built around a headless-capab
 - The SvelteKit app owns the touch dashboard, customization UI, widget surface, and kiosk/PWA experience.
 - The current Svelte UI is throwaway proof-of-concept work. The clean display UX is defined in [Display UX](display-ux.md).
 - Runtime failures must be visible, calm, and actionable. Do not silently hide hub disconnects, missing agents, stale data, or widget failures.
+- Visual customization uses data-only Theme Packs. Themes can change tokens, backgrounds, and widget chrome, but not layout behavior, permissions, agent context, or executable code.
 - Voice is local-first hybrid: wake word and VAD run locally, while STT/TTS use selectable Voice Provider Packs with local/LAN defaults and optional cloud implementations.
 - Voice Provider Packs are manifest-driven process or network integrations. Do not use Go in-process dynamic plugins for v1.
 - SQLite is runtime truth. YAML config is preferred for bootstrap, import, and export, while JSON remains supported.
@@ -46,6 +48,7 @@ The starter code in this repo is provisional. It establishes the first Go hub sh
 - [ADR 0001: Go Hub With SvelteKit Display](../adr/0001-foundation-stack.md)
 - [Widget Developer Guidelines](../developer/widget-guidelines.md)
 - [Widget Pack Template](../developer/widget-pack-template.md)
+- [Theme Developer Guidelines](../developer/theme-guidelines.md)
 - [A2A Agent Guidelines](../developer/a2a-agent-guidelines.md)
 - [MCP Agent Guidelines](../developer/mcp-agent-guidelines.md)
 - [Voice Developer Guidelines](../developer/voice-guidelines.md)

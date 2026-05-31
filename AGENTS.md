@@ -17,10 +17,12 @@ Start with the architecture docs before making product changes:
 - [System Architecture](docs/architecture/system.md)
 - [Configuration And Persistence](docs/architecture/configuration-persistence.md)
 - [Display UX](docs/architecture/display-ux.md)
+- [Visual Customization](docs/architecture/visual-customization.md)
 - [Resilience And Error UX](docs/architecture/resilience-error-ux.md)
 - [Widgets](docs/architecture/widgets.md)
 - [Widget Skills](docs/architecture/widget-skills.md)
 - [Widget Pack Template](docs/developer/widget-pack-template.md)
+- [Theme Developer Guidelines](docs/developer/theme-guidelines.md)
 - [A2A Compatibility](docs/architecture/a2a.md)
 - [MCP Bridge](docs/architecture/mcp-bridge.md)
 - [Voice And Wake Word Architecture](docs/architecture/voice.md)
@@ -35,7 +37,7 @@ Start with the architecture docs before making product changes:
 - Keep the Go hub headless-capable. Do not put core orchestration only in the webapp.
 - Keep the display as a hub client. Do not call remote agents or smart-home integrations directly from Svelte.
 - Treat the existing `apps/web` dashboard as throwaway POC UI. Do not preserve current CSS, layout, side panel, tile structure, or styling unless it matches [Display UX](docs/architecture/display-ux.md).
-- Use shadcn-svelte conventions and the BOW/WOB display palette from [Display UX](docs/architecture/display-ux.md) for future frontend work.
+- Use shadcn-svelte conventions and Theme Pack tokens from [Visual Customization](docs/architecture/visual-customization.md) for future frontend work.
 - Use the hub API as the source of truth for durable settings, layouts, agents, widgets, and home state.
 - Prefer small, explicit interfaces over broad plugin hooks.
 - Use SQLite for runtime state once persistence is needed; keep YAML/JSON config portable and secret-free.
@@ -70,6 +72,16 @@ Start with the architecture docs before making product changes:
 - Agent-visible widget context, prompts, and actions must come from Widget Skills.
 - Widget-owned agent actions must be invoked through the hub and Widget SDK, not direct MCP-to-iframe calls.
 - New Widget Pack docs, examples, or scaffolds should follow [Widget Pack Template](docs/developer/widget-pack-template.md).
+
+## Visual Customization Rules
+
+- Treat themes as data-only Theme Packs, not executable plugins.
+- Do not add JavaScript, HTML, remote imports, or behavior hooks to themes.
+- Keep the built-in default theme as `jute-mono` unless a new architecture decision replaces it.
+- Use stable theme tokens across app shell, chat, settings, widgets, overlays, and semantic states.
+- Widget transparency is host-owned through `WidgetFrame` chrome modes: `solid`, `clear`, `smoked`, `frosted`, and `auto`.
+- Keep background images local-first; do not add remote background URLs for v1.
+- If theme behavior changes, update [Visual Customization](docs/architecture/visual-customization.md) and [Theme Developer Guidelines](docs/developer/theme-guidelines.md).
 
 ## A2A Rules
 
@@ -154,6 +166,7 @@ make check
 - If A2A behavior changes, update [A2A Compatibility](docs/architecture/a2a.md) and [A2A Agent Guidelines](docs/developer/a2a-agent-guidelines.md).
 - If MCP behavior changes, update [MCP Bridge](docs/architecture/mcp-bridge.md), [Widget Skills](docs/architecture/widget-skills.md), and [MCP Agent Guidelines](docs/developer/mcp-agent-guidelines.md).
 - If display UX behavior changes, update [Display UX](docs/architecture/display-ux.md).
+- If visual customization behavior changes, update [Visual Customization](docs/architecture/visual-customization.md) and [Theme Developer Guidelines](docs/developer/theme-guidelines.md).
 - If resilience or user-facing error behavior changes, update [Resilience And Error UX](docs/architecture/resilience-error-ux.md).
 - If widget behavior changes, update [Widgets](docs/architecture/widgets.md), [Widget Skills](docs/architecture/widget-skills.md), and [Widget Developer Guidelines](docs/developer/widget-guidelines.md).
 - If voice behavior changes, update [Voice And Wake Word Architecture](docs/architecture/voice.md), [Voice Provider Packs](docs/architecture/voice-providers.md), and [Voice Developer Guidelines](docs/developer/voice-guidelines.md).

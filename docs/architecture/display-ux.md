@@ -43,6 +43,8 @@ Palette:
 - reserve non-neutral colors for semantic states such as error, warning, success, active voice, or recording;
 - do not introduce a broad brand color palette in v1.
 
+Visual customization is specified in [Visual Customization](visual-customization.md). The BOW/WOB palette is the default `jute-mono` Theme Pack, not a permanent limit on future contributed themes.
+
 ## Display Modes
 
 The display has three primary modes:
@@ -217,6 +219,7 @@ Frame contract:
 - empty, loading, error, and permission-required states;
 - stale and unavailable states when hub data or dependencies are not fresh;
 - declared overflow behavior.
+- host-owned widget chrome using `solid`, `clear`, `smoked`, `frosted`, or `auto` from [Visual Customization](visual-customization.md).
 
 Overflow modes:
 
@@ -327,6 +330,7 @@ Persist through SQLite:
 - layout profiles;
 - widget instance layout;
 - widget settings;
+- theme selection, background policy, and widget chrome settings;
 - edit-mode saved changes;
 - selected theme mode;
 - default display profile;

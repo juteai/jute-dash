@@ -68,6 +68,20 @@ Jute's widgets are compiled directly into the display application within Jute's 
 - Widgets request and declare permissions in their Go/Svelte codebase.
 - Widgets declare their agent-facing capabilities through safe Widget Skills.
 
+## Theme And Background Security
+
+Theme Packs are data-only visual records. Backgrounds are local-first display assets.
+
+Rules:
+
+- do not load JavaScript, HTML, SVG scripts, remote imports, or executable hooks from Theme Packs;
+- do not allow theme metadata to become A2A or MCP instructions;
+- do not store raw credentials, household secrets, or agent prompt text in Theme Pack metadata;
+- reject remote background image URLs for v1;
+- keep file-based backgrounds inside a hub-managed backgrounds directory;
+- validate local background paths before exposing them to the display;
+- treat user-provided background images as private household media.
+
 ## Agent Context Redaction
 
 The hub builds A2A dashboard context from safe, declared data only.
