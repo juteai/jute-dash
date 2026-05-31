@@ -110,6 +110,7 @@ type HouseholdSettings struct {
 }
 
 var ErrInvalidLayout = errors.New("invalid widget layout")
+var ErrInvalidSettings = errors.New("invalid settings")
 
 func Open(dbPath string) (*Store, error) {
 	if strings.TrimSpace(dbPath) == "" {
@@ -335,6 +336,68 @@ func (s *Store) HouseholdSettings(ctx context.Context) (HouseholdSettings, error
 		Weather: cfg.Weather,
 		Setup:   setup,
 	}, nil
+}
+
+func (s *Store) Rooms(ctx context.Context) ([]config.RoomConfig, error) {
+	return s.loadRooms(ctx)
+}
+
+func (s *Store) SaveRooms(ctx context.Context, rooms []config.RoomConfig) ([]config.RoomConfig, error) {
+	normalized, err := normalizeRooms(rooms)
+	if err != nil {
+		return nil, err
+	}
+	now := nowUTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin save rooms: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM rooms`); err != nil {
+		return nil, fmt.Errorf("clear rooms: %w", err)
+	}
+	if err = seedRooms(ctx, tx, normalized, now); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit rooms: %w", err)
+	}
+	return s.loadRooms(ctx)
+}
+
+func (s *Store) Tiles(ctx context.Context) ([]config.TileConfig, error) {
+	return s.loadTiles(ctx)
+}
+
+func (s *Store) SaveTiles(ctx context.Context, tiles []config.TileConfig) ([]config.TileConfig, error) {
+	normalized, err := normalizeTiles(tiles)
+	if err != nil {
+		return nil, err
+	}
+	now := nowUTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin save tiles: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM tiles`); err != nil {
+		return nil, fmt.Errorf("clear tiles: %w", err)
+	}
+	if err = seedTiles(ctx, tx, normalized, now); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit tiles: %w", err)
+	}
+	return s.loadTiles(ctx)
 }
 
 func (s *Store) SaveHouseholdSettings(ctx context.Context, settings HouseholdSettings) (HouseholdSettings, error) {
@@ -1115,6 +1178,86 @@ func (s *Store) loadTiles(ctx context.Context) ([]config.TileConfig, error) {
 		return nil, fmt.Errorf("iterate tiles: %w", err)
 	}
 	return tiles, nil
+}
+
+func normalizeRooms(rooms []config.RoomConfig) ([]config.RoomConfig, error) {
+	normalized := make([]config.RoomConfig, 0, len(rooms))
+	seen := map[string]struct{}{}
+	for _, room := range rooms {
+		room.ID = normalizeID(room.ID)
+		room.Name = strings.TrimSpace(room.Name)
+		room.Summary = strings.TrimSpace(room.Summary)
+		room.Status = strings.TrimSpace(room.Status)
+		if room.ID == "" {
+			return nil, fmt.Errorf("%w: room id is required", ErrInvalidSettings)
+		}
+		if _, ok := seen[room.ID]; ok {
+			return nil, fmt.Errorf("%w: duplicate room id", ErrInvalidSettings)
+		}
+		if room.Name == "" {
+			return nil, fmt.Errorf("%w: room name is required", ErrInvalidSettings)
+		}
+		seen[room.ID] = struct{}{}
+		normalized = append(normalized, room)
+	}
+	return normalized, nil
+}
+
+func NormalizeRooms(rooms []config.RoomConfig) ([]config.RoomConfig, error) {
+	return normalizeRooms(rooms)
+}
+
+func normalizeTiles(tiles []config.TileConfig) ([]config.TileConfig, error) {
+	normalized := make([]config.TileConfig, 0, len(tiles))
+	seen := map[string]struct{}{}
+	for _, tile := range tiles {
+		tile.ID = normalizeID(tile.ID)
+		tile.Kind = normalizeID(tile.Kind)
+		tile.Label = strings.TrimSpace(tile.Label)
+		tile.Value = strings.TrimSpace(tile.Value)
+		tile.Detail = strings.TrimSpace(tile.Detail)
+		if tile.ID == "" {
+			return nil, fmt.Errorf("%w: tile id is required", ErrInvalidSettings)
+		}
+		if _, ok := seen[tile.ID]; ok {
+			return nil, fmt.Errorf("%w: duplicate tile id", ErrInvalidSettings)
+		}
+		if tile.Kind == "" {
+			return nil, fmt.Errorf("%w: tile kind is required", ErrInvalidSettings)
+		}
+		if tile.Label == "" {
+			return nil, fmt.Errorf("%w: tile label is required", ErrInvalidSettings)
+		}
+		if tile.Value == "" {
+			return nil, fmt.Errorf("%w: tile value is required", ErrInvalidSettings)
+		}
+		seen[tile.ID] = struct{}{}
+		normalized = append(normalized, tile)
+	}
+	return normalized, nil
+}
+
+func NormalizeTiles(tiles []config.TileConfig) ([]config.TileConfig, error) {
+	return normalizeTiles(tiles)
+}
+
+func normalizeID(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if ok {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 func setupStatusForSeed(cfg config.Config, bootstrapProvided bool) SetupStatus {

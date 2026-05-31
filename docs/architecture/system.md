@@ -95,6 +95,8 @@ Initial API families:
 - `/api/v1/conversations`: current multi-turn conversation APIs for typed turns. These are hub projections over the selected A2A agent's task history, with voice and wake-word turns planned to use the same pipeline.
 - `/api/v1/events`: currently a minimal SSE endpoint. Future releases will use it for replayable home, widget, agent, voice, and task updates.
 - `/api/v1/settings/household`: current home, display, and weather settings.
+- `/api/v1/settings/rooms`: current editable room list.
+- `/api/v1/settings/tiles`: current editable dashboard tile list.
 - `/healthz`: existing minimal hub process reachability check.
 
 Runtime error handling and user-facing failure states are specified in [Resilience And Error UX](resilience-error-ux.md).

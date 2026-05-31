@@ -4,35 +4,66 @@
   import Badge from '$lib/components/ui/Badge.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
-  import type { Agent, AppStatus, HouseholdSettings, VoiceStatus } from '$lib/types';
+  import type { Agent, AppStatus, HouseholdSettings, Room, Tile, VoiceStatus } from '$lib/types';
 
   export let agents: Agent[] = [];
   export let status: AppStatus | undefined;
   export let voice: VoiceStatus;
   export let settings: HouseholdSettings | undefined;
+  export let rooms: Room[] = [];
+  export let tiles: Tile[] = [];
   export let issue = '';
   export let saving = false;
+  export let savingRooms = false;
+  export let savingTiles = false;
   export let savingAgent = false;
   export let agentCardUrl = '';
-  export let activeSection: 'household' | 'agents' | 'mcp' | 'voice' | 'about' = 'household';
+  export let activeSection: 'household' | 'rooms' | 'tiles' | 'agents' | 'mcp' | 'voice' | 'about' = 'household';
   export let onClose: () => void = () => {};
   export let onSaveHousehold: (settings: HouseholdSettings) => Promise<void> | void = () => {};
+  export let onSaveRooms: (rooms: Room[]) => Promise<void> | void = () => {};
+  export let onSaveTiles: (tiles: Tile[]) => Promise<void> | void = () => {};
   export let onAddAgent: (cardUrl: string) => Promise<void> | void = () => {};
   export let onToggleAgent: (agent: Agent) => Promise<void> | void = () => {};
   export let onRemoveAgent: (agent: Agent) => Promise<void> | void = () => {};
   export let onRefreshAgentCard: (agentId: string) => Promise<void> | void = () => {};
 
   let draft: HouseholdSettings | undefined;
+  let roomDrafts: Room[] = [];
+  let tileDrafts: Tile[] = [];
+  let lastSettingsJSON = '';
+  let lastRoomsJSON = '';
+  let lastTilesJSON = '';
   let localAgentCardUrl = '';
   let refreshingAgentId = '';
 
-  $: if (settings && (!draft || draft.setup !== settings.setup)) {
-    draft = structuredClone(settings);
+  $: if (settings) {
+    const next = JSON.stringify(settings);
+    if (next !== lastSettingsJSON) {
+      draft = structuredClone(settings);
+      lastSettingsJSON = next;
+    }
   }
   $: localAgentCardUrl = agentCardUrl || localAgentCardUrl;
+  $: {
+    const next = JSON.stringify(rooms);
+    if (next !== lastRoomsJSON) {
+      roomDrafts = structuredClone(rooms);
+      lastRoomsJSON = next;
+    }
+  }
+  $: {
+    const next = JSON.stringify(tiles);
+    if (next !== lastTilesJSON) {
+      tileDrafts = structuredClone(tiles);
+      lastTilesJSON = next;
+    }
+  }
 
   const sections = [
     ['household', 'Household'],
+    ['rooms', 'Rooms'],
+    ['tiles', 'Tiles'],
     ['agents', 'Agents'],
     ['mcp', 'MCP'],
     ['voice', 'Voice'],
@@ -49,6 +80,41 @@
       return;
     }
     await onSaveHousehold(draft);
+  }
+
+  async function saveRoomDrafts() {
+    if (savingRooms) {
+      return;
+    }
+    await onSaveRooms(roomDrafts);
+  }
+
+  async function saveTileDrafts() {
+    if (savingTiles) {
+      return;
+    }
+    await onSaveTiles(tileDrafts);
+  }
+
+  function addRoom() {
+    const id = uniqueId('room', roomDrafts.map((room) => room.id));
+    roomDrafts = [...roomDrafts, { id, name: 'New room', summary: '', status: 'Idle' }];
+  }
+
+  function addTile() {
+    const id = uniqueId('tile', tileDrafts.map((tile) => tile.id));
+    tileDrafts = [...tileDrafts, { id, kind: 'status', label: 'New tile', value: 'Value', detail: '' }];
+  }
+
+  function uniqueId(prefix: string, existing: string[]) {
+    const taken = new Set(existing);
+    for (let index = 1; index < 1000; index += 1) {
+      const candidate = `${prefix}-${index}`;
+      if (!taken.has(candidate)) {
+        return candidate;
+      }
+    }
+    return `${prefix}-${Date.now()}`;
   }
 
   async function addAgent() {
@@ -121,6 +187,10 @@
                 <option value="dark">Dark</option>
               </select>
             </label>
+            <label class="settings-checkbox">
+              <span>Weather</span>
+              <input type="checkbox" bind:checked={draft.weather.enabled} />
+            </label>
             <label>
               <span>Weather location</span>
               <input bind:value={draft.weather.locationName} />
@@ -150,6 +220,15 @@
                 <option value="fahrenheit">Fahrenheit</option>
               </select>
             </label>
+            <label>
+              <span>Wind speed unit</span>
+              <select bind:value={draft.weather.windSpeedUnit}>
+                <option value="kmh">km/h</option>
+                <option value="mph">mph</option>
+                <option value="ms">m/s</option>
+                <option value="kn">knots</option>
+              </select>
+            </label>
           </div>
           <div class="settings-actions">
             <Button on:click={saveHousehold} disabled={saving}>{saving ? 'Saving' : 'Save household'}</Button>
@@ -157,6 +236,82 @@
         {:else}
           <p class="settings-empty">Household settings are loading.</p>
         {/if}
+      {:else if activeSection === 'rooms'}
+        <div class="settings-list">
+          {#if roomDrafts.length === 0}
+            <p class="settings-empty">No rooms configured yet.</p>
+          {:else}
+            {#each roomDrafts as room, index (index)}
+              <article class="settings-list-item settings-editor-item">
+                <div class="settings-form-grid">
+                  <label>
+                    <span>ID</span>
+                    <input bind:value={roomDrafts[index].id} />
+                  </label>
+                  <label>
+                    <span>Name</span>
+                    <input bind:value={roomDrafts[index].name} />
+                  </label>
+                  <label>
+                    <span>Status</span>
+                    <input bind:value={roomDrafts[index].status} />
+                  </label>
+                  <label>
+                    <span>Summary</span>
+                    <input bind:value={roomDrafts[index].summary} />
+                  </label>
+                </div>
+                <div class="settings-item-actions">
+                  <Button size="sm" variant="ghost" on:click={() => (roomDrafts = roomDrafts.filter((_, itemIndex) => itemIndex !== index))}>Remove</Button>
+                </div>
+              </article>
+            {/each}
+          {/if}
+        </div>
+        <div class="settings-actions">
+          <Button variant="outline" on:click={addRoom}>Add room</Button>
+          <Button on:click={saveRoomDrafts} disabled={savingRooms}>{savingRooms ? 'Saving' : 'Save rooms'}</Button>
+        </div>
+      {:else if activeSection === 'tiles'}
+        <div class="settings-list">
+          {#if tileDrafts.length === 0}
+            <p class="settings-empty">No tiles configured yet.</p>
+          {:else}
+            {#each tileDrafts as tile, index (index)}
+              <article class="settings-list-item settings-editor-item">
+                <div class="settings-form-grid">
+                  <label>
+                    <span>ID</span>
+                    <input bind:value={tileDrafts[index].id} />
+                  </label>
+                  <label>
+                    <span>Kind</span>
+                    <input bind:value={tileDrafts[index].kind} />
+                  </label>
+                  <label>
+                    <span>Label</span>
+                    <input bind:value={tileDrafts[index].label} />
+                  </label>
+                  <label>
+                    <span>Value</span>
+                    <input bind:value={tileDrafts[index].value} />
+                  </label>
+                  <label>
+                    <span>Detail</span>
+                    <input bind:value={tileDrafts[index].detail} />
+                  </label>
+                </div>
+                <div class="settings-item-actions">
+                  <Button size="sm" variant="ghost" on:click={() => (tileDrafts = tileDrafts.filter((_, itemIndex) => itemIndex !== index))}>Remove</Button>
+                </div>
+              </article>
+            {/each}
+          {/if}
+        </div>
+        <div class="settings-actions">
+          <Button variant="outline" on:click={addTile}>Add tile</Button>
+          <Button on:click={saveTileDrafts} disabled={savingTiles}>{savingTiles ? 'Saving' : 'Save tiles'}</Button>
+        </div>
       {:else if activeSection === 'agents'}
         <form class="settings-add-form" on:submit|preventDefault={addAgent}>
           <input bind:value={localAgentCardUrl} placeholder="http://127.0.0.1:9797/.well-known/agent-card.json" />

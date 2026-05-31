@@ -63,6 +63,10 @@ type VoiceSettingsStore interface {
 type HouseholdSettingsStore interface {
 	HouseholdSettings(ctx context.Context) (store.HouseholdSettings, error)
 	SaveHouseholdSettings(ctx context.Context, settings store.HouseholdSettings) (store.HouseholdSettings, error)
+	Rooms(ctx context.Context) ([]config.RoomConfig, error)
+	SaveRooms(ctx context.Context, rooms []config.RoomConfig) ([]config.RoomConfig, error)
+	Tiles(ctx context.Context) ([]config.TileConfig, error)
+	SaveTiles(ctx context.Context, tiles []config.TileConfig) ([]config.TileConfig, error)
 }
 
 type HealthResponse struct {
@@ -252,6 +256,8 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 	mux.HandleFunc("/api/v1/events", server.handleEvents)
 	mux.HandleFunc("/api/v1/setup/status", server.handleSetupStatus)
 	mux.HandleFunc("/api/v1/settings/household", server.handleHouseholdSettings)
+	mux.HandleFunc("/api/v1/settings/rooms", server.handleRoomSettings)
+	mux.HandleFunc("/api/v1/settings/tiles", server.handleTileSettings)
 	mux.HandleFunc("/api/v1/widgets/catalog", server.handleWidgetCatalog)
 	mux.HandleFunc("/api/v1/widgets/layout", server.handleWidgetLayout)
 	mux.HandleFunc("/api/v1/widgets/layout/reset", server.handleWidgetLayoutReset)
@@ -554,6 +560,70 @@ func (s *Server) handleHouseholdSettings(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+func (s *Server) handleRoomSettings(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		rooms, err := s.currentRooms(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "room settings are unavailable")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"rooms": rooms})
+	case http.MethodPut:
+		var req struct {
+			Rooms []config.RoomConfig `json:"rooms"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON request body")
+			return
+		}
+		rooms, err := s.saveRooms(r.Context(), req.Rooms)
+		if err != nil {
+			if errors.Is(err, store.ErrInvalidSettings) {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "room settings could not be saved")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"rooms": rooms})
+	default:
+		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut)
+	}
+}
+
+func (s *Server) handleTileSettings(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		tiles, err := s.currentTiles(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "tile settings are unavailable")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"tiles": tiles})
+	case http.MethodPut:
+		var req struct {
+			Tiles []config.TileConfig `json:"tiles"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON request body")
+			return
+		}
+		tiles, err := s.saveTiles(r.Context(), req.Tiles)
+		if err != nil {
+			if errors.Is(err, store.ErrInvalidSettings) {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "tile settings could not be saved")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"tiles": tiles})
+	default:
+		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut)
+	}
+}
+
 func (s *Server) handleWidgetCatalog(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
@@ -777,6 +847,110 @@ func (s *Server) saveHouseholdSettings(ctx context.Context, settings store.House
 	s.setup = store.SetupStatus{Complete: true, Missing: []string{}}
 	s.mu.Unlock()
 	return s.currentHouseholdSettings(ctx)
+}
+
+func (s *Server) currentRooms(ctx context.Context) ([]config.RoomConfig, error) {
+	if s.configPath != "" {
+		cfg := s.currentConfig()
+		return cfg.Rooms, nil
+	}
+	if s.settings != nil {
+		return s.settings.Rooms(ctx)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]config.RoomConfig(nil), s.cfg.Rooms...), nil
+}
+
+func (s *Server) saveRooms(ctx context.Context, rooms []config.RoomConfig) ([]config.RoomConfig, error) {
+	if s.configPath != "" {
+		normalized, err := store.NormalizeRooms(rooms)
+		if err != nil {
+			return nil, err
+		}
+		s.mu.Lock()
+		next := s.cfg
+		next.Rooms = normalized
+		if err := config.SaveYAML(s.configPath, next); err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+		s.cfg = next
+		s.mu.Unlock()
+		return s.currentRooms(ctx)
+	}
+
+	if s.settings != nil {
+		saved, err := s.settings.SaveRooms(ctx, rooms)
+		if err != nil {
+			return nil, err
+		}
+		s.mu.Lock()
+		s.cfg.Rooms = saved
+		s.mu.Unlock()
+		return saved, nil
+	}
+
+	normalized, err := store.NormalizeRooms(rooms)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	s.cfg.Rooms = normalized
+	s.mu.Unlock()
+	return s.currentRooms(ctx)
+}
+
+func (s *Server) currentTiles(ctx context.Context) ([]config.TileConfig, error) {
+	if s.configPath != "" {
+		cfg := s.currentConfig()
+		return cfg.Tiles, nil
+	}
+	if s.settings != nil {
+		return s.settings.Tiles(ctx)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]config.TileConfig(nil), s.cfg.Tiles...), nil
+}
+
+func (s *Server) saveTiles(ctx context.Context, tiles []config.TileConfig) ([]config.TileConfig, error) {
+	if s.configPath != "" {
+		normalized, err := store.NormalizeTiles(tiles)
+		if err != nil {
+			return nil, err
+		}
+		s.mu.Lock()
+		next := s.cfg
+		next.Tiles = normalized
+		if err := config.SaveYAML(s.configPath, next); err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+		s.cfg = next
+		s.mu.Unlock()
+		return s.currentTiles(ctx)
+	}
+
+	if s.settings != nil {
+		saved, err := s.settings.SaveTiles(ctx, tiles)
+		if err != nil {
+			return nil, err
+		}
+		s.mu.Lock()
+		s.cfg.Tiles = saved
+		s.mu.Unlock()
+		return saved, nil
+	}
+
+	normalized, err := store.NormalizeTiles(tiles)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	s.cfg.Tiles = normalized
+	s.mu.Unlock()
+	return s.currentTiles(ctx)
 }
 
 func (s *Server) currentWidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error) {

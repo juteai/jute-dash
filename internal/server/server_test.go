@@ -399,6 +399,147 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	}
 }
 
+func TestRoomSettingsEndpointUpdatesStore(t *testing.T) {
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, runtimeStore)
+
+	payload := bytes.NewBufferString(`{"rooms":[{"id":"Living Room","name":"Living Room","summary":"Downstairs","status":"Comfortable"}]}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/settings/rooms", payload)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Rooms []config.RoomConfig `json:"rooms"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Rooms) != 1 || body.Rooms[0].ID != "living-room" {
+		t.Fatalf("unexpected room response: %+v", body.Rooms)
+	}
+	reloaded, err := runtimeStore.Rooms(context.Background())
+	if err != nil {
+		t.Fatalf("reload rooms: %v", err)
+	}
+	if len(reloaded) != 1 || reloaded[0].Name != "Living Room" {
+		t.Fatalf("rooms did not persist: %+v", reloaded)
+	}
+}
+
+func TestRoomSettingsEndpointRejectsInvalidRooms(t *testing.T) {
+	handler := NewWithSetupStatus(testConfig(), "test", store.SetupStatus{Complete: true})
+	payload := bytes.NewBufferString(`{"rooms":[{"id":"kitchen","name":"Kitchen"},{"id":"kitchen","name":"Duplicate"}]}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/settings/rooms", payload)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "duplicate room id") {
+		t.Fatalf("unexpected error response: %s", rec.Body.String())
+	}
+}
+
+func TestTileSettingsEndpointUpdatesStore(t *testing.T) {
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, runtimeStore)
+
+	payload := bytes.NewBufferString(`{"tiles":[{"id":"Front Door","kind":"security","label":"Front door","value":"Locked","detail":"Last checked now"}]}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/settings/tiles", payload)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Tiles []config.TileConfig `json:"tiles"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Tiles) != 1 || body.Tiles[0].ID != "front-door" || body.Tiles[0].Kind != "security" {
+		t.Fatalf("unexpected tile response: %+v", body.Tiles)
+	}
+	reloaded, err := runtimeStore.Tiles(context.Background())
+	if err != nil {
+		t.Fatalf("reload tiles: %v", err)
+	}
+	if len(reloaded) != 1 || reloaded[0].Value != "Locked" {
+		t.Fatalf("tiles did not persist: %+v", reloaded)
+	}
+}
+
+func TestTileSettingsEndpointRejectsInvalidTiles(t *testing.T) {
+	handler := NewWithSetupStatus(testConfig(), "test", store.SetupStatus{Complete: true})
+	payload := bytes.NewBufferString(`{"tiles":[{"id":"temperature","kind":"status","label":"Temperature","value":""}]}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/settings/tiles", payload)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "tile value is required") {
+		t.Fatalf("unexpected error response: %s", rec.Body.String())
+	}
+}
+
+func TestRoomAndTileSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "jute.yaml")
+	cfg := testConfig()
+	if err := config.SaveYAML(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg, "test", store.SetupStatus{Complete: true}, nil, configPath)
+
+	roomReq := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/settings/rooms",
+		bytes.NewBufferString(`{"rooms":[{"id":"Office","name":"Office","summary":"Work room","status":"Quiet"}]}`),
+	)
+	roomRec := httptest.NewRecorder()
+	handler.ServeHTTP(roomRec, roomReq)
+	if roomRec.Code != http.StatusOK {
+		t.Fatalf("expected room status 200, got %d: %s", roomRec.Code, roomRec.Body.String())
+	}
+
+	tileReq := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/settings/tiles",
+		bytes.NewBufferString(`{"tiles":[{"id":"office-temp","kind":"climate","label":"Office","value":"20 C","detail":"Comfortable"}]}`),
+	)
+	tileRec := httptest.NewRecorder()
+	handler.ServeHTTP(tileRec, tileReq)
+	if tileRec.Code != http.StatusOK {
+		t.Fatalf("expected tile status 200, got %d: %s", tileRec.Code, tileRec.Body.String())
+	}
+
+	reloaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if len(reloaded.Rooms) != 1 || reloaded.Rooms[0].ID != "office" {
+		t.Fatalf("unexpected saved rooms: %+v", reloaded.Rooms)
+	}
+	if len(reloaded.Tiles) != 1 || reloaded.Tiles[0].ID != "office-temp" {
+		t.Fatalf("unexpected saved tiles: %+v", reloaded.Tiles)
+	}
+	if len(reloaded.Agents) != 2 {
+		t.Fatalf("agents were not preserved: %+v", reloaded.Agents)
+	}
+}
+
 func TestStatusEndpointReturnsSafeSummary(t *testing.T) {
 	cfg := testConfig()
 	cfg.MCP.Enabled = true

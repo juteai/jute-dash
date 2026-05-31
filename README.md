@@ -142,6 +142,10 @@ Widgets must render inside `WidgetFrame`, communicate through the Widget SDK mes
 - `GET /api/v1/setup/status`
 - `GET /api/v1/settings/household`
 - `PATCH /api/v1/settings/household`
+- `GET /api/v1/settings/rooms`
+- `PUT /api/v1/settings/rooms`
+- `GET /api/v1/settings/tiles`
+- `PUT /api/v1/settings/tiles`
 - `GET /api/v1/widgets/catalog`
 - `GET /api/v1/widgets/layout`
 - `PUT /api/v1/widgets/layout`
@@ -177,7 +181,7 @@ The project tracks A2A as an external protocol rather than inventing a custom ag
 
 ## Configuration Direction
 
-Runtime settings generally live in SQLite. YAML config is the preferred human-authored bootstrap/import/export format, and JSON remains supported for machine-friendly compatibility. During the pre-v1 settings slice, household/display/weather settings save to SQLite in store-backed mode and back to the active YAML config in harness mode. Configured agents are also saved back to the active YAML config so local users can add, disable, and remove A2A agents without editing SQLite directly. The hub owns durable settings, and public config responses are redacted projections.
+Runtime settings generally live in SQLite. YAML config is the preferred human-authored bootstrap/import/export format, and JSON remains supported for machine-friendly compatibility. During the pre-v1 settings slice, household/display/weather, rooms, and dashboard tiles save to SQLite in store-backed mode and back to the active YAML config in harness mode. Configured agents are also saved back to the active YAML config so local users can add, disable, and remove A2A agents without editing SQLite directly. The hub owns durable settings, and public config responses are redacted projections.
 
 `JUTE_HOME` is the planned data root. The runtime database defaults to `$JUTE_HOME/jute.db`, with Docker using `/data` and systemd using `/var/lib/jute`.
 

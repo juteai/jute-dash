@@ -203,6 +203,14 @@ export type HouseholdSettings = {
   };
 };
 
+export type RoomsSettings = {
+  rooms: Room[];
+};
+
+export type TilesSettings = {
+  tiles: Tile[];
+};
+
 export type HomeState = {
   generatedAt: string;
   home: HomeConfig;

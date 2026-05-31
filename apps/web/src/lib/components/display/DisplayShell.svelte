@@ -18,11 +18,15 @@
     getConversations,
     getDashboard,
     getHouseholdSettings,
+    getRoomSettings,
+    getTileSettings,
     getWidgetCatalog,
     muteVoice,
     refreshAgentCard,
     resetWidgetLayout,
     saveHouseholdSettings,
+    saveRoomSettings,
+    saveTileSettings,
     saveWidgetLayout,
     sendConversationTurn,
     sendConversationTurnStream,
@@ -44,6 +48,8 @@
     DisplayNotification,
     DisplayMode,
     HouseholdSettings,
+    Room,
+    Tile,
     UserFacingIssue,
     WidgetCatalogItem,
     WidgetInstance,
@@ -78,9 +84,13 @@
   let agentIssue = '';
   let savingAgent = false;
   let householdSettings: HouseholdSettings | undefined;
+  let roomSettings: Room[] = [];
+  let tileSettings: Tile[] = [];
   let settingsIssue = '';
   let savingSettings = false;
-  let activeSettingsSection: 'household' | 'agents' | 'mcp' | 'voice' | 'about' = 'household';
+  let savingRooms = false;
+  let savingTiles = false;
+  let activeSettingsSection: 'household' | 'rooms' | 'tiles' | 'agents' | 'mcp' | 'voice' | 'about' = 'household';
   let mounted = false;
   let historyAgentId = '';
   let voiceIssue = '';
@@ -331,19 +341,23 @@
     activeSettingsSection = section;
     showAgentManager = true;
     settingsIssue = '';
-    if (householdSettings) {
-      return;
-    }
     try {
-      householdSettings = await getHouseholdSettings(fetch);
+      const [household, rooms, tiles] = await Promise.all([
+        getHouseholdSettings(fetch),
+        getRoomSettings(fetch),
+        getTileSettings(fetch)
+      ]);
+      householdSettings = household;
+      roomSettings = rooms;
+      tileSettings = tiles;
       markConnected();
     } catch {
-      settingsIssue = 'Household settings are unavailable. Check that the hub is running.';
+      settingsIssue = 'Settings are unavailable. Check that the hub is running.';
       markIssue('degraded', {
         code: 'settings_unavailable',
         severity: 'warning',
         title: 'Settings unavailable',
-        message: 'Jute could not load household settings.'
+        message: 'Jute could not load editable settings.'
       });
     }
   }
@@ -368,6 +382,52 @@
       });
     } finally {
       savingSettings = false;
+    }
+  }
+
+  async function saveRooms(rooms: Room[]) {
+    if (savingRooms) {
+      return;
+    }
+    savingRooms = true;
+    settingsIssue = '';
+    try {
+      roomSettings = await saveRoomSettings(fetch, rooms);
+      dashboard = await getDashboard(fetch);
+      markConnected();
+    } catch {
+      settingsIssue = 'Rooms were not saved. Check required fields and try again.';
+      markIssue('degraded', {
+        code: 'rooms_save_failed',
+        severity: 'warning',
+        title: 'Rooms not saved',
+        message: 'Jute could not save room settings.'
+      });
+    } finally {
+      savingRooms = false;
+    }
+  }
+
+  async function saveTiles(tiles: Tile[]) {
+    if (savingTiles) {
+      return;
+    }
+    savingTiles = true;
+    settingsIssue = '';
+    try {
+      tileSettings = await saveTileSettings(fetch, tiles);
+      dashboard = await getDashboard(fetch);
+      markConnected();
+    } catch {
+      settingsIssue = 'Tiles were not saved. Check required fields and try again.';
+      markIssue('degraded', {
+        code: 'tiles_save_failed',
+        severity: 'warning',
+        title: 'Tiles not saved',
+        message: 'Jute could not save dashboard tile settings.'
+      });
+    } finally {
+      savingTiles = false;
     }
   }
 
@@ -1200,13 +1260,19 @@
         status={dashboard.status}
         voice={dashboard.voice}
         settings={householdSettings}
+        rooms={roomSettings}
+        tiles={tileSettings}
         issue={settingsIssue}
         saving={savingSettings}
+        {savingRooms}
+        {savingTiles}
         {savingAgent}
         {agentCardUrl}
         bind:activeSection={activeSettingsSection}
         onClose={() => (showAgentManager = false)}
         onSaveHousehold={saveSettings}
+        onSaveRooms={saveRooms}
+        onSaveTiles={saveTiles}
         onAddAgent={(cardUrl) => {
           agentCardUrl = cardUrl;
           return saveAgentFromCard();

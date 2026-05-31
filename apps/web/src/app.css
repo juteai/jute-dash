@@ -1180,6 +1180,23 @@ select {
   padding: 0 10px;
 }
 
+.settings-form-grid input[type='checkbox'] {
+  min-height: 22px;
+  width: 22px;
+}
+
+.settings-checkbox {
+  align-content: center;
+}
+
+.settings-editor-item {
+  align-items: flex-start;
+}
+
+.settings-editor-item .settings-form-grid {
+  flex: 1;
+}
+
 .settings-actions {
   justify-content: flex-end;
   margin-top: 12px;

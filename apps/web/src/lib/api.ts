@@ -9,6 +9,10 @@ import type {
   HomeState,
   MessageResponse,
   PublicConfig,
+  Room,
+  RoomsSettings,
+  Tile,
+  TilesSettings,
   UserFacingIssue,
   VoiceProvider,
   VoiceStatus,
@@ -91,6 +95,48 @@ export async function saveHouseholdSettings(
     throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
   }
   return response.json() as Promise<HouseholdSettings>;
+}
+
+export async function getRoomSettings(fetcher: typeof fetch): Promise<Room[]> {
+  const response = await getJSON<RoomsSettings>(fetcher, '/api/v1/settings/rooms');
+  return response.rooms;
+}
+
+export async function saveRoomSettings(fetcher: typeof fetch, rooms: Room[]): Promise<Room[]> {
+  const response = await fetcher(`${API_BASE}/api/v1/settings/rooms`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ rooms })
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+  }
+  const saved = (await response.json()) as RoomsSettings;
+  return saved.rooms;
+}
+
+export async function getTileSettings(fetcher: typeof fetch): Promise<Tile[]> {
+  const response = await getJSON<TilesSettings>(fetcher, '/api/v1/settings/tiles');
+  return response.tiles;
+}
+
+export async function saveTileSettings(fetcher: typeof fetch, tiles: Tile[]): Promise<Tile[]> {
+  const response = await fetcher(`${API_BASE}/api/v1/settings/tiles`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ tiles })
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+  }
+  const saved = (await response.json()) as TilesSettings;
+  return saved.tiles;
 }
 
 export async function getConversations(fetcher: typeof fetch, agentId: string): Promise<Conversation[]> {

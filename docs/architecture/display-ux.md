@@ -105,13 +105,15 @@ The pre-v1 settings surface is an in-app panel opened from the dashboard header,
 
 Initial sections:
 
-- `Household`: home name, timezone, locale, theme, and weather location;
+- `Household`: home name, timezone, locale, theme, weather enablement, location, coordinates, and units;
+- `Rooms`: editable room IDs, names, summaries, and simple status text;
+- `Tiles`: editable dashboard tile IDs, kinds, labels, values, and details;
 - `Agents`: add an agent by Agent Card URL, enable or disable agents, remove agents, and refresh Agent Cards;
 - `MCP`: read-only bridge status and startup configuration summary;
 - `Voice`: read-only voice/provider status until provider selection is implemented;
 - `About`: version, setup, config mode, and enabled-agent summary.
 
-Settings writes go through the hub. Browser storage is not durable settings storage.
+Settings writes go through the hub. Store-backed runs persist to SQLite. YAML-backed local harnesses persist the same records to the active YAML config for easy developer iteration. Browser storage is not durable settings storage.
 
 Responsive behavior:
 

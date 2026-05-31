@@ -236,8 +236,12 @@ Setup and settings APIs:
 - `GET /api/v1/setup/status`
 - `GET /api/v1/settings/household`
 - `PATCH /api/v1/settings/household`
+- `GET /api/v1/settings/rooms`
+- `PUT /api/v1/settings/rooms`
+- `GET /api/v1/settings/tiles`
+- `PUT /api/v1/settings/tiles`
 
-The current pre-v1 settings UI uses `GET/PATCH /api/v1/settings/household` for home name, locale, timezone, display theme, and weather location. Store-backed runs persist these fields in SQLite. YAML-backed harness runs write the same fields back to the active YAML config.
+The current pre-v1 settings UI uses `GET/PATCH /api/v1/settings/household` for home name, locale, timezone, display theme, weather enablement, location, and units. It also uses `GET/PUT /api/v1/settings/rooms` and `GET/PUT /api/v1/settings/tiles` for the home model shown on the dashboard. Store-backed runs persist these records in SQLite. YAML-backed harness runs write the same records back to the active YAML config.
 
 Future setup and settings APIs:
 
