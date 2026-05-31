@@ -20,7 +20,21 @@
   },
   "display": {
     "theme": "system",
-    "accentColor": "teal",
+    "colorMode": "system",
+    "themeId": "jute-mono",
+    "density": "comfortable",
+    "motion": "full",
+    "background": {
+      "kind": "theme",
+      "value": "",
+      "fit": "cover",
+      "position": "center",
+      "overlay": "none"
+    },
+    "widgetChrome": {
+      "default": "solid"
+    },
+    "accentColor": "neutral",
     "idleMode": "ambient"
   },
   "weather": {
@@ -136,7 +150,10 @@
         "y": 0,
         "w": 2,
         "h": 1,
-        "visible": true
+        "visible": true,
+        "settings": {
+          "chrome": "clear"
+        }
       },
       {
         "id": "weather-widget",

@@ -6,9 +6,29 @@ export type HomeConfig = {
 
 export type DisplayConfig = {
   theme: string;
+  colorMode: 'system' | 'light' | 'dark' | string;
+  themeId: string;
+  density: 'comfortable' | 'compact' | 'large-touch' | string;
+  motion: 'full' | 'reduced' | 'none' | string;
+  background: DisplayBackground;
+  widgetChrome: DisplayWidgetChrome;
   accentColor: string;
   idleMode: string;
 };
+
+export type DisplayBackground = {
+  kind: 'theme' | 'color' | 'asset' | 'file' | string;
+  value: string;
+  fit: 'cover' | 'contain' | 'tile' | string;
+  position: string;
+  overlay: 'none' | 'dim' | 'smoked' | 'frosted' | string;
+};
+
+export type DisplayWidgetChrome = {
+  default: WidgetChrome;
+};
+
+export type WidgetChrome = 'solid' | 'clear' | 'smoked' | 'frosted' | 'auto' | string;
 
 export type Agent = {
   id: string;

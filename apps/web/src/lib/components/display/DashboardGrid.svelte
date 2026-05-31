@@ -7,6 +7,7 @@
   import WeatherWidget from '$widgets/weather/WeatherWidget.svelte';
   import RSSWidget from '$widgets/rss/RSSWidget.svelte';
   import MarketsWidget from '$widgets/markets/MarketsWidget.svelte';
+  import { resolveWidgetChrome } from '$lib/themes';
   import type { Agent, AgentAvailability, ChatMessage, DashboardData, WidgetInstance } from '$lib/types';
 
   export let data: DashboardData;
@@ -111,6 +112,7 @@
         {widget}
         {editMode}
         focused={focusedWidgetId === widget.id}
+        chrome={resolveWidgetChrome(widget, data.config.display)}
         overflow={widget.kind === 'chat-history' ? 'scroll' : 'clip'}
         onMoveStart={(event) => startDrag(widget, 'move', event)}
         onResizeStart={(event) => startDrag(widget, 'resize', event)}

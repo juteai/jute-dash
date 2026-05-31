@@ -39,7 +39,7 @@ func TestInitializeMigratesAndSeedsEmptyDB(t *testing.T) {
 		t.Fatalf("expected home.name missing field, got %+v", result.Setup.Missing)
 	}
 
-	assertCount(t, st, "schema_migrations", 2)
+	assertCount(t, st, "schema_migrations", 3)
 	assertCount(t, st, "household_settings", 1)
 	assertCount(t, st, "device_profiles", 1)
 	assertCount(t, st, "layout_profiles", 1)
@@ -259,6 +259,48 @@ tiles: []
 	}
 	if len(result.Config.Agents) != 0 {
 		t.Fatalf("store runtime config should not own YAML agents, got %+v", result.Config.Agents)
+	}
+}
+
+func TestDisplayCustomizationSeededFromBootstrap(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+
+	bootstrap := config.Default()
+	bootstrap.Display.ColorMode = "dark"
+	bootstrap.Display.Theme = "dark"
+	bootstrap.Display.ThemeID = "jute-mono"
+	bootstrap.Display.Density = "large-touch"
+	bootstrap.Display.Motion = "reduced"
+	bootstrap.Display.Background = config.DisplayBackground{
+		Kind:     "asset",
+		Value:    "/backgrounds/kitchen.jpg",
+		Fit:      "cover",
+		Position: "center",
+		Overlay:  "smoked",
+	}
+	bootstrap.Display.WidgetChrome = config.DisplayWidgetChrome{Default: "frosted"}
+
+	result, err := st.Initialize(context.Background(), bootstrap, true)
+	if err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	if result.Config.Display.ColorMode != "dark" || result.Config.Display.Theme != "dark" || result.Config.Display.Density != "large-touch" {
+		t.Fatalf("unexpected display settings: %+v", result.Config.Display)
+	}
+	if result.Config.Display.Background.Value != "/backgrounds/kitchen.jpg" || result.Config.Display.Background.Overlay != "smoked" {
+		t.Fatalf("unexpected background settings: %+v", result.Config.Display.Background)
+	}
+	if result.Config.Display.WidgetChrome.Default != "frosted" {
+		t.Fatalf("unexpected widget chrome: %+v", result.Config.Display.WidgetChrome)
+	}
+
+	settings, err := st.HouseholdSettings(context.Background())
+	if err != nil {
+		t.Fatalf("HouseholdSettings() error = %v", err)
+	}
+	if settings.Display.WidgetChrome.Default != "frosted" {
+		t.Fatalf("household settings did not include widget chrome: %+v", settings.Display)
 	}
 }
 

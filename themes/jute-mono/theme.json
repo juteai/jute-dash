@@ -1,0 +1,44 @@
+{
+  "id": "jute-mono",
+  "name": "Jute Mono",
+  "version": "0.1.0",
+  "description": "The default black-on-white and white-on-black Jute Dash theme.",
+  "modes": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#000000",
+      "surface": "#ffffff",
+      "surfaceMuted": "#f7f7f7",
+      "surfaceStrong": "#eeeeee",
+      "border": "#d8d8d8",
+      "borderStrong": "#000000",
+      "muted": "#5f5f5f",
+      "mutedStrong": "#2d2d2d",
+      "inverse": "#ffffff",
+      "accent": "#111111",
+      "danger": "#b42318",
+      "warning": "#8a5a00",
+      "success": "#147a3d",
+      "active": "#155eef",
+      "focus": "#000000"
+    },
+    "dark": {
+      "background": "#000000",
+      "foreground": "#ffffff",
+      "surface": "#000000",
+      "surfaceMuted": "#111111",
+      "surfaceStrong": "#1f1f1f",
+      "border": "#333333",
+      "borderStrong": "#ffffff",
+      "muted": "#a6a6a6",
+      "mutedStrong": "#dddddd",
+      "inverse": "#000000",
+      "accent": "#ffffff",
+      "danger": "#ffb4ab",
+      "warning": "#ffd28a",
+      "success": "#8de6ad",
+      "active": "#adc6ff",
+      "focus": "#ffffff"
+    }
+  }
+}

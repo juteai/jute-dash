@@ -18,7 +18,19 @@ mcp:
 
 display:
   theme: system
-  accent-color: teal
+  color-mode: system
+  theme-id: jute-mono
+  density: comfortable
+  motion: full
+  background:
+    kind: theme
+    value: ""
+    fit: cover
+    position: center
+    overlay: none
+  widget-chrome:
+    default: solid
+  accent-color: neutral
   idle-mode: ambient
 
 weather:

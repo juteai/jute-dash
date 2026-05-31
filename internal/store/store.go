@@ -202,6 +202,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 	migrations := []migration{
 		{version: 1, name: "initial runtime settings", sql: initialMigrationSQL},
 		{version: 2, name: "voice settings runtime state", sql: voiceSettingsMigrationSQL},
+		{version: 3, name: "visual customization settings", sql: visualCustomizationMigrationSQL},
 	}
 	for _, item := range migrations {
 		applied, err := s.migrationApplied(ctx, item.version)
@@ -234,19 +235,34 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 	cfg := config.Default()
 
 	var setupCompleted int
+	var backgroundJSON, widgetChromeJSON string
 	if err := s.db.QueryRowContext(ctx, `
-SELECT name, timezone, locale, display_theme, display_accent_color, display_idle_mode, setup_completed
+SELECT name, timezone, locale, display_theme, display_color_mode, display_theme_id,
+       display_density, display_motion, display_background_json, display_widget_chrome_json,
+       display_accent_color, display_idle_mode, setup_completed
 FROM household_settings
 WHERE id = ?`, defaultHouseholdID).Scan(
 		&cfg.Home.Name,
 		&cfg.Home.Timezone,
 		&cfg.Home.Locale,
 		&cfg.Display.Theme,
+		&cfg.Display.ColorMode,
+		&cfg.Display.ThemeID,
+		&cfg.Display.Density,
+		&cfg.Display.Motion,
+		&backgroundJSON,
+		&widgetChromeJSON,
 		&cfg.Display.AccentColor,
 		&cfg.Display.IdleMode,
 		&setupCompleted,
 	); err != nil {
 		return config.Config{}, fmt.Errorf("load household settings: %w", err)
+	}
+	if err := decodeJSONSetting(backgroundJSON, &cfg.Display.Background); err != nil {
+		return config.Config{}, fmt.Errorf("decode display background: %w", err)
+	}
+	if err := decodeJSONSetting(widgetChromeJSON, &cfg.Display.WidgetChrome); err != nil {
+		return config.Config{}, fmt.Errorf("decode display widget chrome: %w", err)
 	}
 
 	if err := s.db.QueryRowContext(ctx, `
@@ -296,6 +312,7 @@ WHERE id = ?`, defaultHouseholdID).Scan(
 	cfg.Agents = nil
 	cfg.Rooms = rooms
 	cfg.Tiles = tiles
+	config.ApplyDefaults(&cfg)
 	if err := config.Validate(cfg); err != nil {
 		return config.Config{}, fmt.Errorf("validate store config: %w", err)
 	}
@@ -408,8 +425,17 @@ func (s *Store) SaveHouseholdSettings(ctx context.Context, settings HouseholdSet
 	cfg.Home = settings.Home
 	cfg.Display = settings.Display
 	cfg.Weather = settings.Weather
+	config.ApplyDefaults(&cfg)
 	if err := config.Validate(cfg); err != nil {
 		return HouseholdSettings{}, err
+	}
+	backgroundJSON, err := jsonString(cfg.Display.Background)
+	if err != nil {
+		return HouseholdSettings{}, fmt.Errorf("encode display background: %w", err)
+	}
+	widgetChromeJSON, err := jsonString(cfg.Display.WidgetChrome)
+	if err != nil {
+		return HouseholdSettings{}, fmt.Errorf("encode display widget chrome: %w", err)
 	}
 
 	now := nowUTC()
@@ -425,13 +451,21 @@ func (s *Store) SaveHouseholdSettings(ctx context.Context, settings HouseholdSet
 
 	if _, err = tx.ExecContext(ctx, `
 UPDATE household_settings
-SET name = ?, timezone = ?, locale = ?, display_theme = ?, display_accent_color = ?, display_idle_mode = ?,
+SET name = ?, timezone = ?, locale = ?, display_theme = ?, display_color_mode = ?, display_theme_id = ?,
+    display_density = ?, display_motion = ?, display_background_json = ?, display_widget_chrome_json = ?,
+    display_accent_color = ?, display_idle_mode = ?,
     setup_completed = 1, updated_at = ?
 WHERE id = ?`,
 		cfg.Home.Name,
 		cfg.Home.Timezone,
 		cfg.Home.Locale,
 		cfg.Display.Theme,
+		cfg.Display.ColorMode,
+		cfg.Display.ThemeID,
+		cfg.Display.Density,
+		cfg.Display.Motion,
+		backgroundJSON,
+		widgetChromeJSON,
 		cfg.Display.AccentColor,
 		cfg.Display.IdleMode,
 		now,
@@ -851,6 +885,7 @@ func (s *Store) isSeeded(ctx context.Context) (bool, error) {
 }
 
 func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided bool) error {
+	config.ApplyDefaults(&cfg)
 	if err := config.Validate(cfg); err != nil {
 		return fmt.Errorf("validate seed config: %w", err)
 	}
@@ -870,14 +905,22 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 
 	if _, err = tx.ExecContext(ctx, `
 INSERT INTO household_settings (
-  id, name, timezone, locale, display_theme, display_accent_color, display_idle_mode,
+  id, name, timezone, locale, display_theme, display_color_mode, display_theme_id,
+  display_density, display_motion, display_background_json, display_widget_chrome_json,
+  display_accent_color, display_idle_mode,
   setup_completed, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		defaultHouseholdID,
 		cfg.Home.Name,
 		cfg.Home.Timezone,
 		cfg.Home.Locale,
 		cfg.Display.Theme,
+		cfg.Display.ColorMode,
+		cfg.Display.ThemeID,
+		cfg.Display.Density,
+		cfg.Display.Motion,
+		mustJSONString(cfg.Display.Background),
+		mustJSONString(cfg.Display.WidgetChrome),
 		cfg.Display.AccentColor,
 		cfg.Display.IdleMode,
 		boolToInt(setup.Complete),
@@ -1304,6 +1347,21 @@ func jsonString(value any) (string, error) {
 	return string(bytes), nil
 }
 
+func mustJSONString(value any) string {
+	result, err := jsonString(value)
+	if err != nil {
+		panic(err)
+	}
+	return result
+}
+
+func decodeJSONSetting(raw string, target any) error {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	return json.Unmarshal([]byte(raw), target)
+}
+
 func boolToInt(value bool) int {
 	if value {
 		return 1
@@ -1481,4 +1539,17 @@ ALTER TABLE voice_settings ADD COLUMN enabled INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE voice_settings ADD COLUMN muted INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE voice_settings ADD COLUMN preferred_agent_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE voice_settings ADD COLUMN last_state_updated_at TEXT NOT NULL DEFAULT '';
+`
+
+const visualCustomizationMigrationSQL = `
+ALTER TABLE household_settings ADD COLUMN display_color_mode TEXT NOT NULL DEFAULT 'system';
+ALTER TABLE household_settings ADD COLUMN display_theme_id TEXT NOT NULL DEFAULT 'jute-mono';
+ALTER TABLE household_settings ADD COLUMN display_density TEXT NOT NULL DEFAULT 'comfortable';
+ALTER TABLE household_settings ADD COLUMN display_motion TEXT NOT NULL DEFAULT 'full';
+ALTER TABLE household_settings ADD COLUMN display_background_json TEXT NOT NULL DEFAULT '{"kind":"theme","value":"","fit":"cover","position":"center","overlay":"none"}';
+ALTER TABLE household_settings ADD COLUMN display_widget_chrome_json TEXT NOT NULL DEFAULT '{"default":"solid"}';
+UPDATE household_settings
+SET display_color_mode = display_theme
+WHERE display_color_mode = 'system'
+  AND display_theme IN ('system', 'light', 'dark');
 `

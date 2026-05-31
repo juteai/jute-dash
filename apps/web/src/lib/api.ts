@@ -352,7 +352,21 @@ export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {
     },
     display: {
       theme: 'system',
-      accentColor: 'teal',
+      colorMode: 'system',
+      themeId: 'jute-mono',
+      density: 'comfortable',
+      motion: 'full',
+      background: {
+        kind: 'theme',
+        value: '',
+        fit: 'cover',
+        position: 'center',
+        overlay: 'none'
+      },
+      widgetChrome: {
+        default: 'solid'
+      },
+      accentColor: 'neutral',
       idleMode: 'ambient'
     },
     agents: [],

@@ -390,6 +390,24 @@ func mergeHouseholdSettings(current, next store.HouseholdSettings) store.Househo
 	if strings.TrimSpace(next.Display.Theme) == "" {
 		next.Display.Theme = current.Display.Theme
 	}
+	if strings.TrimSpace(next.Display.ColorMode) == "" {
+		next.Display.ColorMode = current.Display.ColorMode
+	}
+	if strings.TrimSpace(next.Display.ThemeID) == "" {
+		next.Display.ThemeID = current.Display.ThemeID
+	}
+	if strings.TrimSpace(next.Display.Density) == "" {
+		next.Display.Density = current.Display.Density
+	}
+	if strings.TrimSpace(next.Display.Motion) == "" {
+		next.Display.Motion = current.Display.Motion
+	}
+	if strings.TrimSpace(next.Display.Background.Kind) == "" {
+		next.Display.Background = current.Display.Background
+	}
+	if strings.TrimSpace(next.Display.WidgetChrome.Default) == "" {
+		next.Display.WidgetChrome = current.Display.WidgetChrome
+	}
 	if strings.TrimSpace(next.Display.AccentColor) == "" {
 		next.Display.AccentColor = current.Display.AccentColor
 	}
@@ -426,6 +444,7 @@ func validateHouseholdSettings(settings store.HouseholdSettings) error {
 	cfg.Home = settings.Home
 	cfg.Display = settings.Display
 	cfg.Weather = settings.Weather
+	config.ApplyDefaults(&cfg)
 	if err := config.Validate(cfg); err != nil {
 		return fmt.Errorf("%w: %v", errInvalidHouseholdSettings, err)
 	}

@@ -88,6 +88,37 @@ button {
   color: var(--foreground);
 }
 
+.display-root::before,
+.display-root::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+}
+
+.display-root::before {
+  z-index: 0;
+  background-image: var(--display-background-image, none);
+  background-position: var(--display-background-position, center);
+  background-repeat: var(--display-background-repeat, no-repeat);
+  background-size: var(--display-background-size, cover);
+}
+
+.display-root::after {
+  z-index: 0;
+  background: var(--display-background-overlay, transparent);
+  backdrop-filter: none;
+}
+
+.display-root[data-background-overlay='frosted']::after {
+  backdrop-filter: blur(18px);
+}
+
+.display-root > * {
+  position: relative;
+  z-index: 1;
+}
+
 .display-root--stale .widget-frame {
   border-style: dashed;
 }
@@ -413,6 +444,19 @@ button {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
+}
+
+.widget-frame--chrome-clear {
+  background: transparent;
+}
+
+.widget-frame--chrome-smoked {
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+}
+
+.widget-frame--chrome-frosted {
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
+  backdrop-filter: blur(18px);
 }
 
 .widget-frame:focus-within,

@@ -39,6 +39,15 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.Voice.Enabled || !cfg.Voice.MutedByDefault || cfg.Voice.FollowupWindowSeconds != 8 {
 		t.Fatalf("unexpected voice defaults: %+v", cfg.Voice)
 	}
+	if cfg.Display.ColorMode != "system" || cfg.Display.Theme != "system" || cfg.Display.ThemeID != "jute-mono" {
+		t.Fatalf("unexpected display theme defaults: %+v", cfg.Display)
+	}
+	if cfg.Display.Background.Kind != "theme" || cfg.Display.Background.Fit != "cover" || cfg.Display.Background.Overlay != "none" {
+		t.Fatalf("unexpected display background defaults: %+v", cfg.Display.Background)
+	}
+	if cfg.Display.WidgetChrome.Default != "solid" {
+		t.Fatalf("unexpected widget chrome default: %+v", cfg.Display.WidgetChrome)
+	}
 }
 
 func TestYAMLConfigLoadsKebabCaseFields(t *testing.T) {
@@ -57,7 +66,18 @@ mcp:
   auth:
     mode: none
 display:
-  theme: dark
+  color-mode: dark
+  theme-id: jute-mono
+  density: compact
+  motion: reduced
+  background:
+    kind: asset
+    value: /backgrounds/kitchen.jpg
+    fit: cover
+    position: center
+    overlay: smoked
+  widget-chrome:
+    default: frosted
   accent-color: neutral
   idle-mode: ambient
 weather:
@@ -113,6 +133,15 @@ tiles: []
 	if cfg.Display.AccentColor != "neutral" || cfg.Weather.LocationName != "York" {
 		t.Fatalf("kebab-case YAML fields were not decoded: %+v", cfg)
 	}
+	if cfg.Display.ColorMode != "dark" || cfg.Display.Theme != "dark" || cfg.Display.ThemeID != "jute-mono" || cfg.Display.Density != "compact" || cfg.Display.Motion != "reduced" {
+		t.Fatalf("unexpected YAML display config: %+v", cfg.Display)
+	}
+	if cfg.Display.Background.Kind != "asset" || cfg.Display.Background.Value != "/backgrounds/kitchen.jpg" || cfg.Display.Background.Overlay != "smoked" {
+		t.Fatalf("unexpected YAML display background: %+v", cfg.Display.Background)
+	}
+	if cfg.Display.WidgetChrome.Default != "frosted" {
+		t.Fatalf("unexpected YAML widget chrome: %+v", cfg.Display.WidgetChrome)
+	}
 	if len(cfg.Agents) != 1 || cfg.Agents[0].CardURL == "" || cfg.Agents[0].Auth.EnvToken != "HOUSE_AGENT_TOKEN" {
 		t.Fatalf("unexpected YAML agent: %+v", cfg.Agents)
 	}
@@ -121,6 +150,117 @@ tiles: []
 	}
 	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" || cfg.Voice.FollowupWindowSeconds != 9 {
 		t.Fatalf("unexpected YAML voice config: %+v", cfg.Voice)
+	}
+}
+
+func TestLegacyDisplayThemeMapsToColorMode(t *testing.T) {
+	path := writeYAMLConfig(t, `
+home:
+  name: Workshop
+display:
+  theme: dark
+agents: []
+rooms: []
+tiles: []
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Display.ColorMode != "dark" || cfg.Display.Theme != "dark" {
+		t.Fatalf("legacy display.theme did not map to colorMode: %+v", cfg.Display)
+	}
+}
+
+func TestLoadRejectsInvalidDisplayCustomization(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "bad color mode",
+			body: `
+home:
+  name: Workshop
+display:
+  color-mode: sepia
+agents: []
+rooms: []
+tiles: []
+`,
+			want: "display.colorMode",
+		},
+		{
+			name: "bad theme id",
+			body: `
+home:
+  name: Workshop
+display:
+  theme-id: neon
+agents: []
+rooms: []
+tiles: []
+`,
+			want: "display.themeId",
+		},
+		{
+			name: "remote asset",
+			body: `
+home:
+  name: Workshop
+display:
+  background:
+    kind: asset
+    value: https://example.com/wallpaper.jpg
+agents: []
+rooms: []
+tiles: []
+`,
+			want: "display.background.value",
+		},
+		{
+			name: "unsafe file",
+			body: `
+home:
+  name: Workshop
+display:
+  background:
+    kind: file
+    value: ../secret.jpg
+agents: []
+rooms: []
+tiles: []
+`,
+			want: "display.background.value",
+		},
+		{
+			name: "bad widget chrome",
+			body: `
+home:
+  name: Workshop
+display:
+  widget-chrome:
+    default: glassy
+agents: []
+rooms: []
+tiles: []
+`,
+			want: "display.widgetChrome.default",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeYAMLConfig(t, tt.body)
+			_, err := Load(path)
+			if err == nil {
+				t.Fatal("Load() expected display validation error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected %q in error, got %v", tt.want, err)
+			}
+		})
 	}
 }
 

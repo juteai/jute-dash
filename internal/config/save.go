@@ -17,6 +17,7 @@ func SaveYAML(path string, cfg Config) error {
 	if ext != ".yaml" && ext != ".yml" {
 		return fmt.Errorf("YAML config file is required")
 	}
+	ApplyDefaults(&cfg)
 	if err := Validate(cfg); err != nil {
 		return err
 	}

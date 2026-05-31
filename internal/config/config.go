@@ -69,9 +69,27 @@ type MCPAuthConfig struct {
 }
 
 type DisplayConfig struct {
-	Theme       string `json:"theme" yaml:"theme"`
-	AccentColor string `json:"accentColor" yaml:"accent-color"`
-	IdleMode    string `json:"idleMode" yaml:"idle-mode"`
+	Theme        string              `json:"theme" yaml:"theme"`
+	ColorMode    string              `json:"colorMode" yaml:"color-mode"`
+	ThemeID      string              `json:"themeId" yaml:"theme-id"`
+	Density      string              `json:"density" yaml:"density"`
+	Motion       string              `json:"motion" yaml:"motion"`
+	Background   DisplayBackground   `json:"background" yaml:"background"`
+	WidgetChrome DisplayWidgetChrome `json:"widgetChrome" yaml:"widget-chrome"`
+	AccentColor  string              `json:"accentColor" yaml:"accent-color"`
+	IdleMode     string              `json:"idleMode" yaml:"idle-mode"`
+}
+
+type DisplayBackground struct {
+	Kind     string `json:"kind" yaml:"kind"`
+	Value    string `json:"value" yaml:"value"`
+	Fit      string `json:"fit" yaml:"fit"`
+	Position string `json:"position" yaml:"position"`
+	Overlay  string `json:"overlay" yaml:"overlay"`
+}
+
+type DisplayWidgetChrome struct {
+	Default string `json:"default" yaml:"default"`
 }
 
 type WeatherConfig struct {
@@ -214,8 +232,21 @@ func Default() Config {
 			},
 		},
 		Display: DisplayConfig{
-			Theme:       "system",
-			AccentColor: "teal",
+			Theme:     "system",
+			ColorMode: "system",
+			ThemeID:   "jute-mono",
+			Density:   "comfortable",
+			Motion:    "full",
+			Background: DisplayBackground{
+				Kind:     "theme",
+				Fit:      "cover",
+				Position: "center",
+				Overlay:  "none",
+			},
+			WidgetChrome: DisplayWidgetChrome{
+				Default: "solid",
+			},
+			AccentColor: "neutral",
 			IdleMode:    "ambient",
 		},
 		Weather: WeatherConfig{
@@ -252,7 +283,7 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
 
-	applyDefaults(&cfg)
+	ApplyDefaults(&cfg)
 	if err := Validate(cfg); err != nil {
 		return Config{}, err
 	}
@@ -303,6 +334,25 @@ func Validate(cfg Config) error {
 		if cfg.MCP.Auth.Mode == "local-token" && strings.TrimSpace(cfg.MCP.Auth.EnvToken) == "" {
 			problems = append(problems, "mcp.auth.envToken is required when local-token auth is enabled")
 		}
+	}
+	if !isSupportedColorMode(cfg.Display.ColorMode) {
+		problems = append(problems, "display.colorMode must be system, light, or dark")
+	}
+	if cfg.Display.Theme != "" && !isSupportedColorMode(cfg.Display.Theme) {
+		problems = append(problems, "display.theme must be system, light, or dark")
+	}
+	if strings.TrimSpace(cfg.Display.ThemeID) != "jute-mono" {
+		problems = append(problems, "display.themeId must be jute-mono")
+	}
+	if !isSupportedDensity(cfg.Display.Density) {
+		problems = append(problems, "display.density must be comfortable, compact, or large-touch")
+	}
+	if !isSupportedMotion(cfg.Display.Motion) {
+		problems = append(problems, "display.motion must be full, reduced, or none")
+	}
+	validateDisplayBackground(cfg.Display.Background, &problems)
+	if !isSupportedWidgetChrome(cfg.Display.WidgetChrome.Default) {
+		problems = append(problems, "display.widgetChrome.default must be solid, clear, smoked, frosted, or auto")
 	}
 	if cfg.Weather.Enabled {
 		if cfg.Weather.Provider != "open-meteo" {
@@ -409,6 +459,10 @@ func (cfg Config) Public() PublicConfig {
 	}
 }
 
+func ApplyDefaults(cfg *Config) {
+	applyDefaults(cfg)
+}
+
 func applyDefaults(cfg *Config) {
 	defaults := Default()
 	if strings.TrimSpace(cfg.Home.Name) == "" {
@@ -438,8 +492,39 @@ func applyDefaults(cfg *Config) {
 	if strings.TrimSpace(cfg.MCP.Auth.EnvToken) == "" {
 		cfg.MCP.Auth.EnvToken = defaults.MCP.Auth.EnvToken
 	}
-	if strings.TrimSpace(cfg.Display.Theme) == "" {
-		cfg.Display.Theme = defaults.Display.Theme
+	if strings.TrimSpace(cfg.Display.ColorMode) == "" {
+		cfg.Display.ColorMode = strings.TrimSpace(cfg.Display.Theme)
+	}
+	if strings.TrimSpace(cfg.Display.Theme) != "" && cfg.Display.Theme != defaults.Display.Theme && cfg.Display.ColorMode == defaults.Display.ColorMode {
+		cfg.Display.ColorMode = cfg.Display.Theme
+	}
+	if strings.TrimSpace(cfg.Display.ColorMode) == "" {
+		cfg.Display.ColorMode = defaults.Display.ColorMode
+	}
+	cfg.Display.Theme = cfg.Display.ColorMode
+	if strings.TrimSpace(cfg.Display.ThemeID) == "" {
+		cfg.Display.ThemeID = defaults.Display.ThemeID
+	}
+	if strings.TrimSpace(cfg.Display.Density) == "" {
+		cfg.Display.Density = defaults.Display.Density
+	}
+	if strings.TrimSpace(cfg.Display.Motion) == "" {
+		cfg.Display.Motion = defaults.Display.Motion
+	}
+	if strings.TrimSpace(cfg.Display.Background.Kind) == "" {
+		cfg.Display.Background.Kind = defaults.Display.Background.Kind
+	}
+	if strings.TrimSpace(cfg.Display.Background.Fit) == "" {
+		cfg.Display.Background.Fit = defaults.Display.Background.Fit
+	}
+	if strings.TrimSpace(cfg.Display.Background.Position) == "" {
+		cfg.Display.Background.Position = defaults.Display.Background.Position
+	}
+	if strings.TrimSpace(cfg.Display.Background.Overlay) == "" {
+		cfg.Display.Background.Overlay = defaults.Display.Background.Overlay
+	}
+	if strings.TrimSpace(cfg.Display.WidgetChrome.Default) == "" {
+		cfg.Display.WidgetChrome.Default = defaults.Display.WidgetChrome.Default
 	}
 	if strings.TrimSpace(cfg.Display.AccentColor) == "" {
 		cfg.Display.AccentColor = defaults.Display.AccentColor
@@ -524,6 +609,95 @@ func isSupportedWindSpeedUnit(unit string) bool {
 	default:
 		return false
 	}
+}
+
+func isSupportedColorMode(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "system", "light", "dark":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSupportedDensity(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "comfortable", "compact", "large-touch":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSupportedMotion(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "full", "reduced", "none":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSupportedWidgetChrome(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "solid", "clear", "smoked", "frosted", "auto":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateDisplayBackground(background DisplayBackground, problems *[]string) {
+	switch strings.TrimSpace(background.Kind) {
+	case "theme":
+		if strings.TrimSpace(background.Value) != "" {
+			*problems = append(*problems, "display.background.value must be empty when kind is theme")
+		}
+	case "color":
+		value := strings.TrimSpace(background.Value)
+		if value == "" {
+			*problems = append(*problems, "display.background.value is required when kind is color")
+		}
+		if containsRemoteReference(value) || strings.Contains(strings.ToLower(value), "url(") {
+			*problems = append(*problems, "display.background.value must not contain remote URLs")
+		}
+	case "asset":
+		value := strings.TrimSpace(background.Value)
+		if value == "" || !strings.HasPrefix(value, "/") {
+			*problems = append(*problems, "display.background.value must be an absolute app asset path when kind is asset")
+		}
+		if containsRemoteReference(value) || strings.Contains(value, "..") {
+			*problems = append(*problems, "display.background.value must not contain remote URLs or parent directory segments")
+		}
+	case "file":
+		value := strings.TrimSpace(background.Value)
+		if value == "" {
+			*problems = append(*problems, "display.background.value is required when kind is file")
+		}
+		if containsRemoteReference(value) || filepath.IsAbs(value) || strings.Contains(value, "..") {
+			*problems = append(*problems, "display.background.value must be a relative safe file reference")
+		}
+	default:
+		*problems = append(*problems, "display.background.kind must be theme, color, asset, or file")
+	}
+	switch strings.TrimSpace(background.Fit) {
+	case "cover", "contain", "tile":
+	default:
+		*problems = append(*problems, "display.background.fit must be cover, contain, or tile")
+	}
+	if strings.TrimSpace(background.Position) == "" {
+		*problems = append(*problems, "display.background.position is required")
+	}
+	switch strings.TrimSpace(background.Overlay) {
+	case "none", "dim", "smoked", "frosted":
+	default:
+		*problems = append(*problems, "display.background.overlay must be none, dim, smoked, or frosted")
+	}
+}
+
+func containsRemoteReference(value string) bool {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "//")
 }
 
 func validateUniqueIDs[T any](name string, values []T, getID func(T) string, problems *[]string) {

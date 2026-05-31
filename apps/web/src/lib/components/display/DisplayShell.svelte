@@ -35,6 +35,7 @@
     unmuteVoice
   } from '$lib/api';
   import { firstAvailableAgent, getAgentAvailability, isAgentAvailable } from '$lib/agents';
+  import { displayThemeStyle, resolveColorMode } from '$lib/themes';
   import type {
     Agent,
     ChatMessage,
@@ -124,7 +125,8 @@
   $: selectedAvailability = getAgentAvailability(selectedAgent);
   $: hasConnected = hasConnected || dashboard.connectionState === 'connected';
   $: showStartupOffline = !hasConnected && dashboard.connectionState === 'offline';
-  $: activeTheme = resolveTheme(dashboard.config.display.theme, prefersDark);
+  $: activeTheme = resolveColorMode(dashboard.config.display, prefersDark);
+  $: displayStyle = displayThemeStyle(dashboard.config.display, activeTheme);
   $: dashboardForView = {
     ...dashboard,
     layout: mode === 'edit' && draftLayout ? draftLayout : dashboard.layout
@@ -152,16 +154,6 @@
       clearFocusTimer();
     };
   });
-
-  function resolveTheme(theme: string, systemPrefersDark: boolean): 'light' | 'dark' {
-    if (theme === 'dark') {
-      return 'dark';
-    }
-    if (theme === 'light') {
-      return 'light';
-    }
-    return systemPrefersDark ? 'dark' : 'light';
-  }
 
   function openChat(agent?: Agent) {
     if (agent) {
@@ -1206,6 +1198,9 @@
 <main
   class={cn('display-root', mode === 'chat' && 'display-root--chat', dashboard.stale && 'display-root--stale')}
   data-theme={activeTheme}
+  data-theme-id={dashboard.config.display.themeId}
+  data-background-overlay={dashboard.config.display.background?.overlay ?? 'none'}
+  style={displayStyle}
   on:pointerdown={startLongPress}
   on:pointerup={clearLongPress}
   on:pointercancel={clearLongPress}
