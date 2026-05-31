@@ -99,6 +99,20 @@ Layout rules:
 - horizontal overflow is not allowed;
 - dashboard chrome remains minimal so widgets are the main content.
 
+## Settings UX
+
+The pre-v1 settings surface is an in-app panel opened from the dashboard header, chat empty states, and agent diagnostics.
+
+Initial sections:
+
+- `Household`: home name, timezone, locale, theme, and weather location;
+- `Agents`: add an agent by Agent Card URL, enable or disable agents, remove agents, and refresh Agent Cards;
+- `MCP`: read-only bridge status and startup configuration summary;
+- `Voice`: read-only voice/provider status until provider selection is implemented;
+- `About`: version, setup, config mode, and enabled-agent summary.
+
+Settings writes go through the hub. Browser storage is not durable settings storage.
+
 Responsive behavior:
 
 - phone and narrow tablets use a single-column canvas;

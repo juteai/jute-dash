@@ -234,12 +234,14 @@ Keep:
 Setup and settings APIs:
 
 - `GET /api/v1/setup/status`
+- `GET /api/v1/settings/household`
+- `PATCH /api/v1/settings/household`
+
+The current pre-v1 settings UI uses `GET/PATCH /api/v1/settings/household` for home name, locale, timezone, display theme, and weather location. Store-backed runs persist these fields in SQLite. YAML-backed harness runs write the same fields back to the active YAML config.
 
 Future setup and settings APIs:
 
 - `POST /api/v1/setup/complete`
-- `GET /api/v1/settings/household`
-- `PATCH /api/v1/settings/household`
 - `GET /api/v1/devices`
 - `GET /api/v1/devices/{id}/settings`
 - `PATCH /api/v1/devices/{id}/settings`
@@ -255,7 +257,7 @@ Future MCP settings APIs:
 
 Pre-v1 MCP scopes are configured on each YAML/JSON agent record as `mcp-scopes` / `mcpScopes`. Missing values default to read-only scopes. The bridge uses `X-Jute-Agent-ID` to select the configured agent and apply those scopes.
 
-Settings writes go through the hub, update SQLite, and emit relevant events.
+Settings writes go through the hub, update SQLite or the active YAML harness config, and emit relevant events when those events exist.
 
 Settings-related events:
 

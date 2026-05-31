@@ -1059,6 +1059,187 @@ select {
   background: var(--surface-muted);
 }
 
+.settings-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--background) 72%, transparent);
+}
+
+.settings-panel {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 12px;
+  width: min(100%, 860px);
+  max-height: min(90vh, 760px);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 16px;
+  box-shadow: 0 20px 80px var(--shadow);
+}
+
+.settings-header,
+.settings-actions,
+.settings-item-actions,
+.settings-badges,
+.settings-add-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-header {
+  justify-content: space-between;
+}
+
+.settings-header strong,
+.settings-list-item strong,
+.settings-status-grid strong {
+  display: block;
+  color: var(--foreground);
+}
+
+.settings-header span,
+.settings-list-item span,
+.settings-status-grid span,
+.settings-help,
+.settings-empty {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.settings-tabs button {
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--foreground);
+  padding: 0 12px;
+  cursor: pointer;
+  font-weight: 740;
+}
+
+.settings-tabs button.settings-tab--active {
+  border-color: var(--foreground);
+  background: var(--foreground);
+  color: var(--background);
+}
+
+.settings-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.settings-form-grid,
+.settings-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-form-grid label,
+.settings-status-grid > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 10px;
+}
+
+.settings-form-grid label span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 760;
+}
+
+.settings-form-grid input,
+.settings-form-grid select,
+.settings-add-form input {
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--foreground);
+  padding: 0 10px;
+}
+
+.settings-actions {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.settings-add-form {
+  align-items: stretch;
+  margin-bottom: 12px;
+}
+
+.settings-add-form input {
+  flex: 1;
+}
+
+.settings-list {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 12px;
+}
+
+.settings-list-item span {
+  display: block;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.settings-badges {
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.settings-item-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.settings-issue {
+  margin: 0;
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--warning);
+}
+
+.settings-help,
+.settings-empty {
+  margin: 12px 0 0;
+  line-height: 1.4;
+}
+
 .conversation-thread-header {
   display: flex;
   align-items: center;
@@ -1455,6 +1636,22 @@ select {
   .chat-view {
     width: 100%;
     height: 100%;
+  }
+
+  .settings-panel {
+    width: 100%;
+    max-height: calc(100vh - 16px);
+  }
+
+  .settings-form-grid,
+  .settings-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-list-item,
+  .settings-add-form {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .chat-body {

@@ -36,6 +36,7 @@ type Server struct {
 	setup       store.SetupStatus
 	layout      store.WidgetLayout
 	layoutStore WidgetLayoutStore
+	settings    HouseholdSettingsStore
 	voice       config.VoiceConfig
 	voiceStore  VoiceSettingsStore
 	configPath  string
@@ -57,6 +58,11 @@ type VoiceSettingsStore interface {
 	SetVoiceMuted(ctx context.Context, deviceProfileID string, muted bool) (store.VoiceSettings, error)
 	CancelVoice(ctx context.Context, deviceProfileID string) (store.VoiceSettings, error)
 	VoiceProviders(ctx context.Context) ([]store.VoiceProviderPack, error)
+}
+
+type HouseholdSettingsStore interface {
+	HouseholdSettings(ctx context.Context) (store.HouseholdSettings, error)
+	SaveHouseholdSettings(ctx context.Context, settings store.HouseholdSettings) (store.HouseholdSettings, error)
 }
 
 type HealthResponse struct {
@@ -111,6 +117,8 @@ type VoiceStatusSummary struct {
 	ServiceStatus string `json:"serviceStatus"`
 	State         string `json:"state"`
 }
+
+var errInvalidHouseholdSettings = errors.New("invalid household settings")
 
 type MessageRequest struct {
 	AgentID        string `json:"agentId"`
@@ -195,6 +203,10 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 	if candidate, ok := layoutStore.(VoiceSettingsStore); ok {
 		voiceStore = candidate
 	}
+	var settingsStore HouseholdSettingsStore
+	if candidate, ok := layoutStore.(HouseholdSettingsStore); ok {
+		settingsStore = candidate
+	}
 	activeConfigPath := ""
 	var display *displayactions.Dispatcher
 	for _, arg := range args {
@@ -217,6 +229,7 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 		setup:       normalizeSetupStatus(setup),
 		layout:      normalizeWidgetLayout(layout),
 		layoutStore: layoutStore,
+		settings:    settingsStore,
 		voice:       cfg.Voice,
 		voiceStore:  voiceStore,
 		configPath:  activeConfigPath,
@@ -238,6 +251,7 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 	mux.HandleFunc("/api/v1/conversations/", server.handleConversationSubroutes)
 	mux.HandleFunc("/api/v1/events", server.handleEvents)
 	mux.HandleFunc("/api/v1/setup/status", server.handleSetupStatus)
+	mux.HandleFunc("/api/v1/settings/household", server.handleHouseholdSettings)
 	mux.HandleFunc("/api/v1/widgets/catalog", server.handleWidgetCatalog)
 	mux.HandleFunc("/api/v1/widgets/layout", server.handleWidgetLayout)
 	mux.HandleFunc("/api/v1/widgets/layout/reset", server.handleWidgetLayoutReset)
@@ -357,6 +371,61 @@ func mcpStatusFromConfig(cfg config.MCPConfig) MCPStatus {
 	return status
 }
 
+func mergeHouseholdSettings(current, next store.HouseholdSettings) store.HouseholdSettings {
+	if strings.TrimSpace(next.Home.Name) == "" {
+		next.Home.Name = current.Home.Name
+	}
+	if strings.TrimSpace(next.Home.Timezone) == "" {
+		next.Home.Timezone = current.Home.Timezone
+	}
+	if strings.TrimSpace(next.Home.Locale) == "" {
+		next.Home.Locale = current.Home.Locale
+	}
+	if strings.TrimSpace(next.Display.Theme) == "" {
+		next.Display.Theme = current.Display.Theme
+	}
+	if strings.TrimSpace(next.Display.AccentColor) == "" {
+		next.Display.AccentColor = current.Display.AccentColor
+	}
+	if strings.TrimSpace(next.Display.IdleMode) == "" {
+		next.Display.IdleMode = current.Display.IdleMode
+	}
+	if strings.TrimSpace(next.Weather.Provider) == "" {
+		next.Weather.Provider = current.Weather.Provider
+	}
+	if strings.TrimSpace(next.Weather.LocationName) == "" {
+		next.Weather.LocationName = current.Weather.LocationName
+	}
+	if strings.TrimSpace(next.Weather.TemperatureUnit) == "" {
+		next.Weather.TemperatureUnit = current.Weather.TemperatureUnit
+	}
+	if strings.TrimSpace(next.Weather.WindSpeedUnit) == "" {
+		next.Weather.WindSpeedUnit = current.Weather.WindSpeedUnit
+	}
+	next.Setup = current.Setup
+	return next
+}
+
+func validateHouseholdSettings(settings store.HouseholdSettings) error {
+	if strings.TrimSpace(settings.Home.Name) == "" {
+		return fmt.Errorf("%w: home.name is required", errInvalidHouseholdSettings)
+	}
+	if _, err := time.LoadLocation(settings.Home.Timezone); err != nil {
+		return fmt.Errorf("%w: home.timezone is invalid", errInvalidHouseholdSettings)
+	}
+	if strings.TrimSpace(settings.Home.Locale) == "" {
+		return fmt.Errorf("%w: home.locale is required", errInvalidHouseholdSettings)
+	}
+	cfg := config.Default()
+	cfg.Home = settings.Home
+	cfg.Display = settings.Display
+	cfg.Weather = settings.Weather
+	if err := config.Validate(cfg); err != nil {
+		return fmt.Errorf("%w: %v", errInvalidHouseholdSettings, err)
+	}
+	return nil
+}
+
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
@@ -453,6 +522,36 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.setup)
+}
+
+func (s *Server) handleHouseholdSettings(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		settings, err := s.currentHouseholdSettings(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "household settings are unavailable")
+			return
+		}
+		writeJSON(w, http.StatusOK, settings)
+	case http.MethodPatch:
+		var settings store.HouseholdSettings
+		if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON request body")
+			return
+		}
+		saved, err := s.saveHouseholdSettings(r.Context(), settings)
+		if err != nil {
+			if errors.Is(err, errInvalidHouseholdSettings) {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "household settings could not be saved")
+			return
+		}
+		writeJSON(w, http.StatusOK, saved)
+	default:
+		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPatch)
+	}
 }
 
 func (s *Server) handleWidgetCatalog(w http.ResponseWriter, r *http.Request) {
@@ -608,6 +707,76 @@ func (s *Server) currentConfig() config.Config {
 	cfg.MCP = s.cfg.MCP
 	s.cfg = cfg
 	return s.cfg
+}
+
+func (s *Server) currentHouseholdSettings(ctx context.Context) (store.HouseholdSettings, error) {
+	if s.configPath != "" {
+		cfg := s.currentConfig()
+		return store.HouseholdSettings{
+			Home:    cfg.Home,
+			Display: cfg.Display,
+			Weather: cfg.Weather,
+			Setup:   s.setup,
+		}, nil
+	}
+	if s.settings != nil {
+		return s.settings.HouseholdSettings(ctx)
+	}
+	return store.HouseholdSettings{
+		Home:    s.cfg.Home,
+		Display: s.cfg.Display,
+		Weather: s.cfg.Weather,
+		Setup:   s.setup,
+	}, nil
+}
+
+func (s *Server) saveHouseholdSettings(ctx context.Context, settings store.HouseholdSettings) (store.HouseholdSettings, error) {
+	current, err := s.currentHouseholdSettings(ctx)
+	if err != nil {
+		return store.HouseholdSettings{}, err
+	}
+	settings = mergeHouseholdSettings(current, settings)
+	if err := validateHouseholdSettings(settings); err != nil {
+		return store.HouseholdSettings{}, err
+	}
+
+	if s.configPath != "" {
+		s.mu.Lock()
+		next := s.cfg
+		next.Home = settings.Home
+		next.Display = settings.Display
+		next.Weather = settings.Weather
+		if err := config.SaveYAML(s.configPath, next); err != nil {
+			s.mu.Unlock()
+			return store.HouseholdSettings{}, err
+		}
+		s.cfg = next
+		s.setup = store.SetupStatus{Complete: true, Missing: []string{}}
+		s.mu.Unlock()
+		return s.currentHouseholdSettings(ctx)
+	}
+
+	if s.settings != nil {
+		saved, err := s.settings.SaveHouseholdSettings(ctx, settings)
+		if err != nil {
+			return store.HouseholdSettings{}, err
+		}
+		s.mu.Lock()
+		s.cfg.Home = saved.Home
+		s.cfg.Display = saved.Display
+		s.cfg.Weather = saved.Weather
+		s.setup = saved.Setup
+		s.mu.Unlock()
+		return saved, nil
+	}
+
+	s.mu.Lock()
+	s.cfg.Home = settings.Home
+	s.cfg.Display = settings.Display
+	s.cfg.Weather = settings.Weather
+	s.setup = store.SetupStatus{Complete: true, Missing: []string{}}
+	s.mu.Unlock()
+	return s.currentHouseholdSettings(ctx)
 }
 
 func (s *Server) currentWidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error) {

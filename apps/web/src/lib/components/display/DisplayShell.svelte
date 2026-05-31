@@ -5,6 +5,7 @@
   import ChatView from '$lib/components/chat/ChatView.svelte';
   import DashboardView from '$lib/components/display/DashboardView.svelte';
   import ConversationOrb from '$lib/components/chat/ConversationOrb.svelte';
+  import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
   import { fade } from 'svelte/transition';
   import OfflineState from '$lib/components/display/OfflineState.svelte';
   import StatusRibbon from '$lib/components/display/StatusRibbon.svelte';
@@ -16,10 +17,12 @@
     getConversation,
     getConversations,
     getDashboard,
+    getHouseholdSettings,
     getWidgetCatalog,
     muteVoice,
     refreshAgentCard,
     resetWidgetLayout,
+    saveHouseholdSettings,
     saveWidgetLayout,
     sendConversationTurn,
     sendConversationTurnStream,
@@ -40,6 +43,7 @@
     DisplayFocusWidget,
     DisplayNotification,
     DisplayMode,
+    HouseholdSettings,
     UserFacingIssue,
     WidgetCatalogItem,
     WidgetInstance,
@@ -73,6 +77,10 @@
   let agentCardUrl = '';
   let agentIssue = '';
   let savingAgent = false;
+  let householdSettings: HouseholdSettings | undefined;
+  let settingsIssue = '';
+  let savingSettings = false;
+  let activeSettingsSection: 'household' | 'agents' | 'mcp' | 'voice' | 'about' = 'household';
   let mounted = false;
   let historyAgentId = '';
   let voiceIssue = '';
@@ -269,6 +277,7 @@
     }
     savingAgent = true;
     agentIssue = '';
+    settingsIssue = '';
     try {
       const agent = await addAgent(fetch, cardUrl);
       selectedAgentId = agent.id;
@@ -278,6 +287,7 @@
       markConnected();
     } catch {
       agentIssue = 'Agent was not added. Check the Agent Card URL and that the hub was started with a YAML config.';
+      settingsIssue = agentIssue;
       markIssue('degraded', {
         code: 'agent_add_failed',
         severity: 'warning',
@@ -296,6 +306,7 @@
       markConnected();
     } catch {
       agentIssue = 'Agent state could not be updated.';
+      settingsIssue = agentIssue;
     }
   }
 
@@ -312,6 +323,51 @@
       markConnected();
     } catch {
       agentIssue = 'Agent could not be removed.';
+      settingsIssue = agentIssue;
+    }
+  }
+
+  async function openSettings(section: typeof activeSettingsSection = 'household') {
+    activeSettingsSection = section;
+    showAgentManager = true;
+    settingsIssue = '';
+    if (householdSettings) {
+      return;
+    }
+    try {
+      householdSettings = await getHouseholdSettings(fetch);
+      markConnected();
+    } catch {
+      settingsIssue = 'Household settings are unavailable. Check that the hub is running.';
+      markIssue('degraded', {
+        code: 'settings_unavailable',
+        severity: 'warning',
+        title: 'Settings unavailable',
+        message: 'Jute could not load household settings.'
+      });
+    }
+  }
+
+  async function saveSettings(settings: HouseholdSettings) {
+    if (savingSettings) {
+      return;
+    }
+    savingSettings = true;
+    settingsIssue = '';
+    try {
+      householdSettings = await saveHouseholdSettings(fetch, settings);
+      dashboard = await getDashboard(fetch);
+      markConnected();
+    } catch {
+      settingsIssue = 'Settings were not saved. Check required fields and try again.';
+      markIssue('degraded', {
+        code: 'settings_save_failed',
+        severity: 'warning',
+        title: 'Settings not saved',
+        message: 'Jute could not save household settings.'
+      });
+    } finally {
+      savingSettings = false;
     }
   }
 
@@ -1135,46 +1191,30 @@
       onMoveWidget={moveWidget}
       onResizeWidget={resizeWidget}
       onRemoveWidget={removeWidget}
-      onManageAgents={() => (showAgentManager = true)}
+      onManageAgents={() => openSettings('household')}
     />
 
     {#if showAgentManager}
-      <div class="agent-manager-layer">
-        <section class="agent-manager" aria-label="Agent settings">
-          <header class="agent-manager-header">
-            <div>
-              <strong>Agents</strong>
-              <span>Add A2A agents by Agent Card URL. Jute writes them to the active YAML config.</span>
-            </div>
-            <button type="button" class="agent-manager-close" on:click={() => (showAgentManager = false)}>Close</button>
-          </header>
-          <form class="agent-add-form" on:submit|preventDefault={saveAgentFromCard}>
-            <input bind:value={agentCardUrl} placeholder="http://127.0.0.1:9797/.well-known/agent-card.json" />
-            <button type="submit" disabled={savingAgent || !agentCardUrl.trim()}>{savingAgent ? 'Adding' : 'Add agent'}</button>
-          </form>
-          {#if agentIssue}
-            <p class="agent-manager-issue">{agentIssue}</p>
-          {/if}
-          <div class="agent-manager-list">
-            {#if agents.length === 0}
-              <p>No agents configured yet.</p>
-            {:else}
-              {#each agents as agent}
-                <article class="agent-manager-item">
-                  <div>
-                    <strong>{agent.name}</strong>
-                    <span>{agent.cardUrl}</span>
-                  </div>
-                  <div class="agent-manager-actions">
-                    <button type="button" on:click={() => toggleAgent(agent)}>{agent.enabled ? 'Disable' : 'Enable'}</button>
-                    <button type="button" on:click={() => removeAgent(agent)}>Remove</button>
-                  </div>
-                </article>
-              {/each}
-            {/if}
-          </div>
-        </section>
-      </div>
+      <SettingsPanel
+        {agents}
+        status={dashboard.status}
+        voice={dashboard.voice}
+        settings={householdSettings}
+        issue={settingsIssue}
+        saving={savingSettings}
+        {savingAgent}
+        {agentCardUrl}
+        bind:activeSection={activeSettingsSection}
+        onClose={() => (showAgentManager = false)}
+        onSaveHousehold={saveSettings}
+        onAddAgent={(cardUrl) => {
+          agentCardUrl = cardUrl;
+          return saveAgentFromCard();
+        }}
+        onToggleAgent={toggleAgent}
+        onRemoveAgent={removeAgent}
+        onRefreshAgentCard={refreshSelectedAgentCard}
+      />
     {/if}
 
     {#if mode === 'chat'}
@@ -1199,7 +1239,7 @@
           }}
           onConversationSelect={(conversationId) => loadConversation(conversationId)}
           onNewConversation={createNewConversation}
-          onManageAgents={() => (showAgentManager = true)}
+          onManageAgents={() => openSettings('agents')}
           onRefreshAgentCard={refreshSelectedAgentCard}
           onSubmit={(value) => submitMessage(value)}
           onRetry={retryMessage}

@@ -102,6 +102,13 @@ type VoiceProviderPack struct {
 	UpdatedAt     string `json:"updatedAt"`
 }
 
+type HouseholdSettings struct {
+	Home    config.HomeConfig    `json:"home"`
+	Display config.DisplayConfig `json:"display"`
+	Weather config.WeatherConfig `json:"weather"`
+	Setup   SetupStatus          `json:"setup"`
+}
+
 var ErrInvalidLayout = errors.New("invalid widget layout")
 
 func Open(dbPath string) (*Store, error) {
@@ -311,6 +318,87 @@ func (s *Store) SetupStatus(ctx context.Context) (SetupStatus, error) {
 		Complete: setupCompleted == 1 && len(missing) == 0,
 		Missing:  missing,
 	}, nil
+}
+
+func (s *Store) HouseholdSettings(ctx context.Context) (HouseholdSettings, error) {
+	cfg, err := s.Config(ctx)
+	if err != nil {
+		return HouseholdSettings{}, err
+	}
+	setup, err := s.SetupStatus(ctx)
+	if err != nil {
+		return HouseholdSettings{}, err
+	}
+	return HouseholdSettings{
+		Home:    cfg.Home,
+		Display: cfg.Display,
+		Weather: cfg.Weather,
+		Setup:   setup,
+	}, nil
+}
+
+func (s *Store) SaveHouseholdSettings(ctx context.Context, settings HouseholdSettings) (HouseholdSettings, error) {
+	cfg, err := s.Config(ctx)
+	if err != nil {
+		return HouseholdSettings{}, err
+	}
+	cfg.Home = settings.Home
+	cfg.Display = settings.Display
+	cfg.Weather = settings.Weather
+	if err := config.Validate(cfg); err != nil {
+		return HouseholdSettings{}, err
+	}
+
+	now := nowUTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return HouseholdSettings{}, fmt.Errorf("begin save household settings: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.ExecContext(ctx, `
+UPDATE household_settings
+SET name = ?, timezone = ?, locale = ?, display_theme = ?, display_accent_color = ?, display_idle_mode = ?,
+    setup_completed = 1, updated_at = ?
+WHERE id = ?`,
+		cfg.Home.Name,
+		cfg.Home.Timezone,
+		cfg.Home.Locale,
+		cfg.Display.Theme,
+		cfg.Display.AccentColor,
+		cfg.Display.IdleMode,
+		now,
+		defaultHouseholdID,
+	); err != nil {
+		return HouseholdSettings{}, fmt.Errorf("save household settings: %w", err)
+	}
+
+	if _, err = tx.ExecContext(ctx, `
+UPDATE weather_settings
+SET enabled = ?, provider = ?, location_name = ?, latitude = ?, longitude = ?,
+    temperature_unit = ?, wind_speed_unit = ?, updated_at = ?
+WHERE id = ?`,
+		boolToInt(cfg.Weather.Enabled),
+		cfg.Weather.Provider,
+		cfg.Weather.LocationName,
+		cfg.Weather.Latitude,
+		cfg.Weather.Longitude,
+		cfg.Weather.TemperatureUnit,
+		cfg.Weather.WindSpeedUnit,
+		now,
+		defaultHouseholdID,
+	); err != nil {
+		return HouseholdSettings{}, fmt.Errorf("save weather settings: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return HouseholdSettings{}, fmt.Errorf("commit household settings: %w", err)
+	}
+	return s.HouseholdSettings(ctx)
 }
 
 func (s *Store) WidgetLayout(ctx context.Context, profileID string) (WidgetLayout, error) {

@@ -5,6 +5,7 @@ import type {
   ConversationDetail,
   ConversationStreamEvent,
   DashboardData,
+  HouseholdSettings,
   HomeState,
   MessageResponse,
   PublicConfig,
@@ -68,6 +69,28 @@ export async function sendMessage(
     throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
   }
   return response.json() as Promise<MessageResponse>;
+}
+
+export async function getHouseholdSettings(fetcher: typeof fetch): Promise<HouseholdSettings> {
+  return getJSON<HouseholdSettings>(fetcher, '/api/v1/settings/household');
+}
+
+export async function saveHouseholdSettings(
+  fetcher: typeof fetch,
+  settings: HouseholdSettings
+): Promise<HouseholdSettings> {
+  const response = await fetcher(`${API_BASE}/api/v1/settings/household`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(settings)
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+  }
+  return response.json() as Promise<HouseholdSettings>;
 }
 
 export async function getConversations(fetcher: typeof fetch, agentId: string): Promise<Conversation[]> {

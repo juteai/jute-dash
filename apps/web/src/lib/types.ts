@@ -185,6 +185,24 @@ export type PublicConfig = {
   tiles: Tile[];
 };
 
+export type HouseholdSettings = {
+  home: HomeConfig;
+  display: DisplayConfig;
+  weather: {
+    enabled: boolean;
+    provider: string;
+    locationName: string;
+    latitude: number;
+    longitude: number;
+    temperatureUnit: string;
+    windSpeedUnit: string;
+  };
+  setup: {
+    complete: boolean;
+    missing: string[];
+  };
+};
+
 export type HomeState = {
   generatedAt: string;
   home: HomeConfig;

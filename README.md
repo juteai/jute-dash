@@ -131,18 +131,32 @@ Widgets must render inside `WidgetFrame`, communicate through the Widget SDK mes
 ## Current API Surface
 
 - `GET /healthz`
+- `GET /api/v1/status`
 - `GET /api/v1/config`
 - `GET /api/v1/home`
-- `GET /api/v1/fixtures`
-- `POST /api/v1/fixtures`
-- `PATCH /api/v1/fixtures/{id}`
-- `DELETE /api/v1/fixtures/{id}`
+- `GET /api/v1/agents`
+- `POST /api/v1/agents`
+- `PATCH /api/v1/agents/{id}`
+- `DELETE /api/v1/agents/{id}`
+- `POST /api/v1/agents/{id}/refresh-card`
 - `GET /api/v1/setup/status`
+- `GET /api/v1/settings/household`
+- `PATCH /api/v1/settings/household`
+- `GET /api/v1/widgets/catalog`
+- `GET /api/v1/widgets/layout`
+- `PUT /api/v1/widgets/layout`
+- `POST /api/v1/widgets/layout/reset`
+- `GET /api/v1/voice/status`
+- `POST /api/v1/voice/mute`
+- `POST /api/v1/voice/unmute`
+- `POST /api/v1/voice/cancel`
+- `GET /api/v1/voice/providers`
 - `POST /api/v1/messages`
 - `GET /api/v1/conversations`
 - `POST /api/v1/conversations`
 - `GET /api/v1/conversations/{id}`
 - `POST /api/v1/conversations/{id}/turns`
+- `POST /api/v1/conversations/{id}/turns/stream`
 - `GET /api/v1/events`
 
 The optional MCP bridge is a separate local surface, not part of `/api/v1`. When enabled, it exposes Widget Skills and dashboard context through MCP Streamable HTTP at the configured path, defaulting to `/mcp`.
@@ -163,7 +177,7 @@ The project tracks A2A as an external protocol rather than inventing a custom ag
 
 ## Configuration Direction
 
-Runtime settings generally live in SQLite. YAML config is the preferred human-authored bootstrap/import/export format, and JSON remains supported for machine-friendly compatibility. During the pre-v1 agent-management slice, configured agents are saved back to the active YAML config file so local users can add, disable, and remove A2A agents without editing SQLite directly. The hub owns durable settings, and public config responses are redacted projections.
+Runtime settings generally live in SQLite. YAML config is the preferred human-authored bootstrap/import/export format, and JSON remains supported for machine-friendly compatibility. During the pre-v1 settings slice, household/display/weather settings save to SQLite in store-backed mode and back to the active YAML config in harness mode. Configured agents are also saved back to the active YAML config so local users can add, disable, and remove A2A agents without editing SQLite directly. The hub owns durable settings, and public config responses are redacted projections.
 
 `JUTE_HOME` is the planned data root. The runtime database defaults to `$JUTE_HOME/jute.db`, with Docker using `/data` and systemd using `/var/lib/jute`.
 

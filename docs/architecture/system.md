@@ -85,7 +85,7 @@ Initial API families:
 - `/api/v1/widgets`: widget catalog, layouts, widget state, and widget permissions. The current v1 surface includes `GET /api/v1/widgets/catalog`, `GET /api/v1/widgets/layout`, `PUT /api/v1/widgets/layout`, and `POST /api/v1/widgets/layout/reset`.
 - `/api/v1/agents`: configured agents, cached cards, skills, health, and selected bindings.
 - `/api/v1/messages`: compatibility endpoint for simple blocking user turns that become A2A tasks.
-- `/api/v1/setup`: future first-run setup status and completion.
+- `/api/v1/setup/status`: first-run setup completeness.
 - `/api/v1/status`: setup, event stream, agent, MCP, voice, and degraded health summary for safe display diagnostics.
 - `/api/v1/devices`: future device profile and per-device settings.
 - `/api/v1/voice/status`: current voice state, provider, mute, and follow-up status foundation.
@@ -94,7 +94,7 @@ Initial API families:
 - `/api/v1/tts`: future voice listing, preview, speak, and stop controls.
 - `/api/v1/conversations`: current multi-turn conversation APIs for typed turns. These are hub projections over the selected A2A agent's task history, with voice and wake-word turns planned to use the same pipeline.
 - `/api/v1/events`: currently a minimal SSE endpoint. Future releases will use it for replayable home, widget, agent, voice, and task updates.
-- `/api/v1/settings`: household, device profile, theme, and layout settings.
+- `/api/v1/settings/household`: current home, display, and weather settings.
 - `/healthz`: existing minimal hub process reachability check.
 
 Runtime error handling and user-facing failure states are specified in [Resilience And Error UX](resilience-error-ux.md).
