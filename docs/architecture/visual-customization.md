@@ -43,6 +43,27 @@ It preserves the current v1 visual direction:
 - neutral gray borders and surfaces;
 - semantic colors only for state, such as error, warning, success, active voice, and recording.
 
+## Included Themes
+
+The first bundled Theme Packs are:
+
+- `jute-mono`: the default BOW/WOB Jute palette;
+- `solarized`: Solarized-inspired light and dark modes;
+- `ayu`: Ayu-inspired warm light and dark modes;
+- `one-dark`: One Dark-inspired dark mode with a One Light-style companion;
+- `gruvbox`: Gruvbox-inspired warm light and dark modes;
+- `dracula`: Dracula-inspired dark mode with a practical light companion.
+- `catppuccin`: Catppuccin-inspired soft pastel light and dark modes;
+- `nord`: Nord-inspired cool blue-gray light and dark modes;
+- `tokyo-night`: Tokyo Night-inspired modern blue-purple light and dark modes;
+- `kanagawa`: Kanagawa-inspired warm light and dark modes;
+- `monokai`: Monokai-inspired high-contrast light and dark modes;
+- `material`: Material/Oceanic-inspired teal-blue light and dark modes;
+- `github`: GitHub-inspired practical light and dark modes;
+- `everforest`: Everforest-inspired soft green and warm neutral light and dark modes.
+
+These themes are repo data under `themes/[theme-id]/`. The Svelte display currently ships a matching built-in token registry for these IDs; future work can replace that with generated or runtime-loaded Theme Pack tokens.
+
 ## Display Configuration
 
 The future display config should separate color mode from theme identity.
@@ -62,7 +83,7 @@ display:
 Fields:
 
 - `color-mode`: `system`, `light`, or `dark`;
-- `theme-id`: selected Theme Pack ID;
+- `theme-id`: selected Theme Pack ID, currently `jute-mono`, `solarized`, `ayu`, `one-dark`, `gruvbox`, `dracula`, `catppuccin`, `nord`, `tokyo-night`, `kanagawa`, `monokai`, `material`, `github`, or `everforest`;
 - `density`: `comfortable`, `compact`, or `large-touch`;
 - `motion`: `full`, `reduced`, or `none`;
 - `background`: display background source and rendering policy;

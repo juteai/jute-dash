@@ -1,0 +1,45 @@
+{
+  "id": "material",
+  "name": "Material",
+  "version": "0.1.0",
+  "description": "A Material/Oceanic-inspired palette with teal and blue accents.",
+  "supportedModes": ["light", "dark"],
+  "modes": {
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#263238",
+      "surface": "#ffffff",
+      "surfaceMuted": "#eceff1",
+      "surfaceStrong": "#dfe5e8",
+      "border": "#cfd8dc",
+      "borderStrong": "#37474f",
+      "muted": "#607d8b",
+      "mutedStrong": "#455a64",
+      "inverse": "#fafafa",
+      "accent": "#009688",
+      "danger": "#e53935",
+      "warning": "#ff9800",
+      "success": "#43a047",
+      "active": "#2196f3",
+      "focus": "#00acc1"
+    },
+    "dark": {
+      "background": "#263238",
+      "foreground": "#eeffff",
+      "surface": "#1e272c",
+      "surfaceMuted": "#2f3f46",
+      "surfaceStrong": "#37474f",
+      "border": "#455a64",
+      "borderStrong": "#eeffff",
+      "muted": "#b0bec5",
+      "mutedStrong": "#d9f1f1",
+      "inverse": "#263238",
+      "accent": "#80cbc4",
+      "danger": "#ff5370",
+      "warning": "#ffcb6b",
+      "success": "#c3e88d",
+      "active": "#82aaff",
+      "focus": "#89ddff"
+    }
+  }
+}

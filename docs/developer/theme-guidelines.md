@@ -8,6 +8,8 @@ Themes are data-only. Do not add JavaScript, HTML, runtime hooks, remote imports
 
 Architecture details live in [Visual Customization](../architecture/visual-customization.md).
 
+Bundled starter themes are `jute-mono`, `solarized`, `ayu`, `one-dark`, `gruvbox`, `dracula`, `catppuccin`, `nord`, `tokyo-night`, `kanagawa`, `monokai`, `material`, `github`, and `everforest`. Until runtime Theme Pack loading lands, new theme contributions must also be added to the display token registry in `apps/web/src/lib/themes.ts` and to the hub allow-list in `internal/config/config.go`.
+
 ## Folder Structure
 
 Theme Packs should use this planned shape:

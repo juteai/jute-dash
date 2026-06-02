@@ -210,6 +210,35 @@ func IsKnownMCPScope(scope string) bool {
 	}
 }
 
+func SupportedThemeIDs() []string {
+	return []string{
+		"jute-mono",
+		"solarized",
+		"ayu",
+		"one-dark",
+		"gruvbox",
+		"dracula",
+		"catppuccin",
+		"nord",
+		"tokyo-night",
+		"kanagawa",
+		"monokai",
+		"material",
+		"github",
+		"everforest",
+	}
+}
+
+func IsSupportedThemeID(id string) bool {
+	id = strings.TrimSpace(id)
+	for _, supported := range SupportedThemeIDs() {
+		if id == supported {
+			return true
+		}
+	}
+	return false
+}
+
 func Default() Config {
 	return Config{
 		Home: HomeConfig{
@@ -341,8 +370,8 @@ func Validate(cfg Config) error {
 	if cfg.Display.Theme != "" && !isSupportedColorMode(cfg.Display.Theme) {
 		problems = append(problems, "display.theme must be system, light, or dark")
 	}
-	if strings.TrimSpace(cfg.Display.ThemeID) != "jute-mono" {
-		problems = append(problems, "display.themeId must be jute-mono")
+	if !IsSupportedThemeID(cfg.Display.ThemeID) {
+		problems = append(problems, "display.themeId must be one of: "+strings.Join(SupportedThemeIDs(), ", "))
 	}
 	if !isSupportedDensity(cfg.Display.Density) {
 		problems = append(problems, "display.density must be comfortable, compact, or large-touch")

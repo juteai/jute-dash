@@ -1,0 +1,45 @@
+{
+  "id": "monokai",
+  "name": "Monokai",
+  "version": "0.1.0",
+  "description": "A classic high-contrast editor palette adapted for dashboard surfaces.",
+  "supportedModes": ["light", "dark"],
+  "modes": {
+    "light": {
+      "background": "#f8f8f2",
+      "foreground": "#272822",
+      "surface": "#ffffff",
+      "surfaceMuted": "#eeeeea",
+      "surfaceStrong": "#dfdfd8",
+      "border": "#d2d2c8",
+      "borderStrong": "#49483e",
+      "muted": "#6f6f64",
+      "mutedStrong": "#49483e",
+      "inverse": "#f8f8f2",
+      "accent": "#66d9ef",
+      "danger": "#f92672",
+      "warning": "#fd971f",
+      "success": "#a6e22e",
+      "active": "#66d9ef",
+      "focus": "#ae81ff"
+    },
+    "dark": {
+      "background": "#272822",
+      "foreground": "#f8f8f2",
+      "surface": "#1f201b",
+      "surfaceMuted": "#3a3b32",
+      "surfaceStrong": "#49483e",
+      "border": "#5b5a4d",
+      "borderStrong": "#f8f8f2",
+      "muted": "#cfcfc2",
+      "mutedStrong": "#f8f8f2",
+      "inverse": "#272822",
+      "accent": "#66d9ef",
+      "danger": "#f92672",
+      "warning": "#fd971f",
+      "success": "#a6e22e",
+      "active": "#66d9ef",
+      "focus": "#ae81ff"
+    }
+  }
+}

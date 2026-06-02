@@ -173,6 +173,16 @@ tiles: []
 	}
 }
 
+func TestSupportedThemeIDs(t *testing.T) {
+	for _, themeID := range SupportedThemeIDs() {
+		cfg := Default()
+		cfg.Display.ThemeID = themeID
+		if err := Validate(cfg); err != nil {
+			t.Fatalf("Validate() rejected theme %q: %v", themeID, err)
+		}
+	}
+}
+
 func TestLoadRejectsInvalidDisplayCustomization(t *testing.T) {
 	tests := []struct {
 		name string

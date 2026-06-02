@@ -1,0 +1,45 @@
+{
+  "id": "github",
+  "name": "GitHub",
+  "version": "0.1.0",
+  "description": "A practical GitHub-inspired light and dark theme for developer-friendly dashboards.",
+  "supportedModes": ["light", "dark"],
+  "modes": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#24292f",
+      "surface": "#ffffff",
+      "surfaceMuted": "#f6f8fa",
+      "surfaceStrong": "#eaeef2",
+      "border": "#d0d7de",
+      "borderStrong": "#24292f",
+      "muted": "#57606a",
+      "mutedStrong": "#3d444d",
+      "inverse": "#ffffff",
+      "accent": "#0969da",
+      "danger": "#cf222e",
+      "warning": "#9a6700",
+      "success": "#1a7f37",
+      "active": "#0969da",
+      "focus": "#0969da"
+    },
+    "dark": {
+      "background": "#0d1117",
+      "foreground": "#e6edf3",
+      "surface": "#161b22",
+      "surfaceMuted": "#21262d",
+      "surfaceStrong": "#30363d",
+      "border": "#30363d",
+      "borderStrong": "#e6edf3",
+      "muted": "#8b949e",
+      "mutedStrong": "#c9d1d9",
+      "inverse": "#0d1117",
+      "accent": "#2f81f7",
+      "danger": "#f85149",
+      "warning": "#d29922",
+      "success": "#3fb950",
+      "active": "#2f81f7",
+      "focus": "#58a6ff"
+    }
+  }
+}

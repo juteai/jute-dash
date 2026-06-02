@@ -1,0 +1,45 @@
+{
+  "id": "catppuccin",
+  "name": "Catppuccin",
+  "version": "0.1.0",
+  "description": "A soft pastel theme inspired by Catppuccin Latte and Mocha.",
+  "supportedModes": ["light", "dark"],
+  "modes": {
+    "light": {
+      "background": "#eff1f5",
+      "foreground": "#4c4f69",
+      "surface": "#ffffff",
+      "surfaceMuted": "#e6e9ef",
+      "surfaceStrong": "#dce0e8",
+      "border": "#ccd0da",
+      "borderStrong": "#4c4f69",
+      "muted": "#6c6f85",
+      "mutedStrong": "#5c5f77",
+      "inverse": "#eff1f5",
+      "accent": "#8839ef",
+      "danger": "#d20f39",
+      "warning": "#df8e1d",
+      "success": "#40a02b",
+      "active": "#1e66f5",
+      "focus": "#8839ef"
+    },
+    "dark": {
+      "background": "#1e1e2e",
+      "foreground": "#cdd6f4",
+      "surface": "#181825",
+      "surfaceMuted": "#313244",
+      "surfaceStrong": "#45475a",
+      "border": "#585b70",
+      "borderStrong": "#cdd6f4",
+      "muted": "#a6adc8",
+      "mutedStrong": "#bac2de",
+      "inverse": "#1e1e2e",
+      "accent": "#cba6f7",
+      "danger": "#f38ba8",
+      "warning": "#f9e2af",
+      "success": "#a6e3a1",
+      "active": "#89b4fa",
+      "focus": "#cba6f7"
+    }
+  }
+}

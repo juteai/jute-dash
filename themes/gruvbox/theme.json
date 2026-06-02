@@ -1,0 +1,45 @@
+{
+  "id": "gruvbox",
+  "name": "Gruvbox",
+  "version": "0.1.0",
+  "description": "A warm retro theme inspired by the Gruvbox editor palette.",
+  "supportedModes": ["light", "dark"],
+  "modes": {
+    "light": {
+      "background": "#fbf1c7",
+      "foreground": "#3c3836",
+      "surface": "#f9f5d7",
+      "surfaceMuted": "#ebdbb2",
+      "surfaceStrong": "#d5c4a1",
+      "border": "#d5c4a1",
+      "borderStrong": "#504945",
+      "muted": "#7c6f64",
+      "mutedStrong": "#504945",
+      "inverse": "#fbf1c7",
+      "accent": "#076678",
+      "danger": "#cc241d",
+      "warning": "#b57614",
+      "success": "#79740e",
+      "active": "#458588",
+      "focus": "#af3a03"
+    },
+    "dark": {
+      "background": "#282828",
+      "foreground": "#ebdbb2",
+      "surface": "#32302f",
+      "surfaceMuted": "#3c3836",
+      "surfaceStrong": "#504945",
+      "border": "#504945",
+      "borderStrong": "#ebdbb2",
+      "muted": "#a89984",
+      "mutedStrong": "#d5c4a1",
+      "inverse": "#282828",
+      "accent": "#83a598",
+      "danger": "#fb4934",
+      "warning": "#fabd2f",
+      "success": "#b8bb26",
+      "active": "#83a598",
+      "focus": "#fe8019"
+    }
+  }
+}

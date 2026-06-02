@@ -1,0 +1,45 @@
+{
+  "id": "one-dark",
+  "name": "One Dark",
+  "version": "0.1.0",
+  "description": "A Jute adaptation of the One Dark family, with a One Light companion for light mode.",
+  "supportedModes": ["light", "dark"],
+  "modes": {
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#383a42",
+      "surface": "#ffffff",
+      "surfaceMuted": "#f0f0f1",
+      "surfaceStrong": "#e5e5e6",
+      "border": "#d4d4d5",
+      "borderStrong": "#383a42",
+      "muted": "#696c77",
+      "mutedStrong": "#4f535d",
+      "inverse": "#ffffff",
+      "accent": "#4078f2",
+      "danger": "#e45649",
+      "warning": "#c18401",
+      "success": "#50a14f",
+      "active": "#4078f2",
+      "focus": "#4078f2"
+    },
+    "dark": {
+      "background": "#282c34",
+      "foreground": "#abb2bf",
+      "surface": "#21252b",
+      "surfaceMuted": "#2c313a",
+      "surfaceStrong": "#353b45",
+      "border": "#3e4451",
+      "borderStrong": "#abb2bf",
+      "muted": "#8b95a7",
+      "mutedStrong": "#c8ccd4",
+      "inverse": "#282c34",
+      "accent": "#61afef",
+      "danger": "#e06c75",
+      "warning": "#e5c07b",
+      "success": "#98c379",
+      "active": "#61afef",
+      "focus": "#61afef"
+    }
+  }
+}

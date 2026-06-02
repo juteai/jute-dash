@@ -3,6 +3,7 @@
   "name": "Jute Mono",
   "version": "0.1.0",
   "description": "The default black-on-white and white-on-black Jute Dash theme.",
+  "supportedModes": ["light", "dark"],
   "modes": {
     "light": {
       "background": "#ffffff",

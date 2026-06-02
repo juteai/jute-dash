@@ -1,0 +1,45 @@
+{
+  "id": "dracula",
+  "name": "Dracula",
+  "version": "0.1.0",
+  "description": "A high-contrast dark-first theme inspired by the Dracula editor palette.",
+  "supportedModes": ["light", "dark"],
+  "modes": {
+    "light": {
+      "background": "#f8f8f2",
+      "foreground": "#282a36",
+      "surface": "#ffffff",
+      "surfaceMuted": "#eeeef4",
+      "surfaceStrong": "#e3e4ee",
+      "border": "#d8d9e6",
+      "borderStrong": "#44475a",
+      "muted": "#62677d",
+      "mutedStrong": "#44475a",
+      "inverse": "#f8f8f2",
+      "accent": "#6272a4",
+      "danger": "#ff5555",
+      "warning": "#ffb86c",
+      "success": "#50fa7b",
+      "active": "#6272a4",
+      "focus": "#bd93f9"
+    },
+    "dark": {
+      "background": "#282a36",
+      "foreground": "#f8f8f2",
+      "surface": "#1f2130",
+      "surfaceMuted": "#343746",
+      "surfaceStrong": "#44475a",
+      "border": "#44475a",
+      "borderStrong": "#f8f8f2",
+      "muted": "#b6b8c8",
+      "mutedStrong": "#f8f8f2",
+      "inverse": "#282a36",
+      "accent": "#bd93f9",
+      "danger": "#ff5555",
+      "warning": "#ffb86c",
+      "success": "#50fa7b",
+      "active": "#8be9fd",
+      "focus": "#ff79c6"
+    }
+  }
+}

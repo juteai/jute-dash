@@ -1,0 +1,45 @@
+{
+  "id": "tokyo-night",
+  "name": "Tokyo Night",
+  "version": "0.1.0",
+  "description": "A modern blue-purple theme inspired by Tokyo Night.",
+  "supportedModes": ["light", "dark"],
+  "modes": {
+    "light": {
+      "background": "#d5d6db",
+      "foreground": "#343b59",
+      "surface": "#ffffff",
+      "surfaceMuted": "#e1e2e7",
+      "surfaceStrong": "#cbccd4",
+      "border": "#b8bac6",
+      "borderStrong": "#343b59",
+      "muted": "#5a6182",
+      "mutedStrong": "#454b6b",
+      "inverse": "#d5d6db",
+      "accent": "#34548a",
+      "danger": "#8c4351",
+      "warning": "#8f5e15",
+      "success": "#485e30",
+      "active": "#34548a",
+      "focus": "#5a4a78"
+    },
+    "dark": {
+      "background": "#1a1b26",
+      "foreground": "#c0caf5",
+      "surface": "#16161e",
+      "surfaceMuted": "#24283b",
+      "surfaceStrong": "#292e42",
+      "border": "#3b4261",
+      "borderStrong": "#c0caf5",
+      "muted": "#9aa5ce",
+      "mutedStrong": "#a9b1d6",
+      "inverse": "#1a1b26",
+      "accent": "#7aa2f7",
+      "danger": "#f7768e",
+      "warning": "#e0af68",
+      "success": "#9ece6a",
+      "active": "#7aa2f7",
+      "focus": "#bb9af7"
+    }
+  }
+}

@@ -4,6 +4,7 @@
   import Badge from '$lib/components/ui/Badge.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
+  import { themeOptions } from '$lib/themes';
   import type { Agent, AppStatus, HouseholdSettings, Room, Tile, VoiceStatus } from '$lib/types';
 
   export let agents: Agent[] = [];
@@ -180,11 +181,29 @@
               <input bind:value={draft.home.locale} placeholder="en-GB" />
             </label>
             <label>
-              <span>Theme</span>
-              <select bind:value={draft.display.theme}>
+              <span>Theme pack</span>
+              <select bind:value={draft.display.themeId}>
+                {#each themeOptions as option}
+                  <option value={option.id}>{option.name}</option>
+                {/each}
+              </select>
+            </label>
+            <label>
+              <span>Color mode</span>
+              <select bind:value={draft.display.colorMode} on:change={() => draft && (draft.display.theme = draft.display.colorMode)}>
                 <option value="system">System</option>
                 <option value="light">Light</option>
                 <option value="dark">Dark</option>
+              </select>
+            </label>
+            <label>
+              <span>Widget chrome</span>
+              <select bind:value={draft.display.widgetChrome.default}>
+                <option value="solid">Solid</option>
+                <option value="clear">Clear</option>
+                <option value="smoked">Smoked</option>
+                <option value="frosted">Frosted</option>
+                <option value="auto">Auto</option>
               </select>
             </label>
             <label class="settings-checkbox">

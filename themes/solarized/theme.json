@@ -1,0 +1,45 @@
+{
+  "id": "solarized",
+  "name": "Solarized",
+  "version": "0.1.0",
+  "description": "A balanced low-contrast theme inspired by the Solarized editor palette.",
+  "supportedModes": ["light", "dark"],
+  "modes": {
+    "light": {
+      "background": "#fdf6e3",
+      "foreground": "#073642",
+      "surface": "#fdf6e3",
+      "surfaceMuted": "#eee8d5",
+      "surfaceStrong": "#e4dcc4",
+      "border": "#d8cfb7",
+      "borderStrong": "#586e75",
+      "muted": "#657b83",
+      "mutedStrong": "#586e75",
+      "inverse": "#fdf6e3",
+      "accent": "#268bd2",
+      "danger": "#dc322f",
+      "warning": "#b58900",
+      "success": "#859900",
+      "active": "#268bd2",
+      "focus": "#268bd2"
+    },
+    "dark": {
+      "background": "#002b36",
+      "foreground": "#eee8d5",
+      "surface": "#073642",
+      "surfaceMuted": "#002b36",
+      "surfaceStrong": "#0b3f4f",
+      "border": "#164b5c",
+      "borderStrong": "#93a1a1",
+      "muted": "#93a1a1",
+      "mutedStrong": "#eee8d5",
+      "inverse": "#002b36",
+      "accent": "#2aa198",
+      "danger": "#dc322f",
+      "warning": "#b58900",
+      "success": "#859900",
+      "active": "#268bd2",
+      "focus": "#2aa198"
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "id": "nord",
+  "name": "Nord",
+  "version": "0.1.0",
+  "description": "A cool blue-gray theme inspired by the Nord editor palette.",
+  "supportedModes": ["light", "dark"],
+  "modes": {
+    "light": {
+      "background": "#eceff4",
+      "foreground": "#2e3440",
+      "surface": "#ffffff",
+      "surfaceMuted": "#e5e9f0",
+      "surfaceStrong": "#d8dee9",
+      "border": "#c8d0dd",
+      "borderStrong": "#3b4252",
+      "muted": "#5e6778",
+      "mutedStrong": "#4c566a",
+      "inverse": "#eceff4",
+      "accent": "#5e81ac",
+      "danger": "#bf616a",
+      "warning": "#d08770",
+      "success": "#a3be8c",
+      "active": "#5e81ac",
+      "focus": "#88c0d0"
+    },
+    "dark": {
+      "background": "#2e3440",
+      "foreground": "#eceff4",
+      "surface": "#3b4252",
+      "surfaceMuted": "#343a46",
+      "surfaceStrong": "#434c5e",
+      "border": "#4c566a",
+      "borderStrong": "#eceff4",
+      "muted": "#d8dee9",
+      "mutedStrong": "#e5e9f0",
+      "inverse": "#2e3440",
+      "accent": "#88c0d0",
+      "danger": "#bf616a",
+      "warning": "#ebcb8b",
+      "success": "#a3be8c",
+      "active": "#81a1c1",
+      "focus": "#88c0d0"
+    }
+  }
+}

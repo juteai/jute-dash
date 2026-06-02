@@ -1,0 +1,45 @@
+{
+  "id": "kanagawa",
+  "name": "Kanagawa",
+  "version": "0.1.0",
+  "description": "A warm Japanese-print-inspired palette adapted for Jute Dash.",
+  "supportedModes": ["light", "dark"],
+  "modes": {
+    "light": {
+      "background": "#f2ecbc",
+      "foreground": "#545464",
+      "surface": "#f7f4d1",
+      "surfaceMuted": "#e6ddb2",
+      "surfaceStrong": "#d9cfa0",
+      "border": "#c8bc8f",
+      "borderStrong": "#545464",
+      "muted": "#6f6f83",
+      "mutedStrong": "#545464",
+      "inverse": "#f2ecbc",
+      "accent": "#4b699b",
+      "danger": "#c84053",
+      "warning": "#b35c00",
+      "success": "#6f894e",
+      "active": "#4b699b",
+      "focus": "#b35c00"
+    },
+    "dark": {
+      "background": "#1f1f28",
+      "foreground": "#dcd7ba",
+      "surface": "#16161d",
+      "surfaceMuted": "#2a2a37",
+      "surfaceStrong": "#363646",
+      "border": "#54546d",
+      "borderStrong": "#dcd7ba",
+      "muted": "#a6a69c",
+      "mutedStrong": "#c8c093",
+      "inverse": "#1f1f28",
+      "accent": "#7e9cd8",
+      "danger": "#e46876",
+      "warning": "#ffa066",
+      "success": "#98bb6c",
+      "active": "#7fb4ca",
+      "focus": "#ffa066"
+    }
+  }
+}

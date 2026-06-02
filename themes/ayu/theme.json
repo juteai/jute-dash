@@ -1,0 +1,45 @@
+{
+  "id": "ayu",
+  "name": "Ayu",
+  "version": "0.1.0",
+  "description": "A warm, crisp theme inspired by Ayu Light and Ayu Dark editor palettes.",
+  "supportedModes": ["light", "dark"],
+  "modes": {
+    "light": {
+      "background": "#fafafa",
+      "foreground": "#5c6773",
+      "surface": "#ffffff",
+      "surfaceMuted": "#f3f4f5",
+      "surfaceStrong": "#eceff1",
+      "border": "#d8dce0",
+      "borderStrong": "#5c6773",
+      "muted": "#828c99",
+      "mutedStrong": "#5c6773",
+      "inverse": "#ffffff",
+      "accent": "#ff9940",
+      "danger": "#f07178",
+      "warning": "#ffb454",
+      "success": "#86b300",
+      "active": "#399ee6",
+      "focus": "#ff9940"
+    },
+    "dark": {
+      "background": "#0f1419",
+      "foreground": "#e6e1cf",
+      "surface": "#14191f",
+      "surfaceMuted": "#1f2430",
+      "surfaceStrong": "#232936",
+      "border": "#2d3640",
+      "borderStrong": "#e6e1cf",
+      "muted": "#95a2b3",
+      "mutedStrong": "#d2cbb7",
+      "inverse": "#0f1419",
+      "accent": "#ffb454",
+      "danger": "#f07178",
+      "warning": "#ffb454",
+      "success": "#aad94c",
+      "active": "#59c2ff",
+      "focus": "#ffb454"
+    }
+  }
+}
