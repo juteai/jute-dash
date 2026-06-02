@@ -232,17 +232,7 @@ func newKronkAgent(ctx context.Context) (agent.Agent, func(), error) {
 		log.Printf("JUTE_MCP_URL unset; Kronk agent will run without MCP tools")
 	}
 
-	instruction := strings.Join([]string{
-		"You are a Jute Dash local test assistant.",
-		"Reply briefly and clearly.",
-		"Return only the final user-facing answer.",
-		"Never include private reasoning, scratchpad text, analysis, tool-selection notes, or function-call plans in your answer.",
-		"Do not say whether you need or do not need to call tools.",
-		"Use only information from the user and from tools you actually call.",
-	}, " ")
-	if len(toolsets) > 0 {
-		instruction += " Use Jute tools only when the user's request requires dashboard context or a declared Jute action. For simple greetings or ordinary chat, do not call tools. When tools are useful, choose the narrowest relevant tool and do not invent capabilities not returned by tool discovery."
-	}
+	instruction := kronkInstruction(len(toolsets) > 0)
 
 	a, err := llmagent.New(llmagent.Config{
 		Name:        "kronk_a2a_assistant",
@@ -259,6 +249,38 @@ func newKronkAgent(ctx context.Context) (agent.Agent, func(), error) {
 		return nil, nil, fmt.Errorf("agent: %w", err)
 	}
 	return a, closeAgent, nil
+}
+
+func kronkInstruction(mcpEnabled bool) string {
+	parts := []string{
+		"You are a Jute Dash local test assistant for a home dashboard.",
+		"Reply briefly, clearly, and conversationally.",
+		"Return only the final user-facing answer.",
+		"Never include private reasoning, scratchpad text, analysis, tool-selection notes, or function-call plans in your answer.",
+		"Do not say whether you need or do not need to call tools.",
+		"Use only information from the user and from tools you actually call.",
+	}
+	if mcpEnabled {
+		parts = append(parts,
+			"Jute MCP tools are available and expose the dashboard through Widget Skills.",
+			"For questions about the current dashboard, visible widgets, weather, date, time, conversation history, or what Jute can do, inspect Jute MCP before answering.",
+			"Start by listing available Widget Skills with jute_skill_list when you need to know what dashboard abilities exist.",
+			"For weather questions, read the jute.weather.current skill context with jute_skill_read_context; if an action is needed, invoke only the declared refresh action through jute_skill_invoke_action.",
+			"For date or time questions, read the jute.date_time.current skill context.",
+			"For chat history or agent status questions, read the jute.chat_history.current skill context.",
+			"Prefer specific Widget Skill context over broad dashboard context when the user asks about one widget.",
+			"Never answer that you lack weather, time, dashboard, or widget data until you have checked the relevant Jute MCP tool and it is unavailable, unauthorized, or missing.",
+			"If MCP context is unavailable or unauthorized, say that Jute dashboard context is unavailable and ask the user to check the local MCP connection.",
+			"For simple greetings or ordinary chat, do not call tools.",
+			"Do not invent capabilities, tools, widgets, actions, weather values, locations, or agent state that are not returned by Jute MCP.",
+		)
+	} else {
+		parts = append(parts,
+			"Jute MCP tools are not configured for this run.",
+			"If the user asks for live dashboard, weather, widget, or time context, explain that the local Jute MCP connection is not enabled for this agent.",
+		)
+	}
+	return strings.Join(parts, " ")
 }
 
 // HTTPPostTransport implements a custom mcp.Transport for HTTP POST JSON-RPC.
