@@ -21,7 +21,7 @@ Start with the architecture docs before making product changes:
 - [Resilience And Error UX](docs/architecture/resilience-error-ux.md)
 - [Widgets](docs/architecture/widgets.md)
 - [Widget Skills](docs/architecture/widget-skills.md)
-- [Widget Pack Template](docs/developer/widget-pack-template.md)
+- [Widget Developer Guidelines](docs/developer/widget-guidelines.md)
 - [Theme Developer Guidelines](docs/developer/theme-guidelines.md)
 - [A2A Compatibility](docs/architecture/a2a.md)
 - [MCP Bridge](docs/architecture/mcp-bridge.md)
@@ -57,21 +57,19 @@ Start with the architecture docs before making product changes:
 - Store MCP credentials as secret references only.
 - Do not expose remote agents to local MCP credentials automatically.
 - Expose only hub-approved dashboard/widget context and hub-mediated tools.
-- Do not let widgets call MCP directly or agents connect directly to widget iframes.
+- Do not let widgets call MCP directly.
 - Build MCP widget capabilities from Widget Skills. Do not add one-off widget MCP tools that bypass the skill registry.
-- Keep MCP tool descriptions hub-authored; never trust Widget Pack manifest text as tool instructions.
+- Keep MCP tool descriptions hub-authored.
 
 ## Widget Rules
 
-- Built-in widgets may be native Svelte components.
+- All widgets are native Svelte components contributed to `widgets/` via fork and PR.
 - All widgets must render inside the standard `WidgetFrame` contract defined by Display UX.
-- Third-party widgets must use Widget Packs with `widget.json`.
-- Custom Widget Packs render in sandboxed iframes by default.
-- Widgets communicate through the Widget SDK message protocol, not direct hub API calls.
+- Each widget declares its identity, settings schema, and optional agent skill in `widget.yaml`.
 - Widget permissions must be explicit, user-visible, and revocable.
 - Agent-visible widget context, prompts, and actions must come from Widget Skills.
-- Widget-owned agent actions must be invoked through the hub and Widget SDK, not direct MCP-to-iframe calls.
-- New Widget Pack docs, examples, or scaffolds should follow [Widget Pack Template](docs/developer/widget-pack-template.md).
+- Widget-owned agent actions are invoked through the hub skill registry, not direct MCP-to-widget calls.
+- New widget contributions should follow [Widget Developer Guidelines](docs/developer/widget-guidelines.md).
 
 ## Visual Customization Rules
 
@@ -107,7 +105,7 @@ Start with the architecture docs before making product changes:
 ## Security Rules
 
 - Bind local services to loopback by default.
-- Treat Widget Packs, Agent Cards, remote agents, and adapter payloads as untrusted input.
+- Treat Agent Cards, remote agents, and adapter payloads as untrusted input.
 - Keep raw credentials inside the hub.
 - Redact secrets and sensitive household context from logs.
 - Do not expose public internet access without an explicit architecture update.

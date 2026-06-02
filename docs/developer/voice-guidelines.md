@@ -77,7 +77,7 @@ Contributed providers must include:
 
 Broad, license-compatible integrations can become built-in adapters. GPL or licensing-sensitive engines should be documented as external services or command providers unless Jute later makes an explicit licensing decision.
 
-Provider packs are different from Widget Packs and A2A agents. A voice provider never renders UI widgets, never receives dashboard context, and never routes turns to A2A agents.
+Voice Provider Packs are distinct from widgets and A2A agents. A voice provider never renders UI widgets, never receives dashboard context, and never routes turns to A2A agents.
 
 ## Wake Word Rules
 

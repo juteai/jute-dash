@@ -138,7 +138,7 @@ The dashboard grid is draggable and resizable.
 Persisted widget layout fields:
 
 - `id`: widget instance ID;
-- `kind`: built-in widget kind or Widget Pack ID;
+- `kind`: widget kind matching the widget's registered type;
 - `x`: grid column start;
 - `y`: grid row start;
 - `w`: grid width;
@@ -152,7 +152,7 @@ Persisted widget layout fields:
 Implementation guidance:
 
 - v1 uses a small custom Svelte grid editor for the built-in widget set;
-- revisit a proven Svelte-compatible drag/resize grid library only when Widget Packs or denser layouts make the custom editor too costly;
+- revisit a proven Svelte-compatible drag/resize grid library only when denser layouts make the custom editor too costly;
 - preserve layout through hub APIs, not browser local storage;
 - debounce layout saves while dragging;
 - commit the final layout when drag or resize ends;
@@ -169,8 +169,7 @@ Widget additions can come from:
 
 - setup config bootstrap;
 - SQLite layout settings;
-- in-app widget catalog;
-- future Widget Pack installation flow.
+- in-app widget catalog.
 
 ## Edit Mode
 

@@ -8,7 +8,7 @@ Jute Dash is a local-first home assistant platform. Treat this repo as architect
 - Display: SvelteKit with shadcn-svelte conventions for dashboard, settings, widget host, PWA, and kiosk use.
 - Persistence: SQLite for runtime data, YAML for preferred bootstrap/import/export, and JSON for compatibility.
 - Agents: bring-your-own A2A servers discovered through Agent Cards.
-- Widgets: native Svelte for first-party widgets, sandboxed Widget Packs for custom widgets.
+- Widgets: native Svelte components contributed to the `widgets/` directory via fork and PR.
 
 Key docs:
 
@@ -20,7 +20,7 @@ Key docs:
 - [Resilience And Error UX](docs/architecture/resilience-error-ux.md)
 - [Widgets](docs/architecture/widgets.md)
 - [Widget Skills](docs/architecture/widget-skills.md)
-- [Widget Pack Template](docs/developer/widget-pack-template.md)
+- [Widget Developer Guidelines](docs/developer/widget-guidelines.md)
 - [Theme Developer Guidelines](docs/developer/theme-guidelines.md)
 - [A2A Compatibility](docs/architecture/a2a.md)
 - [MCP Bridge](docs/architecture/mcp-bridge.md)
@@ -52,9 +52,9 @@ Key docs:
 - Implement the MCP Bridge inside the Go hub, disabled by default, loopback-bound by default, and using Streamable HTTP as the default v1 transport.
 - Store MCP credentials as secret references only and never expose remote agents to local MCP credentials automatically.
 - Expose only hub-approved dashboard/widget context and hub-mediated tools through MCP.
-- Do not let widgets call MCP directly or agents connect directly to widget iframes.
+- Do not let widgets call MCP directly.
 - Build MCP widget capabilities from Widget Skills. Do not add one-off widget MCP tools that bypass the skill registry.
-- Keep MCP tool descriptions hub-authored and do not trust Widget Pack manifest text as tool instructions.
+- Keep MCP tool descriptions hub-authored.
 - Keep wake word and VAD local before any cloud STT call.
 - Route voice transcripts through the hub conversation pipeline, not directly to agents.
 - Never send raw microphone audio to A2A agents.
@@ -66,13 +66,12 @@ Key docs:
 
 ## Widget Rules
 
-- Custom widgets are Widget Packs with `widget.json`.
-- Render untrusted widgets in sandboxed iframes.
-- Use the typed postMessage SDK contract for host/widget communication.
+- All widgets are native Svelte components contributed to `widgets/` via fork and PR.
+- Each widget declares its identity, settings schema, and optional agent-facing skill in `widget.yaml`.
 - Expose agent context, prompts, and actions only through Widget Skills.
-- Invoke widget-owned agent actions through the hub and Widget SDK, not direct MCP-to-iframe calls.
+- Invoke widget-owned agent actions through the hub skill registry, not direct MCP-to-widget calls.
 - Keep permissions explicit and revocable.
-- New Widget Pack docs, examples, or scaffolds should follow Widget Pack Template.
+- New widget contributions should follow [Widget Developer Guidelines](docs/developer/widget-guidelines.md).
 
 ## Commands
 
@@ -102,3 +101,17 @@ make dev
 - When adding MCP behavior, check the current official MCP docs and update MCP Bridge, Widget Skills, and MCP Agent Guidelines.
 - When adding widget behavior, update Widgets, Widget Skills, and Widget Developer Guidelines.
 - When adding voice behavior, update voice architecture, provider pack architecture, and developer guidelines.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for this repo. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context repo — `CONTEXT-MAP.md` at root points to per-context `CONTEXT.md` files. See `docs/agents/domain.md`.

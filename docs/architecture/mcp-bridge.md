@@ -168,7 +168,7 @@ Resource rules:
 
 - hidden widgets are omitted;
 - widget private state is omitted;
-- undeclared Widget Pack fields are omitted;
+- undeclared widget fields are omitted;
 - resources include freshness metadata when available;
 - resource payloads use stable JSON shapes;
 - the bridge validates all `jute://` URIs before reading;
@@ -235,7 +235,7 @@ Later tools:
 Tool rules:
 
 - tool descriptions are hub-authored only;
-- Widget Pack manifest text must not become trusted MCP tool instructions;
+- widget manifest text must not become trusted MCP tool instructions;
 - all tool arguments use JSON Schema;
 - widget-owned operations are exposed as skill actions, not one-off MCP tools;
 - display mutation tools require opt-in scopes;
@@ -299,9 +299,9 @@ The bridge never exposes:
 - voice pre-roll buffers;
 - partial transcripts;
 - browser local storage;
-- undeclared Widget Pack fields.
+- undeclared widget fields.
 
-Built-in widgets and Widget Packs use the same conceptual context rules.
+All widgets use the same context rules — context is limited to what is explicitly declared in `widget.yaml`.
 
 Initial built-in skills:
 

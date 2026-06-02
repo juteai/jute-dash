@@ -47,7 +47,7 @@ The starter code in this repo is provisional. It establishes the first Go hub sh
 - [Roadmap](../roadmap.md)
 - [ADR 0001: Go Hub With SvelteKit Display](../adr/0001-foundation-stack.md)
 - [Widget Developer Guidelines](../developer/widget-guidelines.md)
-- [Widget Pack Template](../developer/widget-pack-template.md)
+- [Widget Developer Guidelines](../developer/widget-guidelines.md)
 - [Theme Developer Guidelines](../developer/theme-guidelines.md)
 - [A2A Agent Guidelines](../developer/a2a-agent-guidelines.md)
 - [MCP Agent Guidelines](../developer/mcp-agent-guidelines.md)

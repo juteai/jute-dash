@@ -37,75 +37,44 @@ Skill availability is dynamic. A skill is available only when the widget exists,
 
 ## Manifest Contract
 
-Widget Packs declare agent-facing skills in `widget.json` with `agentSkill`.
+Every widget declares its agent-facing skill in `widget.yaml`, committed alongside the widget source under `widgets/`. The Hub reads all `widget.yaml` files at startup and builds the Widget Skill Registry from them.
 
-```json
-{
-  "id": "com.example.energy-price",
-  "name": "Energy Price",
-  "version": "1.0.0",
-  "entry": "index.html",
-  "permissions": ["home:read", "widget:state", "agent:skill"],
-  "dataNeeds": ["energy.current_tariff", "home.locale"],
-  "sizes": ["small", "medium", "wide"],
-  "agentSkill": {
-    "enabled": true,
-    "skillId": "com.example.energy-price.current",
-    "summary": "Read current energy tariff and identify cheaper upcoming windows.",
-    "requiredPermissions": ["agent:skill", "home:read"],
-    "visibilityPolicy": "visible_or_focused",
-    "context": {
-      "fields": [
-        {
-          "name": "tariffName",
-          "type": "string",
-          "description": "Current tariff display name."
-        },
-        {
-          "name": "currentPrice",
-          "type": "number",
-          "unit": "GBP/kWh",
-          "description": "Current import electricity price."
-        },
-        {
-          "name": "nextCheapWindow",
-          "type": "string",
-          "description": "Next known cheaper usage window."
-        }
-      ]
-    },
-    "actions": [
-      {
-        "id": "refresh",
-        "title": "Refresh tariff data",
-        "description": "Ask the widget to refresh its tariff data through the hub.",
-        "sideEffect": "read",
-        "requiresConfirmation": false,
-        "inputSchema": {
-          "type": "object",
-          "additionalProperties": false
-        },
-        "outputSchema": {
-          "type": "object",
-          "properties": {
-            "status": { "type": "string" }
-          },
-          "required": ["status"]
-        }
-      }
-    ],
-    "prompts": [
-      {
-        "id": "energy_usage_advice",
-        "title": "Energy usage advice",
-        "purpose": "Guide the agent when answering questions about cheaper appliance usage times."
-      }
-    ]
-  }
-}
+```yaml
+id: com.example.energy-price
+name: Energy Price
+version: 1.0.0
+sizes: [small, medium, wide]
+settings:
+  # widget-specific settings schema
+
+agentSkill:
+  enabled: true
+  skillId: com.example.energy-price.current
+  summary: Read current energy tariff and identify cheaper upcoming usage windows.
+  visibilityPolicy: visible_or_focused
+  context:
+    fields:
+      - name: tariffName
+        type: string
+        description: Current tariff display name.
+      - name: currentPrice
+        type: number
+        unit: GBP/kWh
+        description: Current import electricity price.
+      - name: nextCheapWindow
+        type: string
+        description: Next known cheaper usage window.
+  actions:
+    - id: refresh
+      title: Refresh tariff data
+      description: Ask the widget to refresh its tariff data through the hub.
+      sideEffect: read
+      requiresConfirmation: false
+  prompts:
+    - id: energy_usage_advice
+      title: Energy usage advice
+      purpose: Guide the agent when answering questions about cheaper appliance usage times.
 ```
-
-Built-in widgets use the same contract in code instead of `widget.json`.
 
 `agentSkill` is optional. Visual-only widgets should omit it or set `enabled` to false. Agent-visible widgets must include a complete `agentSkill` block.
 
@@ -214,7 +183,7 @@ Widget Skill prompts are reusable guidance fragments for agents.
 Prompt rules:
 
 - hub-authored prompts are trusted project guidance;
-- third-party Widget Pack prompt declarations are untrusted input until validated;
+- prompt declarations in `widget.yaml` are reviewed as part of the contribution PR — they are trusted once merged;
 - MCP prompt output should be generated from stable hub templates;
 - prompt text must not include secrets, hidden state, or private widget data;
 - prompts guide the agent but never grant permission.
@@ -300,7 +269,7 @@ When a skill is disabled, MCP resources omit it and A2A dashboard context does n
 
 - The hub validates and normalizes every skill before exposing it.
 - The hub generates MCP tool descriptions from stable templates.
-- Widget Pack manifest text is never trusted tool instruction text.
+- `widget.yaml` summary and prompt text must not contain raw model instructions that override Jute policy or bypass permissions.
 - Agents cannot access private widget state, hidden widget state, raw credentials, raw smart-home adapter payloads, camera frames, microphone audio, or browser storage.
 - Widgets cannot grant themselves agent access; users or trusted config grant permissions.
 - Agents should treat skills as available capabilities, not as user intent.
@@ -308,8 +277,8 @@ When a skill is disabled, MCP resources omit it and A2A dashboard context does n
 ## Implementation Order
 
 1. Document the Widget Skill contract.
-2. Add built-in skill definitions for `date-time`, `weather`, and `chat-history`.
-3. Build the MCP Bridge around generic skill resources and tools.
-4. Add per-agent skill scopes.
-5. Add Widget Pack manifest validation for `agentSkill`.
+2. Add `widget.yaml` manifests for `date-time`, `weather`, and `chat-history`.
+3. Build the Hub Widget Skill Registry to read and validate all `widget.yaml` files at startup.
+4. Build the MCP Bridge around generic skill resources and tools.
+5. Add per-agent skill scopes.
 6. Add approval-gated configure and home-action skills later.

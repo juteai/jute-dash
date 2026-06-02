@@ -165,4 +165,4 @@ Jute must support:
 - text that does not overflow compact widgets;
 - predictable focus order.
 
-Custom Widget Packs must declare whether they support keyboard, screen reader, reduced motion, and high contrast behavior.
+All contributed widgets must support keyboard navigation, screen reader labels, reduced motion, and high contrast behavior.
