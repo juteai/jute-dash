@@ -566,7 +566,7 @@ async function getJSON<T>(fetcher: typeof fetch, path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function parseSSEEvent(raw: string): ConversationStreamEvent | undefined {
+export function parseSSEEvent(raw: string): ConversationStreamEvent | undefined {
   const lines = raw.split(/\r?\n/);
   let type = '';
   const data: string[] = [];

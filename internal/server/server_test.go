@@ -1094,6 +1094,52 @@ func TestConversationDetailUsesGetTaskHistory(t *testing.T) {
 	}
 }
 
+func TestConversationCreateWithInitialTextSendsTurnToAgent(t *testing.T) {
+	sender := &fakeTaskHistorySender{
+		fakeMessageSender: fakeMessageSender{result: a2a.SendMessageResult{
+			ConversationID: "ctx-created",
+			TaskID:         "task-created",
+			Status:         "completed",
+			Text:           "Welcome home.",
+		}},
+		records: map[string]a2a.TaskRecord{
+			"task-created": {
+				ID:        "task-created",
+				ContextID: "ctx-created",
+				Status:    "completed",
+				Messages: []a2a.TaskMessage{
+					{ID: "user-created", Role: "user", Text: "Hello"},
+					{ID: "agent-created", Role: "assistant", Text: "Welcome home."},
+				},
+				UpdatedAt: "2026-06-02T10:01:00Z",
+			},
+		},
+	}
+	handler := newServer(testConfig(), "test", weather.NewClient(), sender, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil)
+
+	payload := bytes.NewBufferString(`{"agentId":"house","title":"Kitchen","initialText":"Hello"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", payload)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var detail ConversationDetail
+	if err := json.NewDecoder(rec.Body).Decode(&detail); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !sender.called || sender.last.Text != "Hello" || sender.last.EndpointURL != "https://agent.example.com/a2a/v1" {
+		t.Fatalf("unexpected send request: %+v", sender.last)
+	}
+	if detail.Conversation.ID != "ctx-created" || detail.Conversation.LatestTaskID != "task-created" {
+		t.Fatalf("unexpected conversation: %+v", detail.Conversation)
+	}
+	if len(detail.Messages) != 2 || detail.Messages[1].Content != "Welcome home." {
+		t.Fatalf("unexpected messages: %+v", detail.Messages)
+	}
+}
+
 func TestConversationListShowsUnsupportedStateWhenAgentDoesNotExposeHistory(t *testing.T) {
 	handler := NewWithMessageSender(testConfig(), "test", &fakeMessageSender{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?agentId=house", nil)

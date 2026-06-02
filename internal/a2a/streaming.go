@@ -135,7 +135,7 @@ func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
 			ConversationID: msg.ContextID,
 			TaskID:         msg.TaskID,
 			Status:         "completed",
-			Text:           textFromMessage(msg),
+			Text:           displayTextFromMessage(msg),
 			Terminal:       true,
 		}, true, nil
 	case response.Task != nil:
@@ -145,7 +145,7 @@ func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
 			ConversationID: task.ContextID,
 			TaskID:         task.ID,
 			Status:         fallbackID(normalizeTaskState(task.Status.State), "working"),
-			Text:           textFromOptionalMessage(task.Status.Message),
+			Text:           displayTextFromOptionalMessage(task.Status.Message),
 			Terminal:       isTerminalTaskState(task.Status.State),
 		}, true, nil
 	case response.StatusUpdate != nil:
@@ -155,7 +155,7 @@ func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
 			ConversationID: update.ContextID,
 			TaskID:         update.TaskID,
 			Status:         fallbackID(normalizeTaskState(update.Status.State), "working"),
-			Text:           textFromOptionalMessage(update.Status.Message),
+			Text:           displayTextFromOptionalMessage(update.Status.Message),
 			Terminal:       update.Final || isTerminalTaskState(update.Status.State),
 		}, true, nil
 	case response.ArtifactUpdate != nil:
@@ -165,7 +165,7 @@ func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
 			ConversationID: update.ContextID,
 			TaskID:         update.TaskID,
 			Status:         "working",
-			Text:           textFromParts(update.Artifact.Parts),
+			Text:           displayTextFromParts(update.Artifact.Parts),
 			Append:         update.Append,
 			Terminal:       update.LastChunk,
 		}, true, nil

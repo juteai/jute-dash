@@ -80,6 +80,9 @@ Rules:
 - use skill discovery and context reads before invoking actions;
 - invoke only actions declared by the relevant skill;
 - treat skill prompts as guidance, not permission grants;
+- do not narrate tool choice, tool plans, function-call decisions, or hidden reasoning in A2A assistant output;
+- for simple greetings and ordinary chat, answer without calling tools;
+- when tools are useful, choose the narrowest relevant Jute tool or Widget Skill action;
 - keep display notifications short and non-sensitive;
 - focus only visible widgets;
 - do not use display tools as a substitute for asking the user;

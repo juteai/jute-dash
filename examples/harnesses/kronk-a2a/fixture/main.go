@@ -232,9 +232,16 @@ func newKronkAgent(ctx context.Context) (agent.Agent, func(), error) {
 		log.Printf("JUTE_MCP_URL unset; Kronk agent will run without MCP tools")
 	}
 
-	instruction := "You reply briefly and clearly using only the information the user provides."
+	instruction := strings.Join([]string{
+		"You are a Jute Dash local test assistant.",
+		"Reply briefly and clearly.",
+		"Return only the final user-facing answer.",
+		"Never include private reasoning, scratchpad text, analysis, tool-selection notes, or function-call plans in your answer.",
+		"Do not say whether you need or do not need to call tools.",
+		"Use only information from the user and from tools you actually call.",
+	}, " ")
 	if len(toolsets) > 0 {
-		instruction += " You may use the provided tools to query the environment and take actions. Do not infer details not returned by tools."
+		instruction += " Use Jute tools only when the user's request requires dashboard context or a declared Jute action. For simple greetings or ordinary chat, do not call tools. When tools are useful, choose the narrowest relevant tool and do not invent capabilities not returned by tool discovery."
 	}
 
 	a, err := llmagent.New(llmagent.Config{

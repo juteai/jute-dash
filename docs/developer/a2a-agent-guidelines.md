@@ -85,6 +85,28 @@ Agents must treat context as advisory, not authoritative. The hub remains respon
 
 When Jute activates the extension, it sends `A2A-Extensions: https://jute.dev/a2a/extensions/dashboard-context/v1` and places the redacted context under the same URI key in message metadata.
 
+## Response Contract
+
+Agents must return only user-facing assistant output in A2A message text and text artifacts.
+
+Do not include:
+
+- private reasoning;
+- scratchpad or hidden chain-of-thought text;
+- planning notes;
+- tool-selection notes;
+- function-call commentary;
+- statements such as "I should call a tool" or "no need to call tools";
+- raw tool JSON unless the user explicitly asks for diagnostic output.
+
+Recommended base instruction:
+
+```text
+Return only the final user-facing answer. Never include private reasoning, scratchpad text, analysis, tool-selection notes, or function-call plans in assistant output. Use Jute tools only when the user's request requires dashboard context or a declared Jute action. For simple greetings or ordinary chat, do not call tools. When tools are useful, choose the narrowest relevant tool and do not invent capabilities not returned by tool discovery.
+```
+
+Jute defensively filters common reasoning wrappers such as `<think>...</think>`, but agents should not rely on the hub to repair unsafe output. The correct behavior is to keep private reasoning private and send only the final answer over A2A.
+
 ## Privacy Expectations
 
 Agents must not assume they are entitled to hidden or private dashboard data. If context is missing, ask the user or continue with the visible user message.

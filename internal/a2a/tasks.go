@@ -201,7 +201,7 @@ func taskMessages(t task) []TaskMessage {
 	messages := make([]TaskMessage, 0, len(t.History)+1)
 	hasAgentMessage := false
 	for _, item := range t.History {
-		text := textFromMessage(item)
+		text := displayTextFromMessage(item)
 		if text == "" {
 			continue
 		}
@@ -227,11 +227,11 @@ func taskMessages(t task) []TaskMessage {
 // status message or artifacts, used as a fallback when the task history
 // doesn't contain an explicit assistant turn.
 func agentReplyText(t task) string {
-	if text := textFromOptionalMessage(t.Status.Message); text != "" {
+	if text := displayTextFromOptionalMessage(t.Status.Message); text != "" {
 		return text
 	}
 	for i := len(t.Artifacts) - 1; i >= 0; i-- {
-		if text := textFromParts(t.Artifacts[i].Parts); text != "" {
+		if text := displayTextFromParts(t.Artifacts[i].Parts); text != "" {
 			return text
 		}
 	}

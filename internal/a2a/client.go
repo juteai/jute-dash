@@ -302,7 +302,7 @@ func extractResult(raw json.RawMessage) (SendMessageResult, error) {
 }
 
 func resultFromMessage(msg message) SendMessageResult {
-	text := textFromMessage(msg)
+	text := displayTextFromMessage(msg)
 	if text == "" {
 		text = "Agent returned an empty message."
 	}
@@ -319,7 +319,7 @@ func resultFromTask(t task) SendMessageResult {
 	if status == "" {
 		status = "unknown"
 	}
-	if text := textFromOptionalMessage(t.Status.Message); text != "" {
+	if text := displayTextFromOptionalMessage(t.Status.Message); text != "" {
 		return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), TaskID: t.ID, Status: status, Text: text}
 	}
 	for i := len(t.History) - 1; i >= 0; i-- {
@@ -327,17 +327,17 @@ func resultFromTask(t task) SendMessageResult {
 		if role != "agent" && role != "ROLE_AGENT" {
 			continue
 		}
-		if text := textFromMessage(t.History[i]); text != "" {
+		if text := displayTextFromMessage(t.History[i]); text != "" {
 			return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), TaskID: t.ID, Status: status, Text: text}
 		}
 	}
 	for i := len(t.History) - 1; i >= 0; i-- {
-		if text := textFromMessage(t.History[i]); text != "" {
+		if text := displayTextFromMessage(t.History[i]); text != "" {
 			return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), TaskID: t.ID, Status: status, Text: text}
 		}
 	}
 	for i := len(t.Artifacts) - 1; i >= 0; i-- {
-		if text := textFromParts(t.Artifacts[i].Parts); text != "" {
+		if text := displayTextFromParts(t.Artifacts[i].Parts); text != "" {
 			return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), TaskID: t.ID, Status: status, Text: text}
 		}
 	}

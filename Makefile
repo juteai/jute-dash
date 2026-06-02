@@ -6,7 +6,7 @@ HUB_URL ?= http://127.0.0.1:8787
 WEB_URL ?= http://127.0.0.1:5173
 NPM ?= npm
 
-.PHONY: setup dev run test web-dev web-check check
+.PHONY: setup dev run test web-dev web-check web-test check
 
 setup:
 	cd $(WEB_DIR) && $(NPM) install
@@ -36,4 +36,7 @@ web-dev:
 web-check:
 	cd $(WEB_DIR) && $(NPM) run check
 
-check: test web-check
+web-test:
+	cd $(WEB_DIR) && $(NPM) run test
+
+check: test web-check web-test
