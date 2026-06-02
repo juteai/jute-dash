@@ -236,7 +236,6 @@ export type HomeState = {
   home: HomeConfig;
   rooms: Room[];
   tiles: Tile[];
-  weather: WeatherState;
 };
 
 export type DashboardData = {
@@ -316,6 +315,7 @@ export type WidgetInstance = {
   minW: number;
   minH: number;
   size: 'small' | 'medium' | 'wide' | 'large' | string;
+  overflow?: 'clip' | 'scroll' | 'expand' | string;
   settings: Record<string, unknown>;
   visible: boolean;
   data?: any;

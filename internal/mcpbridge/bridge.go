@@ -204,7 +204,6 @@ func (h *Handler) readResource(ctx context.Context, r *http.Request, uri string)
 			"home":        snapshot.Config.Home,
 			"rooms":       snapshot.Config.Rooms,
 			"tiles":       snapshot.Config.Tiles,
-			"weather":     snapshot.Weather,
 		}
 	case uri == "jute://widgets/visible":
 		value = widgetskills.VisibleWidgetsSnapshot(snapshot)

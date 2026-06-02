@@ -143,11 +143,28 @@ export async function getConversations(fetcher: typeof fetch, agentId: string): 
   if (!agentId) {
     return [];
   }
-  const response = await getJSON<{ conversations: Conversation[] }>(
-    fetcher,
-    `/api/v1/conversations?agentId=${encodeURIComponent(agentId)}`
-  );
-  return response.conversations;
+  const response = await fetcher(`${API_BASE}/api/v1/conversations?agentId=${encodeURIComponent(agentId)}`);
+  if (response.status === 501) {
+    return [
+      {
+        id: `history-unsupported-${agentId}`,
+        agentId,
+        title: 'History unavailable',
+        status: 'unavailable',
+        a2aContextId: '',
+        latestTaskId: '',
+        createdAt: '',
+        updatedAt: '',
+        historyUnsupported: true
+      }
+    ];
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+  }
+  const body = (await response.json()) as { conversations: Conversation[] };
+  return body.conversations;
 }
 
 export async function createConversation(
@@ -380,25 +397,7 @@ export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {
       generatedAt: new Date().toISOString(),
       home: config.home,
       rooms: [],
-      tiles: [],
-      weather: {
-        locationName: 'London',
-        temperature: null,
-        temperatureUnit: '°C',
-        apparentTemperature: null,
-        condition: 'Weather unavailable',
-        icon: 'cloud',
-        weatherCode: null,
-        humidity: null,
-        windSpeed: null,
-        windSpeedUnit: 'km/h',
-        sunrise: '',
-        sunset: '',
-        isDay: null,
-        updatedAt: '',
-        source: 'open-meteo',
-        status: 'unavailable'
-      }
+      tiles: []
     },
     agents: [],
     layout: fallbackLayout(),
@@ -418,6 +417,15 @@ export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {
         target: 'retry'
       }
     }
+  };
+}
+
+export function initialDashboard(): DashboardData {
+  return {
+    ...fallbackDashboard(undefined),
+    connectionState: 'starting',
+    stale: true,
+    issue: undefined
   };
 }
 

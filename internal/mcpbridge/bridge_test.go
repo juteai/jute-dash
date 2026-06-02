@@ -15,7 +15,12 @@ import (
 	"jute-dash/internal/store"
 	"jute-dash/internal/weather"
 	"jute-dash/internal/widgetskills"
+	_ "jute-dash/widgets/chathistory"
+	_ "jute-dash/widgets/datetime"
+	_ "jute-dash/widgets/weather"
 )
+
+const weatherSkillID = "jute.weather.current"
 
 func TestInitializeReturnsCapabilities(t *testing.T) {
 	handler := testHandler(config.MCPConfig{Auth: config.MCPAuthConfig{Mode: "none"}})
@@ -64,7 +69,7 @@ func TestResourceAndToolMethodsExposeWidgetSkills(t *testing.T) {
 	if read.Code != http.StatusOK {
 		t.Fatalf("resources/read status = %d: %s", read.Code, read.Body.String())
 	}
-	if !bytes.Contains(read.Body.Bytes(), []byte(widgetskills.WeatherSkillID)) {
+	if !bytes.Contains(read.Body.Bytes(), []byte(weatherSkillID)) {
 		t.Fatalf("resources/read did not include weather skill: %s", read.Body.String())
 	}
 
@@ -96,7 +101,7 @@ func TestToolCallReadsSkillContextAndInvokesAction(t *testing.T) {
 		"method":  "tools/call",
 		"params": map[string]any{
 			"name":      "jute_skill_read_context",
-			"arguments": map[string]any{"skillId": widgetskills.WeatherSkillID},
+			"arguments": map[string]any{"skillId": weatherSkillID},
 		},
 	}, agentHeader("house"))
 	if read.Code != http.StatusOK || !bytes.Contains(read.Body.Bytes(), []byte("London")) {
@@ -110,7 +115,7 @@ func TestToolCallReadsSkillContextAndInvokesAction(t *testing.T) {
 		"params": map[string]any{
 			"name": "jute_skill_invoke_action",
 			"arguments": map[string]any{
-				"skillId":  widgetskills.WeatherSkillID,
+				"skillId":  weatherSkillID,
 				"actionId": "refresh",
 			},
 		},
@@ -197,7 +202,7 @@ func TestAnonymousCallerIsReadOnly(t *testing.T) {
 		"method":  "tools/call",
 		"params": map[string]any{
 			"name":      "jute_skill_invoke_action",
-			"arguments": map[string]any{"skillId": widgetskills.WeatherSkillID, "actionId": "refresh"},
+			"arguments": map[string]any{"skillId": weatherSkillID, "actionId": "refresh"},
 		},
 	})
 	if action.Code != http.StatusOK || !bytes.Contains(action.Body.Bytes(), []byte("missing MCP scope: skills:action_invoke")) {
@@ -410,17 +415,21 @@ func testSnapshot() widgetskills.Snapshot {
 	}}
 	layout := store.DefaultWidgetLayout()
 	temp := 18.5
+	for i := range layout.Widgets {
+		if layout.Widgets[i].Kind == "weather" {
+			layout.Widgets[i].Data = weather.State{
+				LocationName:    "London",
+				Temperature:     &temp,
+				TemperatureUnit: "°C",
+				Condition:       "Clear sky",
+				Source:          weather.ProviderOpenMeteo,
+				Status:          weather.StatusAvailable,
+			}
+		}
+	}
 	return widgetskills.Snapshot{
 		Config: cfg,
 		Layout: layout,
-		Weather: weather.State{
-			LocationName:    "London",
-			Temperature:     &temp,
-			TemperatureUnit: "°C",
-			Condition:       "Clear sky",
-			Source:          weather.ProviderOpenMeteo,
-			Status:          weather.StatusAvailable,
-		},
 		Agents: []widgetskills.Agent{
 			{ID: "house", Name: "House", ProtocolBinding: a2a.ProtocolJSONRPC, Enabled: true, Capabilities: []string{"conversation"}},
 		},

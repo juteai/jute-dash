@@ -14,9 +14,8 @@ import (
 	"jute-dash/internal/mcpbridge"
 	"jute-dash/internal/server"
 	"jute-dash/internal/store"
-	"jute-dash/internal/weather"
 	"jute-dash/internal/widgetskills"
-	_ "jute-dash/widgets"
+	"jute-dash/widgets"
 )
 
 var version = "dev"
@@ -83,7 +82,6 @@ func main() {
 			cfg:        cfg,
 			configPath: *configPath,
 			store:      runtimeStore,
-			weather:    weather.NewClient(),
 		}
 		mcpMux := http.NewServeMux()
 		mcpMux.Handle(cfg.MCP.Path, mcpbridge.NewHandler(cfg.MCP, version, mcpProvider, displayActions))
@@ -120,7 +118,6 @@ type mcpSnapshotProvider struct {
 	cfg        config.Config
 	configPath string
 	store      *store.Store
-	weather    weather.Provider
 }
 
 func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapshot, error) {
@@ -129,6 +126,7 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 	if err != nil {
 		return widgetskills.Snapshot{}, err
 	}
+	layout = hydrateWidgetLayout(ctx, layout)
 	agents := []widgetskills.Agent{}
 	for _, agent := range cfg.Agents {
 		agents = append(agents, widgetskills.Agent{
@@ -144,10 +142,30 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 	return widgetskills.Snapshot{
 		Config:      cfg,
 		Layout:      layout,
-		Weather:     p.weather.Current(ctx, cfg.Weather),
 		Agents:      agents,
 		GeneratedAt: time.Now().UTC(),
 	}, nil
+}
+
+func hydrateWidgetLayout(ctx context.Context, layout store.WidgetLayout) store.WidgetLayout {
+	for i := range layout.Widgets {
+		widget := &layout.Widgets[i]
+		if !widget.Visible {
+			continue
+		}
+		provider, ok := widgets.Get(widget.Kind)
+		if !ok {
+			continue
+		}
+		if widget.Overflow == "" {
+			widget.Overflow = provider.CatalogInfo().Overflow
+		}
+		data, err := provider.FetchData(ctx, widget.Settings)
+		if err == nil {
+			widget.Data = data
+		}
+	}
+	return layout
 }
 
 func (p *mcpSnapshotProvider) currentConfig() config.Config {

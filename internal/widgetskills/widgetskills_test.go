@@ -1,51 +1,57 @@
 package widgetskills
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"jute-dash/internal/a2a"
 	"jute-dash/internal/config"
 	"jute-dash/internal/store"
-	"jute-dash/internal/weather"
 )
 
-func TestBuiltInSkillsAreAvailableForVisibleWidgets(t *testing.T) {
+const (
+	testSkillID = "test.widget.current"
+	testKind    = "test-widget"
+)
+
+func TestRegisteredSkillsAreAvailableForVisibleWidgets(t *testing.T) {
+	registerTestSkill()
 	snapshot := testSnapshot()
 
 	skills := Available(snapshot)
 
-	if len(skills) != 3 {
-		t.Fatalf("expected three skills, got %+v", skills)
+	if len(skills) != 1 {
+		t.Fatalf("expected one skill, got %+v", skills)
 	}
-	if skills[0].SkillID != DateTimeSkillID || skills[1].SkillID != WeatherSkillID || skills[2].SkillID != ChatHistorySkillID {
-		t.Fatalf("unexpected skill order: %+v", skills)
+	if skills[0].SkillID != testSkillID || skills[0].WidgetInstanceID != "test-widget" {
+		t.Fatalf("unexpected skill: %+v", skills[0])
 	}
 }
 
 func TestHiddenWidgetsAreOmitted(t *testing.T) {
+	registerTestSkill()
 	snapshot := testSnapshot()
-	snapshot.Layout.Widgets[1].Visible = false
+	snapshot.Layout.Widgets[0].Visible = false
 
 	skills := Available(snapshot)
 
-	for _, skill := range skills {
-		if skill.SkillID == WeatherSkillID {
-			t.Fatalf("hidden weather widget exposed skill: %+v", skills)
-		}
+	if len(skills) != 0 {
+		t.Fatalf("hidden widget exposed skills: %+v", skills)
 	}
 }
 
-func TestSkillContextUsesOnlyPublicFields(t *testing.T) {
-	snapshot := testSnapshot()
+func TestSkillContextUsesRegisteredContext(t *testing.T) {
+	registerTestSkill()
 
-	context, err := SkillContext(snapshot, WeatherSkillID, "")
+	context, err := SkillContext(testSnapshot(), testSkillID, "")
 	if err != nil {
 		t.Fatalf("SkillContext() error = %v", err)
 	}
 
-	if context.Context["locationName"] != "London" || context.Context["condition"] != "Clear sky" {
-		t.Fatalf("unexpected weather context: %+v", context.Context)
+	if context.Context["publicValue"] != "visible" {
+		t.Fatalf("unexpected context: %+v", context.Context)
 	}
 	if _, ok := context.Context["auth"]; ok {
 		t.Fatalf("context exposed private auth field: %+v", context.Context)
@@ -53,25 +59,27 @@ func TestSkillContextUsesOnlyPublicFields(t *testing.T) {
 }
 
 func TestVisibleWidgetsExposeSkillMappings(t *testing.T) {
+	registerTestSkill()
 	widgets := VisibleWidgetsSnapshot(testSnapshot())
 
-	if len(widgets.Widgets) != 3 {
-		t.Fatalf("expected three visible widgets, got %+v", widgets.Widgets)
+	if len(widgets.Widgets) != 1 {
+		t.Fatalf("expected one visible widget, got %+v", widgets.Widgets)
 	}
-	if widgets.Widgets[1].Skill == nil || widgets.Widgets[1].Skill.SkillID != WeatherSkillID {
-		t.Fatalf("weather widget did not expose skill mapping: %+v", widgets.Widgets[1])
+	if widgets.Widgets[0].Skill == nil || widgets.Widgets[0].Skill.SkillID != testSkillID {
+		t.Fatalf("widget did not expose skill mapping: %+v", widgets.Widgets[0])
 	}
-	if widgets.Widgets[1].ContextURI != "jute://widgets/weather/context" {
-		t.Fatalf("unexpected widget context URI: %+v", widgets.Widgets[1])
+	if widgets.Widgets[0].ContextURI != "jute://widgets/test-widget/context" {
+		t.Fatalf("unexpected widget context URI: %+v", widgets.Widgets[0])
 	}
 }
 
 func TestWidgetContextUsesOwningSkill(t *testing.T) {
-	context, err := WidgetContext(testSnapshot(), "weather")
+	registerTestSkill()
+	context, err := WidgetContext(testSnapshot(), "test-widget")
 	if err != nil {
 		t.Fatalf("WidgetContext() error = %v", err)
 	}
-	if context.Skill.SkillID != WeatherSkillID || context.Context["locationName"] != "London" {
+	if context.Skill.SkillID != testSkillID || context.Context["publicValue"] != "visible" {
 		t.Fatalf("unexpected widget context: %+v", context)
 	}
 }
@@ -87,11 +95,12 @@ func TestUnknownSkillFailsSafely(t *testing.T) {
 }
 
 func TestInvokeActionReturnsContext(t *testing.T) {
-	result, err := InvokeAction(testSnapshot(), WeatherSkillID, "", "refresh", nil)
+	registerTestSkill()
+	result, err := InvokeAction(testSnapshot(), testSkillID, "", "read", nil)
 	if err != nil {
 		t.Fatalf("InvokeAction() error = %v", err)
 	}
-	if result["status"] != "completed" || result["actionId"] != "refresh" {
+	if result["status"] != "completed" || result["actionId"] != "read" {
 		t.Fatalf("unexpected action result: %+v", result)
 	}
 	if result["context"] == nil {
@@ -99,33 +108,110 @@ func TestInvokeActionReturnsContext(t *testing.T) {
 	}
 }
 
+func TestDefaultExtractorReadsDeclaredSettingsOnly(t *testing.T) {
+	dynamicSkillID := "test.dynamic.current"
+	dynamicKind := "dynamic-widget"
+
+	Register(Definition{
+		SkillID:     dynamicSkillID,
+		WidgetKind:  dynamicKind,
+		DisplayName: "Dynamic Widget",
+		Summary:     "A custom dynamically registered widget for testing.",
+		ContextFields: []Field{
+			{Name: "customKey", Type: "string", Description: "A custom settings value."},
+			{Name: "missingKey", Type: "string", Description: "A missing key.", Nullable: true},
+		},
+		Actions: []Action{ReadAction("dynamic_action", "Dynamic Action", "Invokes a dynamic action")},
+	}, nil)
+
+	snapshot := testSnapshot()
+	snapshot.Layout.Widgets = append(snapshot.Layout.Widgets, store.WidgetInstance{
+		ID:      "dynamic-instance",
+		Kind:    dynamicKind,
+		Title:   "My Dynamic Widget",
+		Visible: true,
+		Settings: map[string]any{
+			"customKey": "hello-dynamic",
+			"auth":      "must-not-leak",
+		},
+	})
+
+	context, err := SkillContext(snapshot, dynamicSkillID, "dynamic-instance")
+	if err != nil {
+		t.Fatalf("failed to retrieve context: %v", err)
+	}
+	if context.Context["customKey"] != "hello-dynamic" {
+		t.Fatalf("expected customKey value, got %v", context.Context["customKey"])
+	}
+	if _, exists := context.Context["auth"]; exists {
+		t.Fatalf("default extractor leaked undeclared setting: %+v", context.Context)
+	}
+	val, exists := context.Context["missingKey"]
+	if !exists || val != nil {
+		t.Fatalf("expected missingKey to exist and be nil, got %v (exists=%t)", val, exists)
+	}
+}
+
+func TestWidgetSkillsDoesNotHardCodeBuiltInWidgets(t *testing.T) {
+	source, err := os.ReadFile("widgetskills.go")
+	if err != nil {
+		t.Fatalf("read widgetskills.go: %v", err)
+	}
+	text := string(source)
+	for _, forbidden := range []string{
+		`"jute-dash/internal/weather"`,
+		"DateTimeSkillID",
+		"WeatherSkillID",
+		"ChatHistorySkillID",
+		`WidgetKind:          "weather"`,
+		`WidgetKind:          "date-time"`,
+		`WidgetKind:          "chat-history"`,
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("widgetskills.go should stay generic; found forbidden reference %q", forbidden)
+		}
+	}
+}
+
+func registerTestSkill() {
+	Register(Definition{
+		SkillID:             testSkillID,
+		WidgetKind:          testKind,
+		DisplayName:         "Test Widget",
+		Summary:             "A generic test widget skill.",
+		RequiredPermissions: []string{"agent:skill"},
+		VisibilityPolicy:    "visible_or_focused",
+		ContextFields: []Field{
+			{Name: "publicValue", Type: "string", Description: "Public value.", Sensitivity: "public"},
+		},
+		Actions: []Action{ReadAction("read", "Read context", "Return public context.")},
+		Prompts: []Prompt{{
+			ID:      "test_prompt",
+			Title:   "Use test context",
+			Purpose: "Guide a test agent.",
+		}},
+	}, func(snapshot Snapshot, instanceID string) map[string]any {
+		return map[string]any{"publicValue": "visible"}
+	})
+}
+
 func testSnapshot() Snapshot {
 	cfg := config.Default()
 	cfg.Home.Timezone = "Europe/London"
 	cfg.Home.Locale = "en-GB"
 	cfg.Voice.PreferredAgentID = "house"
-	layout := store.DefaultWidgetLayout()
-	temp := 18.5
-	humidity := 60
-	wind := 9.2
-	isDay := true
 	return Snapshot{
 		Config: cfg,
-		Layout: layout,
-		Weather: weather.State{
-			LocationName:    "London",
-			Temperature:     &temp,
-			TemperatureUnit: "°C",
-			Condition:       "Clear sky",
-			Humidity:        &humidity,
-			WindSpeed:       &wind,
-			WindSpeedUnit:   "km/h",
-			Sunrise:         "2026-05-19T05:00",
-			Sunset:          "2026-05-19T20:55",
-			IsDay:           &isDay,
-			UpdatedAt:       "2026-05-19T12:00",
-			Source:          weather.ProviderOpenMeteo,
-			Status:          weather.StatusAvailable,
+		Layout: store.WidgetLayout{
+			ProfileID: "default-display",
+			Widgets: []store.WidgetInstance{{
+				ID:       "test-widget",
+				Kind:     testKind,
+				Title:    "Test Widget",
+				Size:     "medium",
+				Visible:  true,
+				Settings: map[string]any{"auth": "must-not-leak"},
+			}},
 		},
 		Agents: []Agent{
 			{
@@ -140,66 +226,3 @@ func testSnapshot() Snapshot {
 		GeneratedAt: time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC),
 	}
 }
-
-func TestDynamicRegistryAndDefaultExtractor(t *testing.T) {
-	// Register a dynamic widget skill definition
-	dynamicSkillID := "custom.dynamic.skill"
-	dynamicKind := "dynamic-widget"
-
-	Register(Definition{
-		SkillID:     dynamicSkillID,
-		WidgetKind:  dynamicKind,
-		DisplayName: "Dynamic Widget",
-		Summary:     "A custom dynamically registered widget for testing.",
-		ContextFields: []Field{
-			{Name: "customKey", Type: "string", Description: "A custom settings value."},
-			{Name: "missingKey", Type: "string", Description: "A missing key.", Nullable: true},
-		},
-		Actions: []Action{
-			{
-				ID:          "dynamic_action",
-				Title:       "Dynamic Action",
-				Description: "Invokes a dynamic action",
-			},
-		},
-	}, nil) // Passing nil ContextFunc to force fallback to defaultContextExtractor!
-
-	// Create a snapshot with a visible instance of this dynamic widget
-	snapshot := testSnapshot()
-	snapshot.Layout.Widgets = append(snapshot.Layout.Widgets, store.WidgetInstance{
-		ID:      "dynamic_instance_1",
-		Kind:    dynamicKind,
-		Title:   "My Dynamic Widget",
-		Visible: true,
-		Settings: map[string]any{
-			"customKey": "hello-dynamic",
-		},
-	})
-
-	// 1. Verify it is available
-	skills := Available(snapshot)
-	found := false
-	for _, s := range skills {
-		if s.SkillID == dynamicSkillID {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("expected custom dynamic skill %s to be available", dynamicSkillID)
-	}
-
-	// 2. Verify that the context extractor successfully fell back and read Settings
-	context, err := SkillContext(snapshot, dynamicSkillID, "dynamic_instance_1")
-	if err != nil {
-		t.Fatalf("failed to retrieve context: %v", err)
-	}
-	if context.Context["customKey"] != "hello-dynamic" {
-		t.Fatalf("expected customKey value 'hello-dynamic', got %v", context.Context["customKey"])
-	}
-	val, exists := context.Context["missingKey"]
-	if !exists || val != nil {
-		t.Fatalf("expected missingKey to exist and be nil, got %v (exists=%t)", val, exists)
-	}
-}
-

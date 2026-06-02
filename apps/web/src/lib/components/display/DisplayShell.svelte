@@ -125,13 +125,14 @@
   $: selectedAvailability = getAgentAvailability(selectedAgent);
   $: hasConnected = hasConnected || dashboard.connectionState === 'connected';
   $: showStartupOffline = !hasConnected && dashboard.connectionState === 'offline';
+  $: showStartupLoading = !hasConnected && dashboard.connectionState === 'starting';
   $: activeTheme = resolveColorMode(dashboard.config.display, prefersDark);
   $: displayStyle = displayThemeStyle(dashboard.config.display, activeTheme);
   $: dashboardForView = {
     ...dashboard,
     layout: mode === 'edit' && draftLayout ? draftLayout : dashboard.layout
   };
-  $: if (mounted && selectedAgentId && selectedAgentId !== historyAgentId) {
+  $: if (mounted && selectedAgent && isAgentAvailable(selectedAgent) && selectedAgentId !== historyAgentId) {
     void loadConversationHistory('', selectedAgentId);
   }
 
@@ -143,8 +144,7 @@
     };
     updateTheme();
     query.addEventListener('change', updateTheme);
-    void loadConversationHistory('', selectedAgentId);
-    connectDisplayEvents();
+    void retryDashboard();
 
     return () => {
       mounted = false;
@@ -179,7 +179,8 @@
         dashboard.agents[0]?.id ||
         '';
       historyAgentId = agentId;
-      if (!agentId) {
+      const agent = dashboard.agents.find((item) => item.id === agentId);
+      if (!agentId || !agent || !isAgentAvailable(agent)) {
         conversations = [];
         messages = [];
         selectedConversationId = '';
@@ -189,7 +190,7 @@
       conversations = loaded;
       const candidate =
         loaded.find((conversation) => conversation.id === preferredConversationId) ??
-        loaded[0];
+        loaded.find((conversation) => !conversation.historyUnsupported);
       if (candidate) {
         await loadConversation(candidate.id, candidate.agentId);
       } else {
@@ -987,7 +988,10 @@
     retrying = true;
     try {
       dashboard = await getDashboard(fetch);
-      await loadConversationHistory();
+      const agent = firstAvailableAgent(dashboard.agents);
+      if (agent) {
+        await loadConversationHistory('', agent.id);
+      }
       markConnected();
     } catch {
       markIssue(hasConnected ? 'reconnecting' : 'offline', {
@@ -1013,6 +1017,7 @@
       issue: undefined,
       loadedAt: new Date().toISOString()
     };
+    connectDisplayEvents();
   }
 
   function markIssue(connectionState: DashboardData['connectionState'], issue: UserFacingIssue) {
@@ -1206,7 +1211,15 @@
   on:pointercancel={clearLongPress}
   on:pointerleave={clearLongPress}
 >
-  {#if showStartupOffline}
+  {#if showStartupLoading}
+    <section class="startup-state" aria-label="Connecting to Jute hub">
+      <div class="startup-mark">{dashboard.config.home.name}</div>
+      <div>
+        <strong>Connecting to local hub</strong>
+        <span>{dashboard.hubUrl}</span>
+      </div>
+    </section>
+  {:else if showStartupOffline}
     <OfflineState
       theme={activeTheme}
       hubUrl={dashboard.hubUrl}

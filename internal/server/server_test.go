@@ -258,19 +258,8 @@ func TestMessageEndpointRejectsUnsupportedBindingBeforeTransport(t *testing.T) {
 	}
 }
 
-func TestHomeEndpointIncludesWeather(t *testing.T) {
-	handler := NewWithWeatherProvider(testConfig(), "test", weatherProviderFunc(func(ctx context.Context, cfg config.WeatherConfig) weather.State {
-		temp := 18.4
-		return weather.State{
-			LocationName:    "Test Garden",
-			Temperature:     &temp,
-			TemperatureUnit: "°C",
-			Condition:       "Clear sky",
-			Icon:            "sun",
-			Source:          weather.ProviderOpenMeteo,
-			Status:          weather.StatusAvailable,
-		}
-	}))
+func TestHomeEndpointExcludesWeather(t *testing.T) {
+	handler := NewWithWeatherProvider(testConfig(), "test", weather.NewClient())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/home", nil)
 	rec := httptest.NewRecorder()
 
@@ -279,17 +268,12 @@ func TestHomeEndpointIncludesWeather(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	var body struct {
-		Weather weather.State `json:"weather"`
-	}
+	var body map[string]any
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Weather.Status != weather.StatusAvailable {
-		t.Fatalf("unexpected weather: %+v", body.Weather)
-	}
-	if body.Weather.Temperature == nil || *body.Weather.Temperature != 18.4 {
-		t.Fatalf("unexpected temperature: %+v", body.Weather.Temperature)
+	if _, exists := body["weather"]; exists {
+		t.Fatalf("home response should not include global weather: %+v", body)
 	}
 }
 

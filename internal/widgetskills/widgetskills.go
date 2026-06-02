@@ -9,14 +9,9 @@ import (
 
 	"jute-dash/internal/config"
 	"jute-dash/internal/store"
-	"jute-dash/internal/weather"
 )
 
 const (
-	DateTimeSkillID    = "jute.date_time.current"
-	WeatherSkillID     = "jute.weather.current"
-	ChatHistorySkillID = "jute.chat_history.current"
-
 	SchemaDashboardContext = "https://jute.dev/mcp/resources/dashboard-context/v1"
 	SchemaVisibleWidgets   = "https://jute.dev/mcp/resources/visible-widgets/v1"
 	SchemaSkillList        = "https://jute.dev/mcp/resources/widget-skills/v1"
@@ -55,7 +50,6 @@ type Agent struct {
 type Snapshot struct {
 	Config      config.Config
 	Layout      store.WidgetLayout
-	Weather     weather.State
 	Agents      []Agent
 	GeneratedAt time.Time
 }
@@ -186,84 +180,6 @@ type SkillContextResource struct {
 	GeneratedAt string         `json:"generatedAt"`
 	Skill       SkillSummary   `json:"skill"`
 	Context     map[string]any `json:"context"`
-}
-
-func BuiltInDefinitions() []Definition {
-	return []Definition{
-		{
-			SkillID:             DateTimeSkillID,
-			WidgetKind:          "date-time",
-			DisplayName:         "Date & Time",
-			Summary:             "Read the configured household date, time, timezone, locale, and display format.",
-			RequiredPermissions: []string{"agent:skill"},
-			VisibilityPolicy:    "visible_or_focused",
-			ContextFields: []Field{
-				{Name: "timezone", Type: "string", Description: "Configured IANA timezone.", Sensitivity: "public"},
-				{Name: "locale", Type: "string", Description: "Configured locale.", Sensitivity: "public"},
-				{Name: "date", Type: "string", Description: "Localized date.", Sensitivity: "public"},
-				{Name: "time", Type: "string", Description: "Localized 24-hour time.", Sensitivity: "public"},
-				{Name: "weekday", Type: "string", Description: "Localized weekday.", Sensitivity: "public"},
-				{Name: "isoTime", Type: "datetime", Description: "Current time in RFC3339 format.", Sensitivity: "public"},
-			},
-			Actions: []Action{readAction("read", "Read date and time context", "Return the current public date and time context.")},
-			Prompts: []Prompt{{
-				ID:      "date_time_context",
-				Title:   "Use date and time context",
-				Purpose: "Guide an agent when answering time-sensitive household questions.",
-			}},
-			SupportedWidgetSizes: []string{"small", "medium", "wide"},
-		},
-		{
-			SkillID:             WeatherSkillID,
-			WidgetKind:          "weather",
-			DisplayName:         "Weather",
-			Summary:             "Read current weather, temperature, humidity, wind, sunrise, sunset, and freshness for the configured location.",
-			RequiredPermissions: []string{"agent:skill"},
-			VisibilityPolicy:    "visible_or_focused",
-			ContextFields: []Field{
-				{Name: "locationName", Type: "string", Description: "Configured weather location.", Sensitivity: "public"},
-				{Name: "condition", Type: "string", Description: "Current weather condition.", Sensitivity: "public"},
-				{Name: "temperature", Type: "number", Description: "Current temperature.", Nullable: true, Sensitivity: "public"},
-				{Name: "temperatureUnit", Type: "string", Description: "Temperature unit.", Sensitivity: "public"},
-				{Name: "humidity", Type: "integer", Description: "Current relative humidity percentage.", Nullable: true, Sensitivity: "public"},
-				{Name: "windSpeed", Type: "number", Description: "Current wind speed.", Nullable: true, Sensitivity: "public"},
-				{Name: "windSpeedUnit", Type: "string", Description: "Wind speed unit.", Sensitivity: "public"},
-				{Name: "sunrise", Type: "datetime", Description: "Today's sunrise time when available.", Nullable: true, Sensitivity: "public"},
-				{Name: "sunset", Type: "datetime", Description: "Today's sunset time when available.", Nullable: true, Sensitivity: "public"},
-				{Name: "status", Type: "enum", Description: "Weather provider status.", EnumValues: []string{"available", "unavailable", "disabled"}, Sensitivity: "public"},
-				{Name: "updatedAt", Type: "datetime", Description: "Provider update time when available.", Nullable: true, Sensitivity: "public"},
-			},
-			Actions: []Action{readAction("refresh", "Refresh weather context", "Return the latest public weather context available to the hub.")},
-			Prompts: []Prompt{{
-				ID:      "weather_briefing",
-				Title:   "Use weather context",
-				Purpose: "Guide an agent when answering weather, clothing, travel, or daylight questions.",
-			}},
-			SupportedWidgetSizes: []string{"small", "medium", "wide"},
-		},
-		{
-			SkillID:             ChatHistorySkillID,
-			WidgetKind:          "chat-history",
-			DisplayName:         "Chat History",
-			Summary:             "Read available agents, selected agent preference, and conversation history availability.",
-			RequiredPermissions: []string{"agent:skill"},
-			VisibilityPolicy:    "visible_or_focused",
-			ContextFields: []Field{
-				{Name: "agentCount", Type: "integer", Description: "Number of configured agents.", Sensitivity: "public"},
-				{Name: "enabledAgentCount", Type: "integer", Description: "Number of enabled agents.", Sensitivity: "public"},
-				{Name: "preferredAgentId", Type: "string", Description: "Configured preferred agent ID when present.", Nullable: true, Sensitivity: "public"},
-				{Name: "historySource", Type: "string", Description: "Current conversation history source.", Sensitivity: "public"},
-				{Name: "agents", Type: "array", Description: "Safe summaries of configured agents.", Sensitivity: "public"},
-			},
-			Actions: []Action{readAction("read", "Read chat status context", "Return public agent and chat history context.")},
-			Prompts: []Prompt{{
-				ID:      "conversation_status",
-				Title:   "Use conversation availability",
-				Purpose: "Guide an agent when explaining available agents and conversation state.",
-			}},
-			SupportedWidgetSizes: []string{"medium", "wide", "large"},
-		},
-	}
 }
 
 func Available(snapshot Snapshot) []Skill {
@@ -540,156 +456,6 @@ func defaultContextExtractor(snapshot Snapshot, skill Skill) map[string]any {
 	return ctxMap
 }
 
-func init() {
-	Register(Definition{
-		SkillID:             DateTimeSkillID,
-		WidgetKind:          "date-time",
-		DisplayName:         "Date & Time",
-		Summary:             "Read the configured household date, time, timezone, locale, and display format.",
-		RequiredPermissions: []string{"agent:skill"},
-		VisibilityPolicy:    "visible_or_focused",
-		ContextFields: []Field{
-			{Name: "timezone", Type: "string", Description: "Configured IANA timezone.", Sensitivity: "public"},
-			{Name: "locale", Type: "string", Description: "Configured locale.", Sensitivity: "public"},
-			{Name: "date", Type: "string", Description: "Localized date.", Sensitivity: "public"},
-			{Name: "time", Type: "string", Description: "Localized 24-hour time.", Sensitivity: "public"},
-			{Name: "weekday", Type: "string", Description: "Localized weekday.", Sensitivity: "public"},
-			{Name: "isoTime", Type: "datetime", Description: "Current time in RFC3339 format.", Sensitivity: "public"},
-		},
-		Actions: []Action{readAction("read", "Read date and time context", "Return the current public date and time context.")},
-		Prompts: []Prompt{{
-			ID:      "date_time_context",
-			Title:   "Use date and time context",
-			Purpose: "Guide an agent when answering time-sensitive household questions.",
-		}},
-		SupportedWidgetSizes: []string{"small", "medium", "wide"},
-	}, func(snapshot Snapshot, instanceID string) map[string]any {
-		return dateTimeContext(snapshot)
-	})
-
-	Register(Definition{
-		SkillID:             WeatherSkillID,
-		WidgetKind:          "weather",
-		DisplayName:         "Weather",
-		Summary:             "Read current weather, temperature, humidity, wind, sunrise, sunset, and freshness for the configured location.",
-		RequiredPermissions: []string{"agent:skill"},
-		VisibilityPolicy:    "visible_or_focused",
-		ContextFields: []Field{
-			{Name: "locationName", Type: "string", Description: "Configured weather location.", Sensitivity: "public"},
-			{Name: "condition", Type: "string", Description: "Current weather condition.", Sensitivity: "public"},
-			{Name: "temperature", Type: "number", Description: "Current temperature.", Nullable: true, Sensitivity: "public"},
-			{Name: "temperatureUnit", Type: "string", Description: "Temperature unit.", Sensitivity: "public"},
-			{Name: "humidity", Type: "integer", Description: "Current relative humidity percentage.", Nullable: true, Sensitivity: "public"},
-			{Name: "windSpeed", Type: "number", Description: "Current wind speed.", Nullable: true, Sensitivity: "public"},
-			{Name: "windSpeedUnit", Type: "string", Description: "Wind speed unit.", Sensitivity: "public"},
-			{Name: "sunrise", Type: "datetime", Description: "Today's sunrise time when available.", Nullable: true, Sensitivity: "public"},
-			{Name: "sunset", Type: "datetime", Description: "Today's sunset time when available.", Nullable: true, Sensitivity: "public"},
-			{Name: "status", Type: "enum", Description: "Weather provider status.", EnumValues: []string{"available", "unavailable", "disabled"}, Sensitivity: "public"},
-			{Name: "updatedAt", Type: "datetime", Description: "Provider update time when available.", Nullable: true, Sensitivity: "public"},
-		},
-		Actions: []Action{readAction("refresh", "Refresh weather context", "Return the latest public weather context available to the hub.")},
-		Prompts: []Prompt{{
-			ID:      "weather_briefing",
-			Title:   "Use weather context",
-			Purpose: "Guide an agent when answering weather, clothing, travel, or daylight questions.",
-		}},
-		SupportedWidgetSizes: []string{"small", "medium", "wide"},
-	}, func(snapshot Snapshot, instanceID string) map[string]any {
-		return weatherContext(snapshot)
-	})
-
-	Register(Definition{
-		SkillID:             ChatHistorySkillID,
-		WidgetKind:          "chat-history",
-		DisplayName:         "Chat History",
-		Summary:             "Read available agents, selected agent preference, and conversation history availability.",
-		RequiredPermissions: []string{"agent:skill"},
-		VisibilityPolicy:    "visible_or_focused",
-		ContextFields: []Field{
-			{Name: "agentCount", Type: "integer", Description: "Number of configured agents.", Sensitivity: "public"},
-			{Name: "enabledAgentCount", Type: "integer", Description: "Number of enabled agents.", Sensitivity: "public"},
-			{Name: "preferredAgentId", Type: "string", Description: "Configured preferred agent ID when present.", Nullable: true, Sensitivity: "public"},
-			{Name: "historySource", Type: "string", Description: "Current conversation history source.", Sensitivity: "public"},
-			{Name: "agents", Type: "array", Description: "Safe summaries of configured agents.", Sensitivity: "public"},
-		},
-		Actions: []Action{readAction("read", "Read chat status context", "Return public agent and chat history context.")},
-		Prompts: []Prompt{{
-			ID:      "conversation_status",
-			Title:   "Use conversation availability",
-			Purpose: "Guide an agent when explaining available agents and conversation state.",
-		}},
-		SupportedWidgetSizes: []string{"medium", "wide", "large"},
-	}, func(snapshot Snapshot, instanceID string) map[string]any {
-		return chatHistoryContext(snapshot)
-	})
-}
-
-func dateTimeContext(snapshot Snapshot) map[string]any {
-	now := snapshot.GeneratedAt
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-	location, err := time.LoadLocation(snapshot.Config.Home.Timezone)
-	if err != nil {
-		location = time.UTC
-	}
-	local := now.In(location)
-	return map[string]any{
-		"timezone": snapshot.Config.Home.Timezone,
-		"locale":   snapshot.Config.Home.Locale,
-		"date":     local.Format("2006-01-02"),
-		"time":     local.Format("15:04"),
-		"weekday":  local.Weekday().String(),
-		"isoTime":  local.Format(time.RFC3339),
-	}
-}
-
-func weatherContext(snapshot Snapshot) map[string]any {
-	state := snapshot.Weather
-	return map[string]any{
-		"locationName":        state.LocationName,
-		"condition":           state.Condition,
-		"temperature":         pointerValue(state.Temperature),
-		"temperatureUnit":     state.TemperatureUnit,
-		"apparentTemperature": pointerValue(state.ApparentTemperature),
-		"humidity":            pointerValue(state.Humidity),
-		"windSpeed":           pointerValue(state.WindSpeed),
-		"windSpeedUnit":       state.WindSpeedUnit,
-		"sunrise":             emptyToNil(state.Sunrise),
-		"sunset":              emptyToNil(state.Sunset),
-		"isDay":               pointerValue(state.IsDay),
-		"status":              state.Status,
-		"updatedAt":           emptyToNil(state.UpdatedAt),
-		"source":              state.Source,
-	}
-}
-
-func chatHistoryContext(snapshot Snapshot) map[string]any {
-	agents := make([]map[string]any, 0, len(snapshot.Agents))
-	enabled := 0
-	for _, agent := range snapshot.Agents {
-		if agent.Enabled {
-			enabled++
-		}
-		agents = append(agents, map[string]any{
-			"id":              agent.ID,
-			"name":            agent.Name,
-			"description":     agent.Description,
-			"protocolBinding": agent.ProtocolBinding,
-			"enabled":         agent.Enabled,
-			"capabilities":    append([]string(nil), agent.Capabilities...),
-			"authConfigured":  agent.AuthConfigured,
-		})
-	}
-	return map[string]any{
-		"agentCount":        len(snapshot.Agents),
-		"enabledAgentCount": enabled,
-		"preferredAgentId":  emptyToNil(snapshot.Config.Voice.PreferredAgentID),
-		"historySource":     "agent_tasks",
-		"agents":            agents,
-	}
-}
-
 func definitionsByKind() map[string]Definition {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
@@ -700,7 +466,7 @@ func definitionsByKind() map[string]Definition {
 	return byKind
 }
 
-func readAction(id, title, description string) Action {
+func ReadAction(id, title, description string) Action {
 	return Action{
 		ID:                   id,
 		Title:                title,
@@ -757,13 +523,6 @@ func emptyToNil(value string) any {
 		return nil
 	}
 	return value
-}
-
-func pointerValue[T any](value *T) any {
-	if value == nil {
-		return nil
-	}
-	return *value
 }
 
 func firstNonEmpty(values ...string) string {

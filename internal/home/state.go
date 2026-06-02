@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"jute-dash/internal/config"
-	"jute-dash/internal/weather"
 )
 
 type State struct {
@@ -12,7 +11,6 @@ type State struct {
 	Home        config.HomeConfig `json:"home"`
 	Rooms       []RoomSummary     `json:"rooms"`
 	Tiles       []TileState       `json:"tiles"`
-	Weather     weather.State     `json:"weather"`
 }
 
 type RoomSummary struct {
@@ -30,7 +28,7 @@ type TileState struct {
 	Detail string `json:"detail"`
 }
 
-func FromConfig(cfg config.Config, now time.Time, weatherState weather.State) State {
+func FromConfig(cfg config.Config, now time.Time) State {
 	rooms := make([]RoomSummary, 0, len(cfg.Rooms))
 	for _, room := range cfg.Rooms {
 		rooms = append(rooms, RoomSummary{
@@ -57,6 +55,5 @@ func FromConfig(cfg config.Config, now time.Time, weatherState weather.State) St
 		Home:        cfg.Home,
 		Rooms:       rooms,
 		Tiles:       tiles,
-		Weather:     weatherState,
 	}
 }

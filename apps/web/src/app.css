@@ -27,6 +27,27 @@ body {
   background: #ffffff;
 }
 
+* {
+  scrollbar-color: color-mix(in srgb, var(--muted) 60%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--muted) 46%, transparent);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 button,
 input,
 textarea,
@@ -175,6 +196,40 @@ button {
   gap: 24px;
   padding: 24px;
   text-align: center;
+}
+
+.startup-state {
+  display: grid;
+  min-height: 100%;
+  place-content: center;
+  justify-items: center;
+  gap: 18px;
+  padding: 24px;
+  color: var(--foreground);
+  text-align: center;
+}
+
+.startup-mark {
+  display: grid;
+  min-width: min(260px, 70vw);
+  min-height: 72px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--foreground);
+  font-size: 1.4rem;
+  font-weight: 780;
+}
+
+.startup-state strong,
+.startup-state span {
+  display: block;
+}
+
+.startup-state span {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .offline-logo {
@@ -527,6 +582,7 @@ select:focus-visible {
 
 .widget-frame--overflow-scroll .widget-frame-body {
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .widget-frame-handle,
@@ -941,6 +997,7 @@ select {
   min-height: 0;
   overflow-y: auto;
   padding: 10px;
+  scrollbar-gutter: stable;
 }
 
 .conversation-empty {
@@ -1186,6 +1243,7 @@ select {
 .settings-body {
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .settings-form-grid,
@@ -1346,6 +1404,7 @@ select {
   min-height: 0;
   overflow-y: auto;
   padding: 16px;
+  scrollbar-gutter: stable;
 }
 
 .chat-empty {

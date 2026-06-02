@@ -8,7 +8,7 @@
   import RSSWidget from '$widgets/rss/RSSWidget.svelte';
   import MarketsWidget from '$widgets/markets/MarketsWidget.svelte';
   import { resolveWidgetChrome } from '$lib/themes';
-  import type { Agent, AgentAvailability, ChatMessage, DashboardData, WidgetInstance } from '$lib/types';
+  import type { Agent, AgentAvailability, ChatMessage, DashboardData, WeatherState, WidgetInstance } from '$lib/types';
 
   export let data: DashboardData;
   export let editMode = false;
@@ -46,6 +46,27 @@
     const columns = Math.min(Math.max(widget.w, widget.minW, 1), 4);
     const rows = Math.max(widget.h, widget.minH, 1);
     return `grid-column: span ${columns}; min-height: ${rows * 132}px;`;
+  }
+
+  function weatherData(widget: WidgetInstance): WeatherState {
+    return (widget.data as WeatherState | undefined) ?? {
+      locationName: 'Not configured',
+      temperature: null,
+      temperatureUnit: 'celsius',
+      apparentTemperature: null,
+      condition: 'Weather unavailable',
+      icon: 'cloud',
+      weatherCode: null,
+      humidity: null,
+      windSpeed: null,
+      windSpeedUnit: 'kmh',
+      sunrise: '',
+      sunset: '',
+      isDay: null,
+      updatedAt: '',
+      source: 'widget',
+      status: 'unavailable'
+    };
   }
 
   function startDrag(widget: WidgetInstance, mode: 'move' | 'resize', event: PointerEvent) {
@@ -113,7 +134,7 @@
         {editMode}
         focused={focusedWidgetId === widget.id}
         chrome={resolveWidgetChrome(widget, data.config.display)}
-        overflow={widget.kind === 'chat-history' ? 'scroll' : 'clip'}
+        overflow={(widget.overflow ?? 'clip') as 'clip' | 'scroll' | 'expand'}
         onMoveStart={(event) => startDrag(widget, 'move', event)}
         onResizeStart={(event) => startDrag(widget, 'resize', event)}
       >
@@ -145,7 +166,7 @@
         {#if widget.kind === 'date-time'}
           <DateTimeWidget home={data.config.home} {stale} />
         {:else if widget.kind === 'weather'}
-          <WeatherWidget weather={widget.data || data.home.weather} {stale} />
+          <WeatherWidget weather={weatherData(widget)} {stale} />
         {:else if widget.kind === 'rss'}
           <RSSWidget data={widget.data} {stale} />
         {:else if widget.kind === 'markets'}

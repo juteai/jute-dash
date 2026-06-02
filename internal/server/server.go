@@ -462,7 +462,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	writeJSON(w, http.StatusOK, home.FromConfig(s.cfg, time.Now(), s.weather.Current(r.Context(), s.cfg.Weather)))
+	writeJSON(w, http.StatusOK, home.FromConfig(s.cfg, time.Now()))
 }
 
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
@@ -997,6 +997,7 @@ func (s *Server) currentWidgetLayout(ctx context.Context, profileID string) (sto
 				instance.MinW = info.MinW
 				instance.MinH = info.MinH
 				instance.Size = info.DefaultSize
+				instance.Overflow = info.Overflow
 
 				data, err := provider.FetchData(ctx, w.Settings)
 				if err == nil {
@@ -1017,14 +1018,35 @@ func (s *Server) currentWidgetLayout(ctx context.Context, profileID string) (sto
 	}
 
 	if s.layoutStore == nil {
-		return normalizeWidgetLayout(s.layout), nil
+		return hydrateServerWidgetLayout(ctx, normalizeWidgetLayout(s.layout)), nil
 	}
 	layout, err := s.layoutStore.WidgetLayout(ctx, profileID)
 	if err != nil {
 		return store.WidgetLayout{}, err
 	}
-	s.layout = normalizeWidgetLayout(layout)
+	s.layout = hydrateServerWidgetLayout(ctx, normalizeWidgetLayout(layout))
 	return s.layout, nil
+}
+
+func hydrateServerWidgetLayout(ctx context.Context, layout store.WidgetLayout) store.WidgetLayout {
+	for i := range layout.Widgets {
+		widget := &layout.Widgets[i]
+		if !widget.Visible {
+			continue
+		}
+		provider, ok := widgets.Get(widget.Kind)
+		if !ok {
+			continue
+		}
+		if widget.Overflow == "" {
+			widget.Overflow = provider.CatalogInfo().Overflow
+		}
+		data, err := provider.FetchData(ctx, widget.Settings)
+		if err == nil {
+			widget.Data = data
+		}
+	}
+	return layout
 }
 
 func (s *Server) saveWidgetLayout(ctx context.Context, layout store.WidgetLayout) (store.WidgetLayout, error) {
@@ -1482,16 +1504,6 @@ func (s *Server) dashboardContext(ctx context.Context) map[string]any {
 		publicContext := map[string]any{}
 		if widget.Data != nil {
 			publicContext["data"] = widget.Data
-		}
-		switch widget.Kind {
-		case "weather":
-			publicContext["locationName"] = s.cfg.Weather.LocationName
-			publicContext["provider"] = s.cfg.Weather.Provider
-		case "date-time":
-			publicContext["timezone"] = s.cfg.Home.Timezone
-			publicContext["locale"] = s.cfg.Home.Locale
-		case "chat-history":
-			publicContext["conversationHistoryVisible"] = true
 		}
 		widgets = append(widgets, map[string]any{
 			"id":            widget.ID,

@@ -2,9 +2,13 @@ package datetime
 
 import (
 	"context"
+	"time"
+
 	"jute-dash/internal/widgetskills"
 	"jute-dash/widgets"
 )
+
+const SkillID = "jute.date_time.current"
 
 type DateTimeWidget struct{}
 
@@ -33,9 +37,59 @@ func (w *DateTimeWidget) FetchData(ctx context.Context, settings map[string]any)
 }
 
 func (w *DateTimeWidget) Skill() *widgetskills.Definition {
-	return nil
+	return dateTimeSkill()
 }
 
 func init() {
-	widgets.Register(&DateTimeWidget{})
+	widget := &DateTimeWidget{}
+	widgets.Register(widget)
+	widgetskills.Register(*widget.Skill(), dateTimeContext)
+}
+
+func dateTimeSkill() *widgetskills.Definition {
+	return &widgetskills.Definition{
+		SkillID:             SkillID,
+		WidgetKind:          "date-time",
+		DisplayName:         "Date & Time",
+		Summary:             "Read the configured household date, time, timezone, locale, and display format.",
+		RequiredPermissions: []string{"agent:skill"},
+		VisibilityPolicy:    "visible_or_focused",
+		ContextFields: []widgetskills.Field{
+			{Name: "timezone", Type: "string", Description: "Configured IANA timezone.", Sensitivity: "public"},
+			{Name: "locale", Type: "string", Description: "Configured locale.", Sensitivity: "public"},
+			{Name: "date", Type: "string", Description: "Localized date.", Sensitivity: "public"},
+			{Name: "time", Type: "string", Description: "Localized 24-hour time.", Sensitivity: "public"},
+			{Name: "weekday", Type: "string", Description: "Localized weekday.", Sensitivity: "public"},
+			{Name: "isoTime", Type: "datetime", Description: "Current time in RFC3339 format.", Sensitivity: "public"},
+		},
+		Actions: []widgetskills.Action{
+			widgetskills.ReadAction("read", "Read date and time context", "Return the current public date and time context."),
+		},
+		Prompts: []widgetskills.Prompt{{
+			ID:      "date_time_context",
+			Title:   "Use date and time context",
+			Purpose: "Guide an agent when answering time-sensitive household questions.",
+		}},
+		SupportedWidgetSizes: []string{"small", "medium", "wide"},
+	}
+}
+
+func dateTimeContext(snapshot widgetskills.Snapshot, instanceID string) map[string]any {
+	now := snapshot.GeneratedAt
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	location, err := time.LoadLocation(snapshot.Config.Home.Timezone)
+	if err != nil {
+		location = time.UTC
+	}
+	local := now.In(location)
+	return map[string]any{
+		"timezone": snapshot.Config.Home.Timezone,
+		"locale":   snapshot.Config.Home.Locale,
+		"date":     local.Format("2006-01-02"),
+		"time":     local.Format("15:04"),
+		"weekday":  local.Weekday().String(),
+		"isoTime":  local.Format(time.RFC3339),
+	}
 }

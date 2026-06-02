@@ -68,6 +68,7 @@ type WidgetInstance struct {
 	MinW     int            `json:"minW"`
 	MinH     int            `json:"minH"`
 	Size     string         `json:"size"`
+	Overflow string         `json:"overflow"`
 	Settings map[string]any `json:"settings"`
 	Visible  bool           `json:"visible"`
 	Data     any            `json:"data,omitempty"`
@@ -767,6 +768,9 @@ func NormalizeWidgetLayout(layout WidgetLayout) (WidgetLayout, error) {
 		if widget.Size == "" {
 			widget.Size = item.DefaultSize
 		}
+		if widget.Overflow == "" {
+			widget.Overflow = item.Overflow
+		}
 		if widget.MinW < item.MinW {
 			widget.MinW = item.MinW
 		}
@@ -804,6 +808,7 @@ func DefaultWidgetLayout() WidgetLayout {
 			MinW:     widget.minW,
 			MinH:     widget.minH,
 			Size:     widget.size,
+			Overflow: widget.overflow,
 			Settings: map[string]any{},
 			Visible:  widget.visible,
 		})
@@ -1127,24 +1132,25 @@ INSERT INTO voice_settings (
 }
 
 type defaultWidgetInstance struct {
-	id      string
-	kind    string
-	title   string
-	x       int
-	y       int
-	w       int
-	h       int
-	minW    int
-	minH    int
-	size    string
-	visible bool
+	id       string
+	kind     string
+	title    string
+	x        int
+	y        int
+	w        int
+	h        int
+	minW     int
+	minH     int
+	size     string
+	overflow string
+	visible  bool
 }
 
 func defaultWidgetInstances() []defaultWidgetInstance {
 	return []defaultWidgetInstance{
-		{id: "date-time", kind: "date-time", title: "Date & Time", x: 0, y: 0, w: 2, h: 1, minW: 1, minH: 1, size: "wide", visible: true},
-		{id: "weather", kind: "weather", title: "Weather", x: 2, y: 0, w: 2, h: 1, minW: 1, minH: 1, size: "wide", visible: true},
-		{id: "chat-history", kind: "chat-history", title: "Chat History", x: 0, y: 1, w: 2, h: 2, minW: 1, minH: 1, size: "medium", visible: true},
+		{id: "date-time", kind: "date-time", title: "Date & Time", x: 0, y: 0, w: 2, h: 1, minW: 1, minH: 1, size: "wide", overflow: "clip", visible: true},
+		{id: "weather", kind: "weather", title: "Weather", x: 2, y: 0, w: 2, h: 1, minW: 1, minH: 1, size: "wide", overflow: "clip", visible: true},
+		{id: "chat-history", kind: "chat-history", title: "Chat History", x: 0, y: 1, w: 2, h: 2, minW: 1, minH: 1, size: "medium", overflow: "scroll", visible: true},
 	}
 }
 

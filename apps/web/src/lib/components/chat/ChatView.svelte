@@ -95,24 +95,14 @@
         <Badge tone={statusTone}>{state}</Badge>
         {#if selectedAgent}
           <Badge tone={availabilityTone(agentAvailability)}>{availabilityLabel(agentAvailability)}</Badge>
-          <span>{selectedBinding}</span>
-          <span>A2A {selectedVersion}</span>
           {#if selectedAgent.dashboardContextSupported}
             <span>screen context</span>
           {/if}
           <span>{mcpLabel}</span>
-          {#if selectedAgent.authConfigured}
-            <span>auth</span>
-          {/if}
         {/if}
       </div>
       {#if selectedAgent}
-        <p class="chat-agent-description">{selectedAgent.description || availabilityDescription(agentAvailability)}</p>
-        {#if selectedAgent.skills && selectedAgent.skills.length > 0}
-          <p class="chat-agent-description">
-            Skills: {selectedAgent.skills.slice(0, 3).map((skill) => skill.name).join(', ')}
-          </p>
-        {/if}
+        <p class="chat-agent-description">{availabilityDescription(agentAvailability)}</p>
       {/if}
     </div>
 

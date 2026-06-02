@@ -3,6 +3,7 @@ import {
   createConversation,
   fallbackDashboard,
   getConversations,
+  initialDashboard,
   parseSSEEvent,
   sendConversationTurn,
   sendConversationTurnStream
@@ -47,6 +48,20 @@ describe('api conversation history', () => {
     expect(conversations).toHaveLength(1);
     expect(conversations[0].id).toBe('ctx-1');
     expect(String(fetcher.mock.calls[0][0])).toContain('/api/v1/conversations?agentId=house');
+  });
+
+  it('maps unsupported agent history to a calm placeholder conversation', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ error: 'agent history is unavailable' }, { status: 501 }));
+
+    const conversations = await getConversations(fetcher, 'house');
+
+    expect(conversations).toEqual([
+      expect.objectContaining({
+        id: 'history-unsupported-house',
+        agentId: 'house',
+        historyUnsupported: true
+      })
+    ]);
   });
 
   it('creates a conversation and sends turns through the hub API', async () => {
@@ -137,5 +152,13 @@ describe('fallback dashboard', () => {
     expect(fallback.stale).toBe(true);
     expect(fallback.agents).toEqual([]);
     expect(fallback.layout.widgets.map((widget) => widget.kind)).toEqual(['date-time', 'weather', 'chat-history']);
+    expect('weather' in fallback.home).toBe(false);
+  });
+
+  it('can create a neutral initial dashboard before client-side hub connection', () => {
+    const initial = initialDashboard();
+
+    expect(initial.connectionState).toBe('starting');
+    expect(initial.issue).toBeUndefined();
   });
 });
