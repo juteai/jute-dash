@@ -110,7 +110,7 @@ wait_mcp() {
 			headers+=(-H "X-Jute-Agent-ID: $JUTE_MCP_AGENT_ID")
 		fi
 		if curl -fsS "$MCP_URL" "${headers[@]}" \
-			-d '{"jsonrpc":"2.0","id":1,"method":"resources/list"}' >/dev/null 2>&1; then
+			-d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' 2>/dev/null | grep -q 'jute_skill_read_context'; then
 			return 0
 		fi
 		if [[ -n "$HUB_PID" ]] && ! kill -0 "$HUB_PID" 2>/dev/null; then

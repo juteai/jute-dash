@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -185,6 +186,15 @@ func newKronkAgent(ctx context.Context) (agent.Agent, func(), error) {
 		log.Printf("KRONK_MODEL_ID / KRONK_MODEL_URL unset, defaulting to catalog model %q", modelID)
 	}
 
+	mcpURL := strings.TrimSpace(os.Getenv("JUTE_MCP_URL"))
+	mcpToken := strings.TrimSpace(os.Getenv("JUTE_MCP_TOKEN"))
+	mcpAgentID := strings.TrimSpace(os.Getenv("JUTE_MCP_AGENT_ID"))
+	if mcpURL != "" {
+		if err := probeJuteMCP(ctx, mcpURL, mcpToken, mcpAgentID); err != nil {
+			return nil, nil, fmt.Errorf("JUTE_MCP_URL is set but Jute MCP tools are unavailable: %w", err)
+		}
+	}
+
 	mp, err := installSystem(ctx, modelID, sourceURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("install kronk runtime: %w", err)
@@ -207,10 +217,6 @@ func newKronkAgent(ctx context.Context) (agent.Agent, func(), error) {
 			log.Printf("close kronk llm: %v", cerr)
 		}
 	}
-
-	mcpURL := strings.TrimSpace(os.Getenv("JUTE_MCP_URL"))
-	mcpToken := strings.TrimSpace(os.Getenv("JUTE_MCP_TOKEN"))
-	mcpAgentID := strings.TrimSpace(os.Getenv("JUTE_MCP_AGENT_ID"))
 
 	var toolsets []adktool.Toolset
 	if mcpURL != "" {
@@ -281,6 +287,78 @@ func kronkInstruction(mcpEnabled bool) string {
 		)
 	}
 	return strings.Join(parts, " ")
+}
+
+func probeJuteMCP(ctx context.Context, mcpURL, token, agentID string) error {
+	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	var result struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := postMCPProbe(probeCtx, mcpURL, token, agentID, "tools/list", nil, &result); err != nil {
+		return err
+	}
+	for _, tool := range result.Tools {
+		if tool.Name == "jute_skill_read_context" {
+			return nil
+		}
+	}
+	return fmt.Errorf("tools/list did not include jute_skill_read_context")
+}
+
+func postMCPProbe(ctx context.Context, mcpURL, token, agentID, method string, params any, result any) error {
+	body, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  method,
+		"params":  params,
+	})
+	if err != nil {
+		return fmt.Errorf("encode probe request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, mcpURL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create probe request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if agentID != "" {
+		req.Header.Set("X-Jute-Agent-ID", agentID)
+	}
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		return fmt.Errorf("connect to Jute MCP: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("Jute MCP returned HTTP %d", resp.StatusCode)
+	}
+	var envelope struct {
+		Result json.RawMessage `json:"result"`
+		Error  *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return fmt.Errorf("decode Jute MCP response: %w", err)
+	}
+	if envelope.Error != nil {
+		return fmt.Errorf("Jute MCP %s failed: %s", method, envelope.Error.Message)
+	}
+	if len(envelope.Result) == 0 || string(envelope.Result) == "null" {
+		return fmt.Errorf("Jute MCP %s returned no result", method)
+	}
+	if err := json.Unmarshal(envelope.Result, result); err != nil {
+		return fmt.Errorf("decode Jute MCP %s result: %w", method, err)
+	}
+	return nil
 }
 
 // HTTPPostTransport implements a custom mcp.Transport for HTTP POST JSON-RPC.
