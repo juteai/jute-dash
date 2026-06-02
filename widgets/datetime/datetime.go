@@ -41,9 +41,7 @@ func (w *DateTimeWidget) Skill() *widgetskills.Definition {
 }
 
 func init() {
-	widget := &DateTimeWidget{}
-	widgets.Register(widget)
-	widgetskills.Register(*widget.Skill(), dateTimeContext)
+	widgets.RegisterWithSkill(&DateTimeWidget{}, dateTimeContext)
 }
 
 func dateTimeSkill() *widgetskills.Definition {

@@ -40,9 +40,7 @@ func (w *ChatHistoryWidget) Skill() *widgetskills.Definition {
 }
 
 func init() {
-	widget := &ChatHistoryWidget{}
-	widgets.Register(widget)
-	widgetskills.Register(*widget.Skill(), chatHistoryContext)
+	widgets.RegisterWithSkill(&ChatHistoryWidget{}, chatHistoryContext)
 }
 
 func chatHistorySkill() *widgetskills.Definition {

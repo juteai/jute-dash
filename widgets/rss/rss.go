@@ -49,6 +49,51 @@ type RSSFeedResult struct {
 	Items    []RSSItemResult `json:"items"`
 }
 
+// feedConfig holds a single feed URL and display name.
+type feedConfig struct {
+	URL  string
+	Name string
+}
+
+// Settings holds the parsed per-instance configuration for the RSS widget.
+type Settings struct {
+	Limit int
+	Feeds []feedConfig
+}
+
+func parseSettings(raw map[string]any) Settings {
+	s := Settings{Limit: 5}
+	// YAML numeric values decode as float64; JSON integers decode as int.
+	if v, ok := raw["limit"].(float64); ok {
+		s.Limit = int(v)
+	} else if v, ok := raw["limit"].(int); ok {
+		s.Limit = v
+	}
+	if rawFeeds, ok := raw["feeds"].([]any); ok {
+		for _, item := range rawFeeds {
+			if f, ok := item.(map[string]any); ok {
+				s.Feeds = append(s.Feeds, feedConfig{
+					URL:  stringVal(f["url"]),
+					Name: stringVal(f["name"]),
+				})
+			}
+		}
+	} else if rawFeeds, ok := raw["feeds"].([]map[string]any); ok {
+		for _, f := range rawFeeds {
+			s.Feeds = append(s.Feeds, feedConfig{
+				URL:  stringVal(f["url"]),
+				Name: stringVal(f["name"]),
+			})
+		}
+	}
+	return s
+}
+
+func stringVal(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
 func (w *RSSWidget) Kind() string {
 	return "rss"
 }
@@ -69,7 +114,7 @@ func (w *RSSWidget) CatalogInfo() widgets.WidgetCatalogItem {
 	}
 }
 
-func (w *RSSWidget) FetchData(ctx context.Context, settings map[string]any) (any, error) {
+func (w *RSSWidget) FetchData(ctx context.Context, raw map[string]any) (any, error) {
 	w.cacheMu.Lock()
 	if w.client == nil {
 		w.client = &http.Client{Timeout: 4 * time.Second}
@@ -78,28 +123,12 @@ func (w *RSSWidget) FetchData(ctx context.Context, settings map[string]any) (any
 	}
 	w.cacheMu.Unlock()
 
-	limit := 5
-	if val, ok := settings["limit"].(float64); ok {
-		limit = int(val)
-	} else if val, ok := settings["limit"].(int); ok {
-		limit = val
-	}
-
-	var feeds []map[string]any
-	if rawFeeds, ok := settings["feeds"].([]any); ok {
-		for _, raw := range rawFeeds {
-			if f, ok := raw.(map[string]any); ok {
-				feeds = append(feeds, f)
-			}
-		}
-	} else if rawFeeds, ok := settings["feeds"].([]map[string]any); ok {
-		feeds = rawFeeds
-	}
+	s := parseSettings(raw)
 
 	results := []RSSFeedResult{}
-	for _, feed := range feeds {
-		feedURL, _ := feed["url"].(string)
-		feedName, _ := feed["name"].(string)
+	for _, feed := range s.Feeds {
+		feedURL := feed.URL
+		feedName := feed.Name
 		if feedURL == "" {
 			continue
 		}
@@ -140,7 +169,7 @@ func (w *RSSWidget) FetchData(ctx context.Context, settings map[string]any) (any
 
 		items := []RSSItemResult{}
 		for i, it := range payload.Channel.Items {
-			if i >= limit {
+			if i >= s.Limit {
 				break
 			}
 			items = append(items, RSSItemResult{
@@ -202,7 +231,5 @@ func (w *RSSWidget) Skill() *widgetskills.Definition {
 }
 
 func init() {
-	w := &RSSWidget{}
-	widgets.Register(w)
-	widgetskills.Register(*w.Skill(), nil)
+	widgets.RegisterWithSkill(&RSSWidget{}, nil)
 }

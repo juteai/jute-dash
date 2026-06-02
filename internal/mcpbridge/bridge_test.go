@@ -13,11 +13,10 @@ import (
 	"jute-dash/internal/config"
 	"jute-dash/internal/displayactions"
 	"jute-dash/internal/store"
-	"jute-dash/internal/weather"
 	"jute-dash/internal/widgetskills"
 	_ "jute-dash/widgets/chathistory"
 	_ "jute-dash/widgets/datetime"
-	_ "jute-dash/widgets/weather"
+	weather "jute-dash/widgets/weather"
 )
 
 const weatherSkillID = "jute.weather.current"

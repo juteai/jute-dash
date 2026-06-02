@@ -2,6 +2,8 @@ package widgets
 
 import (
 	"sync"
+
+	"jute-dash/internal/widgetskills"
 )
 
 var (
@@ -13,6 +15,27 @@ func Register(w Widget) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	instances[w.Kind()] = w
+}
+
+// RegisterWithSkill registers a widget and its agent-facing skill in one call.
+// Use this in widget init() functions instead of calling Register and
+// widgetskills.Register separately.
+func RegisterWithSkill(w Widget, contextFn widgetskills.ContextFunc) {
+	Register(w)
+	if skill := w.Skill(); skill != nil {
+		widgetskills.Register(*skill, contextFn)
+	}
+}
+
+// Catalog returns catalog metadata for all registered widgets.
+func Catalog() []WidgetCatalogItem {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	items := make([]WidgetCatalogItem, 0, len(instances))
+	for _, w := range instances {
+		items = append(items, w.CatalogInfo())
+	}
+	return items
 }
 
 func Get(kind string) (Widget, bool) {

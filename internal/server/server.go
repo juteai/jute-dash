@@ -18,7 +18,6 @@ import (
 	"jute-dash/internal/home"
 	"jute-dash/internal/registry"
 	"jute-dash/internal/store"
-	"jute-dash/internal/weather"
 	"jute-dash/widgets"
 	_ "jute-dash/widgets/chathistory"
 	_ "jute-dash/widgets/datetime"
@@ -30,9 +29,8 @@ import (
 type Server struct {
 	cfg         config.Config
 	registry    registry.Registry
-	weather     weather.Provider
 	messages    a2aclient.MessageSender
-	cardFetcher *a2aclient.AgentCardFetcher
+	agentCards  *agentCardService
 	setup       store.SetupStatus
 	layout      store.WidgetLayout
 	layoutStore WidgetLayoutStore
@@ -40,7 +38,6 @@ type Server struct {
 	voice       config.VoiceConfig
 	voiceStore  VoiceSettingsStore
 	configPath  string
-	agentCards  map[string]agentCardCache
 	display     *displayactions.Dispatcher
 	mu          sync.Mutex
 	started     time.Time
@@ -159,15 +156,11 @@ type VoiceStatusResponse struct {
 }
 
 func New(cfg config.Config, version string) http.Handler {
-	return NewWithWeatherProvider(cfg, version, weather.NewClient())
-}
-
-func NewWithWeatherProvider(cfg config.Config, version string, weatherProvider weather.Provider) http.Handler {
-	return newServer(cfg, version, weatherProvider, nil, store.SetupStatus{Complete: true, Missing: []string{}}, store.DefaultWidgetLayout(), nil)
+	return newServer(cfg, version, nil, store.SetupStatus{Complete: true, Missing: []string{}}, store.DefaultWidgetLayout(), nil, "", nil)
 }
 
 func NewWithMessageSender(cfg config.Config, version string, messageSender a2aclient.MessageSender) http.Handler {
-	return newServer(cfg, version, weather.NewClient(), messageSender, store.SetupStatus{Complete: true, Missing: []string{}}, store.DefaultWidgetLayout(), nil)
+	return newServer(cfg, version, messageSender, store.SetupStatus{Complete: true, Missing: []string{}}, store.DefaultWidgetLayout(), nil, "", nil)
 }
 
 func NewWithSetupStatus(cfg config.Config, version string, setup store.SetupStatus) http.Handler {
@@ -175,7 +168,7 @@ func NewWithSetupStatus(cfg config.Config, version string, setup store.SetupStat
 }
 
 func NewWithSetupStatusAndLayout(cfg config.Config, version string, setup store.SetupStatus, layout store.WidgetLayout) http.Handler {
-	return newServer(cfg, version, weather.NewClient(), nil, setup, layout, nil)
+	return newServer(cfg, version, nil, setup, layout, nil, "", nil)
 }
 
 func NewWithSetupStatusAndLayoutStore(cfg config.Config, version string, setup store.SetupStatus, layoutStore WidgetLayoutStore) http.Handler {
@@ -193,13 +186,11 @@ func NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(cfg config.C
 			layout = loaded
 		}
 	}
-	return newServer(cfg, version, weather.NewClient(), nil, setup, layout, layoutStore, configPath, display)
+	return newServer(cfg, version, nil, setup, layout, layoutStore, configPath, display)
+
 }
 
-func newServer(cfg config.Config, version string, weatherProvider weather.Provider, messageSender a2aclient.MessageSender, setup store.SetupStatus, layout store.WidgetLayout, layoutStore WidgetLayoutStore, args ...any) http.Handler {
-	if weatherProvider == nil {
-		weatherProvider = weather.NewClient()
-	}
+func newServer(cfg config.Config, version string, messageSender a2aclient.MessageSender, setup store.SetupStatus, layout store.WidgetLayout, layoutStore WidgetLayoutStore, configPath string, display *displayactions.Dispatcher) http.Handler {
 	if messageSender == nil {
 		messageSender = a2aclient.NewJSONRPCClient()
 	}
@@ -211,36 +202,27 @@ func newServer(cfg config.Config, version string, weatherProvider weather.Provid
 	if candidate, ok := layoutStore.(HouseholdSettingsStore); ok {
 		settingsStore = candidate
 	}
-	activeConfigPath := ""
-	var display *displayactions.Dispatcher
-	for _, arg := range args {
-		switch value := arg.(type) {
-		case string:
-			activeConfigPath = value
-		case *displayactions.Dispatcher:
-			display = value
-		}
-	}
 	if display == nil {
 		display = displayactions.NewDispatcher()
 	}
 	server := &Server{
-		cfg:         cfg,
-		registry:    registry.New(cfg.Agents),
-		weather:     weatherProvider,
-		messages:    messageSender,
-		cardFetcher: a2aclient.NewAgentCardFetcher(),
+		cfg:      cfg,
+		registry: registry.New(cfg.Agents),
+		messages: messageSender,
+		agentCards:  newAgentCardService(),
 		setup:       normalizeSetupStatus(setup),
 		layout:      normalizeWidgetLayout(layout),
 		layoutStore: layoutStore,
 		settings:    settingsStore,
 		voice:       cfg.Voice,
 		voiceStore:  voiceStore,
-		configPath:  activeConfigPath,
-		agentCards:  map[string]agentCardCache{},
+		configPath:  configPath,
 		display:     display,
 		started:     time.Now().UTC(),
 		version:     version,
+	}
+	if st, ok := layoutStore.(interface{ SetCatalog([]store.WidgetCatalogItem) }); ok {
+		st.SetCatalog(widgetCatalogItems())
 	}
 
 	mux := http.NewServeMux()
@@ -444,8 +426,7 @@ func validateHouseholdSettings(settings store.HouseholdSettings) error {
 	cfg.Home = settings.Home
 	cfg.Display = settings.Display
 	cfg.Weather = settings.Weather
-	config.ApplyDefaults(&cfg)
-	if err := config.Validate(cfg); err != nil {
+	if err := config.EnsureValid(&cfg); err != nil {
 		return fmt.Errorf("%w: %v", errInvalidHouseholdSettings, err)
 	}
 	return nil
@@ -706,7 +687,7 @@ func (s *Server) handleWidgetLayoutReset(w http.ResponseWriter, r *http.Request)
 	if s.layoutStore != nil {
 		saved, err = s.layoutStore.ResetWidgetLayout(r.Context(), profileID)
 	} else {
-		saved, err = store.NormalizeWidgetLayout(layout)
+		saved, err = store.NormalizeWidgetLayout(layout, widgetCatalogMap())
 		if err == nil {
 			s.layout = saved
 		}
@@ -1084,7 +1065,7 @@ func (s *Server) saveWidgetLayout(ctx context.Context, layout store.WidgetLayout
 	if s.layoutStore != nil {
 		saved, err = s.layoutStore.SaveWidgetLayout(ctx, layout)
 	} else {
-		saved, err = store.NormalizeWidgetLayout(layout)
+		saved, err = store.NormalizeWidgetLayout(layout, widgetCatalogMap())
 	}
 	if err != nil {
 		return store.WidgetLayout{}, err
@@ -1423,70 +1404,21 @@ func (s *Server) agentWithDiscovery(agent registry.Agent, cache agentCardCache) 
 }
 
 func (s *Server) currentAgentCardCache(ctx context.Context, agent registry.Agent) (agentCardCache, bool) {
-	if cache, ok := s.loadAgentCardCache(ctx, agent.ID); ok && cache.CardStatus == "available" {
-		return cache, true
-	}
-	return s.refreshAgentCard(ctx, agent), true
+	configured, _ := s.configuredAgent(agent.ID)
+	return s.agentCards.current(ctx, agent, configured), true
 }
 
-func (s *Server) loadAgentCardCache(ctx context.Context, agentID string) (agentCardCache, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	cache, ok := s.agentCards[agentID]
-	return cache, ok
+func (s *Server) loadAgentCardCache(_ context.Context, agentID string) (agentCardCache, bool) {
+	return s.agentCards.load(agentID)
 }
 
 func (s *Server) refreshAgentCard(ctx context.Context, agent registry.Agent) agentCardCache {
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	cache := agentCardCache{
-		AgentID:                 agent.ID,
-		CardStatus:              "unavailable",
-		CardError:               "agent card is unavailable",
-		SelectedEndpointURL:     agent.EndpointURL,
-		SelectedProtocolBinding: agent.ProtocolBinding,
-		SelectedProtocolVersion: a2aclient.ProtocolVersion10,
-		FetchedAt:               now,
-		ExpiresAt:               now,
-	}
-	configuredAgent, _ := s.configuredAgent(agent.ID)
-	bearerToken, _ := agentBearerToken(configuredAgent)
-	result, err := s.cardFetcher.Fetch(ctx, agent.CardURL, bearerToken)
-	if err != nil {
-		cache.CardError = "agent card could not be fetched"
-		s.saveAgentCardCache(ctx, cache)
-		return cache
-	}
-	selected, err := a2aclient.SelectInterface(result.Card, agent.EndpointURL, agent.ProtocolBinding)
-	if err != nil {
-		cache.CardJSON = result.Raw
-		cache.CardError = "agent card has no compatible A2A 1.0 interface"
-		cache.FetchedAt = result.FetchedAt.Format(time.RFC3339Nano)
-		cache.ExpiresAt = result.FetchedAt.Add(10 * time.Minute).Format(time.RFC3339Nano)
-		cache.Skills = result.Card.Skills
-		cache.Streaming = result.Card.Capabilities.Streaming
-		cache.DashboardContextSupported = a2aclient.SupportsDashboardContext(result.Card)
-		s.saveAgentCardCache(ctx, cache)
-		return cache
-	}
-	cache.CardJSON = result.Raw
-	cache.CardStatus = "available"
-	cache.CardError = ""
-	cache.SelectedEndpointURL = selected.EndpointURL
-	cache.SelectedProtocolBinding = selected.ProtocolBinding
-	cache.SelectedProtocolVersion = selected.ProtocolVersion
-	cache.Streaming = result.Card.Capabilities.Streaming
-	cache.DashboardContextSupported = a2aclient.SupportsDashboardContext(result.Card)
-	cache.Skills = result.Card.Skills
-	cache.FetchedAt = result.FetchedAt.Format(time.RFC3339Nano)
-	cache.ExpiresAt = result.FetchedAt.Add(10 * time.Minute).Format(time.RFC3339Nano)
-	s.saveAgentCardCache(ctx, cache)
-	return cache
+	configured, _ := s.configuredAgent(agent.ID)
+	return s.agentCards.refresh(ctx, agent, configured)
 }
 
-func (s *Server) saveAgentCardCache(ctx context.Context, cache agentCardCache) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.agentCards[cache.AgentID] = cache
+func (s *Server) saveAgentCardCache(_ context.Context, cache agentCardCache) {
+	s.agentCards.save(cache)
 }
 
 func (s *Server) dashboardContext(ctx context.Context) map[string]any {
@@ -1597,4 +1529,37 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+// widgetCatalogItems returns catalog items derived from all registered widgets.
+func widgetCatalogItems() []store.WidgetCatalogItem {
+	list := widgets.List()
+	items := make([]store.WidgetCatalogItem, 0, len(list))
+	for _, w := range list {
+		ci := w.CatalogInfo()
+		items = append(items, store.WidgetCatalogItem{
+			Kind:          ci.Kind,
+			Name:          ci.Name,
+			Description:   ci.Description,
+			DefaultTitle:  ci.DefaultTitle,
+			DefaultW:      ci.DefaultW,
+			DefaultH:      ci.DefaultH,
+			MinW:          ci.MinW,
+			MinH:          ci.MinH,
+			DefaultSize:   ci.DefaultSize,
+			Overflow:      ci.Overflow,
+			AllowMultiple: ci.AllowMultiple,
+		})
+	}
+	return items
+}
+
+// widgetCatalogMap returns a kind-keyed catalog map from all registered widgets.
+func widgetCatalogMap() map[string]store.WidgetCatalogItem {
+	items := widgetCatalogItems()
+	m := make(map[string]store.WidgetCatalogItem, len(items))
+	for _, item := range items {
+		m[item.Kind] = item
+	}
+	return m
 }

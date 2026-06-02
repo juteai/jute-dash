@@ -23,8 +23,9 @@ const (
 )
 
 type Store struct {
-	db   *sql.DB
-	path string
+	db      *sql.DB
+	path    string
+	catalog map[string]WidgetCatalogItem
 }
 
 type InitResult struct {
@@ -126,12 +127,22 @@ func Open(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
-	store := &Store{db: db, path: dbPath}
+	store := &Store{db: db, path: dbPath, catalog: widgetCatalogByKind()}
 	if err := store.configure(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	return store, nil
+}
+
+// SetCatalog replaces the widget catalog used for layout validation. Call this
+// at startup to override the built-in defaults with the live registry.
+func (s *Store) SetCatalog(items []WidgetCatalogItem) {
+	m := make(map[string]WidgetCatalogItem, len(items))
+	for _, item := range items {
+		m[item.Kind] = item
+	}
+	s.catalog = m
 }
 
 func (s *Store) Close() error {
@@ -313,8 +324,7 @@ WHERE id = ?`, defaultHouseholdID).Scan(
 	cfg.Agents = nil
 	cfg.Rooms = rooms
 	cfg.Tiles = tiles
-	config.ApplyDefaults(&cfg)
-	if err := config.Validate(cfg); err != nil {
+	if err := config.EnsureValid(&cfg); err != nil {
 		return config.Config{}, fmt.Errorf("validate store config: %w", err)
 	}
 	return cfg, nil
@@ -426,8 +436,7 @@ func (s *Store) SaveHouseholdSettings(ctx context.Context, settings HouseholdSet
 	cfg.Home = settings.Home
 	cfg.Display = settings.Display
 	cfg.Weather = settings.Weather
-	config.ApplyDefaults(&cfg)
-	if err := config.Validate(cfg); err != nil {
+	if err := config.EnsureValid(&cfg); err != nil {
 		return HouseholdSettings{}, err
 	}
 	backgroundJSON, err := jsonString(cfg.Display.Background)
@@ -654,7 +663,7 @@ ORDER BY name, id`)
 }
 
 func (s *Store) SaveWidgetLayout(ctx context.Context, layout WidgetLayout) (WidgetLayout, error) {
-	normalized, err := NormalizeWidgetLayout(layout)
+	normalized, err := NormalizeWidgetLayout(layout, s.catalog)
 	if err != nil {
 		return WidgetLayout{}, err
 	}
@@ -727,7 +736,10 @@ func (s *Store) ResetWidgetLayout(ctx context.Context, profileID string) (Widget
 	return s.SaveWidgetLayout(ctx, layout)
 }
 
-func NormalizeWidgetLayout(layout WidgetLayout) (WidgetLayout, error) {
+// NormalizeWidgetLayout normalizes and validates a widget layout against the
+// provided catalog. Pass nil to skip widget-kind validation (e.g. in tests
+// that only care about structural rules).
+func NormalizeWidgetLayout(layout WidgetLayout, catalog map[string]WidgetCatalogItem) (WidgetLayout, error) {
 	layout.ProfileID = strings.TrimSpace(layout.ProfileID)
 	if layout.ProfileID == "" {
 		return WidgetLayout{}, fmt.Errorf("%w: profileId is required", ErrInvalidLayout)
@@ -736,7 +748,6 @@ func NormalizeWidgetLayout(layout WidgetLayout) (WidgetLayout, error) {
 		layout.Widgets = []WidgetInstance{}
 	}
 
-	catalog := widgetCatalogByKind()
 	seenIDs := map[string]bool{}
 	seenKinds := map[string]bool{}
 
@@ -748,7 +759,7 @@ func NormalizeWidgetLayout(layout WidgetLayout) (WidgetLayout, error) {
 		widget.Size = strings.TrimSpace(widget.Size)
 
 		item, ok := catalog[widget.Kind]
-		if !ok {
+		if catalog != nil && !ok {
 			return WidgetLayout{}, fmt.Errorf("%w: unknown widget kind %q", ErrInvalidLayout, widget.Kind)
 		}
 		if widget.ID == "" {
@@ -758,25 +769,27 @@ func NormalizeWidgetLayout(layout WidgetLayout) (WidgetLayout, error) {
 			return WidgetLayout{}, fmt.Errorf("%w: duplicate widget id %q", ErrInvalidLayout, widget.ID)
 		}
 		seenIDs[widget.ID] = true
-		if !item.AllowMultiple && seenKinds[widget.Kind] {
-			return WidgetLayout{}, fmt.Errorf("%w: duplicate widget kind %q", ErrInvalidLayout, widget.Kind)
+		if ok {
+			if !item.AllowMultiple && seenKinds[widget.Kind] {
+				return WidgetLayout{}, fmt.Errorf("%w: duplicate widget kind %q", ErrInvalidLayout, widget.Kind)
+			}
+			if widget.Title == "" {
+				widget.Title = item.DefaultTitle
+			}
+			if widget.Size == "" {
+				widget.Size = item.DefaultSize
+			}
+			if widget.Overflow == "" {
+				widget.Overflow = item.Overflow
+			}
+			if widget.MinW < item.MinW {
+				widget.MinW = item.MinW
+			}
+			if widget.MinH < item.MinH {
+				widget.MinH = item.MinH
+			}
 		}
 		seenKinds[widget.Kind] = true
-		if widget.Title == "" {
-			widget.Title = item.DefaultTitle
-		}
-		if widget.Size == "" {
-			widget.Size = item.DefaultSize
-		}
-		if widget.Overflow == "" {
-			widget.Overflow = item.Overflow
-		}
-		if widget.MinW < item.MinW {
-			widget.MinW = item.MinW
-		}
-		if widget.MinH < item.MinH {
-			widget.MinH = item.MinH
-		}
 		if err := validateWidgetInstance(*widget); err != nil {
 			return WidgetLayout{}, err
 		}
@@ -890,8 +903,7 @@ func (s *Store) isSeeded(ctx context.Context) (bool, error) {
 }
 
 func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided bool) error {
-	config.ApplyDefaults(&cfg)
-	if err := config.Validate(cfg); err != nil {
+	if err := config.EnsureValid(&cfg); err != nil {
 		return fmt.Errorf("validate seed config: %w", err)
 	}
 

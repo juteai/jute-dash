@@ -8,8 +8,6 @@ import (
 	"net/url"
 	"strconv"
 	"time"
-
-	"jute-dash/internal/config"
 )
 
 const (
@@ -39,8 +37,20 @@ type State struct {
 	Status              string   `json:"status"`
 }
 
+// Request describes a weather lookup. It is weather-package-owned so that
+// callers do not need to import the hub config package.
+type Request struct {
+	Enabled         bool
+	Provider        string
+	LocationName    string
+	Latitude        float64
+	Longitude       float64
+	TemperatureUnit string
+	WindSpeedUnit   string
+}
+
 type Provider interface {
-	Current(context.Context, config.WeatherConfig) State
+	Current(context.Context, Request) State
 }
 
 type Client struct {
@@ -76,7 +86,7 @@ func NewClient(options ...Option) *Client {
 	return client
 }
 
-func (client *Client) Current(ctx context.Context, cfg config.WeatherConfig) State {
+func (client *Client) Current(ctx context.Context, cfg Request) State {
 	if !cfg.Enabled {
 		return disabledState(cfg)
 	}
@@ -107,7 +117,7 @@ func (client *Client) Current(ctx context.Context, cfg config.WeatherConfig) Sta
 	return mapOpenMeteo(cfg, payload)
 }
 
-func (client *Client) forecastURL(cfg config.WeatherConfig) string {
+func (client *Client) forecastURL(cfg Request) string {
 	values := url.Values{}
 	values.Set("latitude", strconv.FormatFloat(cfg.Latitude, 'f', -1, 64))
 	values.Set("longitude", strconv.FormatFloat(cfg.Longitude, 'f', -1, 64))
@@ -121,7 +131,7 @@ func (client *Client) forecastURL(cfg config.WeatherConfig) string {
 	return fmt.Sprintf("%s?%s", client.endpoint, values.Encode())
 }
 
-func mapOpenMeteo(cfg config.WeatherConfig, payload openMeteoResponse) State {
+func mapOpenMeteo(cfg Request, payload openMeteoResponse) State {
 	code := payload.Current.WeatherCode
 	isDay := payload.Current.IsDay == 1
 	condition, icon := conditionForCode(code, isDay)
@@ -146,7 +156,7 @@ func mapOpenMeteo(cfg config.WeatherConfig, payload openMeteoResponse) State {
 	}
 }
 
-func disabledState(cfg config.WeatherConfig) State {
+func disabledState(cfg Request) State {
 	return State{
 		LocationName:    cfg.LocationName,
 		TemperatureUnit: unitLabel(cfg.TemperatureUnit),
@@ -158,7 +168,7 @@ func disabledState(cfg config.WeatherConfig) State {
 	}
 }
 
-func unavailableState(cfg config.WeatherConfig) State {
+func unavailableState(cfg Request) State {
 	return State{
 		LocationName:    cfg.LocationName,
 		TemperatureUnit: unitLabel(cfg.TemperatureUnit),

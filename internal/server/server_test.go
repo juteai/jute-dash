@@ -19,7 +19,6 @@ import (
 	"jute-dash/internal/config"
 	"jute-dash/internal/displayactions"
 	"jute-dash/internal/store"
-	"jute-dash/internal/weather"
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -43,7 +42,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 func TestEventsStreamDisplayActions(t *testing.T) {
 	dispatcher := displayactions.NewDispatcher()
-	handler := newServer(testConfig(), "test", weather.NewClient(), nil, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, dispatcher)
+	handler := newServer(testConfig(), "test", nil, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", dispatcher)
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
@@ -192,7 +191,7 @@ func TestMessageEndpointUsesDiscoveredA2A10InterfaceAndDashboardContext(t *testi
 		Status:         "completed",
 		Text:           "Context received.",
 	}}
-	handler := newServer(cfg, "test", weather.NewClient(), sender, result.Setup, store.DefaultWidgetLayout(), runtimeStore)
+	handler := newServer(cfg, "test", sender, result.Setup, store.DefaultWidgetLayout(), runtimeStore, "", nil)
 
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"What can you see?","conversationId":"ctx-existing"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
@@ -259,7 +258,7 @@ func TestMessageEndpointRejectsUnsupportedBindingBeforeTransport(t *testing.T) {
 }
 
 func TestHomeEndpointExcludesWeather(t *testing.T) {
-	handler := NewWithWeatherProvider(testConfig(), "test", weather.NewClient())
+	handler := New(testConfig(), "test")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/home", nil)
 	rec := httptest.NewRecorder()
 
@@ -828,9 +827,7 @@ func TestStoreBackedConfigWorksWithExistingEndpoints(t *testing.T) {
 		t.Fatalf("initialize store: %v", err)
 	}
 	cfg := testConfig()
-	handler := NewWithWeatherProvider(cfg, "test", weatherProviderFunc(func(ctx context.Context, cfg config.WeatherConfig) weather.State {
-		return weather.State{Status: weather.StatusDisabled, LocationName: cfg.LocationName}
-	}))
+	handler := New(cfg, "test")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
 	rec := httptest.NewRecorder()
@@ -1015,7 +1012,7 @@ func TestConversationListUsesAgentTaskHistory(t *testing.T) {
 			},
 		},
 	}
-	handler := newServer(testConfig(), "test", weather.NewClient(), history, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil)
+	handler := newServer(testConfig(), "test", history, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?agentId=house", nil)
 	rec := httptest.NewRecorder()
@@ -1054,7 +1051,7 @@ func TestConversationDetailUsesGetTaskHistory(t *testing.T) {
 			},
 		},
 	}
-	handler := newServer(testConfig(), "test", weather.NewClient(), history, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil)
+	handler := newServer(testConfig(), "test", history, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/ctx-1?agentId=house", nil)
 	rec := httptest.NewRecorder()
@@ -1099,7 +1096,7 @@ func TestConversationCreateWithInitialTextSendsTurnToAgent(t *testing.T) {
 			},
 		},
 	}
-	handler := newServer(testConfig(), "test", weather.NewClient(), sender, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil)
+	handler := newServer(testConfig(), "test", sender, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", nil)
 
 	payload := bytes.NewBufferString(`{"agentId":"house","title":"Kitchen","initialText":"Hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", payload)
@@ -1171,7 +1168,7 @@ func TestConversationTurnStreamEmitsDeltasAndCompletion(t *testing.T) {
 			},
 		},
 	}
-	handler := newServer(cfg, "test", weather.NewClient(), streamer, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil)
+	handler := newServer(cfg, "test", streamer, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", nil)
 
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"Hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/ctx-1/turns/stream", payload)
@@ -1208,7 +1205,7 @@ func TestConversationTurnStreamFallsBackForNonStreamingAgent(t *testing.T) {
 			}},
 		},
 	}
-	handler := newServer(cfg, "test", weather.NewClient(), sender, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil)
+	handler := newServer(cfg, "test", sender, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", nil)
 
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"Hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/ctx-1/turns/stream", payload)
@@ -1241,7 +1238,7 @@ func TestConversationTurnStreamEmitsSafeFailureAfterPartialStream(t *testing.T) 
 		},
 		streamErr: errors.New("raw remote stream failure with internals"),
 	}
-	handler := newServer(cfg, "test", weather.NewClient(), streamer, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil)
+	handler := newServer(cfg, "test", streamer, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", nil)
 
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"Hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/ctx-1/turns/stream", payload)
@@ -1313,12 +1310,6 @@ func (s *failingLayoutStore) SaveWidgetLayout(ctx context.Context, layout store.
 
 func (s *failingLayoutStore) ResetWidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error) {
 	return store.WidgetLayout{}, s.err
-}
-
-type weatherProviderFunc func(context.Context, config.WeatherConfig) weather.State
-
-func (fn weatherProviderFunc) Current(ctx context.Context, cfg config.WeatherConfig) weather.State {
-	return fn(ctx, cfg)
 }
 
 type fakeMessageSender struct {

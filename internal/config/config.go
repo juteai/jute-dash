@@ -312,8 +312,7 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
 
-	ApplyDefaults(&cfg)
-	if err := Validate(cfg); err != nil {
+	if err := EnsureValid(&cfg); err != nil {
 		return Config{}, err
 	}
 
@@ -490,6 +489,13 @@ func (cfg Config) Public() PublicConfig {
 
 func ApplyDefaults(cfg *Config) {
 	applyDefaults(cfg)
+}
+
+// EnsureValid applies defaults then validates. Use this instead of calling
+// ApplyDefaults and Validate separately.
+func EnsureValid(cfg *Config) error {
+	ApplyDefaults(cfg)
+	return Validate(*cfg)
 }
 
 func applyDefaults(cfg *Config) {

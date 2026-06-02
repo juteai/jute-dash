@@ -70,7 +70,28 @@ func (w *MarketsWidget) CatalogInfo() widgets.WidgetCatalogItem {
 	}
 }
 
-func (w *MarketsWidget) FetchData(ctx context.Context, settings map[string]any) (any, error) {
+// Settings holds the parsed per-instance configuration for the markets widget.
+type Settings struct {
+	Tickers []string
+}
+
+func parseSettings(raw map[string]any) Settings {
+	var s Settings
+	if rawTickers, ok := raw["tickers"].([]any); ok {
+		for _, item := range rawTickers {
+			if tMap, ok := item.(map[string]any); ok {
+				if sym, ok := tMap["symbol"].(string); ok && sym != "" {
+					s.Tickers = append(s.Tickers, strings.ToUpper(sym))
+				}
+			} else if sym, ok := item.(string); ok && sym != "" {
+				s.Tickers = append(s.Tickers, strings.ToUpper(sym))
+			}
+		}
+	}
+	return s
+}
+
+func (w *MarketsWidget) FetchData(ctx context.Context, raw map[string]any) (any, error) {
 	w.cacheMu.Lock()
 	if w.client == nil {
 		w.client = &http.Client{Timeout: 4 * time.Second}
@@ -79,18 +100,8 @@ func (w *MarketsWidget) FetchData(ctx context.Context, settings map[string]any) 
 	}
 	w.cacheMu.Unlock()
 
-	var tickers []string
-	if rawTickers, ok := settings["tickers"].([]any); ok {
-		for _, raw := range rawTickers {
-			if tMap, ok := raw.(map[string]any); ok {
-				if sym, ok := tMap["symbol"].(string); ok && sym != "" {
-					tickers = append(tickers, strings.ToUpper(sym))
-				}
-			} else if sym, ok := raw.(string); ok && sym != "" {
-				tickers = append(tickers, strings.ToUpper(sym))
-			}
-		}
-	}
+	s := parseSettings(raw)
+	tickers := s.Tickers
 
 	if len(tickers) == 0 {
 		return []MarketItemResult{}, nil
@@ -191,7 +202,5 @@ func (w *MarketsWidget) Skill() *widgetskills.Definition {
 }
 
 func init() {
-	w := &MarketsWidget{}
-	widgets.Register(w)
-	widgetskills.Register(*w.Skill(), nil)
+	widgets.RegisterWithSkill(&MarketsWidget{}, nil)
 }

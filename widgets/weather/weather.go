@@ -4,16 +4,66 @@ import (
 	"context"
 	"strings"
 
-	"jute-dash/internal/config"
-	"jute-dash/internal/weather"
 	"jute-dash/internal/widgetskills"
 	"jute-dash/widgets"
 )
 
 const SkillID = "jute.weather.current"
 
+// Settings holds the parsed per-instance configuration for the weather widget.
+type Settings struct {
+	LocationName    string
+	Latitude        float64
+	Longitude       float64
+	TemperatureUnit string
+	WindSpeedUnit   string
+	Enabled         bool
+	Provider        string
+}
+
+func parseSettings(raw map[string]any) Settings {
+	s := Settings{
+		LocationName:    "London",
+		Latitude:        51.5072,
+		Longitude:       -0.1276,
+		TemperatureUnit: "celsius",
+		WindSpeedUnit:   "kmh",
+		Enabled:         true,
+		Provider:        "open-meteo",
+	}
+	// Support both camelCase and kebab-case key variants from YAML config.
+	if v, ok := raw["locationName"].(string); ok && v != "" {
+		s.LocationName = v
+	} else if v, ok := raw["location"].(string); ok && v != "" {
+		s.LocationName = v
+	}
+	if v, ok := raw["latitude"].(float64); ok {
+		s.Latitude = v
+	}
+	if v, ok := raw["longitude"].(float64); ok {
+		s.Longitude = v
+	}
+	if v, ok := raw["temperatureUnit"].(string); ok && v != "" {
+		s.TemperatureUnit = v
+	} else if v, ok := raw["temperature-unit"].(string); ok && v != "" {
+		s.TemperatureUnit = v
+	}
+	if v, ok := raw["windSpeedUnit"].(string); ok && v != "" {
+		s.WindSpeedUnit = v
+	} else if v, ok := raw["wind-speed-unit"].(string); ok && v != "" {
+		s.WindSpeedUnit = v
+	}
+	if v, ok := raw["enabled"].(bool); ok {
+		s.Enabled = v
+	}
+	if v, ok := raw["provider"].(string); ok && v != "" {
+		s.Provider = v
+	}
+	return s
+}
+
 type WeatherWidget struct {
-	client *weather.Client
+	client *Client
 }
 
 func (w *WeatherWidget) Kind() string {
@@ -36,54 +86,20 @@ func (w *WeatherWidget) CatalogInfo() widgets.WidgetCatalogItem {
 	}
 }
 
-func (w *WeatherWidget) FetchData(ctx context.Context, settings map[string]any) (any, error) {
+func (w *WeatherWidget) FetchData(ctx context.Context, raw map[string]any) (any, error) {
 	if w.client == nil {
-		w.client = weather.NewClient()
+		w.client = NewClient()
 	}
-
-	cfg := config.WeatherConfig{
-		Enabled:         true,
-		Provider:        "open-meteo",
-		LocationName:    "London",
-		Latitude:        51.5072,
-		Longitude:       -0.1276,
-		TemperatureUnit: "celsius",
-		WindSpeedUnit:   "kmh",
-	}
-
-	if val, ok := settings["locationName"].(string); ok && val != "" {
-		cfg.LocationName = val
-	}
-	if val, ok := settings["location"].(string); ok && val != "" {
-		cfg.LocationName = val
-	}
-	if val, ok := settings["latitude"].(float64); ok {
-		cfg.Latitude = val
-	}
-	if val, ok := settings["longitude"].(float64); ok {
-		cfg.Longitude = val
-	}
-	if val, ok := settings["temperatureUnit"].(string); ok && val != "" {
-		cfg.TemperatureUnit = val
-	}
-	if val, ok := settings["temperature-unit"].(string); ok && val != "" {
-		cfg.TemperatureUnit = val
-	}
-	if val, ok := settings["windSpeedUnit"].(string); ok && val != "" {
-		cfg.WindSpeedUnit = val
-	}
-	if val, ok := settings["wind-speed-unit"].(string); ok && val != "" {
-		cfg.WindSpeedUnit = val
-	}
-	if val, ok := settings["enabled"].(bool); ok {
-		cfg.Enabled = val
-	}
-	if val, ok := settings["provider"].(string); ok && val != "" {
-		cfg.Provider = val
-	}
-
-	state := w.client.Current(ctx, cfg)
-	return state, nil
+	s := parseSettings(raw)
+	return w.client.Current(ctx, Request{
+		Enabled:         s.Enabled,
+		Provider:        s.Provider,
+		LocationName:    s.LocationName,
+		Latitude:        s.Latitude,
+		Longitude:       s.Longitude,
+		TemperatureUnit: s.TemperatureUnit,
+		WindSpeedUnit:   s.WindSpeedUnit,
+	}), nil
 }
 
 func (w *WeatherWidget) Skill() *widgetskills.Definition {
@@ -91,9 +107,7 @@ func (w *WeatherWidget) Skill() *widgetskills.Definition {
 }
 
 func init() {
-	widget := &WeatherWidget{}
-	widgets.Register(widget)
-	widgetskills.Register(*widget.Skill(), weatherContext)
+	widgets.RegisterWithSkill(&WeatherWidget{}, weatherContext)
 }
 
 func weatherSkill() *widgetskills.Definition {
@@ -135,7 +149,7 @@ func weatherContext(snapshot widgetskills.Snapshot, instanceID string) map[strin
 			continue
 		}
 		switch state := widget.Data.(type) {
-		case weather.State:
+		case State:
 			return weatherStateContext(state)
 		case map[string]any:
 			return cleanWeatherMap(state)
@@ -145,7 +159,7 @@ func weatherContext(snapshot widgetskills.Snapshot, instanceID string) map[strin
 	return map[string]any{}
 }
 
-func weatherStateContext(state weather.State) map[string]any {
+func weatherStateContext(state State) map[string]any {
 	return map[string]any{
 		"locationName":        state.LocationName,
 		"condition":           state.Condition,

@@ -25,7 +25,7 @@ func (s *Server) addAgentFromCard(ctx context.Context, cardURL string) (registry
 	if cardURL == "" {
 		return registry.Agent{}, errors.New("cardUrl is required")
 	}
-	result, err := s.cardFetcher.Fetch(ctx, cardURL, "")
+	result, err := s.agentCards.cardFetcher.Fetch(ctx, cardURL, "")
 	if err != nil {
 		return registry.Agent{}, err
 	}
@@ -62,7 +62,7 @@ func (s *Server) addAgentFromCard(ctx context.Context, cardURL string) (registry
 	s.cfg = next
 	s.registry = registry.New(s.cfg.Agents)
 	cache := cardCacheFromCard(agent.ID, result, selected)
-	s.agentCards[agent.ID] = cache
+	s.agentCards.save(cache)
 	return s.agentWithDiscovery(registry.New([]config.AgentConfig{agent}).List()[0], cache), nil
 }
 
@@ -88,7 +88,7 @@ func (s *Server) patchAgent(agentID string, enabled *bool) (registry.Agent, erro
 		s.cfg = next
 		s.registry = registry.New(s.cfg.Agents)
 		agent := registry.New([]config.AgentConfig{next.Agents[i]}).List()[0]
-		if cache, ok := s.agentCards[agent.ID]; ok {
+		if cache, ok := s.agentCards.load(agent.ID); ok {
 			agent = s.agentWithDiscovery(agent, cache)
 		}
 		return agent, nil
@@ -120,7 +120,7 @@ func (s *Server) deleteAgent(agentID string) error {
 	}
 	s.cfg = next
 	s.registry = registry.New(s.cfg.Agents)
-	delete(s.agentCards, agentID)
+	s.agentCards.remove(agentID)
 	return nil
 }
 
