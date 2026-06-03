@@ -1,7 +1,6 @@
 package displayactions
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -11,8 +10,7 @@ import (
 func TestNotifySanitizesAndPublishes(t *testing.T) {
 	dispatcher := NewDispatcher()
 	dispatcher.now = func() time.Time { return time.Date(2026, 5, 20, 10, 0, 0, 0, time.UTC) }
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	events := dispatcher.Subscribe(ctx)
 
 	notification, err := dispatcher.Notify("token=secret-value connected", "warning")
@@ -45,8 +43,7 @@ func TestNotifyRequiresMessage(t *testing.T) {
 
 func TestFocusWidgetPublishes(t *testing.T) {
 	dispatcher := NewDispatcher()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	events := dispatcher.Subscribe(ctx)
 
 	focus, err := dispatcher.FocusWidget("weather", "show forecast")

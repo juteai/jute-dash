@@ -103,14 +103,27 @@ func main() {
 			"capabilities": map[string]any{
 				"streaming": true,
 				"extensions": []map[string]any{
-					{"uri": dashboardContextExtensionURI, "description": "Receives redacted Jute dashboard context in message metadata."},
+					{
+						"uri":         dashboardContextExtensionURI,
+						"description": "Receives redacted Jute dashboard context in message metadata.",
+					},
 				},
 			},
 			"defaultInputModes":  []string{"text/plain"},
 			"defaultOutputModes": []string{"text/plain"},
 			"skills": []map[string]any{
-				{"id": "chat", "name": "Local chat", "description": "Replies to short dashboard test prompts.", "tags": []string{"chat", "dev"}},
-				{"id": "dashboard-context", "name": "Dashboard context", "description": "Reports whether Jute dashboard context was supplied.", "tags": []string{"jute", "context"}},
+				{
+					"id":          "chat",
+					"name":        "Local chat",
+					"description": "Replies to short dashboard test prompts.",
+					"tags":        []string{"chat", "dev"},
+				},
+				{
+					"id":          "dashboard-context",
+					"name":        "Dashboard context",
+					"description": "Reports whether Jute dashboard context was supplied.",
+					"tags":        []string{"jute", "context"},
+				},
 			},
 		})
 	})
@@ -188,8 +201,19 @@ func handleSend(w http.ResponseWriter, r *http.Request, req rpcRequest) {
 			State: "completed",
 		},
 		History: []message{
-			{MessageID: firstNonEmpty(params.Message.MessageID, "msg-"+newID()), ContextID: contextID, Role: "ROLE_USER", Parts: []part{{Text: text}}},
-			{MessageID: "msg-" + newID(), ContextID: contextID, TaskID: taskID, Role: "ROLE_AGENT", Parts: []part{{Text: answer}}},
+			{
+				MessageID: firstNonEmpty(params.Message.MessageID, "msg-"+newID()),
+				ContextID: contextID,
+				Role:      "ROLE_USER",
+				Parts:     []part{{Text: text}},
+			},
+			{
+				MessageID: "msg-" + newID(),
+				ContextID: contextID,
+				TaskID:    taskID,
+				Role:      "ROLE_AGENT",
+				Parts:     []part{{Text: answer}},
+			},
 		},
 		Artifacts: []artifact{{Parts: []part{{Text: answer}}}},
 	}
@@ -272,7 +296,15 @@ func mcpContextForTurn(ctx context.Context) JuteContext {
 		} `json:"contents"`
 	}
 	dashboardRead := false
-	if err := mcpCall(ctx, mcpURL, token, agentID, "resources/read", map[string]any{"uri": "jute://dashboard/current"}, &dashboardResult); err == nil {
+	if err := mcpCall(
+		ctx,
+		mcpURL,
+		token,
+		agentID,
+		"resources/read",
+		map[string]any{"uri": "jute://dashboard/current"},
+		&dashboardResult,
+	); err == nil {
 		dashboardRead = true
 	}
 
@@ -283,7 +315,15 @@ func mcpContextForTurn(ctx context.Context) JuteContext {
 			Text     string `json:"text"`
 		} `json:"contents"`
 	}
-	if err := mcpCall(ctx, mcpURL, token, agentID, "resources/read", map[string]any{"uri": "jute://skills"}, &skillsResult); err != nil {
+	if err := mcpCall(
+		ctx,
+		mcpURL,
+		token,
+		agentID,
+		"resources/read",
+		map[string]any{"uri": "jute://skills"},
+		&skillsResult,
+	); err != nil {
 		return JuteContext{Unavailable: "MCP skills unavailable"}
 	}
 	var text string
@@ -422,7 +462,14 @@ func (s JuteContext) Sentence() string {
 		parts = append(parts, "skills: "+strings.Join(s.SkillIDs, ", "))
 	}
 	if s.Weather.LocationName != "" || s.Weather.Condition != "" {
-		weather := strings.TrimSpace(strings.Join(nonEmpty([]string{s.Weather.LocationName, s.Weather.Condition, s.Weather.Temperature, s.Weather.Status}), " "))
+		weather := strings.TrimSpace(
+			strings.Join(
+				nonEmpty(
+					[]string{s.Weather.LocationName, s.Weather.Condition, s.Weather.Temperature, s.Weather.Status},
+				),
+				" ",
+			),
+		)
 		if weather != "" {
 			parts = append(parts, "weather: "+weather)
 		}
@@ -495,7 +542,6 @@ func truncate(value string, limit int) string {
 	}
 	return strings.TrimSpace(value[:limit]) + "..."
 }
-
 
 func writeStream(w http.ResponseWriter, id json.RawMessage, record task) {
 	flusher, ok := w.(http.Flusher)

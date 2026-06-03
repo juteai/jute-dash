@@ -4,7 +4,10 @@
   export let state: ChatState = 'idle';
 </script>
 
-<div class={`assistant-activity assistant-activity--${state}`} aria-live="polite">
+<div
+  class={`assistant-activity assistant-activity--${state}`}
+  aria-live="polite"
+>
   <span></span>
   <span></span>
   <span></span>

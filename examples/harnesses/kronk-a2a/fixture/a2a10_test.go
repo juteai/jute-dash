@@ -47,7 +47,12 @@ func TestKronkA2AServerPublishesA2A10Card(t *testing.T) {
 
 func TestKronkA2AServerSendMessage(t *testing.T) {
 	server := newTestA2AServer(t)
-	resp := invokeA2A(t, server, "SendMessage", `{"message":{"messageId":"msg-1","contextId":"ctx-1","role":"ROLE_USER","parts":[{"text":"hello"}]}}`)
+	resp := invokeA2A(
+		t,
+		server,
+		"SendMessage",
+		`{"message":{"messageId":"msg-1","contextId":"ctx-1","role":"ROLE_USER","parts":[{"text":"hello"}]}}`,
+	)
 	if got := textFromA2AResult(t, resp.Result); got != "fake Kronk reply" {
 		t.Fatalf("result text = %q, want fake Kronk reply", got)
 	}
@@ -55,7 +60,12 @@ func TestKronkA2AServerSendMessage(t *testing.T) {
 
 func TestKronkA2AServerListsAndGetsTasks(t *testing.T) {
 	server := newTestA2AServer(t)
-	sendResp := invokeA2A(t, server, "SendMessage", `{"message":{"messageId":"msg-1","contextId":"ctx-1","role":"ROLE_USER","parts":[{"text":"hello"}]}}`)
+	sendResp := invokeA2A(
+		t,
+		server,
+		"SendMessage",
+		`{"message":{"messageId":"msg-1","contextId":"ctx-1","role":"ROLE_USER","parts":[{"text":"hello"}]}}`,
+	)
 	taskID := taskIDFromA2AResult(t, sendResp.Result)
 	if taskID == "" {
 		t.Fatalf("send result did not include a task id: %s", string(sendResp.Result))

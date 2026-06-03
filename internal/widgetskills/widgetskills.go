@@ -3,6 +3,7 @@ package widgetskills
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -95,6 +96,7 @@ type Definition struct {
 
 type Skill struct {
 	Definition
+
 	WidgetInstanceID string `json:"widgetInstanceId"`
 	WidgetTitle      string `json:"widgetTitle"`
 	WidgetSize       string `json:"widgetSize"`
@@ -135,6 +137,7 @@ type Dashboard struct {
 
 type SkillResult struct {
 	SkillSummary
+
 	Context map[string]any `json:"context"`
 }
 
@@ -336,7 +339,13 @@ func WidgetContext(snapshot Snapshot, widgetID string) (SkillContextResource, er
 	return SkillContext(snapshot, skill.SkillID, widgetID)
 }
 
-func InvokeAction(snapshot Snapshot, skillID string, widgetID string, actionID string, arguments map[string]any) (map[string]any, error) {
+func InvokeAction(
+	snapshot Snapshot,
+	skillID string,
+	widgetID string,
+	actionID string,
+	arguments map[string]any,
+) (map[string]any, error) {
 	skill, err := findSkill(snapshot, skillID, widgetID)
 	if err != nil {
 		return nil, err
@@ -369,7 +378,12 @@ func PromptText(snapshot Snapshot, skillID string, promptID string) (string, err
 	}
 	for _, prompt := range skill.Prompts {
 		if prompt.ID == promptID {
-			return fmt.Sprintf("Use the %s widget skill (%s) only through its public context and declared actions. Purpose: %s. Do not infer hidden widget state, credentials, private household data, camera frames, microphone audio, or browser storage.", skill.DisplayName, skill.SkillID, prompt.Purpose), nil
+			return fmt.Sprintf(
+				"Use the %s widget skill (%s) only through its public context and declared actions. Purpose: %s. Do not infer hidden widget state, credentials, private household data, camera frames, microphone audio, or browser storage.",
+				skill.DisplayName,
+				skill.SkillID,
+				prompt.Purpose,
+			), nil
 		}
 	}
 	return "", fmt.Errorf("%w: prompt not found", ErrNotFound)
@@ -460,9 +474,7 @@ func definitionsByKind() map[string]Definition {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
 	byKind := make(map[string]Definition, len(customDefs))
-	for k, def := range customDefs {
-		byKind[k] = def
-	}
+	maps.Copy(byKind, customDefs)
 	return byKind
 }
 
@@ -505,9 +517,7 @@ func cleanArguments(arguments map[string]any) map[string]any {
 		return map[string]any{}
 	}
 	cleaned := make(map[string]any, len(arguments))
-	for key, value := range arguments {
-		cleaned[key] = value
-	}
+	maps.Copy(cleaned, arguments)
 	return cleaned
 }
 
@@ -516,13 +526,6 @@ func generatedAt(snapshot Snapshot) string {
 		return time.Now().UTC().Format(time.RFC3339Nano)
 	}
 	return snapshot.GeneratedAt.UTC().Format(time.RFC3339Nano)
-}
-
-func emptyToNil(value string) any {
-	if strings.TrimSpace(value) == "" {
-		return nil
-	}
-	return value
 }
 
 func firstNonEmpty(values ...string) string {

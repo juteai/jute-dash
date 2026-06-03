@@ -22,7 +22,7 @@ const (
 	ProtocolVersion = "2025-11-25"
 	jsonRPCVersion  = "2.0"
 
-	callerAgentHeader = "X-Jute-Agent-ID"
+	callerAgentHeader = "X-Jute-Agent-Id"
 )
 
 type SnapshotProvider interface {
@@ -42,7 +42,12 @@ type Handler struct {
 	display  DisplayActions
 }
 
-func NewHandler(cfg config.MCPConfig, version string, provider SnapshotProvider, display ...DisplayActions) http.Handler {
+func NewHandler(
+	cfg config.MCPConfig,
+	version string,
+	provider SnapshotProvider,
+	display ...DisplayActions,
+) http.Handler {
 	var actionSink DisplayActions
 	if len(display) > 0 {
 		actionSink = display[0]
@@ -103,7 +108,12 @@ func (h *Handler) handlePost(w http.ResponseWriter, r *http.Request) {
 	writeRPCResult(w, req.ID, result)
 }
 
-func (h *Handler) dispatch(ctx context.Context, r *http.Request, method string, params json.RawMessage) (any, *rpcError) {
+func (h *Handler) dispatch(
+	ctx context.Context,
+	r *http.Request,
+	method string,
+	params json.RawMessage,
+) (any, *rpcError) {
 	switch method {
 	case "initialize":
 		return h.initializeResult(), nil
@@ -267,9 +277,19 @@ func (h *Handler) callTool(ctx context.Context, r *http.Request, req toolCallPar
 		skillID, widgetID := stringArg(req.Arguments, "skillId"), stringArg(req.Arguments, "widgetInstanceId")
 		value, err = widgetskills.SkillContext(snapshot, skillID, widgetID)
 	case "jute_skill_invoke_action":
-		value, err = widgetskills.InvokeAction(snapshot, stringArg(req.Arguments, "skillId"), stringArg(req.Arguments, "widgetInstanceId"), stringArg(req.Arguments, "actionId"), req.Arguments)
+		value, err = widgetskills.InvokeAction(
+			snapshot,
+			stringArg(req.Arguments, "skillId"),
+			stringArg(req.Arguments, "widgetInstanceId"),
+			stringArg(req.Arguments, "actionId"),
+			req.Arguments,
+		)
 	case "jute_skill_prompt_get":
-		text, promptErr := widgetskills.PromptText(snapshot, stringArg(req.Arguments, "skillId"), stringArg(req.Arguments, "promptId"))
+		text, promptErr := widgetskills.PromptText(
+			snapshot,
+			stringArg(req.Arguments, "skillId"),
+			stringArg(req.Arguments, "promptId"),
+		)
 		if promptErr != nil {
 			err = promptErr
 		} else {
@@ -279,7 +299,10 @@ func (h *Handler) callTool(ctx context.Context, r *http.Request, req toolCallPar
 		if h.display == nil {
 			return nil, &rpcError{Code: -32005, Message: "display actions are unavailable"}
 		}
-		notification, actionErr := h.display.Notify(stringArg(req.Arguments, "message"), stringArg(req.Arguments, "severity"))
+		notification, actionErr := h.display.Notify(
+			stringArg(req.Arguments, "message"),
+			stringArg(req.Arguments, "severity"),
+		)
 		if actionErr != nil {
 			err = actionErr
 		} else {
@@ -327,7 +350,12 @@ func (h *Handler) callTool(ctx context.Context, r *http.Request, req toolCallPar
 	}, nil
 }
 
-func (h *Handler) getPrompt(ctx context.Context, r *http.Request, name string, arguments map[string]any) (any, *rpcError) {
+func (h *Handler) getPrompt(
+	ctx context.Context,
+	r *http.Request,
+	name string,
+	arguments map[string]any,
+) (any, *rpcError) {
 	snapshot, err := h.snapshot(ctx)
 	if err != nil {
 		return nil, internalError()
@@ -457,23 +485,70 @@ func resourcesList(snapshot widgetskills.Snapshot, caller caller) []map[string]a
 			resources = append(resources, value)
 		}
 	}
-	add(config.MCPScopeDashboardRead, resource("jute://dashboard/current", "dashboard-current", "Current Dashboard Context", "Safe current dashboard context and visible Widget Skills."))
-	add(config.MCPScopeWidgetsRead, resource("jute://widgets/visible", "widgets-visible", "Visible Widgets", "Visible dashboard widgets and their Widget Skill mappings."))
-	add(config.MCPScopeSkillsRead, resource("jute://skills", "widget-skills", "Widget Skills", "Available Widget Skills for this display."))
-	add(config.MCPScopeDashboardRead, resource("jute://home/state", "home-state", "Home State", "Normalized non-secret home state summary."))
+	add(
+		config.MCPScopeDashboardRead,
+		resource(
+			"jute://dashboard/current",
+			"dashboard-current",
+			"Current Dashboard Context",
+			"Safe current dashboard context and visible Widget Skills.",
+		),
+	)
+	add(
+		config.MCPScopeWidgetsRead,
+		resource(
+			"jute://widgets/visible",
+			"widgets-visible",
+			"Visible Widgets",
+			"Visible dashboard widgets and their Widget Skill mappings.",
+		),
+	)
+	add(
+		config.MCPScopeSkillsRead,
+		resource("jute://skills", "widget-skills", "Widget Skills", "Available Widget Skills for this display."),
+	)
+	add(
+		config.MCPScopeDashboardRead,
+		resource("jute://home/state", "home-state", "Home State", "Normalized non-secret home state summary."),
+	)
 	for _, skill := range widgetskills.Available(snapshot) {
 		if caller.has(config.MCPScopeSkillsRead) {
-			resources = append(resources,
-				resource("jute://skills/"+skill.SkillID, "skill-"+skill.SkillID, skill.DisplayName+" Skill", skill.Summary),
-				resource("jute://widgets/"+skill.WidgetInstanceID+"/skill", "widget-"+skill.WidgetInstanceID+"-skill", skill.WidgetTitle+" Skill", "Widget instance to Widget Skill mapping."),
+			resources = append(
+				resources,
+				resource(
+					"jute://skills/"+skill.SkillID,
+					"skill-"+skill.SkillID,
+					skill.DisplayName+" Skill",
+					skill.Summary,
+				),
+				resource(
+					"jute://widgets/"+skill.WidgetInstanceID+"/skill",
+					"widget-"+skill.WidgetInstanceID+"-skill",
+					skill.WidgetTitle+" Skill",
+					"Widget instance to Widget Skill mapping.",
+				),
 			)
 		}
 		if caller.has(config.MCPScopeSkillsContextRead) {
-			resources = append(resources,
-				resource("jute://skills/"+skill.SkillID+"/context", "skill-"+skill.SkillID+"-context", skill.DisplayName+" Context", "Current public context for "+skill.DisplayName+"."),
+			resources = append(
+				resources,
+				resource(
+					"jute://skills/"+skill.SkillID+"/context",
+					"skill-"+skill.SkillID+"-context",
+					skill.DisplayName+" Context",
+					"Current public context for "+skill.DisplayName+".",
+				),
 			)
 			if caller.has(config.MCPScopeWidgetsRead) {
-				resources = append(resources, resource("jute://widgets/"+skill.WidgetInstanceID+"/context", "widget-"+skill.WidgetInstanceID+"-context", skill.WidgetTitle+" Context", "Current public Widget Skill context for "+skill.WidgetTitle+"."))
+				resources = append(
+					resources,
+					resource(
+						"jute://widgets/"+skill.WidgetInstanceID+"/context",
+						"widget-"+skill.WidgetInstanceID+"-context",
+						skill.WidgetTitle+" Context",
+						"Current public Widget Skill context for "+skill.WidgetTitle+".",
+					),
+				)
 			}
 		}
 	}
@@ -497,29 +572,80 @@ func toolsList(caller caller) []map[string]any {
 			tools = append(tools, value)
 		}
 	}
-	add(config.MCPScopeDashboardRead, tool("jute_dashboard_context_get", "Get Dashboard Context", "Return safe current Jute dashboard context.", emptySchema()))
-	add(config.MCPScopeSkillsRead, tool("jute_skill_list", "List Widget Skills", "List available Jute Widget Skills.", emptySchema()))
-	add(config.MCPScopeSkillsContextRead, tool("jute_skill_read_context", "Read Widget Skill Context", "Read public context for a Widget Skill.", objectSchema(map[string]any{
-		"skillId":          map[string]any{"type": "string"},
-		"widgetInstanceId": map[string]any{"type": "string"},
-	}, []string{"skillId"})))
-	add(config.MCPScopeSkillsActionInvoke, tool("jute_skill_invoke_action", "Invoke Widget Skill Action", "Invoke a declared low-risk Widget Skill action through the hub.", objectSchema(map[string]any{
-		"skillId":          map[string]any{"type": "string"},
-		"widgetInstanceId": map[string]any{"type": "string"},
-		"actionId":         map[string]any{"type": "string"},
-	}, []string{"skillId", "actionId"})))
-	add(config.MCPScopeSkillsPromptRead, tool("jute_skill_prompt_get", "Get Widget Skill Prompt", "Get hub-approved prompt guidance for a Widget Skill.", objectSchema(map[string]any{
-		"skillId":  map[string]any{"type": "string"},
-		"promptId": map[string]any{"type": "string"},
-	}, []string{"skillId", "promptId"})))
-	add(config.MCPScopeDisplayWrite, tool("jute_display_notification", "Display Notification", "Show a short hub-sanitized notification on the Jute display.", objectSchema(map[string]any{
-		"message":  map[string]any{"type": "string"},
-		"severity": map[string]any{"type": "string", "enum": []string{"info", "success", "warning", "error"}},
-	}, []string{"message"})))
-	add(config.MCPScopeDisplayFocusWidget, tool("jute_display_focus_widget", "Focus Widget", "Ask the Jute display to highlight a visible widget instance.", objectSchema(map[string]any{
-		"widgetInstanceId": map[string]any{"type": "string"},
-		"reason":           map[string]any{"type": "string"},
-	}, []string{"widgetInstanceId"})))
+	add(
+		config.MCPScopeDashboardRead,
+		tool(
+			"jute_dashboard_context_get",
+			"Get Dashboard Context",
+			"Return safe current Jute dashboard context.",
+			emptySchema(),
+		),
+	)
+	add(
+		config.MCPScopeSkillsRead,
+		tool("jute_skill_list", "List Widget Skills", "List available Jute Widget Skills.", emptySchema()),
+	)
+	add(
+		config.MCPScopeSkillsContextRead,
+		tool(
+			"jute_skill_read_context",
+			"Read Widget Skill Context",
+			"Read public context for a Widget Skill.",
+			objectSchema(map[string]any{
+				"skillId":          map[string]any{"type": "string"},
+				"widgetInstanceId": map[string]any{"type": "string"},
+			}, []string{"skillId"}),
+		),
+	)
+	add(
+		config.MCPScopeSkillsActionInvoke,
+		tool(
+			"jute_skill_invoke_action",
+			"Invoke Widget Skill Action",
+			"Invoke a declared low-risk Widget Skill action through the hub.",
+			objectSchema(map[string]any{
+				"skillId":          map[string]any{"type": "string"},
+				"widgetInstanceId": map[string]any{"type": "string"},
+				"actionId":         map[string]any{"type": "string"},
+			}, []string{"skillId", "actionId"}),
+		),
+	)
+	add(
+		config.MCPScopeSkillsPromptRead,
+		tool(
+			"jute_skill_prompt_get",
+			"Get Widget Skill Prompt",
+			"Get hub-approved prompt guidance for a Widget Skill.",
+			objectSchema(map[string]any{
+				"skillId":  map[string]any{"type": "string"},
+				"promptId": map[string]any{"type": "string"},
+			}, []string{"skillId", "promptId"}),
+		),
+	)
+	add(
+		config.MCPScopeDisplayWrite,
+		tool(
+			"jute_display_notification",
+			"Display Notification",
+			"Show a short hub-sanitized notification on the Jute display.",
+			objectSchema(map[string]any{
+				"message":  map[string]any{"type": "string"},
+				"severity": map[string]any{"type": "string", "enum": []string{"info", "success", "warning", "error"}},
+			}, []string{"message"}),
+		),
+	)
+	add(
+		config.MCPScopeDisplayFocusWidget,
+		tool(
+			"jute_display_focus_widget",
+			"Focus Widget",
+			"Ask the Jute display to highlight a visible widget instance.",
+			objectSchema(map[string]any{
+				"widgetInstanceId": map[string]any{"type": "string"},
+				"reason":           map[string]any{"type": "string"},
+			}, []string{"widgetInstanceId"}),
+		),
+	)
 	return tools
 }
 

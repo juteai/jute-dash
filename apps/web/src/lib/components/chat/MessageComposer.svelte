@@ -14,7 +14,11 @@
 
   let value = '';
 
-  $: canSend = value.trim().length > 0 && !disabled && state !== 'thinking' && state !== 'streaming';
+  $: canSend =
+    value.trim().length > 0 &&
+    !disabled &&
+    state !== 'thinking' &&
+    state !== 'streaming';
   $: voiceReady = voice?.serviceStatus === 'ready';
   $: voiceLabel = voiceReady
     ? voice.muted
@@ -57,7 +61,7 @@
     bind:value
     rows={1}
     placeholder="Ask your home assistant"
-    disabled={disabled}
+    {disabled}
     on:keydown={handleKeydown}
   />
   {#if state === 'thinking' || state === 'streaming'}

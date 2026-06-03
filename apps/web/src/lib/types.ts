@@ -28,7 +28,13 @@ export type DisplayWidgetChrome = {
   default: WidgetChrome;
 };
 
-export type WidgetChrome = 'solid' | 'clear' | 'smoked' | 'frosted' | 'auto' | string;
+export type WidgetChrome =
+  | 'solid'
+  | 'clear'
+  | 'smoked'
+  | 'frosted'
+  | 'auto'
+  | string;
 
 export type Agent = {
   id: string;
@@ -63,7 +69,12 @@ export type AgentSkill = {
   outputModes?: string[];
 };
 
-export type AppConnectionState = 'starting' | 'connected' | 'reconnecting' | 'offline' | 'degraded';
+export type AppConnectionState =
+  | 'starting'
+  | 'connected'
+  | 'reconnecting'
+  | 'offline'
+  | 'degraded';
 
 export type AgentAvailability =
   | 'available'
@@ -318,10 +329,15 @@ export type WidgetInstance = {
   overflow?: 'clip' | 'scroll' | 'expand' | string;
   settings: Record<string, unknown>;
   visible: boolean;
-  data?: any;
+  data?: unknown;
 };
 
-export type ChatState = 'idle' | 'listening' | 'thinking' | 'streaming' | 'error';
+export type ChatState =
+  | 'idle'
+  | 'listening'
+  | 'thinking'
+  | 'streaming'
+  | 'error';
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system';
 

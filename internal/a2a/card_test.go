@@ -17,7 +17,11 @@ func TestAgentCardFetcherFetchesA2A10Card(t *testing.T) {
 			Description: "Local dev agent",
 			Version:     "1.0.0",
 			SupportedInterfaces: []AgentInterface{
-				{URL: "http://127.0.0.1:9797/invoke", ProtocolBinding: ProtocolJSONRPC, ProtocolVersion: ProtocolVersion10},
+				{
+					URL:             "http://127.0.0.1:9797/invoke",
+					ProtocolBinding: ProtocolJSONRPC,
+					ProtocolVersion: ProtocolVersion10,
+				},
 			},
 			Capabilities: AgentCapabilities{
 				Streaming: false,
@@ -49,11 +53,12 @@ func TestSelectInterfacePrefersA2A10JSONRPC(t *testing.T) {
 		},
 	}
 
-	selected, err := SelectInterface(card, "", "")
+	selected, err := SelectInterface(card)
 	if err != nil {
 		t.Fatalf("SelectInterface() error = %v", err)
 	}
-	if selected.EndpointURL != "http://127.0.0.1:9797/invoke" || selected.ProtocolBinding != ProtocolJSONRPC || selected.ProtocolVersion != ProtocolVersion10 {
+	if selected.EndpointURL != "http://127.0.0.1:9797/invoke" || selected.ProtocolBinding != ProtocolJSONRPC ||
+		selected.ProtocolVersion != ProtocolVersion10 {
 		t.Fatalf("unexpected selected interface: %+v", selected)
 	}
 }
@@ -66,7 +71,7 @@ func TestSelectInterfaceRejectsUnsupportedVersions(t *testing.T) {
 		},
 	}
 
-	if _, err := SelectInterface(card, "", ""); err == nil {
+	if _, err := SelectInterface(card); err == nil {
 		t.Fatal("expected unsupported interface error")
 	}
 }
@@ -79,7 +84,7 @@ func TestSelectInterfaceRejectsLegacyCardWithoutSupportedInterfaces(t *testing.T
 		Capabilities:       AgentCapabilities{Streaming: true},
 	}
 
-	if _, err := SelectInterface(card, "http://127.0.0.1:9797/invoke", ProtocolJSONRPC); err == nil {
+	if _, err := SelectInterface(card); err == nil {
 		t.Fatal("expected unsupported interface error")
 	}
 }

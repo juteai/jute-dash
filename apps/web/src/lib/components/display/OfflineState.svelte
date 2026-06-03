@@ -10,7 +10,8 @@
   export let onRetry: () => Promise<void> | void = () => {};
 
   $: title = issue?.title ?? 'Hub not reachable';
-  $: message = issue?.message ?? `Jute Dash cannot connect to the local hub at ${hubUrl}.`;
+  $: message =
+    issue?.message ?? `Jute Dash cannot connect to the local hub at ${hubUrl}.`;
 </script>
 
 <section class="offline-state" aria-live="polite">

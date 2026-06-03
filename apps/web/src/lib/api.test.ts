@@ -47,11 +47,17 @@ describe('api conversation history', () => {
 
     expect(conversations).toHaveLength(1);
     expect(conversations[0].id).toBe('ctx-1');
-    expect(String(fetcher.mock.calls[0][0])).toContain('/api/v1/conversations?agentId=house');
+    expect(String(fetcher.mock.calls[0][0])).toContain(
+      '/api/v1/conversations?agentId=house'
+    );
   });
 
   it('maps unsupported agent history to a calm placeholder conversation', async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ error: 'agent history is unavailable' }, { status: 501 }));
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        jsonResponse({ error: 'agent history is unavailable' }, { status: 501 })
+      );
 
     const conversations = await getConversations(fetcher, 'house');
 
@@ -76,11 +82,24 @@ describe('api conversation history', () => {
         createdAt: '2026-06-02T10:00:00Z',
         updatedAt: '2026-06-02T10:01:00Z'
       },
-      messages: [{ id: 'agent-1', conversationId: 'ctx-1', agentId: 'house', role: 'assistant', content: 'Hello', status: 'sent' }]
+      messages: [
+        {
+          id: 'agent-1',
+          conversationId: 'ctx-1',
+          agentId: 'house',
+          role: 'assistant',
+          content: 'Hello',
+          status: 'sent'
+        }
+      ]
     };
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(detail, { status: 201 }));
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse(detail, { status: 201 }));
 
-    await expect(createConversation(fetcher, 'house', 'Kitchen')).resolves.toEqual(detail);
+    await expect(
+      createConversation(fetcher, 'house', 'Kitchen')
+    ).resolves.toEqual(detail);
 
     expect(fetcher).toHaveBeenCalledWith(
       expect.stringContaining('/api/v1/conversations'),
@@ -91,7 +110,9 @@ describe('api conversation history', () => {
     );
 
     fetcher.mockResolvedValueOnce(jsonResponse(detail));
-    await expect(sendConversationTurn(fetcher, 'ctx-1', 'house', 'Hello')).resolves.toEqual(detail);
+    await expect(
+      sendConversationTurn(fetcher, 'ctx-1', 'house', 'Hello')
+    ).resolves.toEqual(detail);
     expect(fetcher).toHaveBeenLastCalledWith(
       expect.stringContaining('/api/v1/conversations/ctx-1/turns'),
       expect.objectContaining({
@@ -121,25 +142,47 @@ data: {"conversationId":"ctx-1","text":"Hi","append":true}
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         const encoder = new TextEncoder();
-        controller.enqueue(encoder.encode(`event: assistant_delta
+        controller.enqueue(
+          encoder.encode(`event: assistant_delta
 data: {"conversationId":"ctx-1","text":"Hel","append":true}
 
-`));
-        controller.enqueue(encoder.encode(`event: assistant_delta
+`)
+        );
+        controller.enqueue(
+          encoder.encode(`event: assistant_delta
 data: {"conversationId":"ctx-1","text":"lo","append":true}
 
-`));
+`)
+        );
         controller.close();
       }
     });
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(stream, { status: 200 }));
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(stream, { status: 200 }));
     const events: unknown[] = [];
 
-    await sendConversationTurnStream(fetcher, 'ctx-1', 'house', 'Hello', (event) => events.push(event));
+    await sendConversationTurnStream(
+      fetcher,
+      'ctx-1',
+      'house',
+      'Hello',
+      (event) => events.push(event)
+    );
 
     expect(events).toEqual([
-      { type: 'assistant_delta', conversationId: 'ctx-1', text: 'Hel', append: true },
-      { type: 'assistant_delta', conversationId: 'ctx-1', text: 'lo', append: true }
+      {
+        type: 'assistant_delta',
+        conversationId: 'ctx-1',
+        text: 'Hel',
+        append: true
+      },
+      {
+        type: 'assistant_delta',
+        conversationId: 'ctx-1',
+        text: 'lo',
+        append: true
+      }
     ]);
   });
 });
@@ -151,7 +194,11 @@ describe('fallback dashboard', () => {
     expect(fallback.connectionState).toBe('offline');
     expect(fallback.stale).toBe(true);
     expect(fallback.agents).toEqual([]);
-    expect(fallback.layout.widgets.map((widget) => widget.kind)).toEqual(['date-time', 'weather', 'chat-history']);
+    expect(fallback.layout.widgets.map((widget) => widget.kind)).toEqual([
+      'date-time',
+      'weather',
+      'chat-history'
+    ]);
     expect('weather' in fallback.home).toBe(false);
   });
 

@@ -32,7 +32,7 @@ func (w *DateTimeWidget) CatalogInfo() widgets.WidgetCatalogItem {
 	}
 }
 
-func (w *DateTimeWidget) FetchData(ctx context.Context, settings map[string]any) (any, error) {
+func (w *DateTimeWidget) FetchData(_ context.Context, _ map[string]any) (any, error) {
 	return map[string]any{}, nil
 }
 
@@ -61,7 +61,11 @@ func dateTimeSkill() *widgetskills.Definition {
 			{Name: "isoTime", Type: "datetime", Description: "Current time in RFC3339 format.", Sensitivity: "public"},
 		},
 		Actions: []widgetskills.Action{
-			widgetskills.ReadAction("read", "Read date and time context", "Return the current public date and time context."),
+			widgetskills.ReadAction(
+				"read",
+				"Read date and time context",
+				"Return the current public date and time context.",
+			),
 		},
 		Prompts: []widgetskills.Prompt{{
 			ID:      "date_time_context",
@@ -72,7 +76,7 @@ func dateTimeSkill() *widgetskills.Definition {
 	}
 }
 
-func dateTimeContext(snapshot widgetskills.Snapshot, instanceID string) map[string]any {
+func dateTimeContext(snapshot widgetskills.Snapshot, _ string) map[string]any {
 	now := snapshot.GeneratedAt
 	if now.IsZero() {
 		now = time.Now().UTC()

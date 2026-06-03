@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -198,12 +199,12 @@ func (s *Server) handleConversationTurnStream(w http.ResponseWriter, r *http.Req
 		"status":         "working",
 	})
 	if !turn.Selected.Streaming {
-		s.sendBlockingTurnAsStream(w, flusher, r.Context(), turn, false)
+		s.sendBlockingTurnAsStream(r.Context(), w, flusher, turn, false)
 		return
 	}
 	streamer, ok := s.messages.(a2aclient.StreamingMessageSender)
 	if !ok {
-		s.sendBlockingTurnAsStream(w, flusher, r.Context(), turn, false)
+		s.sendBlockingTurnAsStream(r.Context(), w, flusher, turn, false)
 		return
 	}
 
@@ -253,7 +254,7 @@ func (s *Server) handleConversationTurnStream(w http.ResponseWriter, r *http.Req
 	})
 	if err != nil {
 		if !streamedDelta {
-			s.sendBlockingTurnAsStream(w, flusher, r.Context(), turn, true)
+			s.sendBlockingTurnAsStream(r.Context(), w, flusher, turn, true)
 			return
 		}
 		sendConversationSSE(w, flusher, "turn_failed", map[string]any{
@@ -263,11 +264,27 @@ func (s *Server) handleConversationTurnStream(w http.ResponseWriter, r *http.Req
 		})
 		return
 	}
-	detail := s.detailAfterTurn(r.Context(), turn.Agent, turn.Selected, turn.BearerToken, activeConversationID, taskID, turn.UserText, streamText.String(), status)
+	detail := s.detailAfterTurn(
+		r.Context(),
+		turn.Agent,
+		turn.Selected,
+		turn.BearerToken,
+		activeConversationID,
+		taskID,
+		turn.UserText,
+		streamText.String(),
+		status,
+	)
 	sendConversationSSE(w, flusher, "turn_completed", detail)
 }
 
-func (s *Server) sendBlockingTurnAsStream(w http.ResponseWriter, flusher http.Flusher, ctx context.Context, turn conversationTurnContext, retried bool) {
+func (s *Server) sendBlockingTurnAsStream(
+	ctx context.Context,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	turn conversationTurnContext,
+	retried bool,
+) {
 	result, err := s.messages.SendMessage(ctx, turn.SendRequest)
 	if err != nil {
 		sendConversationSSE(w, flusher, "turn_failed", map[string]any{
@@ -278,7 +295,17 @@ func (s *Server) sendBlockingTurnAsStream(w http.ResponseWriter, flusher http.Fl
 		})
 		return
 	}
-	detail := s.detailAfterTurn(ctx, turn.Agent, turn.Selected, turn.BearerToken, result.ConversationID, result.TaskID, turn.UserText, result.Text, result.Status)
+	detail := s.detailAfterTurn(
+		ctx,
+		turn.Agent,
+		turn.Selected,
+		turn.BearerToken,
+		result.ConversationID,
+		result.TaskID,
+		turn.UserText,
+		result.Text,
+		result.Status,
+	)
 	sendConversationSSE(w, flusher, "turn_completed", detail)
 }
 
@@ -344,7 +371,10 @@ func sendDisplaySSE(w http.ResponseWriter, flusher http.Flusher, event string, d
 	flusher.Flush()
 }
 
-func (s *Server) agentForHistoryRequest(w http.ResponseWriter, r *http.Request) (registry.Agent, selectedAgentInterface, string, bool) {
+func (s *Server) agentForHistoryRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+) (registry.Agent, selectedAgentInterface, string, bool) {
 	agentID := strings.TrimSpace(r.URL.Query().Get("agentId"))
 	if agentID == "" {
 		writeError(w, http.StatusBadRequest, "agentId is required")
@@ -377,7 +407,12 @@ func (s *Server) agentForHistoryRequest(w http.ResponseWriter, r *http.Request) 
 	return agent, selected, bearerToken, true
 }
 
-func (s *Server) listAgentConversations(ctx context.Context, agent registry.Agent, selected selectedAgentInterface, bearerToken string) ([]Conversation, error) {
+func (s *Server) listAgentConversations(
+	ctx context.Context,
+	agent registry.Agent,
+	selected selectedAgentInterface,
+	bearerToken string,
+) ([]Conversation, error) {
 	history, ok := s.messages.(a2aclient.TaskHistoryClient)
 	if !ok {
 		return []Conversation{unsupportedConversation(agent)}, nil
@@ -425,7 +460,12 @@ func (s *Server) listAgentConversations(ctx context.Context, agent registry.Agen
 	return conversations, nil
 }
 
-func (s *Server) agentConversation(ctx context.Context, agent registry.Agent, selected selectedAgentInterface, bearerToken, conversationID string) (ConversationDetail, error) {
+func (s *Server) agentConversation(
+	ctx context.Context,
+	agent registry.Agent,
+	selected selectedAgentInterface,
+	bearerToken, conversationID string,
+) (ConversationDetail, error) {
 	history, ok := s.messages.(a2aclient.TaskHistoryClient)
 	if !ok {
 		return ConversationDetail{Conversation: unsupportedConversation(agent)}, nil
@@ -481,7 +521,11 @@ func (s *Server) agentConversation(ctx context.Context, agent registry.Agent, se
 	return detail, nil
 }
 
-func (s *Server) sendConversationTurn(ctx context.Context, conversationID string, req ConversationTurnRequest) (ConversationDetail, error) {
+func (s *Server) sendConversationTurn(
+	ctx context.Context,
+	conversationID string,
+	req ConversationTurnRequest,
+) (ConversationDetail, error) {
 	turn, err := s.prepareConversationTurn(ctx, conversationID, req)
 	if err != nil {
 		return ConversationDetail{}, err
@@ -507,7 +551,17 @@ func (s *Server) sendConversationTurn(ctx context.Context, conversationID string
 				return nil
 			})
 			if err == nil {
-				return s.detailAfterTurn(ctx, turn.Agent, turn.Selected, turn.BearerToken, conversationID, taskID, turn.UserText, streamText.String(), status), nil
+				return s.detailAfterTurn(
+					ctx,
+					turn.Agent,
+					turn.Selected,
+					turn.BearerToken,
+					conversationID,
+					taskID,
+					turn.UserText,
+					streamText.String(),
+					status,
+				), nil
 			}
 		}
 	}
@@ -515,10 +569,24 @@ func (s *Server) sendConversationTurn(ctx context.Context, conversationID string
 	if err != nil {
 		return ConversationDetail{}, err
 	}
-	return s.detailAfterTurn(ctx, turn.Agent, turn.Selected, turn.BearerToken, result.ConversationID, result.TaskID, turn.UserText, result.Text, result.Status), nil
+	return s.detailAfterTurn(
+		ctx,
+		turn.Agent,
+		turn.Selected,
+		turn.BearerToken,
+		result.ConversationID,
+		result.TaskID,
+		turn.UserText,
+		result.Text,
+		result.Status,
+	), nil
 }
 
-func (s *Server) prepareConversationTurn(ctx context.Context, conversationID string, req ConversationTurnRequest) (conversationTurnContext, error) {
+func (s *Server) prepareConversationTurn(
+	ctx context.Context,
+	conversationID string,
+	req ConversationTurnRequest,
+) (conversationTurnContext, error) {
 	text := strings.TrimSpace(req.Text)
 	if text == "" {
 		return conversationTurnContext{}, errors.New("text is required")
@@ -561,7 +629,12 @@ func (s *Server) prepareConversationTurn(ctx context.Context, conversationID str
 	}, nil
 }
 
-func (s *Server) detailAfterTurn(ctx context.Context, agent registry.Agent, selected selectedAgentInterface, bearerToken, conversationID, taskID, userText, assistantText, status string) ConversationDetail {
+func (s *Server) detailAfterTurn(
+	ctx context.Context,
+	agent registry.Agent,
+	selected selectedAgentInterface,
+	bearerToken, conversationID, taskID, userText, assistantText, status string,
+) ConversationDetail {
 	if taskID != "" {
 		if history, ok := s.messages.(a2aclient.TaskHistoryClient); ok {
 			if task, err := history.GetTask(ctx, a2aclient.GetTaskRequest{
@@ -593,8 +666,27 @@ func (s *Server) detailAfterTurn(ctx context.Context, agent registry.Agent, sele
 	return ConversationDetail{
 		Conversation: conversation,
 		Messages: []ConversationMessage{
-			{ID: "local-user-" + newLocalID(), ConversationID: conversationID, AgentID: agent.ID, Role: "user", Content: userText, Status: "sent", CreatedAt: now, UpdatedAt: now},
-			{ID: "local-agent-" + newLocalID(), ConversationID: conversationID, AgentID: agent.ID, Role: "assistant", Content: assistantText, Status: "sent", A2ATaskID: taskID, CreatedAt: now, UpdatedAt: now},
+			{
+				ID:             "local-user-" + newLocalID(),
+				ConversationID: conversationID,
+				AgentID:        agent.ID,
+				Role:           "user",
+				Content:        userText,
+				Status:         "sent",
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			},
+			{
+				ID:             "local-agent-" + newLocalID(),
+				ConversationID: conversationID,
+				AgentID:        agent.ID,
+				Role:           "assistant",
+				Content:        assistantText,
+				Status:         "sent",
+				A2ATaskID:      taskID,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			},
 		},
 	}
 }
@@ -690,5 +782,5 @@ func newLocalID() string {
 	if _, err := rand.Read(bytes[:]); err == nil {
 		return hex.EncodeToString(bytes[:])
 	}
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return strconv.FormatInt(time.Now().UnixNano(), 10)
 }

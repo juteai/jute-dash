@@ -14,10 +14,10 @@ import (
 )
 
 type MarketsWidget struct {
-	client     *http.Client
-	cacheMu    sync.Mutex
-	cache      map[string]marketCacheEntry
-	cacheTTL   time.Duration
+	client   *http.Client
+	cacheMu  sync.Mutex
+	cache    map[string]marketCacheEntry
+	cacheTTL time.Duration
 }
 
 type marketCacheEntry struct {
@@ -32,13 +32,13 @@ type yfResponse struct {
 }
 
 type yfQuote struct {
-	Symbol            string  `json:"symbol"`
-	ShortName         string  `json:"shortName"`
-	LongName          string  `json:"longName"`
-	RegularMarketPrice float64 `json:"regularMarketPrice"`
-	RegularMarketChange float64 `json:"regularMarketChange"`
+	Symbol                     string  `json:"symbol"`
+	ShortName                  string  `json:"shortName"`
+	LongName                   string  `json:"longName"`
+	RegularMarketPrice         float64 `json:"regularMarketPrice"`
+	RegularMarketChange        float64 `json:"regularMarketChange"`
 	RegularMarketChangePercent float64 `json:"regularMarketChangePercent"`
-	Currency          string  `json:"currency"`
+	Currency                   string  `json:"currency"`
 }
 
 type MarketItemResult struct {
@@ -176,7 +176,12 @@ func (w *MarketsWidget) Skill() *widgetskills.Definition {
 		RequiredPermissions: []string{"agent:skill"},
 		VisibilityPolicy:    "visible_or_focused",
 		ContextFields: []widgetskills.Field{
-			{Name: "data", Type: "array", Description: "Yahoo Finance stock and crypto price quote details.", Sensitivity: "public"},
+			{
+				Name:        "data",
+				Type:        "array",
+				Description: "Yahoo Finance stock and crypto price quote details.",
+				Sensitivity: "public",
+			},
 		},
 		Actions: []widgetskills.Action{
 			{

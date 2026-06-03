@@ -584,7 +584,10 @@ const themeTokens: Record<string, Record<ResolvedThemeMode, ThemeTokens>> = {
   }
 };
 
-export function resolveColorMode(display: DisplayConfig, systemPrefersDark: boolean): ResolvedThemeMode {
+export function resolveColorMode(
+  display: DisplayConfig,
+  systemPrefersDark: boolean
+): ResolvedThemeMode {
   const colorMode = display.colorMode || display.theme || 'system';
   if (colorMode === 'dark') {
     return 'dark';
@@ -595,8 +598,12 @@ export function resolveColorMode(display: DisplayConfig, systemPrefersDark: bool
   return systemPrefersDark ? 'dark' : 'light';
 }
 
-export function displayThemeStyle(display: DisplayConfig, mode: ResolvedThemeMode): string {
-  const tokens = themeTokens[display.themeId]?.[mode] ?? themeTokens['jute-mono'][mode];
+export function displayThemeStyle(
+  display: DisplayConfig,
+  mode: ResolvedThemeMode
+): string {
+  const tokens =
+    themeTokens[display.themeId]?.[mode] ?? themeTokens['jute-mono'][mode];
   const background = display.background ?? {
     kind: 'theme',
     value: '',
@@ -604,10 +611,21 @@ export function displayThemeStyle(display: DisplayConfig, mode: ResolvedThemeMod
     position: 'center',
     overlay: 'none'
   };
-  const backgroundColor = background.kind === 'color' && background.value ? background.value : tokens.background;
-  const image = background.kind === 'asset' && background.value ? `url("${cssEscapeURL(background.value)}")` : 'none';
+  const backgroundColor =
+    background.kind === 'color' && background.value
+      ? background.value
+      : tokens.background;
+  const image =
+    background.kind === 'asset' && background.value
+      ? `url("${cssEscapeURL(background.value)}")`
+      : 'none';
   const repeat = background.fit === 'tile' ? 'repeat' : 'no-repeat';
-  const size = background.fit === 'tile' ? 'auto' : background.fit === 'contain' ? 'contain' : 'cover';
+  const size =
+    background.fit === 'tile'
+      ? 'auto'
+      : background.fit === 'contain'
+        ? 'contain'
+        : 'cover';
 
   return [
     cssVar('background', backgroundColor),
@@ -641,10 +659,16 @@ export function resolveWidgetChrome(
 ): Exclude<WidgetChrome, 'auto'> {
   const widgetChrome = String(widget.settings?.chrome ?? '').trim();
   const requested = widgetChrome || display.widgetChrome?.default || 'solid';
-  if (requested === 'clear' || requested === 'smoked' || requested === 'frosted' || requested === 'solid') {
+  if (
+    requested === 'clear' ||
+    requested === 'smoked' ||
+    requested === 'frosted' ||
+    requested === 'solid'
+  ) {
     return requested;
   }
-  const hasBackground = display.background?.kind === 'asset' || display.background?.kind === 'file';
+  const hasBackground =
+    display.background?.kind === 'asset' || display.background?.kind === 'file';
   return hasBackground ? 'smoked' : 'solid';
 }
 
@@ -659,11 +683,17 @@ function cssEscapeURL(value: string) {
 function overlayColor(overlay: string, mode: ResolvedThemeMode) {
   switch (overlay) {
     case 'dim':
-      return mode === 'dark' ? 'rgba(0, 0, 0, 0.42)' : 'rgba(255, 255, 255, 0.28)';
+      return mode === 'dark'
+        ? 'rgba(0, 0, 0, 0.42)'
+        : 'rgba(255, 255, 255, 0.28)';
     case 'smoked':
-      return mode === 'dark' ? 'rgba(0, 0, 0, 0.62)' : 'rgba(255, 255, 255, 0.58)';
+      return mode === 'dark'
+        ? 'rgba(0, 0, 0, 0.62)'
+        : 'rgba(255, 255, 255, 0.58)';
     case 'frosted':
-      return mode === 'dark' ? 'rgba(0, 0, 0, 0.48)' : 'rgba(255, 255, 255, 0.42)';
+      return mode === 'dark'
+        ? 'rgba(0, 0, 0, 0.48)'
+        : 'rgba(255, 255, 255, 0.42)';
     default:
       return 'transparent';
   }

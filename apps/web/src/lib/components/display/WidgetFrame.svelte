@@ -15,7 +15,13 @@
 </script>
 
 <section
-  class={cn('widget-frame', `widget-frame--${widget.size}`, `widget-frame--chrome-${chrome}`, `widget-frame--overflow-${overflow}`, className)}
+  class={cn(
+    'widget-frame',
+    `widget-frame--${widget.size}`,
+    `widget-frame--chrome-${chrome}`,
+    `widget-frame--overflow-${overflow}`,
+    className
+  )}
   class:widget-frame--focused={focused}
   aria-label={widget.title}
 >

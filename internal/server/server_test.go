@@ -42,12 +42,20 @@ func TestHealthEndpoint(t *testing.T) {
 
 func TestEventsStreamDisplayActions(t *testing.T) {
 	dispatcher := displayactions.NewDispatcher()
-	handler := newServer(testConfig(), "test", nil, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", dispatcher)
+	handler := newServer(
+		testConfig(),
+		"test",
+		nil,
+		store.SetupStatus{Complete: true},
+		store.DefaultWidgetLayout(),
+		nil,
+		"",
+		dispatcher,
+	)
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/v1/events", nil)
 	if err != nil {
 		t.Fatalf("create request: %v", err)
@@ -62,7 +70,7 @@ func TestEventsStreamDisplayActions(t *testing.T) {
 	}
 
 	reader := bufio.NewReader(resp.Body)
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			t.Fatalf("read initial event stream: %v", err)
@@ -75,7 +83,7 @@ func TestEventsStreamDisplayActions(t *testing.T) {
 		t.Fatalf("notify: %v", err)
 	}
 	var sawNotification bool
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			t.Fatalf("read event stream: %v", err)
@@ -219,7 +227,11 @@ func TestMessageEndpointUsesDiscoveredA2A10InterfaceAndDashboardContext(t *testi
 }
 
 func TestMessageEndpointReturnsSafeAgentFailure(t *testing.T) {
-	handler := NewWithMessageSender(testConfig(), "test", &fakeMessageSender{err: errors.New("raw remote failure with internal details")})
+	handler := NewWithMessageSender(
+		testConfig(),
+		"test",
+		&fakeMessageSender{err: errors.New("raw remote failure with internal details")},
+	)
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"What needs attention?"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
 	rec := httptest.NewRecorder()
@@ -358,7 +370,13 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	if err := config.SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
-	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg, "test", store.SetupStatus{Complete: true}, nil, configPath)
+	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
+		cfg,
+		"test",
+		store.SetupStatus{Complete: true},
+		nil,
+		configPath,
+	)
 
 	payload := bytes.NewBufferString(`{
 		"home":{"name":"YAML Home","timezone":"Europe/London","locale":"en-GB"},
@@ -387,7 +405,9 @@ func TestRoomSettingsEndpointUpdatesStore(t *testing.T) {
 	defer runtimeStore.Close()
 	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, runtimeStore)
 
-	payload := bytes.NewBufferString(`{"rooms":[{"id":"Living Room","name":"Living Room","summary":"Downstairs","status":"Comfortable"}]}`)
+	payload := bytes.NewBufferString(
+		`{"rooms":[{"id":"Living Room","name":"Living Room","summary":"Downstairs","status":"Comfortable"}]}`,
+	)
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/settings/rooms", payload)
 	rec := httptest.NewRecorder()
 
@@ -416,7 +436,9 @@ func TestRoomSettingsEndpointUpdatesStore(t *testing.T) {
 
 func TestRoomSettingsEndpointRejectsInvalidRooms(t *testing.T) {
 	handler := NewWithSetupStatus(testConfig(), "test", store.SetupStatus{Complete: true})
-	payload := bytes.NewBufferString(`{"rooms":[{"id":"kitchen","name":"Kitchen"},{"id":"kitchen","name":"Duplicate"}]}`)
+	payload := bytes.NewBufferString(
+		`{"rooms":[{"id":"kitchen","name":"Kitchen"},{"id":"kitchen","name":"Duplicate"}]}`,
+	)
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/settings/rooms", payload)
 	rec := httptest.NewRecorder()
 
@@ -435,7 +457,9 @@ func TestTileSettingsEndpointUpdatesStore(t *testing.T) {
 	defer runtimeStore.Close()
 	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, runtimeStore)
 
-	payload := bytes.NewBufferString(`{"tiles":[{"id":"Front Door","kind":"security","label":"Front door","value":"Locked","detail":"Last checked now"}]}`)
+	payload := bytes.NewBufferString(
+		`{"tiles":[{"id":"Front Door","kind":"security","label":"Front door","value":"Locked","detail":"Last checked now"}]}`,
+	)
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/settings/tiles", payload)
 	rec := httptest.NewRecorder()
 
@@ -464,7 +488,9 @@ func TestTileSettingsEndpointUpdatesStore(t *testing.T) {
 
 func TestTileSettingsEndpointRejectsInvalidTiles(t *testing.T) {
 	handler := NewWithSetupStatus(testConfig(), "test", store.SetupStatus{Complete: true})
-	payload := bytes.NewBufferString(`{"tiles":[{"id":"temperature","kind":"status","label":"Temperature","value":""}]}`)
+	payload := bytes.NewBufferString(
+		`{"tiles":[{"id":"temperature","kind":"status","label":"Temperature","value":""}]}`,
+	)
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/settings/tiles", payload)
 	rec := httptest.NewRecorder()
 
@@ -484,7 +510,13 @@ func TestRoomAndTileSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	if err := config.SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
-	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg, "test", store.SetupStatus{Complete: true}, nil, configPath)
+	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
+		cfg,
+		"test",
+		store.SetupStatus{Complete: true},
+		nil,
+		configPath,
+	)
 
 	roomReq := httptest.NewRequest(
 		http.MethodPut,
@@ -500,7 +532,9 @@ func TestRoomAndTileSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	tileReq := httptest.NewRequest(
 		http.MethodPut,
 		"/api/v1/settings/tiles",
-		bytes.NewBufferString(`{"tiles":[{"id":"office-temp","kind":"climate","label":"Office","value":"20 C","detail":"Comfortable"}]}`),
+		bytes.NewBufferString(
+			`{"tiles":[{"id":"office-temp","kind":"climate","label":"Office","value":"20 C","detail":"Comfortable"}]}`,
+		),
 	)
 	tileRec := httptest.NewRecorder()
 	handler.ServeHTTP(tileRec, tileReq)
@@ -554,7 +588,8 @@ func TestStatusEndpointReturnsSafeSummary(t *testing.T) {
 		t.Fatalf("unexpected status summary: %+v", body)
 	}
 	raw := rec.Body.String()
-	if strings.Contains(raw, "VERY_SECRET_ENV_NAME") || strings.Contains(raw, "AGENT_SECRET_TOKEN") || strings.Contains(raw, "secret-value") {
+	if strings.Contains(raw, "VERY_SECRET_ENV_NAME") || strings.Contains(raw, "AGENT_SECRET_TOKEN") ||
+		strings.Contains(raw, "secret-value") {
 		t.Fatalf("status response leaked secret material: %s", raw)
 	}
 }
@@ -657,9 +692,41 @@ func TestWidgetLayoutEndpoint(t *testing.T) {
 	layout := store.WidgetLayout{
 		ProfileID: "default-dashboard",
 		Widgets: []store.WidgetInstance{
-			{ID: "date-time", Kind: "date-time", Title: "Date & Time", W: 2, H: 1, MinW: 1, MinH: 1, Size: "wide", Visible: true},
-			{ID: "weather", Kind: "weather", Title: "Weather", X: 2, W: 2, H: 1, MinW: 1, MinH: 1, Size: "wide", Visible: true},
-			{ID: "chat-history", Kind: "chat-history", Title: "Chat History", Y: 1, W: 2, H: 2, MinW: 1, MinH: 1, Size: "medium", Visible: true},
+			{
+				ID:      "date-time",
+				Kind:    "date-time",
+				Title:   "Date & Time",
+				W:       2,
+				H:       1,
+				MinW:    1,
+				MinH:    1,
+				Size:    "wide",
+				Visible: true,
+			},
+			{
+				ID:      "weather",
+				Kind:    "weather",
+				Title:   "Weather",
+				X:       2,
+				W:       2,
+				H:       1,
+				MinW:    1,
+				MinH:    1,
+				Size:    "wide",
+				Visible: true,
+			},
+			{
+				ID:      "chat-history",
+				Kind:    "chat-history",
+				Title:   "Chat History",
+				Y:       1,
+				W:       2,
+				H:       2,
+				MinW:    1,
+				MinH:    1,
+				Size:    "medium",
+				Visible: true,
+			},
 		},
 	}
 	handler := NewWithSetupStatusAndLayout(testConfig(), "test", store.SetupStatus{Complete: true}, layout)
@@ -678,7 +745,8 @@ func TestWidgetLayoutEndpoint(t *testing.T) {
 	if body.ProfileID != "default-dashboard" || len(body.Widgets) != 3 {
 		t.Fatalf("unexpected layout response: %+v", body)
 	}
-	if body.Widgets[0].Kind != "date-time" || body.Widgets[1].Kind != "weather" || body.Widgets[2].Kind != "chat-history" {
+	if body.Widgets[0].Kind != "date-time" || body.Widgets[1].Kind != "weather" ||
+		body.Widgets[2].Kind != "chat-history" {
 		t.Fatalf("unexpected widget order: %+v", body.Widgets)
 	}
 }
@@ -745,7 +813,9 @@ func TestWidgetLayoutPutPersistsWithStore(t *testing.T) {
 
 func TestWidgetLayoutPutRejectsInvalidLayout(t *testing.T) {
 	handler := New(testConfig(), "test")
-	payload := bytes.NewBufferString(`{"profileId":"default-dashboard","widgets":[{"id":"bad","kind":"missing","title":"Bad","x":0,"y":0,"w":1,"h":1,"minW":1,"minH":1,"size":"small","settings":{},"visible":true}]}`)
+	payload := bytes.NewBufferString(
+		`{"profileId":"default-dashboard","widgets":[{"id":"bad","kind":"missing","title":"Bad","x":0,"y":0,"w":1,"h":1,"minW":1,"minH":1,"size":"small","settings":{},"visible":true}]}`,
+	)
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/widgets/layout", payload)
 	rec := httptest.NewRecorder()
 
@@ -791,10 +861,15 @@ func TestWidgetLayoutResetEndpoint(t *testing.T) {
 
 func TestWidgetLayoutPutReturnsSafeStoreFailure(t *testing.T) {
 	layout := store.DefaultWidgetLayout()
-	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, &failingLayoutStore{
-		layout: layout,
-		err:    errors.New("sqlite path /private/raw/details failed"),
-	})
+	handler := NewWithSetupStatusAndLayoutStore(
+		testConfig(),
+		"test",
+		store.SetupStatus{Complete: true},
+		&failingLayoutStore{
+			layout: layout,
+			err:    errors.New("sqlite path /private/raw/details failed"),
+		},
+	)
 	payload, err := json.Marshal(layout)
 	if err != nil {
 		t.Fatalf("marshal layout: %v", err)
@@ -909,7 +984,8 @@ func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(body.Agents) != 1 || body.Agents[0].CardStatus != "available" || body.Agents[0].SelectedEndpointURL != "http://agent.local/invoke" {
+	if len(body.Agents) != 1 || body.Agents[0].CardStatus != "available" ||
+		body.Agents[0].SelectedEndpointURL != "http://agent.local/invoke" {
 		t.Fatalf("unexpected agent discovery response: %+v", body.Agents)
 	}
 	if !body.Agents[0].DashboardContextSupported || !body.Agents[0].Streaming || len(body.Agents[0].Skills) != 1 {
@@ -968,7 +1044,13 @@ func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
 	if err := config.SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
-	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg, "test", store.SetupStatus{Complete: true}, nil, configPath)
+	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
+		cfg,
+		"test",
+		store.SetupStatus{Complete: true},
+		nil,
+		configPath,
+	)
 
 	payload := bytes.NewBufferString(`{"cardUrl":` + strconv.Quote(agentCardServer.URL) + `}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", payload)
@@ -985,7 +1067,8 @@ func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
 	if len(reloaded.Agents) != 1 {
 		t.Fatalf("expected one saved agent, got %+v", reloaded.Agents)
 	}
-	if reloaded.Agents[0].ID != "kitchen-helper" || reloaded.Agents[0].EndpointURL != "http://127.0.0.1:9797/invoke" || !reloaded.Agents[0].Enabled {
+	if reloaded.Agents[0].ID != "kitchen-helper" || reloaded.Agents[0].EndpointURL != "http://127.0.0.1:9797/invoke" ||
+		!reloaded.Agents[0].Enabled {
 		t.Fatalf("unexpected saved agent: %+v", reloaded.Agents[0])
 	}
 	savedBytes, err := os.ReadFile(configPath)
@@ -1012,7 +1095,16 @@ func TestConversationListUsesAgentTaskHistory(t *testing.T) {
 			},
 		},
 	}
-	handler := newServer(testConfig(), "test", history, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", nil)
+	handler := newServer(
+		testConfig(),
+		"test",
+		history,
+		store.SetupStatus{Complete: true},
+		store.DefaultWidgetLayout(),
+		nil,
+		"",
+		nil,
+	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?agentId=house", nil)
 	rec := httptest.NewRecorder()
@@ -1027,7 +1119,8 @@ func TestConversationListUsesAgentTaskHistory(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(body.Conversations) != 1 || body.Conversations[0].ID != "ctx-1" || body.Conversations[0].Title != "What is happening?" {
+	if len(body.Conversations) != 1 || body.Conversations[0].ID != "ctx-1" ||
+		body.Conversations[0].Title != "What is happening?" {
 		t.Fatalf("unexpected conversations: %+v", body.Conversations)
 	}
 	if history.listReq.EndpointURL != "https://agent.example.com/a2a/v1" || history.listReq.PageSize != 50 {
@@ -1037,7 +1130,9 @@ func TestConversationListUsesAgentTaskHistory(t *testing.T) {
 
 func TestConversationDetailUsesGetTaskHistory(t *testing.T) {
 	history := &fakeTaskHistorySender{
-		tasks: []a2a.TaskRecord{{ID: "task-1", ContextID: "ctx-1", Status: "completed", UpdatedAt: "2026-05-19T10:00:00Z"}},
+		tasks: []a2a.TaskRecord{
+			{ID: "task-1", ContextID: "ctx-1", Status: "completed", UpdatedAt: "2026-05-19T10:00:00Z"},
+		},
 		records: map[string]a2a.TaskRecord{
 			"task-1": {
 				ID:        "task-1",
@@ -1051,7 +1146,16 @@ func TestConversationDetailUsesGetTaskHistory(t *testing.T) {
 			},
 		},
 	}
-	handler := newServer(testConfig(), "test", history, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", nil)
+	handler := newServer(
+		testConfig(),
+		"test",
+		history,
+		store.SetupStatus{Complete: true},
+		store.DefaultWidgetLayout(),
+		nil,
+		"",
+		nil,
+	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/ctx-1?agentId=house", nil)
 	rec := httptest.NewRecorder()
@@ -1096,7 +1200,16 @@ func TestConversationCreateWithInitialTextSendsTurnToAgent(t *testing.T) {
 			},
 		},
 	}
-	handler := newServer(testConfig(), "test", sender, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", nil)
+	handler := newServer(
+		testConfig(),
+		"test",
+		sender,
+		store.SetupStatus{Complete: true},
+		store.DefaultWidgetLayout(),
+		nil,
+		"",
+		nil,
+	)
 
 	payload := bytes.NewBufferString(`{"agentId":"house","title":"Kitchen","initialText":"Hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", payload)
@@ -1168,7 +1281,16 @@ func TestConversationTurnStreamEmitsDeltasAndCompletion(t *testing.T) {
 			},
 		},
 	}
-	handler := newServer(cfg, "test", streamer, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", nil)
+	handler := newServer(
+		cfg,
+		"test",
+		streamer,
+		store.SetupStatus{Complete: true},
+		store.DefaultWidgetLayout(),
+		nil,
+		"",
+		nil,
+	)
 
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"Hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/ctx-1/turns/stream", payload)
@@ -1179,7 +1301,12 @@ func TestConversationTurnStreamEmitsDeltasAndCompletion(t *testing.T) {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	events := parseSSEEvents(t, rec.Body)
-	if got := eventNames(events); strings.Join(got, ",") != "turn_started,status_changed,assistant_delta,assistant_delta,status_changed,turn_completed" {
+	if got := eventNames(
+		events,
+	); strings.Join(
+		got,
+		",",
+	) != "turn_started,status_changed,assistant_delta,assistant_delta,status_changed,turn_completed" {
 		t.Fatalf("unexpected events: %+v", got)
 	}
 	if events[2].Data["text"] != "Hel" || events[3].Data["text"] != "lo" {
@@ -1205,7 +1332,16 @@ func TestConversationTurnStreamFallsBackForNonStreamingAgent(t *testing.T) {
 			}},
 		},
 	}
-	handler := newServer(cfg, "test", sender, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", nil)
+	handler := newServer(
+		cfg,
+		"test",
+		sender,
+		store.SetupStatus{Complete: true},
+		store.DefaultWidgetLayout(),
+		nil,
+		"",
+		nil,
+	)
 
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"Hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/ctx-1/turns/stream", payload)
@@ -1238,7 +1374,16 @@ func TestConversationTurnStreamEmitsSafeFailureAfterPartialStream(t *testing.T) 
 		},
 		streamErr: errors.New("raw remote stream failure with internals"),
 	}
-	handler := newServer(cfg, "test", streamer, store.SetupStatus{Complete: true}, store.DefaultWidgetLayout(), nil, "", nil)
+	handler := newServer(
+		cfg,
+		"test",
+		streamer,
+		store.SetupStatus{Complete: true},
+		store.DefaultWidgetLayout(),
+		nil,
+		"",
+		nil,
+	)
 
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"Hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/ctx-1/turns/stream", payload)
@@ -1304,7 +1449,10 @@ func (s *failingLayoutStore) WidgetLayout(ctx context.Context, profileID string)
 	return s.layout, nil
 }
 
-func (s *failingLayoutStore) SaveWidgetLayout(ctx context.Context, layout store.WidgetLayout) (store.WidgetLayout, error) {
+func (s *failingLayoutStore) SaveWidgetLayout(
+	ctx context.Context,
+	layout store.WidgetLayout,
+) (store.WidgetLayout, error) {
 	return store.WidgetLayout{}, s.err
 }
 
@@ -1319,7 +1467,10 @@ type fakeMessageSender struct {
 	called bool
 }
 
-func (s *fakeMessageSender) SendMessage(ctx context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+func (s *fakeMessageSender) SendMessage(
+	ctx context.Context,
+	req a2a.SendMessageRequest,
+) (a2a.SendMessageResult, error) {
 	s.called = true
 	s.last = req
 	if s.err != nil {
@@ -1330,6 +1481,7 @@ func (s *fakeMessageSender) SendMessage(ctx context.Context, req a2a.SendMessage
 
 type fakeTaskHistorySender struct {
 	fakeMessageSender
+
 	tasks   []a2a.TaskRecord
 	records map[string]a2a.TaskRecord
 	listReq a2a.ListTasksRequest
@@ -1358,13 +1510,18 @@ func (s *fakeTaskHistorySender) GetTask(ctx context.Context, req a2a.GetTaskRequ
 
 type fakeStreamingSender struct {
 	fakeTaskHistorySender
+
 	streamEvents []a2a.StreamEvent
 	streamErr    error
 	lastStream   a2a.SendMessageRequest
 	streamCalled bool
 }
 
-func (s *fakeStreamingSender) StreamMessage(ctx context.Context, req a2a.SendMessageRequest, handler a2a.StreamHandler) error {
+func (s *fakeStreamingSender) StreamMessage(
+	ctx context.Context,
+	req a2a.SendMessageRequest,
+	handler a2a.StreamHandler,
+) error {
 	s.streamCalled = true
 	s.lastStream = req
 	for _, event := range s.streamEvents {
@@ -1400,8 +1557,8 @@ func parseSSEEvents(t *testing.T, reader io.Reader) []sseEvent {
 			data.Reset()
 			continue
 		}
-		if strings.HasPrefix(line, "event:") {
-			name = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+		if after, ok := strings.CutPrefix(line, "event:"); ok {
+			name = strings.TrimSpace(after)
 			continue
 		}
 		if strings.HasPrefix(line, "data:") {

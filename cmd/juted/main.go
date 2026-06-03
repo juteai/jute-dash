@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -21,6 +22,12 @@ import (
 var version = "dev"
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	configPath := flag.String("config", os.Getenv("JUTE_CONFIG"), "optional path to Jute bootstrap config YAML or JSON")
 	dataDirOverride := flag.String("data-dir", os.Getenv("JUTE_DATA_DIR"), "override Jute runtime data directory")
 	listenOverride := flag.String("listen", os.Getenv("JUTE_LISTEN"), "override listen address")
@@ -30,11 +37,11 @@ func main() {
 
 	dataDir, err := store.ResolveDataDir(*dataDirOverride)
 	if err != nil {
-		log.Fatalf("resolve data directory: %v", err)
+		return fmt.Errorf("resolve data directory: %w", err)
 	}
 	runtimeStore, err := store.Open(store.DatabasePath(dataDir))
 	if err != nil {
-		log.Fatalf("open store: %v", err)
+		return fmt.Errorf("open store: %w", err)
 	}
 	defer func() {
 		if err := runtimeStore.Close(); err != nil {
@@ -44,7 +51,7 @@ func main() {
 
 	needsSeed, err := runtimeStore.NeedsSeed(ctx)
 	if err != nil {
-		log.Fatalf("inspect store: %v", err)
+		return fmt.Errorf("inspect store: %w", err)
 	}
 
 	bootstrap := config.Default()
@@ -52,14 +59,14 @@ func main() {
 	if configProvided {
 		bootstrap, err = config.Load(*configPath)
 		if err != nil {
-			log.Fatalf("load config: %v", err)
+			return fmt.Errorf("load config: %w", err)
 		}
 	}
 	bootstrapProvided := configProvided && needsSeed
 
 	result, err := runtimeStore.Initialize(ctx, bootstrap, bootstrapProvided)
 	if err != nil {
-		log.Fatalf("initialize store: %v", err)
+		return fmt.Errorf("initialize store: %w", err)
 	}
 
 	cfg := result.Config
@@ -73,8 +80,15 @@ func main() {
 	}
 
 	displayActions := displayactions.NewDispatcher()
-	handler := server.NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(cfg, version, result.Setup, runtimeStore, *configPath, displayActions)
-	log.Printf("jute data directory: %s", dataDir)
+	handler := server.NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(
+		cfg,
+		version,
+		result.Setup,
+		runtimeStore,
+		*configPath,
+		displayActions,
+	)
+	log.Printf("jute data directory: %q", dataDir) //nolint:gosec // Quoted local path is useful startup diagnostics.
 
 	var mcpServer *http.Server
 	if cfg.MCP.Enabled {
@@ -109,9 +123,18 @@ func main() {
 	}
 
 	log.Printf("jute hub listening on http://%s", cfg.Server.ListenAddress)
-	if err := http.ListenAndServe(cfg.Server.ListenAddress, handler); err != nil {
-		log.Fatalf("serve: %v", err)
+	hubServer := &http.Server{
+		Addr:              cfg.Server.ListenAddress,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
+	if err := hubServer.ListenAndServe(); err != nil {
+		return fmt.Errorf("serve: %w", err)
+	}
+	return nil
 }
 
 type mcpSnapshotProvider struct {

@@ -1,6 +1,14 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Minus, Plus, Trash2 } from 'lucide-svelte';
+  import {
+    ArrowDown,
+    ArrowLeft,
+    ArrowRight,
+    ArrowUp,
+    Minus,
+    Plus,
+    Trash2
+  } from 'lucide-svelte';
   import WidgetFrame from '$lib/components/display/WidgetFrame.svelte';
   import ChatHistoryWidget from '$widgets/chathistory/ChatHistoryWidget.svelte';
   import DateTimeWidget from '$widgets/datetime/DateTimeWidget.svelte';
@@ -8,7 +16,14 @@
   import RSSWidget from '$widgets/rss/RSSWidget.svelte';
   import MarketsWidget from '$widgets/markets/MarketsWidget.svelte';
   import { resolveWidgetChrome } from '$lib/themes';
-  import type { Agent, AgentAvailability, ChatMessage, DashboardData, WeatherState, WidgetInstance } from '$lib/types';
+  import type {
+    Agent,
+    AgentAvailability,
+    ChatMessage,
+    DashboardData,
+    WeatherState,
+    WidgetInstance
+  } from '$lib/types';
 
   export let data: DashboardData;
   export let editMode = false;
@@ -18,8 +33,16 @@
   export let selectedAvailability: AgentAvailability = 'unknown';
   export let focusedWidgetId = '';
   export let onOpenChat: () => void = () => {};
-  export let onMoveWidget: (widgetId: string, x: number, y: number) => void = () => {};
-  export let onResizeWidget: (widgetId: string, w: number, h: number) => void = () => {};
+  export let onMoveWidget: (
+    widgetId: string,
+    x: number,
+    y: number
+  ) => void = () => {};
+  export let onResizeWidget: (
+    widgetId: string,
+    w: number,
+    h: number
+  ) => void = () => {};
   export let onRemoveWidget: (widgetId: string) => void = () => {};
 
   let canvasEl: HTMLElement;
@@ -49,27 +72,33 @@
   }
 
   function weatherData(widget: WidgetInstance): WeatherState {
-    return (widget.data as WeatherState | undefined) ?? {
-      locationName: 'Not configured',
-      temperature: null,
-      temperatureUnit: 'celsius',
-      apparentTemperature: null,
-      condition: 'Weather unavailable',
-      icon: 'cloud',
-      weatherCode: null,
-      humidity: null,
-      windSpeed: null,
-      windSpeedUnit: 'kmh',
-      sunrise: '',
-      sunset: '',
-      isDay: null,
-      updatedAt: '',
-      source: 'widget',
-      status: 'unavailable'
-    };
+    return (
+      (widget.data as WeatherState | undefined) ?? {
+        locationName: 'Not configured',
+        temperature: null,
+        temperatureUnit: 'celsius',
+        apparentTemperature: null,
+        condition: 'Weather unavailable',
+        icon: 'cloud',
+        weatherCode: null,
+        humidity: null,
+        windSpeed: null,
+        windSpeedUnit: 'kmh',
+        sunrise: '',
+        sunset: '',
+        isDay: null,
+        updatedAt: '',
+        source: 'widget',
+        status: 'unavailable'
+      }
+    );
   }
 
-  function startDrag(widget: WidgetInstance, mode: 'move' | 'resize', event: PointerEvent) {
+  function startDrag(
+    widget: WidgetInstance,
+    mode: 'move' | 'resize',
+    event: PointerEvent
+  ) {
     if (!editMode || !canvasEl) {
       return;
     }
@@ -114,11 +143,15 @@
 
   function gridMetrics() {
     const styles = window.getComputedStyle(canvasEl);
-    const columns = styles.gridTemplateColumns.split(' ').filter(Boolean).length || 4;
+    const columns =
+      styles.gridTemplateColumns.split(' ').filter(Boolean).length || 4;
     const gap = Number.parseFloat(styles.columnGap || '12') || 12;
     const rect = canvasEl.getBoundingClientRect();
     return {
-      cellWidth: Math.max(1, (rect.width - gap * Math.max(0, columns - 1)) / columns + gap),
+      cellWidth: Math.max(
+        1,
+        (rect.width - gap * Math.max(0, columns - 1)) / columns + gap
+      ),
       rowHeight: 144
     };
   }
@@ -126,9 +159,18 @@
   onDestroy(endDrag);
 </script>
 
-<section bind:this={canvasEl} class:dashboard-grid-edit={editMode} class="dashboard-canvas" aria-label="Widget dashboard">
-  {#each widgets as widget}
-    <div class="dashboard-widget-slot" style={gridStyle(widget)} data-widget-id={widget.id}>
+<section
+  bind:this={canvasEl}
+  class:dashboard-grid-edit={editMode}
+  class="dashboard-canvas"
+  aria-label="Widget dashboard"
+>
+  {#each widgets as widget (widget.id)}
+    <div
+      class="dashboard-widget-slot"
+      style={gridStyle(widget)}
+      data-widget-id={widget.id}
+    >
       <WidgetFrame
         {widget}
         {editMode}
@@ -140,25 +182,60 @@
       >
         <svelte:fragment slot="actions">
           {#if editMode}
-            <button type="button" class="widget-frame-handle" aria-label={`Move ${widget.title} left`} on:click={() => onMoveWidget(widget.id, widget.x - 1, widget.y)}>
+            <button
+              type="button"
+              class="widget-frame-handle"
+              aria-label={`Move ${widget.title} left`}
+              on:click={() => onMoveWidget(widget.id, widget.x - 1, widget.y)}
+            >
               <ArrowLeft size={15} />
             </button>
-            <button type="button" class="widget-frame-handle" aria-label={`Move ${widget.title} right`} on:click={() => onMoveWidget(widget.id, widget.x + 1, widget.y)}>
+            <button
+              type="button"
+              class="widget-frame-handle"
+              aria-label={`Move ${widget.title} right`}
+              on:click={() => onMoveWidget(widget.id, widget.x + 1, widget.y)}
+            >
               <ArrowRight size={15} />
             </button>
-            <button type="button" class="widget-frame-handle" aria-label={`Move ${widget.title} up`} on:click={() => onMoveWidget(widget.id, widget.x, widget.y - 1)}>
+            <button
+              type="button"
+              class="widget-frame-handle"
+              aria-label={`Move ${widget.title} up`}
+              on:click={() => onMoveWidget(widget.id, widget.x, widget.y - 1)}
+            >
               <ArrowUp size={15} />
             </button>
-            <button type="button" class="widget-frame-handle" aria-label={`Move ${widget.title} down`} on:click={() => onMoveWidget(widget.id, widget.x, widget.y + 1)}>
+            <button
+              type="button"
+              class="widget-frame-handle"
+              aria-label={`Move ${widget.title} down`}
+              on:click={() => onMoveWidget(widget.id, widget.x, widget.y + 1)}
+            >
               <ArrowDown size={15} />
             </button>
-            <button type="button" class="widget-frame-handle" aria-label={`Make ${widget.title} smaller`} on:click={() => onResizeWidget(widget.id, widget.w - 1, widget.h)}>
+            <button
+              type="button"
+              class="widget-frame-handle"
+              aria-label={`Make ${widget.title} smaller`}
+              on:click={() => onResizeWidget(widget.id, widget.w - 1, widget.h)}
+            >
               <Minus size={15} />
             </button>
-            <button type="button" class="widget-frame-handle" aria-label={`Make ${widget.title} wider`} on:click={() => onResizeWidget(widget.id, widget.w + 1, widget.h)}>
+            <button
+              type="button"
+              class="widget-frame-handle"
+              aria-label={`Make ${widget.title} wider`}
+              on:click={() => onResizeWidget(widget.id, widget.w + 1, widget.h)}
+            >
               <Plus size={15} />
             </button>
-            <button type="button" class="widget-frame-handle widget-frame-handle--danger" aria-label={`Remove ${widget.title}`} on:click={() => onRemoveWidget(widget.id)}>
+            <button
+              type="button"
+              class="widget-frame-handle widget-frame-handle--danger"
+              aria-label={`Remove ${widget.title}`}
+              on:click={() => onRemoveWidget(widget.id)}
+            >
               <Trash2 size={15} />
             </button>
           {/if}

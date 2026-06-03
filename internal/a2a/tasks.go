@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 )
@@ -90,7 +91,7 @@ func (c *JSONRPCClient) ListTasks(ctx context.Context, req ListTasksRequest) (Li
 	if err := json.Unmarshal(raw, &tasks); err == nil {
 		return ListTasksResult{Tasks: taskRecords(tasks)}, nil
 	}
-	return ListTasksResult{}, fmt.Errorf("decode a2a list tasks result: unsupported result shape")
+	return ListTasksResult{}, errors.New("decode a2a list tasks result: unsupported result shape")
 }
 
 func (c *JSONRPCClient) GetTask(ctx context.Context, req GetTaskRequest) (TaskRecord, error) {
@@ -123,7 +124,11 @@ func (c *JSONRPCClient) GetTask(ctx context.Context, req GetTaskRequest) (TaskRe
 	return taskRecord(t), nil
 }
 
-func (c *JSONRPCClient) call(ctx context.Context, endpointURL, protocolVersion, bearerToken, method string, params any) (json.RawMessage, error) {
+func (c *JSONRPCClient) call(
+	ctx context.Context,
+	endpointURL, protocolVersion, bearerToken, method string,
+	params any,
+) (json.RawMessage, error) {
 	payload := jsonRPCRequest{
 		JSONRPC: jsonRPCVersion,
 		ID:      newID(),
@@ -230,8 +235,8 @@ func agentReplyText(t task) string {
 	if text := displayTextFromOptionalMessage(t.Status.Message); text != "" {
 		return text
 	}
-	for i := len(t.Artifacts) - 1; i >= 0; i-- {
-		if text := displayTextFromParts(t.Artifacts[i].Parts); text != "" {
+	for _, v := range slices.Backward(t.Artifacts) {
+		if text := displayTextFromParts(v.Parts); text != "" {
 			return text
 		}
 	}
@@ -279,8 +284,8 @@ func normalizeTaskState(state string) string {
 	case "TASK_STATE_AUTH_REQUIRED":
 		return "auth-required"
 	}
-	if strings.HasPrefix(upper, "TASK_STATE_") {
-		return strings.ToLower(strings.TrimPrefix(upper, "TASK_STATE_"))
+	if after, ok := strings.CutPrefix(upper, "TASK_STATE_"); ok {
+		return strings.ToLower(after)
 	}
 	return strings.ToLower(trimmed)
 }

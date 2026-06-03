@@ -1,9 +1,24 @@
 <script lang="ts">
-  import { MessageCircle, Mic, MicOff, Pencil, RotateCcw, Settings, X } from 'lucide-svelte';
+  import {
+    MessageCircle,
+    Mic,
+    MicOff,
+    Pencil,
+    RotateCcw,
+    Settings,
+    X
+  } from 'lucide-svelte';
   import DashboardGrid from '$lib/components/display/DashboardGrid.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
-  import type { Agent, AgentAvailability, ChatMessage, DashboardData, VoiceStatus, WidgetCatalogItem } from '$lib/types';
+  import type {
+    Agent,
+    AgentAvailability,
+    ChatMessage,
+    DashboardData,
+    VoiceStatus,
+    WidgetCatalogItem
+  } from '$lib/types';
 
   export let data: DashboardData;
   export let editMode = false;
@@ -25,8 +40,16 @@
   export let onCancelEdit: () => void = () => {};
   export let onResetLayout: () => void = () => {};
   export let onAddWidget: (kind: string) => void = () => {};
-  export let onMoveWidget: (widgetId: string, x: number, y: number) => void = () => {};
-  export let onResizeWidget: (widgetId: string, w: number, h: number) => void = () => {};
+  export let onMoveWidget: (
+    widgetId: string,
+    x: number,
+    y: number
+  ) => void = () => {};
+  export let onResizeWidget: (
+    widgetId: string,
+    w: number,
+    h: number
+  ) => void = () => {};
   export let onRemoveWidget: (widgetId: string) => void = () => {};
 
   let showCatalog = false;
@@ -40,7 +63,12 @@
     : 'Voice not configured';
 
   function canAddWidget(item: WidgetCatalogItem) {
-    return item.allowMultiple || !data.layout.widgets.some((widget) => widget.kind === item.kind && widget.visible);
+    return (
+      item.allowMultiple ||
+      !data.layout.widgets.some(
+        (widget) => widget.kind === item.kind && widget.visible
+      )
+    );
   }
 
   function addWidget(kind: string) {
@@ -53,7 +81,9 @@
   <header class="dashboard-header">
     <div class="brand-lockup">
       <img
-        src={theme === 'dark' ? '/brand/logo_light.svg' : '/brand/logo_dark.svg'}
+        src={theme === 'dark'
+          ? '/brand/logo_light.svg'
+          : '/brand/logo_dark.svg'}
         alt="Jute"
         class="brand-logo"
       />
@@ -89,10 +119,18 @@
             <MicOff size={20} />
           {/if}
         </IconButton>
-        <IconButton label="Edit dashboard" variant="outline" on:click={onEnterEdit}>
+        <IconButton
+          label="Edit dashboard"
+          variant="outline"
+          on:click={onEnterEdit}
+        >
           <Pencil size={20} />
         </IconButton>
-        <IconButton label="Settings" variant="outline" on:click={onManageAgents}>
+        <IconButton
+          label="Settings"
+          variant="outline"
+          on:click={onManageAgents}
+        >
           <Settings size={20} />
         </IconButton>
       {/if}
@@ -114,8 +152,18 @@
         </span>
       </div>
       <div class="edit-toolbar-actions">
-        <Button size="sm" variant="secondary" disabled={savingLayout || stale} on:click={() => (showCatalog = !showCatalog)}>Add widget</Button>
-        <Button size="sm" variant="outline" disabled={savingLayout || stale} on:click={onResetLayout}>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={savingLayout || stale}
+          on:click={() => (showCatalog = !showCatalog)}>Add widget</Button
+        >
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={savingLayout || stale}
+          on:click={onResetLayout}
+        >
           <RotateCcw size={16} />
           <span>Reset</span>
         </Button>
@@ -126,19 +174,28 @@
       <div class="widget-catalog-sheet" aria-label="Widget catalog">
         <div class="widget-catalog-header">
           <strong>Add widget</strong>
-          <IconButton label="Close widget catalog" variant="ghost" on:click={() => (showCatalog = false)}>
+          <IconButton
+            label="Close widget catalog"
+            variant="ghost"
+            on:click={() => (showCatalog = false)}
+          >
             <X size={18} />
           </IconButton>
         </div>
         <div class="widget-catalog-grid">
-          {#each widgetCatalog as item}
+          {#each widgetCatalog as item (item.kind)}
             <article class="widget-catalog-item">
               <div>
                 <strong>{item.name}</strong>
                 <p>{item.description}</p>
-                <span>{item.defaultW}x{item.defaultH} · {item.defaultSize}</span>
+                <span>{item.defaultW}x{item.defaultH} · {item.defaultSize}</span
+                >
               </div>
-              <Button size="sm" disabled={!canAddWidget(item)} on:click={() => addWidget(item.kind)}>
+              <Button
+                size="sm"
+                disabled={!canAddWidget(item)}
+                on:click={() => addWidget(item.kind)}
+              >
                 {canAddWidget(item) ? 'Add' : 'Added'}
               </Button>
             </article>

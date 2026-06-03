@@ -20,13 +20,17 @@ func TestClientSendsJSONRPCAndBearerAuth(t *testing.T) {
 		if auth := r.Header.Get("Authorization"); auth != "Bearer secret" {
 			t.Fatalf("unexpected auth header %q", auth)
 		}
-		if agentID := r.Header.Get("X-Jute-Agent-ID"); agentID != "house" {
+		if agentID := r.Header.Get("X-Jute-Agent-Id"); agentID != "house" {
 			t.Fatalf("unexpected agent id header %q", agentID)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		writeRPCResult(t, w, `{"contents":[{"uri":"jute://skills","mimeType":"application/json","text":"{\"skills\":[]}"}]}`)
+		writeRPCResult(
+			t,
+			w,
+			`{"contents":[{"uri":"jute://skills","mimeType":"application/json","text":"{\"skills\":[]}"}]}`,
+		)
 	}))
 	defer server.Close()
 
@@ -127,14 +131,30 @@ func TestCollectJuteContextReadsSkillsAndInvokesWeatherRefresh(t *testing.T) {
 			writeRPCResult(t, w, `{"protocolVersion":"2025-11-25"}`)
 		case "resources/read":
 			if req.Params.URI == "jute://dashboard/current" {
-				writeRPCResult(t, w, `{"contents":[{"uri":"jute://dashboard/current","mimeType":"application/json","text":"{\"skills\":[]}"}]}`)
+				writeRPCResult(
+					t,
+					w,
+					`{"contents":[{"uri":"jute://dashboard/current","mimeType":"application/json","text":"{\"skills\":[]}"}]}`,
+				)
 				return
 			}
-			writeRPCResult(t, w, `{"contents":[{"uri":"jute://skills","mimeType":"application/json","text":"{\"skills\":[{\"skillId\":\"jute.weather.current\",\"displayName\":\"Weather\",\"actions\":[\"refresh\"],\"context\":{\"locationName\":\"London\",\"condition\":\"Clear sky\",\"temperature\":18.5,\"temperatureUnit\":\"°C\",\"status\":\"available\"}}]}"}]}`)
+			writeRPCResult(
+				t,
+				w,
+				`{"contents":[{"uri":"jute://skills","mimeType":"application/json","text":"{\"skills\":[{\"skillId\":\"jute.weather.current\",\"displayName\":\"Weather\",\"actions\":[\"refresh\"],\"context\":{\"locationName\":\"London\",\"condition\":\"Clear sky\",\"temperature\":18.5,\"temperatureUnit\":\"°C\",\"status\":\"available\"}}]}"}]}`,
+			)
 		case "tools/call":
-			writeRPCResult(t, w, `{"content":[{"type":"text","text":"ok"}],"structuredContent":{"status":"completed"},"isError":false}`)
+			writeRPCResult(
+				t,
+				w,
+				`{"content":[{"type":"text","text":"ok"}],"structuredContent":{"status":"completed"},"isError":false}`,
+			)
 		case "prompts/get":
-			writeRPCResult(t, w, `{"messages":[{"role":"user","content":{"type":"text","text":"Use Widget Skills safely."}}]}`)
+			writeRPCResult(
+				t,
+				w,
+				`{"messages":[{"role":"user","content":{"type":"text","text":"Use Widget Skills safely."}}]}`,
+			)
 		default:
 			t.Fatalf("unexpected method %q", req.Method)
 		}
@@ -146,7 +166,9 @@ func TestCollectJuteContextReadsSkillsAndInvokesWeatherRefresh(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	summary := client.CollectJuteContext(t.Context())
-	if !summary.Available || !summary.DashboardRead || summary.SkillCount != 1 || summary.Weather.LocationName != "London" || summary.WeatherRefresh != "completed" {
+	if !summary.Available || !summary.DashboardRead || summary.SkillCount != 1 ||
+		summary.Weather.LocationName != "London" ||
+		summary.WeatherRefresh != "completed" {
 		t.Fatalf("unexpected summary: %+v", summary)
 	}
 	if strings.Join(methods, ",") != "initialize,resources/read,resources/read,tools/call,prompts/get" {

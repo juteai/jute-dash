@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -129,7 +130,8 @@ func TestVoiceSettingsSeededFromBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
-	if !result.Config.Voice.Enabled || result.Config.Voice.MutedByDefault || result.Config.Voice.STTProviderID != "wyoming-local" {
+	if !result.Config.Voice.Enabled || result.Config.Voice.MutedByDefault ||
+		result.Config.Voice.STTProviderID != "wyoming-local" {
 		t.Fatalf("unexpected config voice settings: %+v", result.Config.Voice)
 	}
 
@@ -137,7 +139,9 @@ func TestVoiceSettingsSeededFromBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("VoiceSettings() error = %v", err)
 	}
-	if !settings.Enabled || settings.Muted || settings.STTProviderID != "wyoming-local" || settings.PreferredAgentID != "house" || settings.FollowupWindowSeconds != 10 {
+	if !settings.Enabled || settings.Muted || settings.STTProviderID != "wyoming-local" ||
+		settings.PreferredAgentID != "house" ||
+		settings.FollowupWindowSeconds != 10 {
 		t.Fatalf("unexpected voice settings: %+v", settings)
 	}
 }
@@ -285,10 +289,12 @@ func TestDisplayCustomizationSeededFromBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
-	if result.Config.Display.ColorMode != "dark" || result.Config.Display.Theme != "dark" || result.Config.Display.Density != "large-touch" {
+	if result.Config.Display.ColorMode != "dark" || result.Config.Display.Theme != "dark" ||
+		result.Config.Display.Density != "large-touch" {
 		t.Fatalf("unexpected display settings: %+v", result.Config.Display)
 	}
-	if result.Config.Display.Background.Value != "/backgrounds/kitchen.jpg" || result.Config.Display.Background.Overlay != "smoked" {
+	if result.Config.Display.Background.Value != "/backgrounds/kitchen.jpg" ||
+		result.Config.Display.Background.Overlay != "smoked" {
 		t.Fatalf("unexpected background settings: %+v", result.Config.Display.Background)
 	}
 	if result.Config.Display.WidgetChrome.Default != "frosted" {
@@ -538,12 +544,7 @@ func assertCount(t *testing.T, st *Store, table string, want int) {
 }
 
 func contains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, target)
 }
 
 func writeStoreYAMLConfig(t *testing.T, body string) string {

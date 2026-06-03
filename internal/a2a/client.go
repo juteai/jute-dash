@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -186,9 +187,9 @@ func newHTTPRequest(ctx context.Context, req SendMessageRequest, body []byte) (*
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
-	httpReq.Header.Set("A2A-Version", fallbackID(req.ProtocolVersion, ProtocolVersion10))
+	httpReq.Header.Set("A2a-Version", fallbackID(req.ProtocolVersion, ProtocolVersion10))
 	if len(req.Extensions) > 0 {
-		httpReq.Header.Set("A2A-Extensions", strings.Join(req.Extensions, ","))
+		httpReq.Header.Set("A2a-Extensions", strings.Join(req.Extensions, ","))
 	}
 	if strings.TrimSpace(req.BearerToken) != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(req.BearerToken))
@@ -320,7 +321,12 @@ func resultFromTask(t task) SendMessageResult {
 		status = "unknown"
 	}
 	if text := displayTextFromOptionalMessage(t.Status.Message); text != "" {
-		return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), TaskID: t.ID, Status: status, Text: text}
+		return SendMessageResult{
+			ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"),
+			TaskID:         t.ID,
+			Status:         status,
+			Text:           text,
+		}
 	}
 	for i := len(t.History) - 1; i >= 0; i-- {
 		role := strings.TrimSpace(t.History[i].Role)
@@ -328,17 +334,32 @@ func resultFromTask(t task) SendMessageResult {
 			continue
 		}
 		if text := displayTextFromMessage(t.History[i]); text != "" {
-			return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), TaskID: t.ID, Status: status, Text: text}
+			return SendMessageResult{
+				ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"),
+				TaskID:         t.ID,
+				Status:         status,
+				Text:           text,
+			}
 		}
 	}
 	for i := len(t.History) - 1; i >= 0; i-- {
 		if text := displayTextFromMessage(t.History[i]); text != "" {
-			return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), TaskID: t.ID, Status: status, Text: text}
+			return SendMessageResult{
+				ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"),
+				TaskID:         t.ID,
+				Status:         status,
+				Text:           text,
+			}
 		}
 	}
 	for i := len(t.Artifacts) - 1; i >= 0; i-- {
 		if text := displayTextFromParts(t.Artifacts[i].Parts); text != "" {
-			return SendMessageResult{ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"), TaskID: t.ID, Status: status, Text: text}
+			return SendMessageResult{
+				ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"),
+				TaskID:         t.ID,
+				Status:         status,
+				Text:           text,
+			}
 		}
 	}
 	return SendMessageResult{
@@ -347,17 +368,6 @@ func resultFromTask(t task) SendMessageResult {
 		Status:         status,
 		Text:           fmt.Sprintf("Agent task is %s.", status),
 	}
-}
-
-func textFromOptionalMessage(msg *message) string {
-	if msg == nil {
-		return ""
-	}
-	return textFromMessage(*msg)
-}
-
-func textFromMessage(msg message) string {
-	return textFromParts(msg.Parts)
 }
 
 func textFromParts(parts []part) string {
@@ -407,5 +417,5 @@ func newID() string {
 	if _, err := rand.Read(bytes[:]); err == nil {
 		return hex.EncodeToString(bytes[:])
 	}
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return strconv.FormatInt(time.Now().UnixNano(), 10)
 }

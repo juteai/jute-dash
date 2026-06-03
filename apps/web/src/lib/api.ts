@@ -22,15 +22,18 @@ import type {
 
 const API_BASE = import.meta.env.VITE_JUTE_API_URL ?? 'http://127.0.0.1:8787';
 
-export async function getDashboard(fetcher: typeof fetch): Promise<DashboardData> {
-  const [config, home, agentResponse, layout, voice, status] = await Promise.all([
-    getJSON<PublicConfig>(fetcher, '/api/v1/config'),
-    getJSON<HomeState>(fetcher, '/api/v1/home'),
-    getJSON<{ agents: Agent[] }>(fetcher, '/api/v1/agents'),
-    getJSON<WidgetLayout>(fetcher, '/api/v1/widgets/layout'),
-    getJSON<VoiceStatus>(fetcher, '/api/v1/voice/status'),
-    getJSON<AppStatus>(fetcher, '/api/v1/status')
-  ]);
+export async function getDashboard(
+  fetcher: typeof fetch
+): Promise<DashboardData> {
+  const [config, home, agentResponse, layout, voice, status] =
+    await Promise.all([
+      getJSON<PublicConfig>(fetcher, '/api/v1/config'),
+      getJSON<HomeState>(fetcher, '/api/v1/home'),
+      getJSON<{ agents: Agent[] }>(fetcher, '/api/v1/agents'),
+      getJSON<WidgetLayout>(fetcher, '/api/v1/widgets/layout'),
+      getJSON<VoiceStatus>(fetcher, '/api/v1/voice/status'),
+      getJSON<AppStatus>(fetcher, '/api/v1/status')
+    ]);
 
   return {
     config,
@@ -69,13 +72,21 @@ export async function sendMessage(
     body: JSON.stringify({ agentId, text, conversationId })
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   return response.json() as Promise<MessageResponse>;
 }
 
-export async function getHouseholdSettings(fetcher: typeof fetch): Promise<HouseholdSettings> {
+export async function getHouseholdSettings(
+  fetcher: typeof fetch
+): Promise<HouseholdSettings> {
   return getJSON<HouseholdSettings>(fetcher, '/api/v1/settings/household');
 }
 
@@ -91,18 +102,30 @@ export async function saveHouseholdSettings(
     body: JSON.stringify(settings)
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   return response.json() as Promise<HouseholdSettings>;
 }
 
 export async function getRoomSettings(fetcher: typeof fetch): Promise<Room[]> {
-  const response = await getJSON<RoomsSettings>(fetcher, '/api/v1/settings/rooms');
+  const response = await getJSON<RoomsSettings>(
+    fetcher,
+    '/api/v1/settings/rooms'
+  );
   return response.rooms;
 }
 
-export async function saveRoomSettings(fetcher: typeof fetch, rooms: Room[]): Promise<Room[]> {
+export async function saveRoomSettings(
+  fetcher: typeof fetch,
+  rooms: Room[]
+): Promise<Room[]> {
   const response = await fetcher(`${API_BASE}/api/v1/settings/rooms`, {
     method: 'PUT',
     headers: {
@@ -111,19 +134,31 @@ export async function saveRoomSettings(fetcher: typeof fetch, rooms: Room[]): Pr
     body: JSON.stringify({ rooms })
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   const saved = (await response.json()) as RoomsSettings;
   return saved.rooms;
 }
 
 export async function getTileSettings(fetcher: typeof fetch): Promise<Tile[]> {
-  const response = await getJSON<TilesSettings>(fetcher, '/api/v1/settings/tiles');
+  const response = await getJSON<TilesSettings>(
+    fetcher,
+    '/api/v1/settings/tiles'
+  );
   return response.tiles;
 }
 
-export async function saveTileSettings(fetcher: typeof fetch, tiles: Tile[]): Promise<Tile[]> {
+export async function saveTileSettings(
+  fetcher: typeof fetch,
+  tiles: Tile[]
+): Promise<Tile[]> {
   const response = await fetcher(`${API_BASE}/api/v1/settings/tiles`, {
     method: 'PUT',
     headers: {
@@ -132,18 +167,29 @@ export async function saveTileSettings(fetcher: typeof fetch, tiles: Tile[]): Pr
     body: JSON.stringify({ tiles })
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   const saved = (await response.json()) as TilesSettings;
   return saved.tiles;
 }
 
-export async function getConversations(fetcher: typeof fetch, agentId: string): Promise<Conversation[]> {
+export async function getConversations(
+  fetcher: typeof fetch,
+  agentId: string
+): Promise<Conversation[]> {
   if (!agentId) {
     return [];
   }
-  const response = await fetcher(`${API_BASE}/api/v1/conversations?agentId=${encodeURIComponent(agentId)}`);
+  const response = await fetcher(
+    `${API_BASE}/api/v1/conversations?agentId=${encodeURIComponent(agentId)}`
+  );
   if (response.status === 501) {
     return [
       {
@@ -160,8 +206,14 @@ export async function getConversations(fetcher: typeof fetch, agentId: string): 
     ];
   }
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   const body = (await response.json()) as { conversations: Conversation[] };
   return body.conversations;
@@ -180,13 +232,23 @@ export async function createConversation(
     body: JSON.stringify({ agentId, title })
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   return response.json() as Promise<ConversationDetail>;
 }
 
-export async function getConversation(fetcher: typeof fetch, conversationId: string, agentId: string): Promise<ConversationDetail> {
+export async function getConversation(
+  fetcher: typeof fetch,
+  conversationId: string,
+  agentId: string
+): Promise<ConversationDetail> {
   return getJSON<ConversationDetail>(
     fetcher,
     `/api/v1/conversations/${encodeURIComponent(conversationId)}?agentId=${encodeURIComponent(agentId)}`
@@ -199,16 +261,25 @@ export async function sendConversationTurn(
   agentId: string,
   text: string
 ): Promise<ConversationDetail> {
-  const response = await fetcher(`${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}/turns`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ agentId, text })
-  });
+  const response = await fetcher(
+    `${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}/turns`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ agentId, text })
+    }
+  );
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   return response.json() as Promise<ConversationDetail>;
 }
@@ -220,16 +291,25 @@ export async function sendConversationTurnStream(
   text: string,
   onEvent: (event: ConversationStreamEvent) => void
 ): Promise<void> {
-  const response = await fetcher(`${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}/turns/stream`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ agentId, text })
-  });
+  const response = await fetcher(
+    `${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}/turns/stream`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ agentId, text })
+    }
+  );
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   if (!response.body) {
     throw new Error('Jute streaming response was empty');
@@ -260,7 +340,10 @@ export async function sendConversationTurnStream(
   }
 }
 
-export async function addAgent(fetcher: typeof fetch, cardUrl: string): Promise<Agent> {
+export async function addAgent(
+  fetcher: typeof fetch,
+  cardUrl: string
+): Promise<Agent> {
   const response = await fetcher(`${API_BASE}/api/v1/agents`, {
     method: 'POST',
     headers: {
@@ -269,54 +352,105 @@ export async function addAgent(fetcher: typeof fetch, cardUrl: string): Promise<
     body: JSON.stringify({ cardUrl })
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   return response.json() as Promise<Agent>;
 }
 
-export async function setAgentEnabled(fetcher: typeof fetch, agentId: string, enabled: boolean): Promise<Agent> {
-  const response = await fetcher(`${API_BASE}/api/v1/agents/${encodeURIComponent(agentId)}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ enabled })
-  });
+export async function setAgentEnabled(
+  fetcher: typeof fetch,
+  agentId: string,
+  enabled: boolean
+): Promise<Agent> {
+  const response = await fetcher(
+    `${API_BASE}/api/v1/agents/${encodeURIComponent(agentId)}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ enabled })
+    }
+  );
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   return response.json() as Promise<Agent>;
 }
 
-export async function deleteAgent(fetcher: typeof fetch, agentId: string): Promise<void> {
-  const response = await fetcher(`${API_BASE}/api/v1/agents/${encodeURIComponent(agentId)}`, {
-    method: 'DELETE'
-  });
+export async function deleteAgent(
+  fetcher: typeof fetch,
+  agentId: string
+): Promise<void> {
+  const response = await fetcher(
+    `${API_BASE}/api/v1/agents/${encodeURIComponent(agentId)}`,
+    {
+      method: 'DELETE'
+    }
+  );
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
 }
 
-export async function refreshAgentCard(fetcher: typeof fetch, agentId: string): Promise<Agent> {
-  const response = await fetcher(`${API_BASE}/api/v1/agents/${encodeURIComponent(agentId)}/refresh-card`, {
-    method: 'POST'
-  });
+export async function refreshAgentCard(
+  fetcher: typeof fetch,
+  agentId: string
+): Promise<Agent> {
+  const response = await fetcher(
+    `${API_BASE}/api/v1/agents/${encodeURIComponent(agentId)}/refresh-card`,
+    {
+      method: 'POST'
+    }
+  );
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   return response.json() as Promise<Agent>;
 }
 
-export async function getWidgetCatalog(fetcher: typeof fetch): Promise<WidgetCatalogItem[]> {
-  const response = await getJSON<{ widgets: WidgetCatalogItem[] }>(fetcher, '/api/v1/widgets/catalog');
+export async function getWidgetCatalog(
+  fetcher: typeof fetch
+): Promise<WidgetCatalogItem[]> {
+  const response = await getJSON<{ widgets: WidgetCatalogItem[] }>(
+    fetcher,
+    '/api/v1/widgets/catalog'
+  );
   return response.widgets;
 }
 
-export async function saveWidgetLayout(fetcher: typeof fetch, layout: WidgetLayout): Promise<WidgetLayout> {
+export async function saveWidgetLayout(
+  fetcher: typeof fetch,
+  layout: WidgetLayout
+): Promise<WidgetLayout> {
   const response = await fetcher(`${API_BASE}/api/v1/widgets/layout`, {
     method: 'PUT',
     headers: {
@@ -325,20 +459,38 @@ export async function saveWidgetLayout(fetcher: typeof fetch, layout: WidgetLayo
     body: JSON.stringify(layout)
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   return response.json() as Promise<WidgetLayout>;
 }
 
-export async function resetWidgetLayout(fetcher: typeof fetch, profileId: string): Promise<WidgetLayout> {
+export async function resetWidgetLayout(
+  fetcher: typeof fetch,
+  profileId: string
+): Promise<WidgetLayout> {
   const suffix = profileId ? `?profileId=${encodeURIComponent(profileId)}` : '';
-  const response = await fetcher(`${API_BASE}/api/v1/widgets/layout/reset${suffix}`, {
-    method: 'POST'
-  });
+  const response = await fetcher(
+    `${API_BASE}/api/v1/widgets/layout/reset${suffix}`,
+    {
+      method: 'POST'
+    }
+  );
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   return response.json() as Promise<WidgetLayout>;
 }
@@ -355,8 +507,13 @@ export async function cancelVoice(fetcher: typeof fetch): Promise<VoiceStatus> {
   return postVoiceControl(fetcher, '/api/v1/voice/cancel');
 }
 
-export async function getVoiceProviders(fetcher: typeof fetch): Promise<VoiceProvider[]> {
-  const response = await getJSON<{ providers: VoiceProvider[] }>(fetcher, '/api/v1/voice/providers');
+export async function getVoiceProviders(
+  fetcher: typeof fetch
+): Promise<VoiceProvider[]> {
+  const response = await getJSON<{ providers: VoiceProvider[] }>(
+    fetcher,
+    '/api/v1/voice/providers'
+  );
   return response.providers;
 }
 
@@ -555,13 +712,22 @@ function fallbackVoiceStatus(): VoiceStatus {
   };
 }
 
-async function postVoiceControl(fetcher: typeof fetch, path: string): Promise<VoiceStatus> {
+async function postVoiceControl(
+  fetcher: typeof fetch,
+  path: string
+): Promise<VoiceStatus> {
   const response = await fetcher(`${API_BASE}${path}`, {
     method: 'POST'
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(typeof body.error === 'string' ? body.error : `Jute API request failed: ${response.status}`);
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Jute API request failed: ${response.status}`
+    );
   }
   return response.json() as Promise<VoiceStatus>;
 }
@@ -574,7 +740,9 @@ async function getJSON<T>(fetcher: typeof fetch, path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function parseSSEEvent(raw: string): ConversationStreamEvent | undefined {
+export function parseSSEEvent(
+  raw: string
+): ConversationStreamEvent | undefined {
   const lines = raw.split(/\r?\n/);
   let type = '';
   const data: string[] = [];

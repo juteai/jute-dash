@@ -16,8 +16,10 @@
       <p>{emptyMessage}</p>
     </div>
   {:else}
-    {#each messages as message}
-      <article class={`message-bubble message-bubble--${message.role} ${message.status ? `message-bubble--${message.status}` : ''}`}>
+    {#each messages as message (message.id)}
+      <article
+        class={`message-bubble message-bubble--${message.role} ${message.status ? `message-bubble--${message.status}` : ''}`}
+      >
         <div class="message-role">
           <span>{message.role}</span>
           {#if message.status}
@@ -27,7 +29,11 @@
         <Markdown content={message.content} />
         {#if message.status === 'failed'}
           <div class="message-actions">
-            <Button size="sm" variant="outline" on:click={() => onRetry(message)}>Retry</Button>
+            <Button
+              size="sm"
+              variant="outline"
+              on:click={() => onRetry(message)}>Retry</Button
+            >
           </div>
         {/if}
       </article>

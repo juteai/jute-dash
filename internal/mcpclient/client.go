@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -208,7 +209,7 @@ func (c *Client) GetPrompt(ctx context.Context, name string, arguments map[strin
 func (c *Client) call(ctx context.Context, method string, params any, target any) error {
 	payload := rpcRequest{
 		JSONRPC: jsonRPCVersion,
-		ID:      fmt.Sprintf("%d", time.Now().UnixNano()),
+		ID:      strconv.FormatInt(time.Now().UnixNano(), 10),
 		Method:  method,
 		Params:  params,
 	}
@@ -226,7 +227,7 @@ func (c *Client) call(ctx context.Context, method string, params any, target any
 		req.Header.Set("Authorization", "Bearer "+c.bearerToken)
 	}
 	if c.agentID != "" {
-		req.Header.Set("X-Jute-Agent-ID", c.agentID)
+		req.Header.Set("X-Jute-Agent-Id", c.agentID)
 	}
 
 	resp, err := c.httpClient.Do(req)

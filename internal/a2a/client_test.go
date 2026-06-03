@@ -30,16 +30,20 @@ func TestJSONRPCClientSendsA2A10SendMessageRequest(t *testing.T) {
 		if auth := r.Header.Get("Authorization"); auth != "Bearer dev-token" {
 			t.Fatalf("unexpected auth header %q", auth)
 		}
-		if version := r.Header.Get("A2A-Version"); version != "1.0" {
+		if version := r.Header.Get("A2a-Version"); version != "1.0" {
 			t.Fatalf("unexpected A2A-Version %q", version)
 		}
-		if extensions := r.Header.Get("A2A-Extensions"); extensions != DashboardContextExtensionURI {
+		if extensions := r.Header.Get("A2a-Extensions"); extensions != DashboardContextExtensionURI {
 			t.Fatalf("unexpected A2A-Extensions %q", extensions)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		writeRPCResult(t, w, `{"message":{"messageId":"msg-1","contextId":"ctx-1","role":"ROLE_AGENT","parts":[{"text":"Hello from A2A"}]}}`)
+		writeRPCResult(
+			t,
+			w,
+			`{"message":{"messageId":"msg-1","contextId":"ctx-1","role":"ROLE_AGENT","parts":[{"text":"Hello from A2A"}]}}`,
+		)
 	}))
 	defer server.Close()
 
@@ -67,7 +71,8 @@ func TestJSONRPCClientSendsA2A10SendMessageRequest(t *testing.T) {
 	if got.Params.Message.ContextID != "ctx-existing" {
 		t.Fatalf("unexpected contextId %q", got.Params.Message.ContextID)
 	}
-	if got.Params.Message.Role != "ROLE_USER" || len(got.Params.Message.Parts) != 1 || got.Params.Message.Parts[0].Text != "Hello" {
+	if got.Params.Message.Role != "ROLE_USER" || len(got.Params.Message.Parts) != 1 ||
+		got.Params.Message.Parts[0].Text != "Hello" {
 		t.Fatalf("unexpected message payload: %+v", got.Params.Message)
 	}
 	if got.Params.Message.Metadata[DashboardContextExtensionURI] == nil {
@@ -128,14 +133,19 @@ func TestJSONRPCClientExtractsTaskStatusText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendMessage() error = %v", err)
 	}
-	if result.ConversationID != "ctx-1" || result.TaskID != "task-1" || result.Status != "completed" || result.Text != "Task complete" {
+	if result.ConversationID != "ctx-1" || result.TaskID != "task-1" || result.Status != "completed" ||
+		result.Text != "Task complete" {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 }
 
 func TestJSONRPCClientStripsReasoningFromMessageResults(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeRPCResult(t, w, `{"message":{"messageId":"msg-1","contextId":"ctx-1","role":"ROLE_AGENT","parts":[{"text":"Okay, the user just said \"Hello\". I should respond politely. Since there's no specific request, I'll greet them and offer help. No need to call any functions here because the conversation isn't about the tools provided. Just a simple, friendly reply.\n\nHello! How can I assist you today?"}]}}`)
+		writeRPCResult(
+			t,
+			w,
+			`{"message":{"messageId":"msg-1","contextId":"ctx-1","role":"ROLE_AGENT","parts":[{"text":"Okay, the user just said \"Hello\". I should respond politely. Since there's no specific request, I'll greet them and offer help. No need to call any functions here because the conversation isn't about the tools provided. Just a simple, friendly reply.\n\nHello! How can I assist you today?"}]}}`,
+		)
 	}))
 	defer server.Close()
 
@@ -306,8 +316,16 @@ func TestJSONRPCClientGetTaskSanitizesAssistantHistory(t *testing.T) {
 func TestJSONRPCClientStreamNormalizesA2A10States(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		writeRPCSSE(t, w, `{"statusUpdate":{"taskId":"task-x","contextId":"ctx-x","status":{"state":"TASK_STATE_WORKING"}}}`)
-		writeRPCSSE(t, w, `{"statusUpdate":{"taskId":"task-x","contextId":"ctx-x","status":{"state":"TASK_STATE_COMPLETED"},"final":true}}`)
+		writeRPCSSE(
+			t,
+			w,
+			`{"statusUpdate":{"taskId":"task-x","contextId":"ctx-x","status":{"state":"TASK_STATE_WORKING"}}}`,
+		)
+		writeRPCSSE(
+			t,
+			w,
+			`{"statusUpdate":{"taskId":"task-x","contextId":"ctx-x","status":{"state":"TASK_STATE_COMPLETED"},"final":true}}`,
+		)
 	}))
 	defer server.Close()
 
@@ -337,7 +355,11 @@ func TestJSONRPCClientStreamNormalizesA2A10States(t *testing.T) {
 func TestJSONRPCClientStreamSanitizesReasoningDeltas(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		writeRPCSSE(t, w, `{"artifactUpdate":{"taskId":"task-1","contextId":"ctx-1","artifact":{"parts":[{"text":"<think>private tool plan</think>\n\nVisible reply"}]},"append":true,"lastChunk":true}}`)
+		writeRPCSSE(
+			t,
+			w,
+			`{"artifactUpdate":{"taskId":"task-1","contextId":"ctx-1","artifact":{"parts":[{"text":"<think>private tool plan</think>\n\nVisible reply"}]},"append":true,"lastChunk":true}}`,
+		)
 	}))
 	defer server.Close()
 
@@ -389,7 +411,11 @@ func TestJSONRPCClientListTasksSendsExpectedRequest(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		writeRPCResult(t, w, `{"tasks":[{"id":"task-1","contextId":"ctx-1","status":{"state":"completed"},"history":[{"messageId":"user-1","role":"ROLE_USER","parts":[{"text":"Hello"}]},{"messageId":"agent-1","role":"ROLE_AGENT","parts":[{"text":"Hi"}]}]}]}`)
+		writeRPCResult(
+			t,
+			w,
+			`{"tasks":[{"id":"task-1","contextId":"ctx-1","status":{"state":"completed"},"history":[{"messageId":"user-1","role":"ROLE_USER","parts":[{"text":"Hello"}]},{"messageId":"agent-1","role":"ROLE_AGENT","parts":[{"text":"Hi"}]}]}]}`,
+		)
 	}))
 	defer server.Close()
 
@@ -425,7 +451,11 @@ func TestJSONRPCClientGetTaskSendsExpectedRequest(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		writeRPCResult(t, w, `{"task":{"id":"task-2","contextId":"ctx-2","status":{"state":"completed","message":{"role":"ROLE_AGENT","parts":[{"text":"Done"}]}}}}`)
+		writeRPCResult(
+			t,
+			w,
+			`{"task":{"id":"task-2","contextId":"ctx-2","status":{"state":"completed","message":{"role":"ROLE_AGENT","parts":[{"text":"Done"}]}}}}`,
+		)
 	}))
 	defer server.Close()
 
@@ -458,9 +488,21 @@ func TestJSONRPCClientStreamsA2AEvents(t *testing.T) {
 		method = req.Method
 		w.Header().Set("Content-Type", "text/event-stream")
 		writeRPCSSE(t, w, `{"task":{"id":"task-1","contextId":"ctx-1","status":{"state":"working"}}}`)
-		writeRPCSSE(t, w, `{"artifactUpdate":{"taskId":"task-1","contextId":"ctx-1","artifact":{"parts":[{"text":"Hel"}]},"append":true}}`)
-		writeRPCSSE(t, w, `{"artifactUpdate":{"taskId":"task-1","contextId":"ctx-1","artifact":{"parts":[{"text":"lo"}]},"append":true,"lastChunk":true}}`)
-		writeRPCSSE(t, w, `{"statusUpdate":{"taskId":"task-1","contextId":"ctx-1","status":{"state":"completed"},"final":true}}`)
+		writeRPCSSE(
+			t,
+			w,
+			`{"artifactUpdate":{"taskId":"task-1","contextId":"ctx-1","artifact":{"parts":[{"text":"Hel"}]},"append":true}}`,
+		)
+		writeRPCSSE(
+			t,
+			w,
+			`{"artifactUpdate":{"taskId":"task-1","contextId":"ctx-1","artifact":{"parts":[{"text":"lo"}]},"append":true,"lastChunk":true}}`,
+		)
+		writeRPCSSE(
+			t,
+			w,
+			`{"statusUpdate":{"taskId":"task-1","contextId":"ctx-1","status":{"state":"completed"},"final":true}}`,
+		)
 	}))
 	defer server.Close()
 
@@ -482,10 +524,12 @@ func TestJSONRPCClientStreamsA2AEvents(t *testing.T) {
 	if len(events) != 4 {
 		t.Fatalf("expected 4 events, got %+v", events)
 	}
-	if events[0].Kind != "task" || events[1].Kind != "artifact" || events[2].Kind != "artifact" || events[3].Kind != "status" {
+	if events[0].Kind != "task" || events[1].Kind != "artifact" || events[2].Kind != "artifact" ||
+		events[3].Kind != "status" {
 		t.Fatalf("unexpected stream event kinds: %+v", events)
 	}
-	if events[1].Text != "Hel" || !events[1].Append || events[2].Text != "lo" || !events[2].Terminal || !events[3].Terminal {
+	if events[1].Text != "Hel" || !events[1].Append || events[2].Text != "lo" || !events[2].Terminal ||
+		!events[3].Terminal {
 		t.Fatalf("unexpected stream events: %+v", events)
 	}
 }
