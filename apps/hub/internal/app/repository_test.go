@@ -1,4 +1,4 @@
-package store
+package app
 
 import (
 	"context"
@@ -10,8 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"jute-dash/internal/a2a"
-	"jute-dash/internal/config"
+	"jute-dash/apps/hub/internal/pkg/a2a"
 )
 
 func TestInitializeMigratesAndSeedsEmptyDB(t *testing.T) {
@@ -26,7 +25,7 @@ func TestInitializeMigratesAndSeedsEmptyDB(t *testing.T) {
 		t.Fatal("expected empty store to need seed")
 	}
 
-	result, err := st.Initialize(context.Background(), config.Default(), false)
+	result, err := st.Initialize(context.Background(), DefaultConfig(), false)
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
@@ -47,7 +46,7 @@ func TestInitializeMigratesAndSeedsEmptyDB(t *testing.T) {
 	assertCount(t, st, "widget_instances", 3)
 	assertCount(t, st, "voice_settings", 1)
 
-	if result.Config.Home.Name != config.Default().Home.Name {
+	if result.Config.Home.Name != DefaultConfig().Home.Name {
 		t.Fatalf("unexpected home name: %q", result.Config.Home.Name)
 	}
 	if !result.Config.Voice.MutedByDefault || result.Config.Voice.FollowupWindowSeconds != 8 {
@@ -70,11 +69,11 @@ func TestBootstrapConfigAppliesOnlyOnce(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
 
-	first := config.Default()
+	first := DefaultConfig()
 	first.Home.Name = "Bootstrap One"
 	first.Home.Timezone = "Europe/London"
 	first.Home.Locale = "en-GB"
-	first.Agents = []config.AgentConfig{
+	first.Agents = []AgentConfig{
 		{
 			ID:              "house",
 			Name:            "House Concierge",
@@ -119,7 +118,7 @@ func TestVoiceSettingsSeededFromBootstrap(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
 
-	bootstrap := config.Default()
+	bootstrap := DefaultConfig()
 	bootstrap.Voice.Enabled = true
 	bootstrap.Voice.MutedByDefault = false
 	bootstrap.Voice.STTProviderID = "wyoming-local"
@@ -150,7 +149,7 @@ func TestVoiceMuteAndCancelUpdateState(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
 
-	bootstrap := config.Default()
+	bootstrap := DefaultConfig()
 	bootstrap.Voice.Enabled = true
 	bootstrap.Voice.MutedByDefault = false
 	bootstrap.Voice.STTProviderID = "wyoming-local"
@@ -186,8 +185,8 @@ func TestVoiceMuteAndCancelUpdateState(t *testing.T) {
 func TestVoiceProvidersDefaultsToEmptyList(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
-	bootstrap := config.Default()
-	bootstrap.Agents = []config.AgentConfig{{
+	bootstrap := DefaultConfig()
+	bootstrap.Agents = []AgentConfig{{
 		ID:              "dev-agent",
 		Name:            "Dev Agent",
 		CardURL:         "http://127.0.0.1:9797/.well-known/agent-card.json",
@@ -226,7 +225,7 @@ agents:
 rooms: []
 tiles: []
 `)
-	first, err := config.Load(firstPath)
+	first, err := LoadConfig(firstPath)
 	if err != nil {
 		t.Fatalf("Load(first YAML) error = %v", err)
 	}
@@ -247,7 +246,7 @@ agents: []
 rooms: []
 tiles: []
 `)
-	second, err := config.Load(secondPath)
+	second, err := LoadConfig(secondPath)
 	if err != nil {
 		t.Fatalf("Load(second YAML) error = %v", err)
 	}
@@ -270,20 +269,20 @@ func TestDisplayCustomizationSeededFromBootstrap(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
 
-	bootstrap := config.Default()
+	bootstrap := DefaultConfig()
 	bootstrap.Display.ColorMode = "dark"
 	bootstrap.Display.Theme = "dark"
 	bootstrap.Display.ThemeID = "jute-mono"
 	bootstrap.Display.Density = "large-touch"
 	bootstrap.Display.Motion = "reduced"
-	bootstrap.Display.Background = config.DisplayBackground{
+	bootstrap.Display.Background = DisplayBackground{
 		Kind:     "asset",
 		Value:    "/backgrounds/kitchen.jpg",
 		Fit:      "cover",
 		Position: "center",
 		Overlay:  "smoked",
 	}
-	bootstrap.Display.WidgetChrome = config.DisplayWidgetChrome{Default: "frosted"}
+	bootstrap.Display.WidgetChrome = DisplayWidgetChrome{Default: "frosted"}
 
 	result, err := st.Initialize(context.Background(), bootstrap, true)
 	if err != nil {
@@ -314,9 +313,9 @@ func TestStoreBackedPublicConfigDoesNotExposeSecretReferences(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
 
-	bootstrap := config.Default()
+	bootstrap := DefaultConfig()
 	bootstrap.Home.Name = "Secret Test"
-	bootstrap.Agents = []config.AgentConfig{
+	bootstrap.Agents = []AgentConfig{
 		{
 			ID:              "house",
 			Name:            "House",
@@ -324,7 +323,7 @@ func TestStoreBackedPublicConfigDoesNotExposeSecretReferences(t *testing.T) {
 			EndpointURL:     "https://agent.example.com/a2a/v1",
 			ProtocolBinding: a2a.ProtocolJSONRPC,
 			Enabled:         true,
-			Auth:            &config.AuthConfig{Type: "bearer", EnvToken: "JUTE_SECRET_TOKEN"},
+			Auth:            &AuthConfig{Type: "bearer", EnvToken: "JUTE_SECRET_TOKEN"},
 		},
 	}
 
@@ -350,7 +349,7 @@ func TestSetupStatusReportsCompleteBootstrap(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
 
-	bootstrap := config.Default()
+	bootstrap := DefaultConfig()
 	bootstrap.Home.Name = "Configured Home"
 	bootstrap.Home.Timezone = "Europe/London"
 	bootstrap.Home.Locale = "en-GB"
@@ -368,7 +367,7 @@ func TestWidgetLayoutReturnsSeededWidgets(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
 
-	if _, err := st.Initialize(context.Background(), config.Default(), false); err != nil {
+	if _, err := st.Initialize(context.Background(), DefaultConfig(), false); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
 
@@ -415,7 +414,7 @@ func TestWidgetCatalogReturnsBuiltIns(t *testing.T) {
 func TestSaveWidgetLayoutPersists(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
-	if _, err := st.Initialize(context.Background(), config.Default(), false); err != nil {
+	if _, err := st.Initialize(context.Background(), DefaultConfig(), false); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
 
@@ -489,7 +488,7 @@ func TestSaveWidgetLayoutRejectsInvalidLayouts(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			st := openTestStore(t)
 			defer st.Close()
-			if _, err := st.Initialize(context.Background(), config.Default(), false); err != nil {
+			if _, err := st.Initialize(context.Background(), DefaultConfig(), false); err != nil {
 				t.Fatalf("Initialize() error = %v", err)
 			}
 			layout := DefaultWidgetLayout()
@@ -504,7 +503,7 @@ func TestSaveWidgetLayoutRejectsInvalidLayouts(t *testing.T) {
 func TestResetWidgetLayoutRestoresDefaults(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
-	if _, err := st.Initialize(context.Background(), config.Default(), false); err != nil {
+	if _, err := st.Initialize(context.Background(), DefaultConfig(), false); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
 

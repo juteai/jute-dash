@@ -7,9 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"jute-dash/internal/a2a"
-	"jute-dash/internal/config"
-	"jute-dash/internal/store"
+	"jute-dash/apps/hub/internal/pkg/a2a"
 )
 
 const (
@@ -126,7 +124,7 @@ func TestDefaultExtractorReadsDeclaredSettingsOnly(t *testing.T) {
 	}, nil)
 
 	snapshot := testSnapshot()
-	snapshot.Layout.Widgets = append(snapshot.Layout.Widgets, store.WidgetInstance{
+	snapshot.Layout.Widgets = append(snapshot.Layout.Widgets, WidgetInstance{
 		ID:      "dynamic-instance",
 		Kind:    dynamicKind,
 		Title:   "My Dynamic Widget",
@@ -197,15 +195,14 @@ func registerTestSkill() {
 }
 
 func testSnapshot() Snapshot {
-	cfg := config.Default()
+	var cfg Config
 	cfg.Home.Timezone = "Europe/London"
 	cfg.Home.Locale = "en-GB"
-	cfg.Voice.PreferredAgentID = "house"
 	return Snapshot{
 		Config: cfg,
-		Layout: store.WidgetLayout{
+		Layout: WidgetLayout{
 			ProfileID: "default-display",
-			Widgets: []store.WidgetInstance{{
+			Widgets: []WidgetInstance{{
 				ID:       "test-widget",
 				Kind:     testKind,
 				Title:    "Test Widget",

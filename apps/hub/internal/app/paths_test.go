@@ -1,4 +1,4 @@
-package store
+package app
 
 import (
 	"path/filepath"

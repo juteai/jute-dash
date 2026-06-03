@@ -162,7 +162,7 @@ echo "Resetting harness store: $DATA_DIR"
 rm -rf "$DATA_DIR"
 
 echo "Starting Jute hub."
-(cd "$ROOT_DIR" && go run ./cmd/juted -config "$CONFIG" -data-dir "$DATA_DIR") & HUB_PID=$!
+(cd "$ROOT_DIR/apps/hub" && go run ./cmd/juted -config "$CONFIG" -data-dir "$DATA_DIR") & HUB_PID=$!
 wait_http_get "Jute hub" "$HUB_URL/healthz" "$HUB_PID" 120
 
 if [[ "$MCP_ENABLED" == "true" ]]; then

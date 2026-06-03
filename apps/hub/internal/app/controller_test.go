@@ -1,4 +1,4 @@
-package server
+package app
 
 import (
 	"bufio"
@@ -15,10 +15,8 @@ import (
 	"strings"
 	"testing"
 
-	a2a "jute-dash/internal/a2a"
-	"jute-dash/internal/config"
-	"jute-dash/internal/displayactions"
-	"jute-dash/internal/store"
+	a2a "jute-dash/apps/hub/internal/pkg/a2a"
+	"jute-dash/apps/hub/internal/pkg/displayactions"
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -46,8 +44,8 @@ func TestEventsStreamDisplayActions(t *testing.T) {
 		testConfig(),
 		"test",
 		nil,
-		store.SetupStatus{Complete: true},
-		store.DefaultWidgetLayout(),
+		SetupStatus{Complete: true},
+		DefaultWidgetLayout(),
 		nil,
 		"",
 		dispatcher,
@@ -185,7 +183,7 @@ func TestMessageEndpointUsesDiscoveredA2A10InterfaceAndDashboardContext(t *testi
 	cfg := testConfig()
 	cfg.Agents[0].CardURL = agentCardServer.URL
 	cfg.Agents[0].EndpointURL = "http://configured.local/legacy"
-	runtimeStore, err := store.Open(filepath.Join(t.TempDir(), "jute.db"))
+	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -199,7 +197,7 @@ func TestMessageEndpointUsesDiscoveredA2A10InterfaceAndDashboardContext(t *testi
 		Status:         "completed",
 		Text:           "Context received.",
 	}}
-	handler := newServer(cfg, "test", sender, result.Setup, store.DefaultWidgetLayout(), runtimeStore, "", nil)
+	handler := newServer(cfg, "test", sender, result.Setup, DefaultWidgetLayout(), runtimeStore, "", nil)
 
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"What can you see?","conversationId":"ctx-existing"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
@@ -289,7 +287,7 @@ func TestHomeEndpointExcludesWeather(t *testing.T) {
 }
 
 func TestSetupStatusEndpoint(t *testing.T) {
-	handler := NewWithSetupStatus(testConfig(), "test", store.SetupStatus{
+	handler := NewWithSetupStatus(testConfig(), "test", SetupStatus{
 		Complete: false,
 		Missing:  []string{"home.name"},
 	})
@@ -301,7 +299,7 @@ func TestSetupStatusEndpoint(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	var body store.SetupStatus
+	var body SetupStatus
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -313,7 +311,7 @@ func TestSetupStatusEndpoint(t *testing.T) {
 func TestHouseholdSettingsEndpointUpdatesStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, runtimeStore)
+	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", SetupStatus{Complete: true}, runtimeStore)
 
 	payload := bytes.NewBufferString(`{
 		"home":{"name":"Updated Home","timezone":"Europe/London","locale":"en-GB"},
@@ -328,7 +326,7 @@ func TestHouseholdSettingsEndpointUpdatesStore(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	var body store.HouseholdSettings
+	var body HouseholdSettings
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -345,7 +343,7 @@ func TestHouseholdSettingsEndpointUpdatesStore(t *testing.T) {
 }
 
 func TestHouseholdSettingsEndpointRejectsInvalidTimezone(t *testing.T) {
-	handler := NewWithSetupStatus(testConfig(), "test", store.SetupStatus{Complete: true})
+	handler := NewWithSetupStatus(testConfig(), "test", SetupStatus{Complete: true})
 	payload := bytes.NewBufferString(`{
 		"home":{"name":"Updated Home","timezone":"Nope/Nowhere","locale":"en-GB"},
 		"display":{"theme":"dark","accentColor":"teal","idleMode":"ambient"},
@@ -367,13 +365,13 @@ func TestHouseholdSettingsEndpointRejectsInvalidTimezone(t *testing.T) {
 func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "jute.yaml")
 	cfg := testConfig()
-	if err := config.SaveYAML(configPath, cfg); err != nil {
+	if err := SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
 	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
 		cfg,
 		"test",
-		store.SetupStatus{Complete: true},
+		SetupStatus{Complete: true},
 		nil,
 		configPath,
 	)
@@ -391,7 +389,7 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	reloaded, err := config.Load(configPath)
+	reloaded, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
@@ -403,7 +401,7 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 func TestRoomSettingsEndpointUpdatesStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, runtimeStore)
+	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", SetupStatus{Complete: true}, runtimeStore)
 
 	payload := bytes.NewBufferString(
 		`{"rooms":[{"id":"Living Room","name":"Living Room","summary":"Downstairs","status":"Comfortable"}]}`,
@@ -417,7 +415,7 @@ func TestRoomSettingsEndpointUpdatesStore(t *testing.T) {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		Rooms []config.RoomConfig `json:"rooms"`
+		Rooms []RoomConfig `json:"rooms"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -435,7 +433,7 @@ func TestRoomSettingsEndpointUpdatesStore(t *testing.T) {
 }
 
 func TestRoomSettingsEndpointRejectsInvalidRooms(t *testing.T) {
-	handler := NewWithSetupStatus(testConfig(), "test", store.SetupStatus{Complete: true})
+	handler := NewWithSetupStatus(testConfig(), "test", SetupStatus{Complete: true})
 	payload := bytes.NewBufferString(
 		`{"rooms":[{"id":"kitchen","name":"Kitchen"},{"id":"kitchen","name":"Duplicate"}]}`,
 	)
@@ -455,7 +453,7 @@ func TestRoomSettingsEndpointRejectsInvalidRooms(t *testing.T) {
 func TestTileSettingsEndpointUpdatesStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, runtimeStore)
+	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", SetupStatus{Complete: true}, runtimeStore)
 
 	payload := bytes.NewBufferString(
 		`{"tiles":[{"id":"Front Door","kind":"security","label":"Front door","value":"Locked","detail":"Last checked now"}]}`,
@@ -469,7 +467,7 @@ func TestTileSettingsEndpointUpdatesStore(t *testing.T) {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		Tiles []config.TileConfig `json:"tiles"`
+		Tiles []TileConfig `json:"tiles"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -487,7 +485,7 @@ func TestTileSettingsEndpointUpdatesStore(t *testing.T) {
 }
 
 func TestTileSettingsEndpointRejectsInvalidTiles(t *testing.T) {
-	handler := NewWithSetupStatus(testConfig(), "test", store.SetupStatus{Complete: true})
+	handler := NewWithSetupStatus(testConfig(), "test", SetupStatus{Complete: true})
 	payload := bytes.NewBufferString(
 		`{"tiles":[{"id":"temperature","kind":"status","label":"Temperature","value":""}]}`,
 	)
@@ -507,13 +505,13 @@ func TestTileSettingsEndpointRejectsInvalidTiles(t *testing.T) {
 func TestRoomAndTileSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "jute.yaml")
 	cfg := testConfig()
-	if err := config.SaveYAML(configPath, cfg); err != nil {
+	if err := SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
 	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
 		cfg,
 		"test",
-		store.SetupStatus{Complete: true},
+		SetupStatus{Complete: true},
 		nil,
 		configPath,
 	)
@@ -542,7 +540,7 @@ func TestRoomAndTileSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 		t.Fatalf("expected tile status 200, got %d: %s", tileRec.Code, tileRec.Body.String())
 	}
 
-	reloaded, err := config.Load(configPath)
+	reloaded, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
@@ -565,10 +563,10 @@ func TestStatusEndpointReturnsSafeSummary(t *testing.T) {
 	cfg.MCP.Path = "/mcp"
 	cfg.MCP.Auth.Mode = "local-token"
 	cfg.MCP.Auth.EnvToken = "VERY_SECRET_ENV_NAME"
-	cfg.Agents[0].Auth = &config.AuthConfig{Type: "bearer", EnvToken: "AGENT_SECRET_TOKEN"}
+	cfg.Agents[0].Auth = &AuthConfig{Type: "bearer", EnvToken: "AGENT_SECRET_TOKEN"}
 	t.Setenv("AGENT_SECRET_TOKEN", "secret-value")
 
-	handler := NewWithSetupStatus(cfg, "test-version", store.SetupStatus{Complete: true})
+	handler := NewWithSetupStatus(cfg, "test-version", SetupStatus{Complete: true})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
 	rec := httptest.NewRecorder()
 
@@ -659,7 +657,7 @@ func TestVoiceProvidersEndpointReturnsStableEmptyList(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
 	var body struct {
-		Providers []store.VoiceProviderPack `json:"providers"`
+		Providers []VoiceProviderPack `json:"providers"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -689,9 +687,9 @@ func TestVoiceCancelPreservesSafeStatus(t *testing.T) {
 }
 
 func TestWidgetLayoutEndpoint(t *testing.T) {
-	layout := store.WidgetLayout{
+	layout := WidgetLayout{
 		ProfileID: "default-dashboard",
-		Widgets: []store.WidgetInstance{
+		Widgets: []WidgetInstance{
 			{
 				ID:      "date-time",
 				Kind:    "date-time",
@@ -729,7 +727,7 @@ func TestWidgetLayoutEndpoint(t *testing.T) {
 			},
 		},
 	}
-	handler := NewWithSetupStatusAndLayout(testConfig(), "test", store.SetupStatus{Complete: true}, layout)
+	handler := NewWithSetupStatusAndLayout(testConfig(), "test", SetupStatus{Complete: true}, layout)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/widgets/layout", nil)
 	rec := httptest.NewRecorder()
 
@@ -738,7 +736,7 @@ func TestWidgetLayoutEndpoint(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	var body store.WidgetLayout
+	var body WidgetLayout
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -762,7 +760,7 @@ func TestWidgetCatalogEndpoint(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
 	var body struct {
-		Widgets []store.WidgetCatalogItem `json:"widgets"`
+		Widgets []WidgetCatalogItem `json:"widgets"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -785,9 +783,9 @@ func TestWidgetCatalogEndpoint(t *testing.T) {
 func TestWidgetLayoutPutPersistsWithStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, runtimeStore)
+	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", SetupStatus{Complete: true}, runtimeStore)
 
-	layout := store.DefaultWidgetLayout()
+	layout := DefaultWidgetLayout()
 	layout.Widgets[0].X = 1
 	layout.Widgets[1].Visible = false
 	payload, err := json.Marshal(layout)
@@ -836,12 +834,12 @@ func TestWidgetLayoutPutRejectsInvalidLayout(t *testing.T) {
 func TestWidgetLayoutResetEndpoint(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	layout := store.DefaultWidgetLayout()
+	layout := DefaultWidgetLayout()
 	layout.Widgets[0].Visible = false
 	if _, err := runtimeStore.SaveWidgetLayout(context.Background(), layout); err != nil {
 		t.Fatalf("SaveWidgetLayout() error = %v", err)
 	}
-	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", store.SetupStatus{Complete: true}, runtimeStore)
+	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", SetupStatus{Complete: true}, runtimeStore)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/widgets/layout/reset", nil)
 	rec := httptest.NewRecorder()
 
@@ -850,7 +848,7 @@ func TestWidgetLayoutResetEndpoint(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	var body store.WidgetLayout
+	var body WidgetLayout
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -860,11 +858,11 @@ func TestWidgetLayoutResetEndpoint(t *testing.T) {
 }
 
 func TestWidgetLayoutPutReturnsSafeStoreFailure(t *testing.T) {
-	layout := store.DefaultWidgetLayout()
+	layout := DefaultWidgetLayout()
 	handler := NewWithSetupStatusAndLayoutStore(
 		testConfig(),
 		"test",
-		store.SetupStatus{Complete: true},
+		SetupStatus{Complete: true},
 		&failingLayoutStore{
 			layout: layout,
 			err:    errors.New("sqlite path /private/raw/details failed"),
@@ -892,7 +890,7 @@ func TestWidgetLayoutPutReturnsSafeStoreFailure(t *testing.T) {
 }
 
 func TestStoreBackedConfigWorksWithExistingEndpoints(t *testing.T) {
-	runtimeStore, err := store.Open(filepath.Join(t.TempDir(), "jute.db"))
+	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -952,7 +950,7 @@ func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
 	cfg := testConfig()
 	cfg.Agents = cfg.Agents[:1]
 	cfg.Agents[0].CardURL = agentCardServer.URL
-	runtimeStore, err := store.Open(filepath.Join(t.TempDir(), "jute.db"))
+	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -996,7 +994,7 @@ func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
 func TestAgentsEndpointIncludesSafeAuthAvailability(t *testing.T) {
 	cfg := testConfig()
 	cfg.Agents = cfg.Agents[:1]
-	cfg.Agents[0].Auth = &config.AuthConfig{Type: "bearer", EnvToken: "HOUSE_AGENT_TOKEN"}
+	cfg.Agents[0].Auth = &AuthConfig{Type: "bearer", EnvToken: "HOUSE_AGENT_TOKEN"}
 	handler := New(cfg, "test")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
@@ -1041,13 +1039,13 @@ func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "jute.yaml")
 	cfg := testConfig()
 	cfg.Agents = nil
-	if err := config.SaveYAML(configPath, cfg); err != nil {
+	if err := SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
 	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
 		cfg,
 		"test",
-		store.SetupStatus{Complete: true},
+		SetupStatus{Complete: true},
 		nil,
 		configPath,
 	)
@@ -1060,7 +1058,7 @@ func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
 	}
-	reloaded, err := config.Load(configPath)
+	reloaded, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
@@ -1099,8 +1097,8 @@ func TestConversationListUsesAgentTaskHistory(t *testing.T) {
 		testConfig(),
 		"test",
 		history,
-		store.SetupStatus{Complete: true},
-		store.DefaultWidgetLayout(),
+		SetupStatus{Complete: true},
+		DefaultWidgetLayout(),
 		nil,
 		"",
 		nil,
@@ -1150,8 +1148,8 @@ func TestConversationDetailUsesGetTaskHistory(t *testing.T) {
 		testConfig(),
 		"test",
 		history,
-		store.SetupStatus{Complete: true},
-		store.DefaultWidgetLayout(),
+		SetupStatus{Complete: true},
+		DefaultWidgetLayout(),
 		nil,
 		"",
 		nil,
@@ -1204,8 +1202,8 @@ func TestConversationCreateWithInitialTextSendsTurnToAgent(t *testing.T) {
 		testConfig(),
 		"test",
 		sender,
-		store.SetupStatus{Complete: true},
-		store.DefaultWidgetLayout(),
+		SetupStatus{Complete: true},
+		DefaultWidgetLayout(),
 		nil,
 		"",
 		nil,
@@ -1285,8 +1283,8 @@ func TestConversationTurnStreamEmitsDeltasAndCompletion(t *testing.T) {
 		cfg,
 		"test",
 		streamer,
-		store.SetupStatus{Complete: true},
-		store.DefaultWidgetLayout(),
+		SetupStatus{Complete: true},
+		DefaultWidgetLayout(),
 		nil,
 		"",
 		nil,
@@ -1336,8 +1334,8 @@ func TestConversationTurnStreamFallsBackForNonStreamingAgent(t *testing.T) {
 		cfg,
 		"test",
 		sender,
-		store.SetupStatus{Complete: true},
-		store.DefaultWidgetLayout(),
+		SetupStatus{Complete: true},
+		DefaultWidgetLayout(),
 		nil,
 		"",
 		nil,
@@ -1378,8 +1376,8 @@ func TestConversationTurnStreamEmitsSafeFailureAfterPartialStream(t *testing.T) 
 		cfg,
 		"test",
 		streamer,
-		store.SetupStatus{Complete: true},
-		store.DefaultWidgetLayout(),
+		SetupStatus{Complete: true},
+		DefaultWidgetLayout(),
 		nil,
 		"",
 		nil,
@@ -1430,7 +1428,7 @@ func testConfig() config.Config {
 
 func openInitializedServerStore(t *testing.T) *store.Store {
 	t.Helper()
-	runtimeStore, err := store.Open(filepath.Join(t.TempDir(), "jute.db"))
+	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -1441,23 +1439,23 @@ func openInitializedServerStore(t *testing.T) *store.Store {
 }
 
 type failingLayoutStore struct {
-	layout store.WidgetLayout
+	layout WidgetLayout
 	err    error
 }
 
-func (s *failingLayoutStore) WidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error) {
+func (s *failingLayoutStore) WidgetLayout(ctx context.Context, profileID string) (WidgetLayout, error) {
 	return s.layout, nil
 }
 
 func (s *failingLayoutStore) SaveWidgetLayout(
 	ctx context.Context,
-	layout store.WidgetLayout,
-) (store.WidgetLayout, error) {
-	return store.WidgetLayout{}, s.err
+	layout WidgetLayout,
+) (WidgetLayout, error) {
+	return WidgetLayout{}, s.err
 }
 
-func (s *failingLayoutStore) ResetWidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error) {
-	return store.WidgetLayout{}, s.err
+func (s *failingLayoutStore) ResetWidgetLayout(ctx context.Context, profileID string) (WidgetLayout, error) {
+	return WidgetLayout{}, s.err
 }
 
 type fakeMessageSender struct {

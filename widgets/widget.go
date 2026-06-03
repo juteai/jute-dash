@@ -2,7 +2,7 @@ package widgets
 
 import (
 	"context"
-	"jute-dash/internal/widgetskills"
+	"jute-dash/apps/hub/pkg/widgetskills"
 )
 
 type WidgetCatalogItem struct {

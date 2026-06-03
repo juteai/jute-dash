@@ -1,4 +1,4 @@
-package config
+package app
 
 import (
 	"os"
@@ -17,9 +17,9 @@ func TestLoadAppliesDefaults(t *testing.T) {
 		"tiles": []
 	}`)
 
-	cfg, err := Load(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	if cfg.Server.ListenAddress != "127.0.0.1:8787" {
 		t.Fatalf("unexpected listen address: %s", cfg.Server.ListenAddress)
@@ -121,9 +121,9 @@ rooms: []
 tiles: []
 `)
 
-	cfg, err := Load(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	if cfg.Server.ListenAddress != "127.0.0.1:9999" {
 		t.Fatalf("unexpected listen address: %s", cfg.Server.ListenAddress)
@@ -172,9 +172,9 @@ rooms: []
 tiles: []
 `)
 
-	cfg, err := Load(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	if cfg.Display.ColorMode != "dark" || cfg.Display.Theme != "dark" {
 		t.Fatalf("legacy display.theme did not map to colorMode: %+v", cfg.Display)
@@ -185,8 +185,8 @@ func TestSupportedThemeIDs(t *testing.T) {
 	for _, themeID := range SupportedThemeIDs() {
 		cfg := Default()
 		cfg.Display.ThemeID = themeID
-		if err := Validate(cfg); err != nil {
-			t.Fatalf("Validate() rejected theme %q: %v", themeID, err)
+		if err := ValidateConfig(cfg); err != nil {
+			t.Fatalf("ValidateConfig() rejected theme %q: %v", themeID, err)
 		}
 	}
 }
@@ -271,9 +271,9 @@ tiles: []
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := writeYAMLConfig(t, tt.body)
-			_, err := Load(path)
+			_, err := LoadConfig(path)
 			if err == nil {
-				t.Fatal("Load() expected display validation error")
+				t.Fatal("LoadConfig() expected display validation error")
 			}
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("expected %q in error, got %v", tt.want, err)
@@ -299,9 +299,9 @@ func TestJSONConfigLoadsVoiceFields(t *testing.T) {
 		"tiles": []
 	}`)
 
-	cfg, err := Load(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" ||
 		cfg.Voice.TTSProviderID != "tts-local" ||
@@ -321,9 +321,9 @@ rooms: []
 tiles: []
 `)
 
-	_, err := Load(path)
+	_, err := LoadConfig(path)
 	if err == nil {
-		t.Fatal("Load() expected invalid voice follow-up window error")
+		t.Fatal("LoadConfig() expected invalid voice follow-up window error")
 	}
 	if !strings.Contains(err.Error(), "voice.followupWindowSeconds") {
 		t.Fatalf("unexpected error: %v", err)
@@ -396,9 +396,9 @@ tiles: []
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := writeYAMLConfig(t, tt.body)
-			_, err := Load(path)
+			_, err := LoadConfig(path)
 			if err == nil {
-				t.Fatal("Load() expected MCP validation error")
+				t.Fatal("LoadConfig() expected MCP validation error")
 			}
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("expected %q in error, got %v", tt.want, err)
@@ -417,9 +417,9 @@ rooms: []
 tiles: []
 `)
 
-	_, err := Load(path)
+	_, err := LoadConfig(path)
 	if err == nil {
-		t.Fatal("Load() expected unknown YAML field error")
+		t.Fatal("LoadConfig() expected unknown YAML field error")
 	}
 	if !strings.Contains(err.Error(), "surprise") {
 		t.Fatalf("unexpected error: %v", err)
@@ -453,9 +453,9 @@ func TestLoadRejectsDuplicateAgentIDs(t *testing.T) {
 		"tiles": []
 	}`)
 
-	_, err := Load(path)
+	_, err := LoadConfig(path)
 	if err == nil {
-		t.Fatal("Load() expected duplicate ID error")
+		t.Fatal("LoadConfig() expected duplicate ID error")
 	}
 	if !strings.Contains(err.Error(), "duplicates another agent") {
 		t.Fatalf("unexpected error: %v", err)
@@ -483,9 +483,9 @@ rooms: []
 tiles: []
 `)
 
-	_, err := Load(path)
+	_, err := LoadConfig(path)
 	if err == nil {
-		t.Fatal("Load() expected duplicate ID error")
+		t.Fatal("LoadConfig() expected duplicate ID error")
 	}
 	if !strings.Contains(err.Error(), "duplicates another agent") {
 		t.Fatalf("unexpected error: %v", err)
@@ -511,9 +511,9 @@ rooms: []
 tiles: []
 `)
 
-	_, err := Load(path)
+	_, err := LoadConfig(path)
 	if err == nil {
-		t.Fatal("Load() expected invalid MCP scope error")
+		t.Fatal("LoadConfig() expected invalid MCP scope error")
 	}
 	if !strings.Contains(err.Error(), "mcpScopes") || !strings.Contains(err.Error(), "not supported") ||
 		!strings.Contains(err.Error(), "duplicates another MCP scope") {
@@ -538,9 +538,9 @@ func TestAgentMCPScopesDefaultToReadOnly(t *testing.T) {
 		"tiles": []
 	}`)
 
-	cfg, err := Load(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	if got, want := strings.Join(cfg.Agents[0].MCPScopes, ","), strings.Join(DefaultMCPReadScopes(), ","); got != want {
 		t.Fatalf("unexpected default scopes: got %s want %s", got, want)
@@ -575,17 +575,17 @@ func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 }
 
 func TestDevMockA2AConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "examples", "harnesses", "mock-a2a", "config.yaml"))
+	cfg, err := LoadConfig(filepath.Join("..", "..", "examples", "harnesses", "mock-a2a", "config.yaml"))
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	assertSingleDevAgent(t, cfg, "mock-a2a-agent")
 }
 
 func TestDevMockA2AMCPConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "examples", "harnesses", "mock-a2a-mcp", "config.yaml"))
+	cfg, err := LoadConfig(filepath.Join("..", "..", "examples", "harnesses", "mock-a2a-mcp", "config.yaml"))
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	if !cfg.MCP.Enabled || cfg.MCP.Auth.Mode != "none" || cfg.MCP.ListenAddress != "127.0.0.1:8790" {
 		t.Fatalf("unexpected dev MCP config: %+v", cfg.MCP)
@@ -594,17 +594,17 @@ func TestDevMockA2AMCPConfigLoads(t *testing.T) {
 }
 
 func TestDevKronkA2AConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "examples", "harnesses", "kronk-a2a", "config.yaml"))
+	cfg, err := LoadConfig(filepath.Join("..", "..", "examples", "harnesses", "kronk-a2a", "config.yaml"))
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	assertSingleDevAgent(t, cfg, "kronk-local")
 }
 
 func TestDevKronkA2AMCPConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "examples", "harnesses", "kronk-a2a", "config.mcp.yaml"))
+	cfg, err := LoadConfig(filepath.Join("..", "..", "examples", "harnesses", "kronk-a2a", "config.mcp.yaml"))
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	if !cfg.MCP.Enabled || cfg.MCP.Auth.Mode != "none" || cfg.MCP.ListenAddress != "127.0.0.1:8790" {
 		t.Fatalf("unexpected dev MCP config: %+v", cfg.MCP)
@@ -627,9 +627,9 @@ func assertSingleDevAgent(t *testing.T, cfg Config, wantID string) {
 }
 
 func TestExampleYAMLConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "examples", "config", "jute.example.yaml"))
+	cfg, err := LoadConfig(filepath.Join("..", "..", "examples", "config", "jute.example.yaml"))
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	if cfg.Home.Name != "Jute House" || len(cfg.Agents) != 2 {
 		t.Fatalf("unexpected example YAML config: %+v", cfg)
@@ -655,9 +655,9 @@ func TestLoadRejectsInvalidWeatherCoordinates(t *testing.T) {
 		"tiles": []
 	}`)
 
-	_, err := Load(path)
+	_, err := LoadConfig(path)
 	if err == nil {
-		t.Fatal("Load() expected invalid latitude error")
+		t.Fatal("LoadConfig() expected invalid latitude error")
 	}
 	if !strings.Contains(err.Error(), "weather.latitude") {
 		t.Fatalf("unexpected error: %v", err)
@@ -683,9 +683,9 @@ func TestLoadAllowsDisabledWeatherWithoutProviderDetails(t *testing.T) {
 		"tiles": []
 	}`)
 
-	cfg, err := Load(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	if cfg.Weather.Enabled {
 		t.Fatal("expected weather to remain disabled")

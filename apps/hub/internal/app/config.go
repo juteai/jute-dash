@@ -1,4 +1,4 @@
-package config
+package app
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strings"
 
-	"jute-dash/internal/a2a"
+	"jute-dash/apps/hub/internal/pkg/a2a"
 
 	"go.yaml.in/yaml/v4"
 )
@@ -235,7 +235,7 @@ func IsSupportedThemeID(id string) bool {
 	return slices.Contains(SupportedThemeIDs(), id)
 }
 
-func Default() Config {
+func DefaultConfig() Config {
 	return Config{
 		Home: HomeConfig{
 			Name:     "Jute Home",
@@ -251,7 +251,7 @@ func Default() Config {
 			ListenAddress: "127.0.0.1:8790",
 			Path:          "/mcp",
 			AllowLAN:      false,
-			Auth: MCPAuthConfig{ //nolint:gosec // EnvToken names an environment variable, not a credential value.
+			Auth: MCPAuthConfig{ //nolint:gosec
 				Mode:     "local-token",
 				EnvToken: "JUTE_MCP_TOKEN",
 			},
@@ -292,8 +292,8 @@ func Default() Config {
 	}
 }
 
-func Load(path string) (Config, error) {
-	cfg := Default()
+func LoadConfig(path string) (Config, error) {
+	cfg := DefaultConfig()
 	if strings.TrimSpace(path) == "" {
 		return cfg, nil
 	}
@@ -304,18 +304,18 @@ func Load(path string) (Config, error) {
 	}
 	defer file.Close()
 
-	if err := decode(file, path, &cfg); err != nil {
+	if err := decodeConfig(file, path, &cfg); err != nil {
 		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
 
-	if err := EnsureValid(&cfg); err != nil {
+	if err := EnsureValidConfig(&cfg); err != nil {
 		return Config{}, err
 	}
 
 	return cfg, nil
 }
 
-func decode(file *os.File, path string, cfg *Config) error {
+func decodeConfig(file *os.File, path string, cfg *Config) error {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".yaml", ".yml":
 		decoder := yaml.NewDecoder(file)
@@ -330,7 +330,7 @@ func decode(file *os.File, path string, cfg *Config) error {
 	}
 }
 
-func Validate(cfg Config) error {
+func ValidateConfig(cfg Config) error {
 	var problems []string
 
 	if strings.TrimSpace(cfg.Home.Name) == "" {
@@ -487,15 +487,13 @@ func ApplyDefaults(cfg *Config) {
 	applyDefaults(cfg)
 }
 
-// EnsureValid applies defaults then validates. Use this instead of calling
-// ApplyDefaults and Validate separately.
-func EnsureValid(cfg *Config) error {
+func EnsureValidConfig(cfg *Config) error {
 	ApplyDefaults(cfg)
-	return Validate(*cfg)
+	return ValidateConfig(*cfg)
 }
 
 func applyDefaults(cfg *Config) {
-	defaults := Default()
+	defaults := DefaultConfig()
 	if strings.TrimSpace(cfg.Home.Name) == "" {
 		cfg.Home.Name = defaults.Home.Name
 	}
@@ -754,3 +752,46 @@ func validateUniqueIDs[T any](name string, values []T, getID func(T) string, pro
 		seen[id] = struct{}{}
 	}
 }
+
+func SaveYAML(path string, cfg Config) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("config path is required")
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext != ".yaml" && ext != ".yml" {
+		return errors.New("YAML config file is required")
+	}
+	ApplyDefaults(&cfg)
+	if err := ValidateConfig(cfg); err != nil {
+		return err
+	}
+	body, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("encode YAML config: %w", err)
+	}
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".jute-config-*.yaml")
+	if err != nil {
+		return fmt.Errorf("create config temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
+	if _, err := tmp.Write(body); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write config temp file: %w", err)
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("chmod config temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close config temp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("replace config file: %w", err)
+	}
+	return nil
+}
+

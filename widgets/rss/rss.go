@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"jute-dash/internal/widgetskills"
+	"jute-dash/apps/hub/pkg/widgetskills"
 	"jute-dash/widgets"
 )
 

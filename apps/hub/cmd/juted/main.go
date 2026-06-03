@@ -10,12 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"jute-dash/internal/config"
-	"jute-dash/internal/displayactions"
-	"jute-dash/internal/mcpbridge"
-	"jute-dash/internal/server"
-	"jute-dash/internal/store"
-	"jute-dash/internal/widgetskills"
+	"jute-dash/apps/hub/internal/app"
+	"jute-dash/apps/hub/internal/pkg/displayactions"
+	"jute-dash/apps/hub/pkg/widgetskills"
 	"jute-dash/widgets"
 )
 
@@ -35,11 +32,11 @@ func run() error {
 
 	ctx := context.Background()
 
-	dataDir, err := store.ResolveDataDir(*dataDirOverride)
+	dataDir, err := app.ResolveDataDir(*dataDirOverride)
 	if err != nil {
 		return fmt.Errorf("resolve data directory: %w", err)
 	}
-	runtimeStore, err := store.Open(store.DatabasePath(dataDir))
+	runtimeStore, err := app.Open(app.DatabasePath(dataDir))
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
@@ -54,10 +51,10 @@ func run() error {
 		return fmt.Errorf("inspect store: %w", err)
 	}
 
-	bootstrap := config.Default()
+	bootstrap := app.DefaultConfig()
 	configProvided := strings.TrimSpace(*configPath) != ""
 	if configProvided {
-		bootstrap, err = config.Load(*configPath)
+		bootstrap, err = app.LoadConfig(*configPath)
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
@@ -80,7 +77,7 @@ func run() error {
 	}
 
 	displayActions := displayactions.NewDispatcher()
-	handler := server.NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(
+	handler := app.NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(
 		cfg,
 		version,
 		result.Setup,
@@ -98,7 +95,7 @@ func run() error {
 			store:      runtimeStore,
 		}
 		mcpMux := http.NewServeMux()
-		mcpMux.Handle(cfg.MCP.Path, mcpbridge.NewHandler(cfg.MCP, version, mcpProvider, displayActions))
+		mcpMux.Handle(cfg.MCP.Path, app.NewHandler(cfg.MCP, version, mcpProvider, displayActions))
 		mcpServer = &http.Server{
 			Addr:              cfg.MCP.ListenAddress,
 			Handler:           mcpMux,
@@ -138,9 +135,9 @@ func run() error {
 }
 
 type mcpSnapshotProvider struct {
-	cfg        config.Config
+	cfg        app.Config
 	configPath string
-	store      *store.Store
+	store      *app.Store
 }
 
 func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapshot, error) {
@@ -159,18 +156,71 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 			ProtocolBinding: agent.ProtocolBinding,
 			Enabled:         agent.Enabled,
 			Capabilities:    append([]string(nil), agent.Capabilities...),
+			MCPScopes:       append([]string(nil), agent.MCPScopes...),
 			AuthConfigured:  agent.Auth != nil,
 		})
 	}
+
+	// Map app.Config to widgetskills.Config
+	wsCfg := widgetskills.Config{}
+	wsCfg.Home.Locale = cfg.Home.Locale
+	wsCfg.Home.Timezone = cfg.Home.Timezone
+	wsCfg.Voice.PreferredAgentID = cfg.Voice.PreferredAgentID
+
+	wsRooms := make([]widgetskills.RoomConfig, len(cfg.Rooms))
+	for i, r := range cfg.Rooms {
+		wsRooms[i] = widgetskills.RoomConfig{
+			ID:      r.ID,
+			Name:    r.Name,
+			Summary: r.Summary,
+			Status:  r.Status,
+		}
+	}
+	wsCfg.Rooms = wsRooms
+
+	wsTiles := make([]widgetskills.TileConfig, len(cfg.Tiles))
+	for i, t := range cfg.Tiles {
+		wsTiles[i] = widgetskills.TileConfig{
+			ID:     t.ID,
+			Kind:   t.Kind,
+			Label:  t.Label,
+			Value:  t.Value,
+			Detail: t.Detail,
+		}
+	}
+	wsCfg.Tiles = wsTiles
+
+	// Map app.WidgetLayout to widgetskills.WidgetLayout
+	wsWidgets := make([]widgetskills.WidgetInstance, len(layout.Widgets))
+	for i, w := range layout.Widgets {
+		wsWidgets[i] = widgetskills.WidgetInstance{
+			ID:       w.ID,
+			Kind:     w.Kind,
+			Title:    w.Title,
+			X:        w.X,
+			Y:        w.Y,
+			W:        w.W,
+			H:        w.H,
+			Visible:  w.Visible,
+			Size:     w.Size,
+			Settings: w.Settings,
+			Data:     w.Data,
+		}
+	}
+	wsLayout := widgetskills.WidgetLayout{
+		ProfileID: layout.ProfileID,
+		Widgets:   wsWidgets,
+	}
+
 	return widgetskills.Snapshot{
-		Config:      cfg,
-		Layout:      layout,
+		Config:      wsCfg,
+		Layout:      wsLayout,
 		Agents:      agents,
 		GeneratedAt: time.Now().UTC(),
 	}, nil
 }
 
-func hydrateWidgetLayout(ctx context.Context, layout store.WidgetLayout) store.WidgetLayout {
+func hydrateWidgetLayout(ctx context.Context, layout app.WidgetLayout) app.WidgetLayout {
 	for i := range layout.Widgets {
 		widget := &layout.Widgets[i]
 		if !widget.Visible {
@@ -191,11 +241,11 @@ func hydrateWidgetLayout(ctx context.Context, layout store.WidgetLayout) store.W
 	return layout
 }
 
-func (p *mcpSnapshotProvider) currentConfig() config.Config {
+func (p *mcpSnapshotProvider) currentConfig() app.Config {
 	if strings.TrimSpace(p.configPath) == "" {
 		return p.cfg
 	}
-	cfg, err := config.Load(p.configPath)
+	cfg, err := app.LoadConfig(p.configPath)
 	if err != nil {
 		return p.cfg
 	}

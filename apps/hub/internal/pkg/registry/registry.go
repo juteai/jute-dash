@@ -1,9 +1,21 @@
 package registry
 
 import (
-	"jute-dash/internal/a2a"
-	"jute-dash/internal/config"
+	"jute-dash/apps/hub/internal/pkg/a2a"
 )
+
+type AgentConfig struct {
+	ID              string
+	Name            string
+	Description     string
+	CardURL         string
+	EndpointURL     string
+	ProtocolBinding string
+	Enabled         bool
+	Capabilities    []string
+	MCPScopes       []string
+	AuthConfigured  bool
+}
 
 type Agent struct {
 	ID                        string           `json:"id"`
@@ -33,7 +45,7 @@ type Registry struct {
 	byID   map[string]Agent
 }
 
-func New(configured []config.AgentConfig) Registry {
+func New(configured []AgentConfig) Registry {
 	agents := make([]Agent, 0, len(configured))
 	byID := make(map[string]Agent, len(configured))
 
@@ -48,8 +60,8 @@ func New(configured []config.AgentConfig) Registry {
 			Enabled:         item.Enabled,
 			Capabilities:    append([]string(nil), item.Capabilities...),
 			MCPScopes:       append([]string(nil), item.MCPScopes...),
-			AuthConfigured:  item.Auth != nil,
-			AuthAvailable:   item.Auth == nil,
+			AuthConfigured:  item.AuthConfigured,
+			AuthAvailable:   !item.AuthConfigured,
 		}
 		agents = append(agents, agent)
 		byID[agent.ID] = agent

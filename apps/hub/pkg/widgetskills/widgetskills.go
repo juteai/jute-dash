@@ -7,9 +7,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"jute-dash/internal/config"
-	"jute-dash/internal/store"
 )
 
 const (
@@ -38,6 +35,52 @@ func Register(def Definition, contextFn ContextFunc) {
 	}
 }
 
+type RoomConfig struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Summary string `json:"summary"`
+	Status  string `json:"status"`
+}
+
+type TileConfig struct {
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Label  string `json:"label"`
+	Value  string `json:"value"`
+	Detail string `json:"detail"`
+}
+
+type Config struct {
+	Home struct {
+		Locale   string `json:"locale"`
+		Timezone string `json:"timezone"`
+	} `json:"home"`
+	Voice struct {
+		PreferredAgentID string `json:"preferredAgentId"`
+	} `json:"voice"`
+	Rooms []RoomConfig `json:"rooms"`
+	Tiles []TileConfig `json:"tiles"`
+}
+
+type WidgetInstance struct {
+	ID       string         `json:"id"`
+	Kind     string         `json:"kind"`
+	Title    string         `json:"title"`
+	X        int            `json:"x"`
+	Y        int            `json:"y"`
+	W        int            `json:"w"`
+	H        int            `json:"h"`
+	Visible  bool           `json:"visible"`
+	Size     string         `json:"size"`
+	Settings map[string]any `json:"settings"`
+	Data     any            `json:"data,omitempty"`
+}
+
+type WidgetLayout struct {
+	ProfileID string           `json:"profileId"`
+	Widgets   []WidgetInstance `json:"widgets"`
+}
+
 type Agent struct {
 	ID              string   `json:"id"`
 	Name            string   `json:"name"`
@@ -45,12 +88,13 @@ type Agent struct {
 	ProtocolBinding string   `json:"protocolBinding"`
 	Enabled         bool     `json:"enabled"`
 	Capabilities    []string `json:"capabilities,omitempty"`
+	MCPScopes       []string `json:"mcpScopes,omitempty"`
 	AuthConfigured  bool     `json:"authConfigured"`
 }
 
 type Snapshot struct {
-	Config      config.Config
-	Layout      store.WidgetLayout
+	Config      Config
+	Layout      WidgetLayout
 	Agents      []Agent
 	GeneratedAt time.Time
 }
@@ -218,8 +262,8 @@ func DashboardSnapshot(snapshot Snapshot) DashboardContext {
 	}
 	for _, skill := range skills {
 		results = append(results, SkillResult{
-			SkillSummary: summarize(skill),
-			Context:      contextForSkill(snapshot, skill),
+			SkillSummary: Summarize(skill),
+			Context:      ContextForSkill(snapshot, skill),
 		})
 	}
 	return DashboardContext{
@@ -246,8 +290,8 @@ func SkillListSnapshot(snapshot Snapshot) SkillList {
 	results := make([]SkillResult, 0, len(skills))
 	for _, skill := range skills {
 		results = append(results, SkillResult{
-			SkillSummary: summarize(skill),
-			Context:      contextForSkill(snapshot, skill),
+			SkillSummary: Summarize(skill),
+			Context:      ContextForSkill(snapshot, skill),
 		})
 	}
 	return SkillList{
@@ -279,7 +323,7 @@ func VisibleWidgetsSnapshot(snapshot Snapshot) VisibleWidgets {
 			Visible: widget.Visible,
 		}
 		if skill, ok := skillsByWidget[widget.ID]; ok {
-			skillSummary := summarize(skill)
+			skillSummary := Summarize(skill)
 			summary.Skill = &skillSummary
 			summary.SkillURI = "jute://widgets/" + widget.ID + "/skill"
 			summary.ContextURI = "jute://widgets/" + widget.ID + "/context"
@@ -295,7 +339,7 @@ func VisibleWidgetsSnapshot(snapshot Snapshot) VisibleWidgets {
 }
 
 func SkillDefinition(snapshot Snapshot, skillID string) (SkillDefinitionResource, error) {
-	skill, err := findSkill(snapshot, skillID, "")
+	skill, err := FindSkill(snapshot, skillID, "")
 	if err != nil {
 		return SkillDefinitionResource{}, err
 	}
@@ -310,15 +354,15 @@ func SkillDefinition(snapshot Snapshot, skillID string) (SkillDefinitionResource
 }
 
 func SkillContext(snapshot Snapshot, skillID string, widgetID string) (SkillContextResource, error) {
-	skill, err := findSkill(snapshot, skillID, widgetID)
+	skill, err := FindSkill(snapshot, skillID, widgetID)
 	if err != nil {
 		return SkillContextResource{}, err
 	}
 	return SkillContextResource{
 		Schema:      SchemaSkillContext,
 		GeneratedAt: generatedAt(snapshot),
-		Skill:       summarize(skill),
-		Context:     contextForSkill(snapshot, skill),
+		Skill:       Summarize(skill),
+		Context:     ContextForSkill(snapshot, skill),
 	}, nil
 }
 
@@ -332,7 +376,7 @@ func WidgetSkill(snapshot Snapshot, widgetID string) (SkillDefinitionResource, e
 }
 
 func WidgetContext(snapshot Snapshot, widgetID string) (SkillContextResource, error) {
-	skill, err := findSkill(snapshot, "", widgetID)
+	skill, err := FindSkill(snapshot, "", widgetID)
 	if err != nil {
 		return SkillContextResource{}, err
 	}
@@ -346,13 +390,13 @@ func InvokeAction(
 	actionID string,
 	arguments map[string]any,
 ) (map[string]any, error) {
-	skill, err := findSkill(snapshot, skillID, widgetID)
+	skill, err := FindSkill(snapshot, skillID, widgetID)
 	if err != nil {
 		return nil, err
 	}
 	for _, action := range skill.Actions {
 		if action.ID == actionID {
-			context := contextForSkill(snapshot, skill)
+			context := ContextForSkill(snapshot, skill)
 			return map[string]any{
 				"status":           "completed",
 				"skillId":          skill.SkillID,
@@ -372,7 +416,7 @@ func PromptText(snapshot Snapshot, skillID string, promptID string) (string, err
 	if skillID == "" {
 		return homeAssistantGuidance(), nil
 	}
-	skill, err := findSkill(snapshot, skillID, "")
+	skill, err := FindSkill(snapshot, skillID, "")
 	if err != nil {
 		return "", err
 	}
@@ -393,7 +437,7 @@ func HomeAssistantGuidance() string {
 	return homeAssistantGuidance()
 }
 
-func summarize(skill Skill) SkillSummary {
+func Summarize(skill Skill) SkillSummary {
 	actionIDs := make([]string, 0, len(skill.Actions))
 	for _, action := range skill.Actions {
 		actionIDs = append(actionIDs, action.ID)
@@ -413,7 +457,7 @@ func summarize(skill Skill) SkillSummary {
 	}
 }
 
-func findSkill(snapshot Snapshot, skillID string, widgetID string) (Skill, error) {
+func FindSkill(snapshot Snapshot, skillID string, widgetID string) (Skill, error) {
 	for _, skill := range Available(snapshot) {
 		if skillID != "" && skill.SkillID != skillID {
 			continue
@@ -426,7 +470,7 @@ func findSkill(snapshot Snapshot, skillID string, widgetID string) (Skill, error
 	return Skill{}, ErrNotFound
 }
 
-func contextForSkill(snapshot Snapshot, skill Skill) map[string]any {
+func ContextForSkill(snapshot Snapshot, skill Skill) map[string]any {
 	registryMu.RLock()
 	fn, exists := contextFuncs[skill.SkillID]
 	registryMu.RUnlock()
@@ -442,7 +486,7 @@ func defaultContextExtractor(snapshot Snapshot, skill Skill) map[string]any {
 	ctxMap := make(map[string]any)
 
 	// Find the widget instance in the layout
-	var targetWidget *store.WidgetInstance
+	var targetWidget *WidgetInstance
 	for i := range snapshot.Layout.Widgets {
 		if snapshot.Layout.Widgets[i].ID == skill.WidgetInstanceID {
 			targetWidget = &snapshot.Layout.Widgets[i]
