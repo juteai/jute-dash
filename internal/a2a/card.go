@@ -86,7 +86,7 @@ func (f *AgentCardFetcher) Fetch(ctx context.Context, cardURL, bearerToken strin
 	}, nil
 }
 
-func SelectInterface(card AgentCard, fallbackURL, fallbackBinding string) (SelectedInterface, error) {
+func SelectInterface(card AgentCard) (SelectedInterface, error) {
 	interfaces := append([]AgentInterface(nil), card.SupportedInterfaces...)
 	if len(interfaces) == 0 {
 		return SelectedInterface{}, ErrNoSupportedInterface

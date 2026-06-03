@@ -1,8 +1,16 @@
 <script lang="ts">
-  export let state: 'idle' | 'listening' | 'thinking' | 'speaking' | 'followup' = 'idle';
+  export let state:
+    | 'idle'
+    | 'listening'
+    | 'thinking'
+    | 'speaking'
+    | 'followup' = 'idle';
 </script>
 
-<div class="orb-container {state}" aria-label="Voice conversation orb - {state} mode">
+<div
+  class="orb-container {state}"
+  aria-label="Voice conversation orb - {state} mode"
+>
   {#if state !== 'idle'}
     <div class="orb-glow"></div>
   {/if}
@@ -61,8 +69,14 @@
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, var(--core-color-1, #ffffff), var(--core-color-2, #888888));
-    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+    background: radial-gradient(
+      circle at 30% 30%,
+      var(--core-color-1, #ffffff),
+      var(--core-color-2, #888888)
+    );
+    box-shadow:
+      inset 0 2px 4px rgba(255, 255, 255, 0.4),
+      0 4px 12px rgba(0, 0, 0, 0.3);
     transition: all 0.5s ease;
     z-index: 5;
   }
@@ -82,48 +96,73 @@
     transform: scale(1.1);
   }
   .orb-container.listening .orb-glow {
-    background: radial-gradient(circle, rgba(6, 182, 212, 0.4) 0%, transparent 70%);
+    background: radial-gradient(
+      circle,
+      rgba(6, 182, 212, 0.4) 0%,
+      transparent 70%
+    );
   }
   .orb-container.listening .orb-core {
     --core-color-1: #e0f7fa;
     --core-color-2: #00acc1;
-    box-shadow: 0 0 20px rgba(6, 182, 212, 0.8), inset 0 2px 4px rgba(255, 255, 255, 0.6);
+    box-shadow:
+      0 0 20px rgba(6, 182, 212, 0.8),
+      inset 0 2px 4px rgba(255, 255, 255, 0.6);
   }
 
   .orb-container.followup {
     transform: scale(1.1);
   }
   .orb-container.followup .orb-glow {
-    background: radial-gradient(circle, rgba(234, 179, 8, 0.4) 0%, transparent 70%);
+    background: radial-gradient(
+      circle,
+      rgba(234, 179, 8, 0.4) 0%,
+      transparent 70%
+    );
   }
   .orb-container.followup .orb-core {
     --core-color-1: #fef9c3;
     --core-color-2: #ca8a04;
-    box-shadow: 0 0 20px rgba(234, 179, 8, 0.8), inset 0 2px 4px rgba(255, 255, 255, 0.6);
+    box-shadow:
+      0 0 20px rgba(234, 179, 8, 0.8),
+      inset 0 2px 4px rgba(255, 255, 255, 0.6);
   }
 
   .orb-container.thinking {
     transform: scale(1.15);
   }
   .orb-container.thinking .orb-glow {
-    background: radial-gradient(circle, rgba(168, 85, 247, 0.4) 0%, rgba(6, 182, 212, 0.2) 50%, transparent 70%);
+    background: radial-gradient(
+      circle,
+      rgba(168, 85, 247, 0.4) 0%,
+      rgba(6, 182, 212, 0.2) 50%,
+      transparent 70%
+    );
   }
   .orb-container.thinking .orb-core {
     --core-color-1: #f3e8ff;
     --core-color-2: #7e22ce;
-    box-shadow: 0 0 25px rgba(168, 85, 247, 0.8), inset 0 2px 4px rgba(255, 255, 255, 0.6);
+    box-shadow:
+      0 0 25px rgba(168, 85, 247, 0.8),
+      inset 0 2px 4px rgba(255, 255, 255, 0.6);
   }
 
   .orb-container.speaking {
     transform: scale(1.1);
   }
   .orb-container.speaking .orb-glow {
-    background: radial-gradient(circle, rgba(16, 185, 129, 0.4) 0%, transparent 70%);
+    background: radial-gradient(
+      circle,
+      rgba(16, 185, 129, 0.4) 0%,
+      transparent 70%
+    );
   }
   .orb-container.speaking .orb-core {
     --core-color-1: #d1fae5;
     --core-color-2: #059669;
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.8), inset 0 2px 4px rgba(255, 255, 255, 0.6);
+    box-shadow:
+      0 0 20px rgba(16, 185, 129, 0.8),
+      inset 0 2px 4px rgba(255, 255, 255, 0.6);
   }
 
   .pulse-ring {
@@ -177,7 +216,11 @@
     position: absolute;
     border-radius: 50%;
     border: 1px solid rgba(16, 185, 129, 0.4);
-    background: radial-gradient(circle, rgba(16, 185, 129, 0.05) 0%, transparent 80%);
+    background: radial-gradient(
+      circle,
+      rgba(16, 185, 129, 0.05) 0%,
+      transparent 80%
+    );
     z-index: 2;
   }
   .wave-1 {

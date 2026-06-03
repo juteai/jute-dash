@@ -42,7 +42,8 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.Display.ColorMode != "system" || cfg.Display.Theme != "system" || cfg.Display.ThemeID != "jute-mono" {
 		t.Fatalf("unexpected display theme defaults: %+v", cfg.Display)
 	}
-	if cfg.Display.Background.Kind != "theme" || cfg.Display.Background.Fit != "cover" || cfg.Display.Background.Overlay != "none" {
+	if cfg.Display.Background.Kind != "theme" || cfg.Display.Background.Fit != "cover" ||
+		cfg.Display.Background.Overlay != "none" {
 		t.Fatalf("unexpected display background defaults: %+v", cfg.Display.Background)
 	}
 	if cfg.Display.WidgetChrome.Default != "solid" {
@@ -133,10 +134,13 @@ tiles: []
 	if cfg.Display.AccentColor != "neutral" || cfg.Weather.LocationName != "York" {
 		t.Fatalf("kebab-case YAML fields were not decoded: %+v", cfg)
 	}
-	if cfg.Display.ColorMode != "dark" || cfg.Display.Theme != "dark" || cfg.Display.ThemeID != "jute-mono" || cfg.Display.Density != "compact" || cfg.Display.Motion != "reduced" {
+	if cfg.Display.ColorMode != "dark" || cfg.Display.Theme != "dark" || cfg.Display.ThemeID != "jute-mono" ||
+		cfg.Display.Density != "compact" ||
+		cfg.Display.Motion != "reduced" {
 		t.Fatalf("unexpected YAML display config: %+v", cfg.Display)
 	}
-	if cfg.Display.Background.Kind != "asset" || cfg.Display.Background.Value != "/backgrounds/kitchen.jpg" || cfg.Display.Background.Overlay != "smoked" {
+	if cfg.Display.Background.Kind != "asset" || cfg.Display.Background.Value != "/backgrounds/kitchen.jpg" ||
+		cfg.Display.Background.Overlay != "smoked" {
 		t.Fatalf("unexpected YAML display background: %+v", cfg.Display.Background)
 	}
 	if cfg.Display.WidgetChrome.Default != "frosted" {
@@ -145,10 +149,14 @@ tiles: []
 	if len(cfg.Agents) != 1 || cfg.Agents[0].CardURL == "" || cfg.Agents[0].Auth.EnvToken != "HOUSE_AGENT_TOKEN" {
 		t.Fatalf("unexpected YAML agent: %+v", cfg.Agents)
 	}
-	if got := strings.Join(cfg.Agents[0].MCPScopes, ","); got != "dashboard:read,widgets:read,skills:read,skills:context_read,skills:prompt_read" {
+	if got := strings.Join(
+		cfg.Agents[0].MCPScopes,
+		",",
+	); got != "dashboard:read,widgets:read,skills:read,skills:context_read,skills:prompt_read" {
 		t.Fatalf("unexpected YAML MCP scopes: %s", got)
 	}
-	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" || cfg.Voice.FollowupWindowSeconds != 9 {
+	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" ||
+		cfg.Voice.FollowupWindowSeconds != 9 {
 		t.Fatalf("unexpected YAML voice config: %+v", cfg.Voice)
 	}
 }
@@ -295,7 +303,9 @@ func TestJSONConfigLoadsVoiceFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" || cfg.Voice.TTSProviderID != "tts-local" || cfg.Voice.FollowupWindowSeconds != 7 {
+	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" ||
+		cfg.Voice.TTSProviderID != "tts-local" ||
+		cfg.Voice.FollowupWindowSeconds != 7 {
 		t.Fatalf("unexpected JSON voice config: %+v", cfg.Voice)
 	}
 }
@@ -505,7 +515,8 @@ tiles: []
 	if err == nil {
 		t.Fatal("Load() expected invalid MCP scope error")
 	}
-	if !strings.Contains(err.Error(), "mcpScopes") || !strings.Contains(err.Error(), "not supported") || !strings.Contains(err.Error(), "duplicates another MCP scope") {
+	if !strings.Contains(err.Error(), "mcpScopes") || !strings.Contains(err.Error(), "not supported") ||
+		!strings.Contains(err.Error(), "duplicates another MCP scope") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

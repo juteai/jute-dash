@@ -1,6 +1,6 @@
 module jute-dash
 
-go 1.22
+go 1.25
 
 require modernc.org/sqlite v1.34.5
 

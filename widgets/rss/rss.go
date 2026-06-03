@@ -12,10 +12,10 @@ import (
 )
 
 type RSSWidget struct {
-	client     *http.Client
-	cacheMu    sync.Mutex
-	cache      map[string]rssCacheEntry
-	cacheTTL   time.Duration
+	client   *http.Client
+	cacheMu  sync.Mutex
+	cache    map[string]rssCacheEntry
+	cacheTTL time.Duration
 }
 
 type rssCacheEntry struct {
@@ -136,7 +136,9 @@ func (w *RSSWidget) FetchData(ctx context.Context, raw map[string]any) (any, err
 		w.cacheMu.Lock()
 		cached, exists := w.cache[feedURL]
 		if exists && time.Since(cached.fetchedAt) < w.cacheTTL {
-			results = append(results, cached.data.(RSSFeedResult))
+			if result, ok := cached.data.(RSSFeedResult); ok {
+				results = append(results, result)
+			}
 			w.cacheMu.Unlock()
 			continue
 		}
@@ -154,9 +156,9 @@ func (w *RSSWidget) FetchData(ctx context.Context, raw map[string]any) (any, err
 
 		var payload rssXML
 		decodeErr := xml.NewDecoder(resp.Body).Decode(&payload)
-		resp.Body.Close()
+		closeErr := resp.Body.Close()
 
-		if decodeErr != nil {
+		if decodeErr != nil || closeErr != nil {
 			continue
 		}
 

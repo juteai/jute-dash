@@ -31,7 +31,7 @@ func (w *ChatHistoryWidget) CatalogInfo() widgets.WidgetCatalogItem {
 	}
 }
 
-func (w *ChatHistoryWidget) FetchData(ctx context.Context, settings map[string]any) (any, error) {
+func (w *ChatHistoryWidget) FetchData(_ context.Context, _ map[string]any) (any, error) {
 	return map[string]any{}, nil
 }
 
@@ -53,13 +53,33 @@ func chatHistorySkill() *widgetskills.Definition {
 		VisibilityPolicy:    "visible_or_focused",
 		ContextFields: []widgetskills.Field{
 			{Name: "agentCount", Type: "integer", Description: "Number of configured agents.", Sensitivity: "public"},
-			{Name: "enabledAgentCount", Type: "integer", Description: "Number of enabled agents.", Sensitivity: "public"},
-			{Name: "preferredAgentId", Type: "string", Description: "Configured preferred agent ID when present.", Nullable: true, Sensitivity: "public"},
-			{Name: "historySource", Type: "string", Description: "Current conversation history source.", Sensitivity: "public"},
+			{
+				Name:        "enabledAgentCount",
+				Type:        "integer",
+				Description: "Number of enabled agents.",
+				Sensitivity: "public",
+			},
+			{
+				Name:        "preferredAgentId",
+				Type:        "string",
+				Description: "Configured preferred agent ID when present.",
+				Nullable:    true,
+				Sensitivity: "public",
+			},
+			{
+				Name:        "historySource",
+				Type:        "string",
+				Description: "Current conversation history source.",
+				Sensitivity: "public",
+			},
 			{Name: "agents", Type: "array", Description: "Safe summaries of configured agents.", Sensitivity: "public"},
 		},
 		Actions: []widgetskills.Action{
-			widgetskills.ReadAction("read", "Read chat status context", "Return public agent and chat history context."),
+			widgetskills.ReadAction(
+				"read",
+				"Read chat status context",
+				"Return public agent and chat history context.",
+			),
 		},
 		Prompts: []widgetskills.Prompt{{
 			ID:      "conversation_status",
@@ -70,7 +90,7 @@ func chatHistorySkill() *widgetskills.Definition {
 	}
 }
 
-func chatHistoryContext(snapshot widgetskills.Snapshot, instanceID string) map[string]any {
+func chatHistoryContext(snapshot widgetskills.Snapshot, _ string) map[string]any {
 	agents := make([]map[string]any, 0, len(snapshot.Agents))
 	enabled := 0
 	for _, agent := range snapshot.Agents {

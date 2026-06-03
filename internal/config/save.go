@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,11 +12,11 @@ import (
 
 func SaveYAML(path string, cfg Config) error {
 	if strings.TrimSpace(path) == "" {
-		return fmt.Errorf("config path is required")
+		return errors.New("config path is required")
 	}
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext != ".yaml" && ext != ".yml" {
-		return fmt.Errorf("YAML config file is required")
+		return errors.New("YAML config file is required")
 	}
 	ApplyDefaults(&cfg)
 	if err := Validate(cfg); err != nil {

@@ -110,7 +110,11 @@ type localDevUserInterceptor struct {
 	a2asrv.PassthroughCallInterceptor
 }
 
-func (localDevUserInterceptor) Before(ctx context.Context, callCtx *a2asrv.CallContext, _ *a2asrv.Request) (context.Context, any, error) {
+func (localDevUserInterceptor) Before(
+	ctx context.Context,
+	callCtx *a2asrv.CallContext,
+	_ *a2asrv.Request,
+) (context.Context, any, error) {
 	callCtx.User = a2asrv.NewAuthenticatedUser("jute-local-dev", nil)
 	return ctx, nil, nil
 }
@@ -126,8 +130,8 @@ func (s *kronkA2AServer) handleInvoke(w http.ResponseWriter, r *http.Request) {
 func (s *kronkA2AServer) generateAnswer(ctx context.Context, contextID, text string) (string, error) {
 	userMessage := genai.NewContentFromText(text, genai.RoleUser)
 	var (
-		finalText  string
-		streamed   strings.Builder
+		finalText       string
+		streamed        strings.Builder
 		lastPartialText string
 	)
 	for event, err := range s.runner.Run(ctx, "jute-user", contextID, userMessage, agent.RunConfig{StreamingMode: agent.StreamingModeSSE}) {

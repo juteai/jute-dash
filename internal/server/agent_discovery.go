@@ -54,7 +54,11 @@ func (svc *agentCardService) save(c agentCardCache) {
 }
 
 // current returns a valid cache entry, refreshing it first if necessary.
-func (svc *agentCardService) current(ctx context.Context, agent registry.Agent, configuredAgent config.AgentConfig) agentCardCache {
+func (svc *agentCardService) current(
+	ctx context.Context,
+	agent registry.Agent,
+	configuredAgent config.AgentConfig,
+) agentCardCache {
 	if c, ok := svc.load(agent.ID); ok && c.CardStatus == "available" {
 		return c
 	}
@@ -64,7 +68,11 @@ func (svc *agentCardService) current(ctx context.Context, agent registry.Agent, 
 // refresh fetches the agent card from the network, selects an interface, and
 // stores the result. It always returns a cache entry — on failure the entry
 // has CardStatus "unavailable".
-func (svc *agentCardService) refresh(ctx context.Context, agent registry.Agent, configuredAgent config.AgentConfig) agentCardCache {
+func (svc *agentCardService) refresh(
+	ctx context.Context,
+	agent registry.Agent,
+	configuredAgent config.AgentConfig,
+) agentCardCache {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	c := agentCardCache{
 		AgentID:                 agent.ID,
@@ -83,7 +91,7 @@ func (svc *agentCardService) refresh(ctx context.Context, agent registry.Agent, 
 		svc.save(c)
 		return c
 	}
-	selected, err := a2aclient.SelectInterface(result.Card, agent.EndpointURL, agent.ProtocolBinding)
+	selected, err := a2aclient.SelectInterface(result.Card)
 	if err != nil {
 		c.CardJSON = result.Raw
 		c.CardError = "agent card has no compatible A2A 1.0 interface"

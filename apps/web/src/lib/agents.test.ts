@@ -36,10 +36,20 @@ describe('agent availability', () => {
 
   it('distinguishes disabled, missing credential, unsupported, offline, and unknown states', () => {
     expect(getAgentAvailability(agent({ enabled: false }))).toBe('disabled');
-    expect(getAgentAvailability(agent({ authConfigured: true, authAvailable: false }))).toBe('missing_credentials');
-    expect(getAgentAvailability(agent({ protocolBinding: 'HTTP+JSON' }))).toBe('unsupported_binding');
-    expect(getAgentAvailability(agent({ cardStatus: 'unavailable' }))).toBe('offline');
-    expect(getAgentAvailability(agent({ endpointUrl: '', selectedEndpointUrl: '' }))).toBe('unknown');
+    expect(
+      getAgentAvailability(
+        agent({ authConfigured: true, authAvailable: false })
+      )
+    ).toBe('missing_credentials');
+    expect(getAgentAvailability(agent({ protocolBinding: 'HTTP+JSON' }))).toBe(
+      'unsupported_binding'
+    );
+    expect(getAgentAvailability(agent({ cardStatus: 'unavailable' }))).toBe(
+      'offline'
+    );
+    expect(
+      getAgentAvailability(agent({ endpointUrl: '', selectedEndpointUrl: '' }))
+    ).toBe('unknown');
   });
 
   it('uses discovered protocol binding and endpoint when present', () => {

@@ -1,6 +1,8 @@
 import type { Agent, AgentAvailability } from '$lib/types';
 
-export function getAgentAvailability(agent: Agent | undefined): AgentAvailability {
+export function getAgentAvailability(
+  agent: Agent | undefined
+): AgentAvailability {
   if (!agent) {
     return 'unknown';
   }
@@ -65,7 +67,9 @@ export function availabilityDescription(availability: AgentAvailability) {
   }
 }
 
-export function availabilityTone(availability: AgentAvailability): 'neutral' | 'active' | 'warning' | 'danger' {
+export function availabilityTone(
+  availability: AgentAvailability
+): 'neutral' | 'active' | 'warning' | 'danger' {
   if (availability === 'available') {
     return 'active';
   }

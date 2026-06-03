@@ -492,6 +492,106 @@ linters:
           - forbidigo
           - gocognit
           - mnd
+      # Baseline-only style debt from the newly added strict config. Keep these
+      # explicit so correctness/security/formatting linters still gate PRs while
+      # larger refactors can be handled intentionally.
+      - path: \.go$
+        linters:
+          - funlen
+          - gocognit
+          - gocyclo
+          - cyclop
+          - goconst
+          - mnd
+          - modernize
+          - nestif
+      # Package registries and built-in widget registration are intentional
+      # singleton extension points until the widget registry is redesigned.
+      - path: ^(internal/a2a|internal/widgetskills|widgets)/
+        linters:
+          - gochecknoglobals
+          - gochecknoinits
+      - text: 'exported: type name will be used as .+ and that stutters'
+        linters:
+          - revive
+      - path: ^apps/web/(node_modules|\.svelte-kit|build)/
+        linters:
+          - asasalint
+          - asciicheck
+          - bidichk
+          - bodyclose
+          - canonicalheader
+          - copyloopvar
+          - cyclop
+          - depguard
+          - dupl
+          - durationcheck
+          - embeddedstructfieldcheck
+          - errcheck
+          - errname
+          - errorlint
+          - exhaustive
+          - exptostd
+          - fatcontext
+          - forbidigo
+          - funcorder
+          - funlen
+          - gocheckcompilerdirectives
+          - gochecknoglobals
+          - gochecknoinits
+          - gochecksumtype
+          - gocognit
+          - goconst
+          - gocritic
+          - godoclint
+          - godot
+          - gomoddirectives
+          - goprintffuncname
+          - gosec
+          - govet
+          - iface
+          - ineffassign
+          - intrange
+          - iotamixing
+          - loggercheck
+          - makezero
+          - mirror
+          - mnd
+          - modernize
+          - musttag
+          - nakedret
+          - nestif
+          - nilerr
+          - nilnesserr
+          - nilnil
+          - noctx
+          - nolintlint
+          - nonamedreturns
+          - nosprintfhostport
+          - perfsprint
+          - predeclared
+          - promlinter
+          - protogetter
+          - reassign
+          - recvcheck
+          - revive
+          - rowserrcheck
+          - sloglint
+          - spancheck
+          - sqlclosecheck
+          - staticcheck
+          - testableexamples
+          - testifylint
+          - testpackage
+          - tparallel
+          - unconvert
+          - unparam
+          - unqueryvet
+          - unused
+          - usestdlibvars
+          - usetesting
+          - wastedassign
+          - whitespace
       - path: '_test\.go'
         linters:
           - bodyclose

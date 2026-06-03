@@ -1,13 +1,33 @@
 <script lang="ts">
-  import { ChevronDown, Info, Mic, Plus, RefreshCw, VolumeX } from 'lucide-svelte';
+  import {
+    ChevronDown,
+    Info,
+    Mic,
+    Plus,
+    RefreshCw,
+    VolumeX
+  } from 'lucide-svelte';
   import AssistantActivity from '$lib/components/chat/AssistantActivity.svelte';
   import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
-  import { availabilityDescription, availabilityLabel, availabilityTone, getAgentAvailability } from '$lib/agents';
+  import {
+    availabilityDescription,
+    availabilityLabel,
+    availabilityTone,
+    getAgentAvailability
+  } from '$lib/agents';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
-  import type { Agent, AgentAvailability, AppStatus, ChatMessage, ChatState, Conversation, VoiceStatus } from '$lib/types';
+  import type {
+    Agent,
+    AgentAvailability,
+    AppStatus,
+    ChatMessage,
+    ChatState,
+    Conversation,
+    VoiceStatus
+  } from '$lib/types';
 
   export let agents: Agent[] = [];
   export let messages: ChatMessage[] = [];
@@ -20,10 +40,14 @@
   export let selectedAvailability: AgentAvailability = 'unknown';
   export let status: AppStatus | undefined;
   export let onAgentChange: (agentId: string) => void = () => {};
-  export let onConversationSelect: (conversationId: string) => Promise<void> | void = () => {};
+  export let onConversationSelect: (
+    conversationId: string
+  ) => Promise<void> | void = () => {};
   export let onNewConversation: () => Promise<void> | void = () => {};
   export let onManageAgents: () => void = () => {};
-  export let onRefreshAgentCard: (agentId: string) => Promise<void> | void = () => {};
+  export let onRefreshAgentCard: (
+    agentId: string
+  ) => Promise<void> | void = () => {};
   export let onSubmit: (value: string) => Promise<void> | void = () => {};
   export let onRetry: (message: ChatMessage) => Promise<void> | void = () => {};
   export let onClose: () => void = () => {};
@@ -32,34 +56,47 @@
 
   type BadgeTone = 'danger' | 'neutral' | 'active';
 
-  let statusTone: BadgeTone = 'neutral';
+  let statusTone: BadgeTone;
   let showDiagnostics = false;
   let refreshingCard = false;
 
-  $: selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
-  $: agentAvailability = selectedAgent ? getAgentAvailability(selectedAgent) : selectedAvailability;
+  $: selectedAgent =
+    agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
+  $: agentAvailability = selectedAgent
+    ? getAgentAvailability(selectedAgent)
+    : selectedAvailability;
   $: composerDisabled = agentAvailability !== 'available';
-  $: selectedBinding = selectedAgent?.selectedProtocolBinding || selectedAgent?.protocolBinding;
+  $: selectedBinding =
+    selectedAgent?.selectedProtocolBinding || selectedAgent?.protocolBinding;
   $: selectedVersion = selectedAgent?.selectedProtocolVersion || '1.0';
-  $: selectedEndpoint = selectedAgent?.selectedEndpointUrl || selectedAgent?.endpointUrl || '';
+  $: selectedEndpoint =
+    selectedAgent?.selectedEndpointUrl || selectedAgent?.endpointUrl || '';
   $: mcpStatus = status?.mcp;
-  $: mcpLabel = mcpStatus?.enabled ? `MCP ${mcpStatus.serviceStatus}` : 'MCP disabled';
-  $: selectedConversation = conversations.find((conversation) => conversation.id === selectedConversationId);
+  $: mcpLabel = mcpStatus?.enabled
+    ? `MCP ${mcpStatus.serviceStatus}`
+    : 'MCP disabled';
+  $: selectedConversation = conversations.find(
+    (conversation) => conversation.id === selectedConversationId
+  );
   $: voiceReady = voice?.serviceStatus === 'ready';
   $: voiceLabel = voiceReady
     ? voice.muted
       ? 'Voice muted'
       : 'Wake listening'
     : 'Voice not configured';
-  $: statusTone = state === 'error' ? 'danger' : state === 'idle' ? 'neutral' : 'active';
+  $: statusTone =
+    state === 'error' ? 'danger' : state === 'idle' ? 'neutral' : 'active';
 
   function formatConversationTime(value: string) {
     if (!value) {
       return '';
     }
-    return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(
-      new Date(value)
-    );
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(new Date(value));
   }
 
   function endpointHost(value: string) {
@@ -90,11 +127,15 @@
 <section class="chat-view" aria-label="Agent conversation">
   <header class="chat-header">
     <div class="chat-agent">
-      <div class="chat-agent-title">{selectedAgent?.name ?? 'No agent configured'}</div>
+      <div class="chat-agent-title">
+        {selectedAgent?.name ?? 'No agent configured'}
+      </div>
       <div class="chat-agent-meta">
         <Badge tone={statusTone}>{state}</Badge>
         {#if selectedAgent}
-          <Badge tone={availabilityTone(agentAvailability)}>{availabilityLabel(agentAvailability)}</Badge>
+          <Badge tone={availabilityTone(agentAvailability)}
+            >{availabilityLabel(agentAvailability)}</Badge
+          >
           {#if selectedAgent.dashboardContextSupported}
             <span>screen context</span>
           {/if}
@@ -102,7 +143,9 @@
         {/if}
       </div>
       {#if selectedAgent}
-        <p class="chat-agent-description">{availabilityDescription(agentAvailability)}</p>
+        <p class="chat-agent-description">
+          {availabilityDescription(agentAvailability)}
+        </p>
       {/if}
     </div>
 
@@ -110,14 +153,26 @@
       {#if agents.length > 1}
         <label class="agent-select-label">
           <span>Agent</span>
-          <select bind:value={selectedAgentId} on:change={(event) => onAgentChange(event.currentTarget.value)}>
-            {#each agents as agent}
-              <option value={agent.id}>{agent.name} · {availabilityLabel(getAgentAvailability(agent))}</option>
+          <select
+            bind:value={selectedAgentId}
+            on:change={(event) => onAgentChange(event.currentTarget.value)}
+          >
+            {#each agents as agent (agent.id)}
+              <option value={agent.id}
+                >{agent.name} · {availabilityLabel(
+                  getAgentAvailability(agent)
+                )}</option
+              >
             {/each}
           </select>
         </label>
       {/if}
-      <IconButton label="Agent diagnostics" variant="outline" pressed={showDiagnostics} on:click={() => (showDiagnostics = !showDiagnostics)}>
+      <IconButton
+        label="Agent diagnostics"
+        variant="outline"
+        pressed={showDiagnostics}
+        on:click={() => (showDiagnostics = !showDiagnostics)}
+      >
         <Info size={19} />
       </IconButton>
       <IconButton
@@ -172,7 +227,11 @@
             {#if selectedAgent.cardError}
               <small>{selectedAgent.cardError}</small>
             {:else if selectedAgent.cardFetchedAt}
-              <small>Fetched {formatConversationTime(selectedAgent.cardFetchedAt)}</small>
+              <small
+                >Fetched {formatConversationTime(
+                  selectedAgent.cardFetchedAt
+                )}</small
+              >
             {/if}
           </div>
           <div>
@@ -183,21 +242,43 @@
           <div>
             <span>Endpoint</span>
             <strong>{endpointHost(selectedEndpoint)}</strong>
-            <small>{selectedAgent.streaming ? 'streaming supported' : 'blocking only'}</small>
+            <small
+              >{selectedAgent.streaming
+                ? 'streaming supported'
+                : 'blocking only'}</small
+            >
           </div>
           <div>
             <span>Context</span>
-            <strong>{selectedAgent.dashboardContextSupported ? 'dashboard context supported' : 'dashboard context unavailable'}</strong>
+            <strong
+              >{selectedAgent.dashboardContextSupported
+                ? 'dashboard context supported'
+                : 'dashboard context unavailable'}</strong
+            >
             <small>{selectedAgent.mcpScopes?.length ?? 0} MCP scopes</small>
           </div>
           <div>
             <span>MCP bridge</span>
-            <strong>{mcpStatus?.enabled ? mcpStatus.serviceStatus : 'disabled'}</strong>
-            <small>{mcpStatus?.enabled ? `${mcpStatus.transport} · ${mcpStatus.authMode || 'no auth mode'}` : 'A2A still works without MCP'}</small>
+            <strong
+              >{mcpStatus?.enabled
+                ? mcpStatus.serviceStatus
+                : 'disabled'}</strong
+            >
+            <small
+              >{mcpStatus?.enabled
+                ? `${mcpStatus.transport} · ${mcpStatus.authMode || 'no auth mode'}`
+                : 'A2A still works without MCP'}</small
+            >
           </div>
           <div>
             <span>Credentials</span>
-            <strong>{selectedAgent.authConfigured ? (selectedAgent.authAvailable === false ? 'missing' : 'configured') : 'not required'}</strong>
+            <strong
+              >{selectedAgent.authConfigured
+                ? selectedAgent.authAvailable === false
+                  ? 'missing'
+                  : 'configured'
+                : 'not required'}</strong
+            >
             <small>Credential references stay inside the hub</small>
           </div>
         </div>
@@ -205,23 +286,34 @@
           <div class="agent-diagnostics-skills">
             <span>Skills</span>
             <div>
-              {#each selectedAgent.skills as skill}
+              {#each selectedAgent.skills as skill (skill.id ?? skill.name)}
                 <Badge tone="neutral">{skill.name}</Badge>
               {/each}
             </div>
           </div>
         {:else}
-          <p class="agent-diagnostics-empty">No Agent Card skills discovered yet.</p>
+          <p class="agent-diagnostics-empty">
+            No Agent Card skills discovered yet.
+          </p>
         {/if}
         <div class="agent-diagnostics-actions">
-          <Button size="sm" variant="outline" on:click={refreshCard} disabled={refreshingCard}>
+          <Button
+            size="sm"
+            variant="outline"
+            on:click={refreshCard}
+            disabled={refreshingCard}
+          >
             <RefreshCw size={15} />
             <span>{refreshingCard ? 'Refreshing' : 'Refresh Agent Card'}</span>
           </Button>
-          <Button size="sm" variant="ghost" on:click={onManageAgents}>Manage agents</Button>
+          <Button size="sm" variant="ghost" on:click={onManageAgents}
+            >Manage agents</Button
+          >
         </div>
       {:else}
-        <p class="agent-diagnostics-empty">Add an A2A agent to see diagnostics.</p>
+        <p class="agent-diagnostics-empty">
+          Add an A2A agent to see diagnostics.
+        </p>
       {/if}
     </section>
   {/if}
@@ -233,7 +325,12 @@
           <strong>History</strong>
           <span>{conversations.length} saved</span>
         </div>
-        <IconButton label="New conversation" variant="outline" disabled={composerDisabled} on:click={onNewConversation}>
+        <IconButton
+          label="New conversation"
+          variant="outline"
+          disabled={composerDisabled}
+          on:click={onNewConversation}
+        >
           <Plus size={17} />
         </IconButton>
       </div>
@@ -243,16 +340,21 @@
           <div class="conversation-empty">
             {#if composerDisabled}
               No available agent yet.
-              <button type="button" class="conversation-link-button" on:click={onManageAgents}>Add agent</button>
+              <button
+                type="button"
+                class="conversation-link-button"
+                on:click={onManageAgents}>Add agent</button
+              >
             {:else}
               Agent-backed history is empty or unsupported.
             {/if}
           </div>
         {:else}
-          {#each conversations as conversation}
+          {#each conversations as conversation (conversation.id)}
             <button
               type="button"
-              class:conversation-item--active={conversation.id === selectedConversationId}
+              class:conversation-item--active={conversation.id ===
+                selectedConversationId}
               class="conversation-item"
               on:click={() => onConversationSelect(conversation.id)}
             >
@@ -285,7 +387,9 @@
       <MessageList
         {messages}
         emptyTitle={selectedAgent ? 'Ask Jute anything' : 'No agent connected'}
-        emptyMessage={selectedAgent ? 'Choose an agent and start with a short request.' : 'Add an A2A agent to start conversations.'}
+        emptyMessage={selectedAgent
+          ? 'Choose an agent and start with a short request.'
+          : 'Add an A2A agent to start conversations.'}
         {onRetry}
       />
 

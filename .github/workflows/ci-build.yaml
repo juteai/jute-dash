@@ -20,4 +20,34 @@ jobs:
           args: --timeout=5m
 
       - name: Unit tests
-        run: go test ./... -count=1
+        run: go list ./... | grep -v '/apps/web/node_modules/' | xargs go test -count=1
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Web lint
+        working-directory: apps/web
+        run: npm run lint
+
+      - name: Web format check
+        working-directory: apps/web
+        run: npm run format:check
+
+      - name: Web check
+        working-directory: apps/web
+        run: npm run check
+
+      - name: Web tests
+        working-directory: apps/web
+        run: npm run test
+
+      - name: Web build
+        working-directory: apps/web
+        run: npm run build

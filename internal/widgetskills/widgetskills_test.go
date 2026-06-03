@@ -1,6 +1,7 @@
 package widgetskills
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -89,7 +90,7 @@ func TestUnknownSkillFailsSafely(t *testing.T) {
 	if err == nil {
 		t.Fatal("SkillContext() expected error")
 	}
-	if err != ErrNotFound {
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }

@@ -5,7 +5,14 @@
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import { themeOptions } from '$lib/themes';
-  import type { Agent, AppStatus, HouseholdSettings, Room, Tile, VoiceStatus } from '$lib/types';
+  import type {
+    Agent,
+    AppStatus,
+    HouseholdSettings,
+    Room,
+    Tile,
+    VoiceStatus
+  } from '$lib/types';
 
   export let agents: Agent[] = [];
   export let status: AppStatus | undefined;
@@ -19,45 +26,58 @@
   export let savingTiles = false;
   export let savingAgent = false;
   export let agentCardUrl = '';
-  export let activeSection: 'household' | 'rooms' | 'tiles' | 'agents' | 'mcp' | 'voice' | 'about' = 'household';
+  export let activeSection:
+    | 'household'
+    | 'rooms'
+    | 'tiles'
+    | 'agents'
+    | 'mcp'
+    | 'voice'
+    | 'about' = 'household';
   export let onClose: () => void = () => {};
-  export let onSaveHousehold: (settings: HouseholdSettings) => Promise<void> | void = () => {};
+  export let onSaveHousehold: (
+    settings: HouseholdSettings
+  ) => Promise<void> | void = () => {};
   export let onSaveRooms: (rooms: Room[]) => Promise<void> | void = () => {};
   export let onSaveTiles: (tiles: Tile[]) => Promise<void> | void = () => {};
   export let onAddAgent: (cardUrl: string) => Promise<void> | void = () => {};
   export let onToggleAgent: (agent: Agent) => Promise<void> | void = () => {};
   export let onRemoveAgent: (agent: Agent) => Promise<void> | void = () => {};
-  export let onRefreshAgentCard: (agentId: string) => Promise<void> | void = () => {};
+  export let onRefreshAgentCard: (
+    agentId: string
+  ) => Promise<void> | void = () => {};
 
   let draft: HouseholdSettings | undefined;
   let roomDrafts: Room[] = [];
   let tileDrafts: Tile[] = [];
-  let lastSettingsJSON = '';
-  let lastRoomsJSON = '';
-  let lastTilesJSON = '';
+  let lastJSON = {
+    settings: '',
+    rooms: '',
+    tiles: ''
+  };
   let localAgentCardUrl = '';
   let refreshingAgentId = '';
 
   $: if (settings) {
     const next = JSON.stringify(settings);
-    if (next !== lastSettingsJSON) {
+    if (next !== lastJSON.settings) {
       draft = structuredClone(settings);
-      lastSettingsJSON = next;
+      lastJSON.settings = next;
     }
   }
   $: localAgentCardUrl = agentCardUrl || localAgentCardUrl;
   $: {
     const next = JSON.stringify(rooms);
-    if (next !== lastRoomsJSON) {
+    if (next !== lastJSON.rooms) {
       roomDrafts = structuredClone(rooms);
-      lastRoomsJSON = next;
+      lastJSON.rooms = next;
     }
   }
   $: {
     const next = JSON.stringify(tiles);
-    if (next !== lastTilesJSON) {
+    if (next !== lastJSON.tiles) {
       tileDrafts = structuredClone(tiles);
-      lastTilesJSON = next;
+      lastJSON.tiles = next;
     }
   }
 
@@ -98,13 +118,25 @@
   }
 
   function addRoom() {
-    const id = uniqueId('room', roomDrafts.map((room) => room.id));
-    roomDrafts = [...roomDrafts, { id, name: 'New room', summary: '', status: 'Idle' }];
+    const id = uniqueId(
+      'room',
+      roomDrafts.map((room) => room.id)
+    );
+    roomDrafts = [
+      ...roomDrafts,
+      { id, name: 'New room', summary: '', status: 'Idle' }
+    ];
   }
 
   function addTile() {
-    const id = uniqueId('tile', tileDrafts.map((tile) => tile.id));
-    tileDrafts = [...tileDrafts, { id, kind: 'status', label: 'New tile', value: 'Value', detail: '' }];
+    const id = uniqueId(
+      'tile',
+      tileDrafts.map((tile) => tile.id)
+    );
+    tileDrafts = [
+      ...tileDrafts,
+      { id, kind: 'status', label: 'New tile', value: 'Value', detail: '' }
+    ];
   }
 
   function uniqueId(prefix: string, existing: string[]) {
@@ -153,8 +185,12 @@
     </header>
 
     <nav class="settings-tabs" aria-label="Settings sections">
-      {#each sections as [id, label]}
-        <button type="button" class:settings-tab--active={activeSection === id} on:click={() => (activeSection = id)}>
+      {#each sections as [id, label] (id)}
+        <button
+          type="button"
+          class:settings-tab--active={activeSection === id}
+          on:click={() => (activeSection = id)}
+        >
           {label}
         </button>
       {/each}
@@ -174,7 +210,10 @@
             </label>
             <label>
               <span>Timezone</span>
-              <input bind:value={draft.home.timezone} placeholder="Europe/London" />
+              <input
+                bind:value={draft.home.timezone}
+                placeholder="Europe/London"
+              />
             </label>
             <label>
               <span>Locale</span>
@@ -183,14 +222,18 @@
             <label>
               <span>Theme pack</span>
               <select bind:value={draft.display.themeId}>
-                {#each themeOptions as option}
+                {#each themeOptions as option (option.id)}
                   <option value={option.id}>{option.name}</option>
                 {/each}
               </select>
             </label>
             <label>
               <span>Color mode</span>
-              <select bind:value={draft.display.colorMode} on:change={() => draft && (draft.display.theme = draft.display.colorMode)}>
+              <select
+                bind:value={draft.display.colorMode}
+                on:change={() =>
+                  draft && (draft.display.theme = draft.display.colorMode)}
+              >
                 <option value="system">System</option>
                 <option value="light">Light</option>
                 <option value="dark">Dark</option>
@@ -220,7 +263,9 @@
                 type="number"
                 step="0.0001"
                 value={draft.weather.latitude}
-                on:input={(event) => (draft && (draft.weather.latitude = numeric(event.currentTarget.value)))}
+                on:input={(event) =>
+                  draft &&
+                  (draft.weather.latitude = numeric(event.currentTarget.value))}
               />
             </label>
             <label>
@@ -229,7 +274,11 @@
                 type="number"
                 step="0.0001"
                 value={draft.weather.longitude}
-                on:input={(event) => (draft && (draft.weather.longitude = numeric(event.currentTarget.value)))}
+                on:input={(event) =>
+                  draft &&
+                  (draft.weather.longitude = numeric(
+                    event.currentTarget.value
+                  ))}
               />
             </label>
             <label>
@@ -250,7 +299,9 @@
             </label>
           </div>
           <div class="settings-actions">
-            <Button on:click={saveHousehold} disabled={saving}>{saving ? 'Saving' : 'Save household'}</Button>
+            <Button on:click={saveHousehold} disabled={saving}
+              >{saving ? 'Saving' : 'Save household'}</Button
+            >
           </div>
         {:else}
           <p class="settings-empty">Household settings are loading.</p>
@@ -260,7 +311,7 @@
           {#if roomDrafts.length === 0}
             <p class="settings-empty">No rooms configured yet.</p>
           {:else}
-            {#each roomDrafts as room, index (index)}
+            {#each roomDrafts as room, index (room.id)}
               <article class="settings-list-item settings-editor-item">
                 <div class="settings-form-grid">
                   <label>
@@ -281,7 +332,14 @@
                   </label>
                 </div>
                 <div class="settings-item-actions">
-                  <Button size="sm" variant="ghost" on:click={() => (roomDrafts = roomDrafts.filter((_, itemIndex) => itemIndex !== index))}>Remove</Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    on:click={() =>
+                      (roomDrafts = roomDrafts.filter(
+                        (_, itemIndex) => itemIndex !== index
+                      ))}>Remove</Button
+                  >
                 </div>
               </article>
             {/each}
@@ -289,14 +347,16 @@
         </div>
         <div class="settings-actions">
           <Button variant="outline" on:click={addRoom}>Add room</Button>
-          <Button on:click={saveRoomDrafts} disabled={savingRooms}>{savingRooms ? 'Saving' : 'Save rooms'}</Button>
+          <Button on:click={saveRoomDrafts} disabled={savingRooms}
+            >{savingRooms ? 'Saving' : 'Save rooms'}</Button
+          >
         </div>
       {:else if activeSection === 'tiles'}
         <div class="settings-list">
           {#if tileDrafts.length === 0}
             <p class="settings-empty">No tiles configured yet.</p>
           {:else}
-            {#each tileDrafts as tile, index (index)}
+            {#each tileDrafts as tile, index (tile.id)}
               <article class="settings-list-item settings-editor-item">
                 <div class="settings-form-grid">
                   <label>
@@ -321,7 +381,14 @@
                   </label>
                 </div>
                 <div class="settings-item-actions">
-                  <Button size="sm" variant="ghost" on:click={() => (tileDrafts = tileDrafts.filter((_, itemIndex) => itemIndex !== index))}>Remove</Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    on:click={() =>
+                      (tileDrafts = tileDrafts.filter(
+                        (_, itemIndex) => itemIndex !== index
+                      ))}>Remove</Button
+                  >
                 </div>
               </article>
             {/each}
@@ -329,37 +396,69 @@
         </div>
         <div class="settings-actions">
           <Button variant="outline" on:click={addTile}>Add tile</Button>
-          <Button on:click={saveTileDrafts} disabled={savingTiles}>{savingTiles ? 'Saving' : 'Save tiles'}</Button>
+          <Button on:click={saveTileDrafts} disabled={savingTiles}
+            >{savingTiles ? 'Saving' : 'Save tiles'}</Button
+          >
         </div>
       {:else if activeSection === 'agents'}
         <form class="settings-add-form" on:submit|preventDefault={addAgent}>
-          <input bind:value={localAgentCardUrl} placeholder="http://127.0.0.1:9797/.well-known/agent-card.json" />
-          <Button type="submit" disabled={savingAgent || !localAgentCardUrl.trim()}>{savingAgent ? 'Adding' : 'Add agent'}</Button>
+          <input
+            bind:value={localAgentCardUrl}
+            placeholder="http://127.0.0.1:9797/.well-known/agent-card.json"
+          />
+          <Button
+            type="submit"
+            disabled={savingAgent || !localAgentCardUrl.trim()}
+            >{savingAgent ? 'Adding' : 'Add agent'}</Button
+          >
         </form>
         <div class="settings-list">
           {#if agents.length === 0}
             <p class="settings-empty">No agents configured yet.</p>
           {:else}
-            {#each agents as agent}
+            {#each agents as agent (agent.id)}
               <article class="settings-list-item">
                 <div>
                   <strong>{agent.name}</strong>
                   <span>{agent.cardUrl}</span>
                   <div class="settings-badges">
-                    <Badge tone="neutral">{availabilityLabel(getAgentAvailability(agent))}</Badge>
-                    <Badge tone="neutral">{agent.selectedProtocolBinding || agent.protocolBinding}</Badge>
+                    <Badge tone="neutral"
+                      >{availabilityLabel(getAgentAvailability(agent))}</Badge
+                    >
+                    <Badge tone="neutral"
+                      >{agent.selectedProtocolBinding ||
+                        agent.protocolBinding}</Badge
+                    >
                     {#if agent.dashboardContextSupported}
                       <Badge tone="active">screen context</Badge>
                     {/if}
                   </div>
                 </div>
                 <div class="settings-item-actions">
-                  <Button size="sm" variant="outline" on:click={() => refreshAgent(agent.id)} disabled={refreshingAgentId === agent.id}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    on:click={() => refreshAgent(agent.id)}
+                    disabled={refreshingAgentId === agent.id}
+                  >
                     <RefreshCw size={15} />
-                    <span>{refreshingAgentId === agent.id ? 'Refreshing' : 'Refresh'}</span>
+                    <span
+                      >{refreshingAgentId === agent.id
+                        ? 'Refreshing'
+                        : 'Refresh'}</span
+                    >
                   </Button>
-                  <Button size="sm" variant="outline" on:click={() => onToggleAgent(agent)}>{agent.enabled ? 'Disable' : 'Enable'}</Button>
-                  <Button size="sm" variant="ghost" on:click={() => onRemoveAgent(agent)}>Remove</Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    on:click={() => onToggleAgent(agent)}
+                    >{agent.enabled ? 'Disable' : 'Enable'}</Button
+                  >
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    on:click={() => onRemoveAgent(agent)}>Remove</Button
+                  >
                 </div>
               </article>
             {/each}
@@ -367,26 +466,73 @@
         </div>
       {:else if activeSection === 'mcp'}
         <div class="settings-status-grid">
-          <div><span>Status</span><strong>{status?.mcp.enabled ? status.mcp.serviceStatus : 'disabled'}</strong></div>
-          <div><span>Transport</span><strong>{status?.mcp.transport || 'streamable-http'}</strong></div>
-          <div><span>Path</span><strong>{status?.mcp.path || '/mcp'}</strong></div>
-          <div><span>Auth</span><strong>{status?.mcp.authMode || 'not configured'}</strong></div>
+          <div>
+            <span>Status</span><strong
+              >{status?.mcp.enabled
+                ? status.mcp.serviceStatus
+                : 'disabled'}</strong
+            >
+          </div>
+          <div>
+            <span>Transport</span><strong
+              >{status?.mcp.transport || 'streamable-http'}</strong
+            >
+          </div>
+          <div>
+            <span>Path</span><strong>{status?.mcp.path || '/mcp'}</strong>
+          </div>
+          <div>
+            <span>Auth</span><strong
+              >{status?.mcp.authMode || 'not configured'}</strong
+            >
+          </div>
         </div>
-        <p class="settings-help">MCP is configured at hub startup. Edit the harness or bootstrap config, then restart the stack to change it.</p>
+        <p class="settings-help">
+          MCP is configured at hub startup. Edit the harness or bootstrap
+          config, then restart the stack to change it.
+        </p>
       {:else if activeSection === 'voice'}
         <div class="settings-status-grid">
           <div><span>Status</span><strong>{voice.serviceStatus}</strong></div>
           <div><span>State</span><strong>{voice.state}</strong></div>
-          <div><span>STT provider</span><strong>{voice.sttProviderId || 'not configured'}</strong></div>
-          <div><span>TTS provider</span><strong>{voice.ttsProviderId || 'not configured'}</strong></div>
+          <div>
+            <span>STT provider</span><strong
+              >{voice.sttProviderId || 'not configured'}</strong
+            >
+          </div>
+          <div>
+            <span>TTS provider</span><strong
+              >{voice.ttsProviderId || 'not configured'}</strong
+            >
+          </div>
         </div>
-        <p class="settings-help">Voice provider selection is planned next. This panel currently shows the safe hub status only.</p>
+        <p class="settings-help">
+          Voice provider selection is planned next. This panel currently shows
+          the safe hub status only.
+        </p>
       {:else}
         <div class="settings-status-grid">
-          <div><span>Hub version</span><strong>{status?.version || 'dev'}</strong></div>
-          <div><span>Setup</span><strong>{status?.setup.complete ? 'complete' : 'incomplete'}</strong></div>
-          <div><span>Config</span><strong>{status?.config.writableYaml ? 'writable YAML' : 'runtime store'}</strong></div>
-          <div><span>Agents</span><strong>{status?.agents.enabled ?? agents.filter((agent) => agent.enabled).length} enabled</strong></div>
+          <div>
+            <span>Hub version</span><strong>{status?.version || 'dev'}</strong>
+          </div>
+          <div>
+            <span>Setup</span><strong
+              >{status?.setup.complete ? 'complete' : 'incomplete'}</strong
+            >
+          </div>
+          <div>
+            <span>Config</span><strong
+              >{status?.config.writableYaml
+                ? 'writable YAML'
+                : 'runtime store'}</strong
+            >
+          </div>
+          <div>
+            <span>Agents</span><strong
+              >{status?.agents.enabled ??
+                agents.filter((agent) => agent.enabled).length} enabled</strong
+            >
+          </div>
         </div>
       {/if}
     </div>

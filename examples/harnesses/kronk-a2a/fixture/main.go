@@ -267,7 +267,8 @@ func kronkInstruction(mcpEnabled bool) string {
 		"Use only information from the user and from tools you actually call.",
 	}
 	if mcpEnabled {
-		parts = append(parts,
+		parts = append(
+			parts,
 			"Jute MCP tools are available and expose the dashboard through Widget Skills.",
 			"For questions about the current dashboard, visible widgets, weather, date, time, conversation history, or what Jute can do, inspect Jute MCP before answering.",
 			"Start by listing available Widget Skills with jute_skill_list when you need to know what dashboard abilities exist.",
@@ -281,7 +282,8 @@ func kronkInstruction(mcpEnabled bool) string {
 			"Do not invent capabilities, tools, widgets, actions, weather values, locations, or agent state that are not returned by Jute MCP.",
 		)
 	} else {
-		parts = append(parts,
+		parts = append(
+			parts,
 			"Jute MCP tools are not configured for this run.",
 			"If the user asks for live dashboard, weather, widget, or time context, explain that the local Jute MCP connection is not enabled for this agent.",
 		)

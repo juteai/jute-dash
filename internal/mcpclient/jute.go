@@ -3,8 +3,10 @@ package mcpclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -52,7 +54,7 @@ func NewFromEnv() (*Client, bool, error) {
 	if raw := strings.TrimSpace(os.Getenv("JUTE_MCP_TIMEOUT")); raw != "" {
 		parsed, err := time.ParseDuration(raw)
 		if err != nil {
-			return nil, true, fmt.Errorf("invalid JUTE_MCP_TIMEOUT")
+			return nil, true, errors.New("invalid JUTE_MCP_TIMEOUT")
 		}
 		timeout = parsed
 	}
@@ -123,7 +125,14 @@ func (s JuteContext) Sentence() string {
 		parts = append(parts, "skills: "+strings.Join(s.SkillIDs, ", "))
 	}
 	if s.Weather.LocationName != "" || s.Weather.Condition != "" {
-		weather := strings.TrimSpace(strings.Join(nonEmpty([]string{s.Weather.LocationName, s.Weather.Condition, s.Weather.Temperature, s.Weather.Status}), " "))
+		weather := strings.TrimSpace(
+			strings.Join(
+				nonEmpty(
+					[]string{s.Weather.LocationName, s.Weather.Condition, s.Weather.Temperature, s.Weather.Status},
+				),
+				" ",
+			),
+		)
 		if weather != "" {
 			parts = append(parts, "weather: "+weather)
 		}
@@ -171,12 +180,7 @@ func temperatureValue(value any, unit string) string {
 }
 
 func contains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, target)
 }
 
 func nonEmpty(values []string) []string {

@@ -34,7 +34,11 @@
     cancelVoice,
     unmuteVoice
   } from '$lib/api';
-  import { firstAvailableAgent, getAgentAvailability, isAgentAvailable } from '$lib/agents';
+  import {
+    firstAvailableAgent,
+    getAgentAvailability,
+    isAgentAvailable
+  } from '$lib/agents';
   import { displayThemeStyle, resolveColorMode } from '$lib/themes';
   import type {
     Agent,
@@ -91,7 +95,14 @@
   let savingSettings = false;
   let savingRooms = false;
   let savingTiles = false;
-  let activeSettingsSection: 'household' | 'rooms' | 'tiles' | 'agents' | 'mcp' | 'voice' | 'about' = 'household';
+  let activeSettingsSection:
+    | 'household'
+    | 'rooms'
+    | 'tiles'
+    | 'agents'
+    | 'mcp'
+    | 'voice'
+    | 'about' = 'household';
   let mounted = false;
   let historyAgentId = '';
   let voiceIssue = '';
@@ -106,7 +117,12 @@
   let focusedWidgetId = '';
   let focusTimer: number | undefined;
 
-  let voiceOrbState: 'idle' | 'listening' | 'thinking' | 'speaking' | 'followup' = 'idle';
+  let voiceOrbState:
+    | 'idle'
+    | 'listening'
+    | 'thinking'
+    | 'speaking'
+    | 'followup' = 'idle';
   let voiceTranscript = '';
   let assistantSpeech = '';
   let showVoiceOverlay = false;
@@ -114,25 +130,38 @@
 
   $: agents = dashboard.agents;
   $: availableAgent = firstAvailableAgent(agents);
-  $: fallbackAgent = availableAgent ?? agents.find((agent) => agent.enabled) ?? agents[0];
+  $: fallbackAgent =
+    availableAgent ?? agents.find((agent) => agent.enabled) ?? agents[0];
   $: if (!selectedAgentId && agents.length > 0) {
     selectedAgentId = fallbackAgent?.id ?? '';
   }
-  $: if (selectedAgentId && agents.length > 0 && !agents.some((agent) => agent.id === selectedAgentId)) {
+  $: if (
+    selectedAgentId &&
+    agents.length > 0 &&
+    !agents.some((agent) => agent.id === selectedAgentId)
+  ) {
     selectedAgentId = fallbackAgent?.id ?? '';
   }
   $: selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
   $: selectedAvailability = getAgentAvailability(selectedAgent);
   $: hasConnected = hasConnected || dashboard.connectionState === 'connected';
-  $: showStartupOffline = !hasConnected && dashboard.connectionState === 'offline';
-  $: showStartupLoading = !hasConnected && dashboard.connectionState === 'starting';
+  $: showStartupOffline =
+    !hasConnected && dashboard.connectionState === 'offline';
+  $: showStartupLoading =
+    !hasConnected && dashboard.connectionState === 'starting';
   $: activeTheme = resolveColorMode(dashboard.config.display, prefersDark);
   $: displayStyle = displayThemeStyle(dashboard.config.display, activeTheme);
   $: dashboardForView = {
     ...dashboard,
     layout: mode === 'edit' && draftLayout ? draftLayout : dashboard.layout
   };
-  $: if (mounted && selectedAgent && isAgentAvailable(selectedAgent) && selectedAgentId !== historyAgentId) {
+  $: if (
+    mounted &&
+    selectedAgent &&
+    isAgentAvailable(selectedAgent) &&
+    selectedAgentId !== historyAgentId
+  ) {
+    // eslint-disable-next-line svelte/infinite-reactive-loop
     void loadConversationHistory('', selectedAgentId);
   }
 
@@ -169,7 +198,10 @@
     mode = 'dashboard';
   }
 
-  async function loadConversationHistory(preferredConversationId = selectedConversationId, agentOverride = selectedAgentId) {
+  async function loadConversationHistory(
+    preferredConversationId = selectedConversationId,
+    agentOverride = selectedAgentId
+  ) {
     try {
       const agentId =
         agentOverride ||
@@ -189,9 +221,11 @@
       const loaded = await getConversations(fetch, agentId);
       conversations = loaded;
       const candidate =
-        loaded.find((conversation) => conversation.id === preferredConversationId) ??
-        loaded.find((conversation) => !conversation.historyUnsupported);
+        loaded.find(
+          (conversation) => conversation.id === preferredConversationId
+        ) ?? loaded.find((conversation) => !conversation.historyUnsupported);
       if (candidate) {
+        // eslint-disable-next-line svelte/infinite-reactive-loop
         await loadConversation(candidate.id, candidate.agentId);
       } else {
         selectedConversationId = '';
@@ -208,40 +242,69 @@
     }
   }
 
-  async function loadConversation(conversationId: string, agentId = selectedAgentId) {
+  async function loadConversation(
+    conversationId: string,
+    agentId = selectedAgentId
+  ) {
     const detail = await getConversation(fetch, conversationId, agentId);
+    // eslint-disable-next-line svelte/infinite-reactive-loop
     applyConversationDetail(detail);
   }
 
   function applyConversationDetail(detail: ConversationDetail) {
     selectedConversationId = detail.conversation.id;
+    // eslint-disable-next-line svelte/infinite-reactive-loop
     selectedAgentId = detail.conversation.agentId || selectedAgentId;
     messages = detail.messages.map(conversationMessageToChatMessage);
-    chatState = detail.conversation.status === 'streaming' ? 'streaming' : detail.conversation.status === 'failed' ? 'error' : 'idle';
+    chatState =
+      detail.conversation.status === 'streaming'
+        ? 'streaming'
+        : detail.conversation.status === 'failed'
+          ? 'error'
+          : 'idle';
     conversations = upsertConversation(conversations, detail.conversation);
   }
 
-  function conversationMessageToChatMessage(message: ConversationMessage): ChatMessage {
+  function conversationMessageToChatMessage(
+    message: ConversationMessage
+  ): ChatMessage {
     return {
       id: message.id,
       conversationId: message.conversationId,
       role: message.role,
       content: message.content,
       createdAt: message.createdAt,
-      status: message.status === 'streaming' ? 'streaming' : message.status === 'failed' ? 'failed' : 'sent',
-      retryText: message.status === 'failed' && message.role === 'user' ? message.content : undefined,
+      status:
+        message.status === 'streaming'
+          ? 'streaming'
+          : message.status === 'failed'
+            ? 'failed'
+            : 'sent',
+      retryText:
+        message.status === 'failed' && message.role === 'user'
+          ? message.content
+          : undefined,
       agentId: message.agentId
     };
   }
 
-  function upsertConversation(existing: Conversation[], conversation: Conversation) {
-    const withoutCurrent = existing.filter((item) => item.id !== conversation.id);
-    return [conversation, ...withoutCurrent].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  function upsertConversation(
+    existing: Conversation[],
+    conversation: Conversation
+  ) {
+    const withoutCurrent = existing.filter(
+      (item) => item.id !== conversation.id
+    );
+    return [conversation, ...withoutCurrent].sort((a, b) =>
+      b.updatedAt.localeCompare(a.updatedAt)
+    );
   }
 
   async function ensureConversation(agent: Agent) {
     if (selectedConversationId) {
-      const current = conversations.find((conversation) => conversation.id === selectedConversationId);
+      const current = conversations.find(
+        (conversation) => conversation.id === selectedConversationId
+      );
       if (current?.agentId === agent.id) {
         return selectedConversationId;
       }
@@ -252,7 +315,8 @@
   }
 
   async function createNewConversation() {
-    const agent = agents.find((item) => item.id === selectedAgentId) ?? availableAgent;
+    const agent =
+      agents.find((item) => item.id === selectedAgentId) ?? availableAgent;
     if (!agent || !isAgentAvailable(agent)) {
       chatState = 'error';
       messages = [systemMessage('No available agent is connected yet.')];
@@ -289,7 +353,8 @@
       await loadConversationHistory();
       markConnected();
     } catch {
-      agentIssue = 'Agent was not added. Check the Agent Card URL and that the hub was started with a YAML config.';
+      agentIssue =
+        'Agent was not added. Check the Agent Card URL and that the hub was started with a YAML config.';
       settingsIssue = agentIssue;
       markIssue('degraded', {
         code: 'agent_add_failed',
@@ -318,7 +383,10 @@
       await deleteAgent(fetch, agent.id);
       dashboard = await getDashboard(fetch);
       if (selectedAgentId === agent.id) {
-        selectedAgentId = firstAvailableAgent(dashboard.agents)?.id ?? dashboard.agents[0]?.id ?? '';
+        selectedAgentId =
+          firstAvailableAgent(dashboard.agents)?.id ??
+          dashboard.agents[0]?.id ??
+          '';
         selectedConversationId = '';
         messages = [];
         conversations = [];
@@ -330,7 +398,9 @@
     }
   }
 
-  async function openSettings(section: typeof activeSettingsSection = 'household') {
+  async function openSettings(
+    section: typeof activeSettingsSection = 'household'
+  ) {
     activeSettingsSection = section;
     showAgentManager = true;
     settingsIssue = '';
@@ -345,7 +415,8 @@
       tileSettings = tiles;
       markConnected();
     } catch {
-      settingsIssue = 'Settings are unavailable. Check that the hub is running.';
+      settingsIssue =
+        'Settings are unavailable. Check that the hub is running.';
       markIssue('degraded', {
         code: 'settings_unavailable',
         severity: 'warning',
@@ -366,7 +437,8 @@
       dashboard = await getDashboard(fetch);
       markConnected();
     } catch {
-      settingsIssue = 'Settings were not saved. Check required fields and try again.';
+      settingsIssue =
+        'Settings were not saved. Check required fields and try again.';
       markIssue('degraded', {
         code: 'settings_save_failed',
         severity: 'warning',
@@ -389,7 +461,8 @@
       dashboard = await getDashboard(fetch);
       markConnected();
     } catch {
-      settingsIssue = 'Rooms were not saved. Check required fields and try again.';
+      settingsIssue =
+        'Rooms were not saved. Check required fields and try again.';
       markIssue('degraded', {
         code: 'rooms_save_failed',
         severity: 'warning',
@@ -412,7 +485,8 @@
       dashboard = await getDashboard(fetch);
       markConnected();
     } catch {
-      settingsIssue = 'Tiles were not saved. Check required fields and try again.';
+      settingsIssue =
+        'Tiles were not saved. Check required fields and try again.';
       markIssue('degraded', {
         code: 'tiles_save_failed',
         severity: 'warning',
@@ -432,7 +506,9 @@
       const refreshed = await refreshAgentCard(fetch, agentId);
       dashboard = {
         ...dashboard,
-        agents: dashboard.agents.map((agent) => (agent.id === refreshed.id ? refreshed : agent)),
+        agents: dashboard.agents.map((agent) =>
+          agent.id === refreshed.id ? refreshed : agent
+        ),
         connectionState: 'connected',
         stale: false,
         issue: undefined,
@@ -458,7 +534,8 @@
         widgetCatalog = await getWidgetCatalog(fetch);
         markConnected();
       } catch {
-        editIssue = 'Widget catalog is unavailable. Existing widgets can still be adjusted.';
+        editIssue =
+          'Widget catalog is unavailable. Existing widgets can still be adjusted.';
         markIssue('degraded', {
           code: 'widget_catalog_unavailable',
           severity: 'warning',
@@ -488,7 +565,8 @@
       draftLayout = undefined;
       mode = 'dashboard';
     } catch {
-      editIssue = 'Layout was not saved. Check that the hub is running, then try again.';
+      editIssue =
+        'Layout was not saved. Check that the hub is running, then try again.';
       markIssue('degraded', {
         code: 'layout_save_failed',
         severity: 'warning',
@@ -513,7 +591,10 @@
     savingLayout = true;
     editIssue = '';
     try {
-      const reset = await resetWidgetLayout(fetch, dashboardForView.layout.profileId);
+      const reset = await resetWidgetLayout(
+        fetch,
+        dashboardForView.layout.profileId
+      );
       dashboard = {
         ...dashboard,
         layout: reset,
@@ -548,7 +629,9 @@
 
     const layout = cloneLayout(draftLayout);
     const targetRow = nextWidgetRow(layout);
-    let widget = layout.widgets.find((candidate) => candidate.kind === item.kind);
+    let widget = layout.widgets.find(
+      (candidate) => candidate.kind === item.kind
+    );
     if (widget && !item.allowMultiple) {
       widget.visible = true;
       widget.title = widget.title || item.defaultTitle;
@@ -659,7 +742,8 @@
           code: 'event_stream_disconnected',
           severity: 'warning',
           title: 'Reconnecting',
-          message: 'Jute lost the live display event stream. Dashboard data may be stale.'
+          message:
+            'Jute lost the live display event stream. Dashboard data may be stale.'
         });
       }
     });
@@ -685,16 +769,19 @@
             ...dashboard.voice,
             enabled: Boolean(payload.enabled),
             muted: Boolean(payload.muted),
-            state: typeof payload.state === 'string' ? payload.state as DashboardData['voice']['state'] : dashboard.voice.state,
+            state:
+              typeof payload.state === 'string'
+                ? (payload.state as DashboardData['voice']['state'])
+                : dashboard.voice.state,
             serviceStatus:
               typeof payload.serviceStatus === 'string'
-                ? payload.serviceStatus as DashboardData['voice']['serviceStatus']
+                ? (payload.serviceStatus as DashboardData['voice']['serviceStatus'])
                 : dashboard.voice.serviceStatus
           }
         };
       }
     });
-    eventSource.addEventListener('voice.wake_detected', (event) => {
+    eventSource.addEventListener('voice.wake_detected', () => {
       if (voiceEndedTimeout) {
         window.clearTimeout(voiceEndedTimeout);
         voiceEndedTimeout = undefined;
@@ -720,7 +807,7 @@
       }
       voiceOrbState = 'listening';
     });
-    eventSource.addEventListener('conversation.turn_started', (event) => {
+    eventSource.addEventListener('conversation.turn_started', () => {
       voiceOrbState = 'thinking';
     });
     eventSource.addEventListener('conversation.turn_completed', (event) => {
@@ -734,11 +821,11 @@
       }
       voiceOrbState = 'speaking';
     });
-    eventSource.addEventListener('conversation.followup_started', (event) => {
+    eventSource.addEventListener('conversation.followup_started', () => {
       voiceOrbState = 'followup';
       voiceTranscript = '';
     });
-    eventSource.addEventListener('conversation.ended', (event) => {
+    eventSource.addEventListener('conversation.ended', () => {
       voiceOrbState = 'idle';
       if (voiceEndedTimeout) {
         window.clearTimeout(voiceEndedTimeout);
@@ -780,11 +867,18 @@
   }
 
   function addDisplayNotification(notification: DisplayNotification) {
-    displayNotifications = [notification, ...displayNotifications.filter((item) => item.id !== notification.id)].slice(0, 3);
+    displayNotifications = [
+      notification,
+      ...displayNotifications.filter((item) => item.id !== notification.id)
+    ].slice(0, 3);
     const expiry = Date.parse(notification.expiresAt);
-    const delay = Number.isFinite(expiry) ? Math.max(2500, expiry - Date.now()) : 6000;
+    const delay = Number.isFinite(expiry)
+      ? Math.max(2500, expiry - Date.now())
+      : 6000;
     const timer = window.setTimeout(() => {
-      displayNotifications = displayNotifications.filter((item) => item.id !== notification.id);
+      displayNotifications = displayNotifications.filter(
+        (item) => item.id !== notification.id
+      );
     }, delay);
     notificationTimers = [...notificationTimers, timer];
   }
@@ -800,10 +894,14 @@
       focusTimer = undefined;
     }, 4500);
     window.setTimeout(() => {
-      document.querySelector(`[data-widget-id="${cssEscape(focus.widgetInstanceId)}"]`)?.scrollIntoView({
-        block: 'center',
-        behavior: 'smooth'
-      });
+      document
+        .querySelector(
+          `[data-widget-id="${cssEscape(focus.widgetInstanceId)}"]`
+        )
+        ?.scrollIntoView({
+          block: 'center',
+          behavior: 'smooth'
+        });
     }, 0);
   }
 
@@ -815,14 +913,19 @@
   }
 
   function cssEscape(value: string) {
-    return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(value) : value.replace(/"/g, '\\"');
+    return typeof CSS !== 'undefined' && CSS.escape
+      ? CSS.escape(value)
+      : value.replace(/"/g, '\\"');
   }
 
   async function submitMessage(text: string, retryMessageId?: string) {
     const agent = agents.find((item) => item.id === selectedAgentId);
     if (!agent || !isAgentAvailable(agent)) {
       chatState = 'error';
-      messages = [...messages, systemMessage('No available agent is connected yet.')];
+      messages = [
+        ...messages,
+        systemMessage('No available agent is connected yet.')
+      ];
       return;
     }
 
@@ -845,55 +948,70 @@
           agentId: agent.id
         })
       ];
-      await sendConversationTurnStream(fetch, conversationId, agent.id, text, (event) => {
-        if (event.type === 'turn_started') {
-          chatState = 'thinking';
-          return;
+      await sendConversationTurnStream(
+        fetch,
+        conversationId,
+        agent.id,
+        text,
+        (event) => {
+          if (event.type === 'turn_started') {
+            chatState = 'thinking';
+            return;
+          }
+          if (event.type === 'assistant_delta') {
+            streamedOutput = true;
+            chatState = 'streaming';
+            upsertAssistantDelta(assistantMessageId, event);
+            return;
+          }
+          if (event.type === 'status_changed') {
+            chatState = event.status === 'completed' ? 'streaming' : 'thinking';
+            return;
+          }
+          if (event.type === 'turn_completed') {
+            completed = true;
+            applyConversationDetail({
+              conversation: event.conversation,
+              messages: event.messages
+            });
+            return;
+          }
+          if (event.type === 'turn_failed') {
+            failedFromStream = true;
+            throw new Error(event.message);
+          }
         }
-        if (event.type === 'assistant_delta') {
-          streamedOutput = true;
-          chatState = 'streaming';
-          upsertAssistantDelta(assistantMessageId, event);
-          return;
-        }
-        if (event.type === 'status_changed') {
-          chatState = event.status === 'completed' ? 'streaming' : 'thinking';
-          return;
-        }
-        if (event.type === 'turn_completed') {
-          completed = true;
-          applyConversationDetail({
-            conversation: event.conversation,
-            messages: event.messages
-          });
-          return;
-        }
-        if (event.type === 'turn_failed') {
-          failedFromStream = true;
-          throw new Error(event.message);
-        }
-      });
+      );
       if (!completed) {
         throw new Error('stream ended before completion');
       }
       markConnected();
     } catch (err) {
+      let failure = err;
       if (!streamedOutput && !failedFromStream) {
         try {
-          const conversationId = selectedConversationId || (await ensureConversation(agent));
-          const detail = await sendConversationTurn(fetch, conversationId, agent.id, text);
+          const conversationId =
+            selectedConversationId || (await ensureConversation(agent));
+          const detail = await sendConversationTurn(
+            fetch,
+            conversationId,
+            agent.id,
+            text
+          );
           applyConversationDetail(detail);
           markConnected();
           return;
         } catch (fallbackErr) {
-          err = fallbackErr;
+          failure = fallbackErr;
           // Fall through to the standard retryable failure state.
         }
       }
       messages = messages.map((message) =>
-        message.id === temporaryMessageId ? { ...message, status: 'failed', retryText: text } : message
+        message.id === temporaryMessageId
+          ? { ...message, status: 'failed', retryText: text }
+          : message
       );
-      messages = [...messages, systemMessage(chatFailureMessage(err))];
+      messages = [...messages, systemMessage(chatFailureMessage(failure))];
       markIssue('degraded', {
         code: 'message_failed',
         severity: 'warning',
@@ -904,7 +1022,10 @@
     }
   }
 
-  function upsertAssistantDelta(messageId: string, event: Extract<ConversationStreamEvent, { type: 'assistant_delta' }>) {
+  function upsertAssistantDelta(
+    messageId: string,
+    event: Extract<ConversationStreamEvent, { type: 'assistant_delta' }>
+  ) {
     let found = false;
     messages = messages.map((message) => {
       if (message.id !== messageId) {
@@ -946,11 +1067,14 @@
 
   async function toggleVoiceMute() {
     if (dashboard.voice.serviceStatus !== 'ready') {
-      voiceIssue = 'Voice is not configured yet. Add an STT provider before using microphone controls.';
+      voiceIssue =
+        'Voice is not configured yet. Add an STT provider before using microphone controls.';
       return;
     }
     try {
-      const voice = dashboard.voice.muted ? await unmuteVoice(fetch) : await muteVoice(fetch);
+      const voice = dashboard.voice.muted
+        ? await unmuteVoice(fetch)
+        : await muteVoice(fetch);
       dashboard = {
         ...dashboard,
         voice,
@@ -961,7 +1085,8 @@
       };
       voiceIssue = '';
     } catch {
-      voiceIssue = 'Voice state could not be updated. Check that the hub is running, then try again.';
+      voiceIssue =
+        'Voice state could not be updated. Check that the hub is running, then try again.';
       markIssue('degraded', {
         code: 'voice_update_failed',
         severity: 'warning',
@@ -1020,7 +1145,10 @@
     connectDisplayEvents();
   }
 
-  function markIssue(connectionState: DashboardData['connectionState'], issue: UserFacingIssue) {
+  function markIssue(
+    connectionState: DashboardData['connectionState'],
+    issue: UserFacingIssue
+  ) {
     dashboard = {
       ...dashboard,
       connectionState,
@@ -1058,7 +1186,10 @@
     if (message.includes('credentials')) {
       return 'Message not sent. The selected agent needs credentials before Jute can call it.';
     }
-    if (message.includes('protocol binding') || message.includes('not implemented')) {
+    if (
+      message.includes('protocol binding') ||
+      message.includes('not implemented')
+    ) {
       return 'Message not sent. The selected agent does not expose a supported A2A JSON-RPC binding.';
     }
     if (message.includes('agent card')) {
@@ -1075,7 +1206,10 @@
     if (message.includes('credentials')) {
       return 'The selected agent is missing credentials.';
     }
-    if (message.includes('protocol binding') || message.includes('not implemented')) {
+    if (
+      message.includes('protocol binding') ||
+      message.includes('not implemented')
+    ) {
       return 'The selected agent does not expose a supported A2A binding.';
     }
     if (message.includes('agent card')) {
@@ -1085,7 +1219,11 @@
   }
 
   function makeID() {
-    if (browser && 'crypto' in window && typeof window.crypto.randomUUID === 'function') {
+    if (
+      browser &&
+      'crypto' in window &&
+      typeof window.crypto.randomUUID === 'function'
+    ) {
       return window.crypto.randomUUID();
     }
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -1101,14 +1239,20 @@
       return base;
     }
     let counter = 2;
-    while (layout.widgets.some((widget) => widget.id === `${base}-${counter}`)) {
+    while (
+      layout.widgets.some((widget) => widget.id === `${base}-${counter}`)
+    ) {
       counter += 1;
     }
     return `${base}-${counter}`;
   }
 
   function nextWidgetRow(layout: WidgetLayout) {
-    return layout.widgets.reduce((row, widget) => (widget.visible ? Math.max(row, widget.y + widget.h) : row), 0);
+    return layout.widgets.reduce(
+      (row, widget) =>
+        widget.visible ? Math.max(row, widget.y + widget.h) : row,
+      0
+    );
   }
 
   function sizeFromDimensions(w: number, h: number): WidgetInstance['size'] {
@@ -1156,7 +1300,10 @@
     const columns = 4;
     widget.minW = Math.min(Math.max(widget.minW || 1, 1), columns);
     widget.minH = Math.min(Math.max(widget.minH || 1, 1), 6);
-    widget.w = Math.min(Math.max(widget.w || widget.minW, widget.minW), columns);
+    widget.w = Math.min(
+      Math.max(widget.w || widget.minW, widget.minW),
+      columns
+    );
     widget.h = Math.min(Math.max(widget.h || widget.minH, widget.minH), 6);
     widget.x = Math.min(Math.max(widget.x, 0), columns - widget.w);
     widget.y = Math.min(Math.max(widget.y, 0), 99 - widget.h + 1);
@@ -1175,7 +1322,13 @@
     return { x: 0, y: 99 - h + 1 };
   }
 
-  function canPlace(occupied: boolean[][], x: number, y: number, w: number, h: number) {
+  function canPlace(
+    occupied: boolean[][],
+    x: number,
+    y: number,
+    w: number,
+    h: number
+  ) {
     for (let row = y; row < y + h; row += 1) {
       for (let column = x; column < x + w; column += 1) {
         if (occupied[row]?.[column]) {
@@ -1201,10 +1354,15 @@
 </svelte:head>
 
 <main
-  class={cn('display-root', mode === 'chat' && 'display-root--chat', dashboard.stale && 'display-root--stale')}
+  class={cn(
+    'display-root',
+    mode === 'chat' && 'display-root--chat',
+    dashboard.stale && 'display-root--stale'
+  )}
   data-theme={activeTheme}
   data-theme-id={dashboard.config.display.themeId}
-  data-background-overlay={dashboard.config.display.background?.overlay ?? 'none'}
+  data-background-overlay={dashboard.config.display.background?.overlay ??
+    'none'}
   style={displayStyle}
   on:pointerdown={startLongPress}
   on:pointerup={clearLongPress}
@@ -1242,8 +1400,8 @@
       {messages}
       theme={activeTheme}
       stale={dashboard.stale}
-      selectedAgent={selectedAgent}
-      selectedAvailability={selectedAvailability}
+      {selectedAgent}
+      {selectedAvailability}
       {focusedWidgetId}
       voice={dashboard.voice}
       {widgetCatalog}
@@ -1311,7 +1469,8 @@
             chatState = 'idle';
             void loadConversationHistory('');
           }}
-          onConversationSelect={(conversationId) => loadConversation(conversationId)}
+          onConversationSelect={(conversationId) =>
+            loadConversation(conversationId)}
           onNewConversation={createNewConversation}
           onManageAgents={() => openSettings('agents')}
           onRefreshAgentCard={refreshSelectedAgentCard}
@@ -1363,9 +1522,13 @@
             <div class="voice-controls">
               <button
                 type="button"
-                class="control-btn mute-btn {dashboard.voice.muted ? 'muted' : ''}"
+                class="control-btn mute-btn {dashboard.voice.muted
+                  ? 'muted'
+                  : ''}"
                 on:click={toggleVoiceMute}
-                aria-label={dashboard.voice.muted ? "Unmute Microphone" : "Mute Microphone"}
+                aria-label={dashboard.voice.muted
+                  ? 'Unmute Microphone'
+                  : 'Mute Microphone'}
               >
                 {#if dashboard.voice.muted}
                   <MicOff size={18} />
@@ -1389,9 +1552,15 @@
     {/if}
 
     {#if displayNotifications.length > 0}
-      <div class="display-notification-stack" aria-live="polite" aria-label="Display notifications">
+      <div
+        class="display-notification-stack"
+        aria-live="polite"
+        aria-label="Display notifications"
+      >
         {#each displayNotifications as notification (notification.id)}
-          <section class={`display-notification display-notification--${notification.severity}`}>
+          <section
+            class={`display-notification display-notification--${notification.severity}`}
+          >
             <strong>{notification.severity}</strong>
             <span>{notification.message}</span>
           </section>
@@ -1420,16 +1589,20 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 24px;
     padding: 20px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    box-shadow:
+      0 12px 40px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(255, 255, 255, 0.05);
     display: flex;
     flex-direction: column;
     gap: 16px;
   }
 
-  :global([data-theme="light"]) .voice-card {
+  :global([data-theme='light']) .voice-card {
     background: rgba(255, 255, 255, 0.75);
     border: 1px solid rgba(0, 0, 0, 0.08);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.03);
+    box-shadow:
+      0 12px 40px rgba(0, 0, 0, 0.15),
+      0 0 0 1px rgba(0, 0, 0, 0.03);
   }
 
   .voice-content {
@@ -1457,7 +1630,7 @@
     align-self: flex-start;
   }
 
-  :global([data-theme="light"]) .user-bubble {
+  :global([data-theme='light']) .user-bubble {
     background: rgba(6, 182, 212, 0.08);
   }
 
@@ -1467,7 +1640,7 @@
     align-self: flex-start;
   }
 
-  :global([data-theme="light"]) .assistant-bubble {
+  :global([data-theme='light']) .assistant-bubble {
     background: rgba(0, 0, 0, 0.03);
     border-left: 3px solid #7e22ce;
   }
@@ -1487,7 +1660,7 @@
     color: #ffffff;
   }
 
-  :global([data-theme="light"]) .bubble-text {
+  :global([data-theme='light']) .bubble-text {
     color: #111111;
   }
 
@@ -1501,7 +1674,7 @@
     font-weight: 500;
   }
 
-  :global([data-theme="light"]) .status-tip {
+  :global([data-theme='light']) .status-tip {
     color: rgba(0, 0, 0, 0.7);
   }
 
@@ -1541,7 +1714,7 @@
     padding-top: 12px;
   }
 
-  :global([data-theme="light"]) .voice-footer {
+  :global([data-theme='light']) .voice-footer {
     border-top: 1px solid rgba(0, 0, 0, 0.06);
   }
 
@@ -1564,7 +1737,7 @@
     transition: all 0.2s ease;
   }
 
-  :global([data-theme="light"]) .control-btn {
+  :global([data-theme='light']) .control-btn {
     border: 1px solid rgba(0, 0, 0, 0.08);
     background: rgba(0, 0, 0, 0.03);
     color: rgba(0, 0, 0, 0.8);
@@ -1576,7 +1749,7 @@
     transform: scale(1.05);
   }
 
-  :global([data-theme="light"]) .control-btn:hover {
+  :global([data-theme='light']) .control-btn:hover {
     background: rgba(0, 0, 0, 0.06);
     color: #000000;
   }
@@ -1603,7 +1776,8 @@
   }
 
   @keyframes dot-pulse {
-    0%, 100% {
+    0%,
+    100% {
       opacity: 1;
       transform: scale(1);
     }

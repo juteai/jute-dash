@@ -13,7 +13,7 @@ import (
 
 	"jute-dash/internal/config"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // register SQLite driver
 )
 
 const (
@@ -118,7 +118,7 @@ func Open(dbPath string) (*Store, error) {
 	if strings.TrimSpace(dbPath) == "" {
 		return nil, errors.New("database path is required")
 	}
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
 		return nil, fmt.Errorf("create data directory: %w", err)
 	}
 
@@ -232,7 +232,13 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 			_ = tx.Rollback()
 			return fmt.Errorf("run migration %d: %w", item.version, err)
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)`, item.version, item.name, nowUTC()); err != nil {
+		if _, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)`,
+			item.version,
+			item.name,
+			nowUTC(),
+		); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("record migration %d: %w", item.version, err)
 		}
@@ -336,7 +342,8 @@ func (s *Store) SetupStatus(ctx context.Context) (SetupStatus, error) {
 		return SetupStatus{}, err
 	}
 	var setupCompleted int
-	if err := s.db.QueryRowContext(ctx, `SELECT setup_completed FROM household_settings WHERE id = ?`, defaultHouseholdID).Scan(&setupCompleted); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT setup_completed FROM household_settings WHERE id = ?`, defaultHouseholdID).
+		Scan(&setupCompleted); err != nil {
 		return SetupStatus{}, fmt.Errorf("load setup status: %w", err)
 	}
 	missing := missingSetupFields(cfg, setupCompleted == 1)
@@ -371,30 +378,7 @@ func (s *Store) Rooms(ctx context.Context) ([]config.RoomConfig, error) {
 }
 
 func (s *Store) SaveRooms(ctx context.Context, rooms []config.RoomConfig) ([]config.RoomConfig, error) {
-	normalized, err := normalizeRooms(rooms)
-	if err != nil {
-		return nil, err
-	}
-	now := nowUTC()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("begin save rooms: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-	if _, err = tx.ExecContext(ctx, `DELETE FROM rooms`); err != nil {
-		return nil, fmt.Errorf("clear rooms: %w", err)
-	}
-	if err = seedRooms(ctx, tx, normalized, now); err != nil {
-		return nil, err
-	}
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit rooms: %w", err)
-	}
-	return s.loadRooms(ctx)
+	return saveConfigRows(ctx, s, rooms, normalizeRooms, `DELETE FROM rooms`, seedRooms, s.loadRooms, "rooms")
 }
 
 func (s *Store) Tiles(ctx context.Context) ([]config.TileConfig, error) {
@@ -402,30 +386,43 @@ func (s *Store) Tiles(ctx context.Context) ([]config.TileConfig, error) {
 }
 
 func (s *Store) SaveTiles(ctx context.Context, tiles []config.TileConfig) ([]config.TileConfig, error) {
-	normalized, err := normalizeTiles(tiles)
+	return saveConfigRows(ctx, s, tiles, normalizeTiles, `DELETE FROM tiles`, seedTiles, s.loadTiles, "tiles")
+}
+
+func saveConfigRows[T any](
+	ctx context.Context,
+	s *Store,
+	values []T,
+	normalize func([]T) ([]T, error),
+	clearSQL string,
+	seed func(context.Context, *sql.Tx, []T, string) error,
+	load func(context.Context) ([]T, error),
+	name string,
+) ([]T, error) {
+	normalized, err := normalize(values)
 	if err != nil {
 		return nil, err
 	}
 	now := nowUTC()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("begin save tiles: %w", err)
+		return nil, fmt.Errorf("begin save %s: %w", name, err)
 	}
 	defer func() {
 		if err != nil {
 			_ = tx.Rollback()
 		}
 	}()
-	if _, err = tx.ExecContext(ctx, `DELETE FROM tiles`); err != nil {
-		return nil, fmt.Errorf("clear tiles: %w", err)
+	if _, err = tx.ExecContext(ctx, clearSQL); err != nil {
+		return nil, fmt.Errorf("clear %s: %w", name, err)
 	}
-	if err = seedTiles(ctx, tx, normalized, now); err != nil {
+	if err = seed(ctx, tx, normalized, now); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit tiles: %w", err)
+		return nil, fmt.Errorf("commit %s: %w", name, err)
 	}
-	return s.loadTiles(ctx)
+	return load(ctx)
 }
 
 func (s *Store) SaveHouseholdSettings(ctx context.Context, settings HouseholdSettings) (HouseholdSettings, error) {
@@ -669,7 +666,8 @@ func (s *Store) SaveWidgetLayout(ctx context.Context, layout WidgetLayout) (Widg
 	}
 
 	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM layout_profiles WHERE id = ?`, normalized.ProfileID).Scan(&count); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM layout_profiles WHERE id = ?`, normalized.ProfileID).
+		Scan(&count); err != nil {
 		return WidgetLayout{}, fmt.Errorf("check layout profile: %w", err)
 	}
 	if count == 0 {
@@ -686,7 +684,11 @@ func (s *Store) SaveWidgetLayout(ctx context.Context, layout WidgetLayout) (Widg
 		}
 	}()
 
-	if _, err = tx.ExecContext(ctx, `DELETE FROM widget_instances WHERE layout_profile_id = ?`, normalized.ProfileID); err != nil {
+	if _, err = tx.ExecContext(
+		ctx,
+		`DELETE FROM widget_instances WHERE layout_profile_id = ?`,
+		normalized.ProfileID,
+	); err != nil {
 		return WidgetLayout{}, fmt.Errorf("clear widget layout: %w", err)
 	}
 
@@ -797,7 +799,11 @@ func NormalizeWidgetLayout(layout WidgetLayout, catalog map[string]WidgetCatalog
 			widget.Settings = map[string]any{}
 		}
 		if _, err := json.Marshal(widget.Settings); err != nil {
-			return WidgetLayout{}, fmt.Errorf("%w: widget %s settings are not JSON serializable", ErrInvalidLayout, widget.ID)
+			return WidgetLayout{}, fmt.Errorf(
+				"%w: widget %s settings are not JSON serializable",
+				ErrInvalidLayout,
+				widget.ID,
+			)
 		}
 	}
 	return layout, nil
@@ -888,7 +894,8 @@ func (s *Store) configure(ctx context.Context) error {
 
 func (s *Store) migrationApplied(ctx context.Context, version int) (bool, error) {
 	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, version).Scan(&count); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, version).
+		Scan(&count); err != nil {
 		return false, fmt.Errorf("check migration %d: %w", version, err)
 	}
 	return count > 0, nil
@@ -1160,9 +1167,48 @@ type defaultWidgetInstance struct {
 
 func defaultWidgetInstances() []defaultWidgetInstance {
 	return []defaultWidgetInstance{
-		{id: "date-time", kind: "date-time", title: "Date & Time", x: 0, y: 0, w: 2, h: 1, minW: 1, minH: 1, size: "wide", overflow: "clip", visible: true},
-		{id: "weather", kind: "weather", title: "Weather", x: 2, y: 0, w: 2, h: 1, minW: 1, minH: 1, size: "wide", overflow: "clip", visible: true},
-		{id: "chat-history", kind: "chat-history", title: "Chat History", x: 0, y: 1, w: 2, h: 2, minW: 1, minH: 1, size: "medium", overflow: "scroll", visible: true},
+		{
+			id:       "date-time",
+			kind:     "date-time",
+			title:    "Date & Time",
+			x:        0,
+			y:        0,
+			w:        2,
+			h:        1,
+			minW:     1,
+			minH:     1,
+			size:     "wide",
+			overflow: "clip",
+			visible:  true,
+		},
+		{
+			id:       "weather",
+			kind:     "weather",
+			title:    "Weather",
+			x:        2,
+			y:        0,
+			w:        2,
+			h:        1,
+			minW:     1,
+			minH:     1,
+			size:     "wide",
+			overflow: "clip",
+			visible:  true,
+		},
+		{
+			id:       "chat-history",
+			kind:     "chat-history",
+			title:    "Chat History",
+			x:        0,
+			y:        1,
+			w:        2,
+			h:        2,
+			minW:     1,
+			minH:     1,
+			size:     "medium",
+			overflow: "scroll",
+			visible:  true,
+		},
 	}
 }
 

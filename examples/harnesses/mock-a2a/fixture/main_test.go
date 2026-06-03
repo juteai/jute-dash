@@ -33,11 +33,23 @@ func TestSendMessageReadsMCPContext(t *testing.T) {
 		case "initialize":
 			writeMCPResult(t, w, `{"protocolVersion":"2025-11-25"}`)
 		case "resources/read":
-			writeMCPResult(t, w, `{"contents":[{"uri":"jute://skills","mimeType":"application/json","text":"{\"skills\":[{\"skillId\":\"jute.weather.current\",\"displayName\":\"Weather\",\"actions\":[\"refresh\"],\"context\":{\"locationName\":\"London\",\"condition\":\"Clear sky\",\"temperature\":18.5,\"temperatureUnit\":\"°C\",\"status\":\"available\"}}]}"}]}`)
+			writeMCPResult(
+				t,
+				w,
+				`{"contents":[{"uri":"jute://skills","mimeType":"application/json","text":"{\"skills\":[{\"skillId\":\"jute.weather.current\",\"displayName\":\"Weather\",\"actions\":[\"refresh\"],\"context\":{\"locationName\":\"London\",\"condition\":\"Clear sky\",\"temperature\":18.5,\"temperatureUnit\":\"°C\",\"status\":\"available\"}}]}"}]}`,
+			)
 		case "tools/call":
-			writeMCPResult(t, w, `{"content":[{"type":"text","text":"ok"}],"structuredContent":{"status":"completed"},"isError":false}`)
+			writeMCPResult(
+				t,
+				w,
+				`{"content":[{"type":"text","text":"ok"}],"structuredContent":{"status":"completed"},"isError":false}`,
+			)
 		case "prompts/get":
-			writeMCPResult(t, w, `{"messages":[{"role":"user","content":{"type":"text","text":"Use Widget Skills safely."}}]}`)
+			writeMCPResult(
+				t,
+				w,
+				`{"messages":[{"role":"user","content":{"type":"text","text":"Use Widget Skills safely."}}]}`,
+			)
 		default:
 			t.Fatalf("unexpected MCP method %q", req.Method)
 		}
@@ -78,7 +90,10 @@ func sendTestMessage(t *testing.T, metadata map[string]any) *httptest.ResponseRe
 	if metadata == nil {
 		metadata = map[string]any{}
 	}
-	body := `{"jsonrpc":"2.0","id":"1","method":"SendMessage","params":{"message":{"role":"ROLE_USER","parts":[{"text":"Hello"}],"metadata":` + marshalTestJSON(t, metadata) + `}}}`
+	body := `{"jsonrpc":"2.0","id":"1","method":"SendMessage","params":{"message":{"role":"ROLE_USER","parts":[{"text":"Hello"}],"metadata":` + marshalTestJSON(
+		t,
+		metadata,
+	) + `}}}`
 	req := httptest.NewRequest(http.MethodPost, "/invoke", strings.NewReader(body))
 	req.Header.Set("A2A-Version", "1.0")
 	rec := httptest.NewRecorder()

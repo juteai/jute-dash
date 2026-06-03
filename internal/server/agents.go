@@ -29,7 +29,7 @@ func (s *Server) addAgentFromCard(ctx context.Context, cardURL string) (registry
 	if err != nil {
 		return registry.Agent{}, err
 	}
-	selected, err := a2aclient.SelectInterface(result.Card, "", a2aclient.ProtocolJSONRPC)
+	selected, err := a2aclient.SelectInterface(result.Card)
 	if err != nil {
 		return registry.Agent{}, err
 	}
@@ -38,7 +38,10 @@ func (s *Server) addAgentFromCard(ctx context.Context, cardURL string) (registry
 	defer s.mu.Unlock()
 	for _, existing := range s.cfg.Agents {
 		if existing.CardURL == cardURL {
-			return s.agentWithDiscovery(registry.New([]config.AgentConfig{existing}).List()[0], cardCacheFromCard(existing.ID, result, selected)), nil
+			return s.agentWithDiscovery(
+				registry.New([]config.AgentConfig{existing}).List()[0],
+				cardCacheFromCard(existing.ID, result, selected),
+			), nil
 		}
 	}
 
@@ -149,7 +152,11 @@ func writeAgentConfigError(w http.ResponseWriter, err error) {
 	}
 }
 
-func cardCacheFromCard(agentID string, result a2aclient.AgentCardFetchResult, selected a2aclient.SelectedInterface) agentCardCache {
+func cardCacheFromCard(
+	agentID string,
+	result a2aclient.AgentCardFetchResult,
+	selected a2aclient.SelectedInterface,
+) agentCardCache {
 	fetchedAt := result.FetchedAt
 	if fetchedAt.IsZero() {
 		fetchedAt = time.Now().UTC()

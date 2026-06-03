@@ -19,7 +19,7 @@ import (
 	"jute-dash/internal/registry"
 	"jute-dash/internal/store"
 	"jute-dash/widgets"
-	_ "jute-dash/widgets/chathistory"
+	_ "jute-dash/widgets/chathistory" // register built-in chat history widget
 	_ "jute-dash/widgets/datetime"
 	_ "jute-dash/widgets/markets"
 	_ "jute-dash/widgets/rss"
@@ -156,30 +156,78 @@ type VoiceStatusResponse struct {
 }
 
 func New(cfg config.Config, version string) http.Handler {
-	return newServer(cfg, version, nil, store.SetupStatus{Complete: true, Missing: []string{}}, store.DefaultWidgetLayout(), nil, "", nil)
+	return newServer(
+		cfg,
+		version,
+		nil,
+		store.SetupStatus{Complete: true, Missing: []string{}},
+		store.DefaultWidgetLayout(),
+		nil,
+		"",
+		nil,
+	)
 }
 
 func NewWithMessageSender(cfg config.Config, version string, messageSender a2aclient.MessageSender) http.Handler {
-	return newServer(cfg, version, messageSender, store.SetupStatus{Complete: true, Missing: []string{}}, store.DefaultWidgetLayout(), nil, "", nil)
+	return newServer(
+		cfg,
+		version,
+		messageSender,
+		store.SetupStatus{Complete: true, Missing: []string{}},
+		store.DefaultWidgetLayout(),
+		nil,
+		"",
+		nil,
+	)
 }
 
 func NewWithSetupStatus(cfg config.Config, version string, setup store.SetupStatus) http.Handler {
 	return NewWithSetupStatusAndLayout(cfg, version, setup, store.DefaultWidgetLayout())
 }
 
-func NewWithSetupStatusAndLayout(cfg config.Config, version string, setup store.SetupStatus, layout store.WidgetLayout) http.Handler {
+func NewWithSetupStatusAndLayout(
+	cfg config.Config,
+	version string,
+	setup store.SetupStatus,
+	layout store.WidgetLayout,
+) http.Handler {
 	return newServer(cfg, version, nil, setup, layout, nil, "", nil)
 }
 
-func NewWithSetupStatusAndLayoutStore(cfg config.Config, version string, setup store.SetupStatus, layoutStore WidgetLayoutStore) http.Handler {
+func NewWithSetupStatusAndLayoutStore(
+	cfg config.Config,
+	version string,
+	setup store.SetupStatus,
+	layoutStore WidgetLayoutStore,
+) http.Handler {
 	return NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg, version, setup, layoutStore, "")
 }
 
-func NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg config.Config, version string, setup store.SetupStatus, layoutStore WidgetLayoutStore, configPath string) http.Handler {
-	return NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(cfg, version, setup, layoutStore, configPath, nil)
+func NewWithSetupStatusAndLayoutStoreAndConfigPath(
+	cfg config.Config,
+	version string,
+	setup store.SetupStatus,
+	layoutStore WidgetLayoutStore,
+	configPath string,
+) http.Handler {
+	return NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(
+		cfg,
+		version,
+		setup,
+		layoutStore,
+		configPath,
+		nil,
+	)
 }
 
-func NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(cfg config.Config, version string, setup store.SetupStatus, layoutStore WidgetLayoutStore, configPath string, display *displayactions.Dispatcher) http.Handler {
+func NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(
+	cfg config.Config,
+	version string,
+	setup store.SetupStatus,
+	layoutStore WidgetLayoutStore,
+	configPath string,
+	display *displayactions.Dispatcher,
+) http.Handler {
 	layout := store.DefaultWidgetLayout()
 	if layoutStore != nil {
 		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
@@ -187,10 +235,18 @@ func NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(cfg config.C
 		}
 	}
 	return newServer(cfg, version, nil, setup, layout, layoutStore, configPath, display)
-
 }
 
-func newServer(cfg config.Config, version string, messageSender a2aclient.MessageSender, setup store.SetupStatus, layout store.WidgetLayout, layoutStore WidgetLayoutStore, configPath string, display *displayactions.Dispatcher) http.Handler {
+func newServer(
+	cfg config.Config,
+	version string,
+	messageSender a2aclient.MessageSender,
+	setup store.SetupStatus,
+	layout store.WidgetLayout,
+	layoutStore WidgetLayoutStore,
+	configPath string,
+	display *displayactions.Dispatcher,
+) http.Handler {
 	if messageSender == nil {
 		messageSender = a2aclient.NewJSONRPCClient()
 	}
@@ -206,9 +262,9 @@ func newServer(cfg config.Config, version string, messageSender a2aclient.Messag
 		display = displayactions.NewDispatcher()
 	}
 	server := &Server{
-		cfg:      cfg,
-		registry: registry.New(cfg.Agents),
-		messages: messageSender,
+		cfg:         cfg,
+		registry:    registry.New(cfg.Agents),
+		messages:    messageSender,
 		agentCards:  newAgentCardService(),
 		setup:       normalizeSetupStatus(setup),
 		layout:      normalizeWidgetLayout(layout),
@@ -221,7 +277,9 @@ func newServer(cfg config.Config, version string, messageSender a2aclient.Messag
 		started:     time.Now().UTC(),
 		version:     version,
 	}
-	if st, ok := layoutStore.(interface{ SetCatalog([]store.WidgetCatalogItem) }); ok {
+	if st, ok := layoutStore.(interface {
+		SetCatalog([]store.WidgetCatalogItem)
+	}); ok {
 		st.SetCatalog(widgetCatalogItems())
 	}
 
@@ -347,7 +405,8 @@ func mcpStatusFromConfig(cfg config.MCPConfig) MCPStatus {
 	if !cfg.Enabled {
 		return status
 	}
-	if strings.TrimSpace(cfg.Transport) == "" || strings.TrimSpace(cfg.ListenAddress) == "" || strings.TrimSpace(cfg.Path) == "" {
+	if strings.TrimSpace(cfg.Transport) == "" || strings.TrimSpace(cfg.ListenAddress) == "" ||
+		strings.TrimSpace(cfg.Path) == "" {
 		status.ServiceStatus = "misconfigured"
 		return status
 	}
@@ -427,7 +486,7 @@ func validateHouseholdSettings(settings store.HouseholdSettings) error {
 	cfg.Display = settings.Display
 	cfg.Weather = settings.Weather
 	if err := config.EnsureValid(&cfg); err != nil {
-		return fmt.Errorf("%w: %v", errInvalidHouseholdSettings, err)
+		return fmt.Errorf("%w: %w", errInvalidHouseholdSettings, err)
 	}
 	return nil
 }
@@ -561,64 +620,58 @@ func (s *Server) handleHouseholdSettings(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleRoomSettings(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		rooms, err := s.currentRooms(r.Context())
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "room settings are unavailable")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"rooms": rooms})
-	case http.MethodPut:
-		var req struct {
-			Rooms []config.RoomConfig `json:"rooms"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid JSON request body")
-			return
-		}
-		rooms, err := s.saveRooms(r.Context(), req.Rooms)
-		if err != nil {
-			if errors.Is(err, store.ErrInvalidSettings) {
-				writeError(w, http.StatusBadRequest, err.Error())
-				return
-			}
-			writeError(w, http.StatusInternalServerError, "room settings could not be saved")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"rooms": rooms})
-	default:
-		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut)
-	}
+	handleConfigSliceSettings(w, r, configSliceSettings[config.RoomConfig]{
+		key:       "rooms",
+		load:      s.currentRooms,
+		save:      s.saveRooms,
+		loadError: "room settings are unavailable",
+		saveError: "room settings could not be saved",
+	})
 }
 
 func (s *Server) handleTileSettings(w http.ResponseWriter, r *http.Request) {
+	handleConfigSliceSettings(w, r, configSliceSettings[config.TileConfig]{
+		key:       "tiles",
+		load:      s.currentTiles,
+		save:      s.saveTiles,
+		loadError: "tile settings are unavailable",
+		saveError: "tile settings could not be saved",
+	})
+}
+
+type configSliceSettings[T any] struct {
+	key       string
+	load      func(context.Context) ([]T, error)
+	save      func(context.Context, []T) ([]T, error)
+	loadError string
+	saveError string
+}
+
+func handleConfigSliceSettings[T any](w http.ResponseWriter, r *http.Request, settings configSliceSettings[T]) {
 	switch r.Method {
 	case http.MethodGet:
-		tiles, err := s.currentTiles(r.Context())
+		values, err := settings.load(r.Context())
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "tile settings are unavailable")
+			writeError(w, http.StatusInternalServerError, settings.loadError)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"tiles": tiles})
+		writeJSON(w, http.StatusOK, map[string]any{settings.key: values})
 	case http.MethodPut:
-		var req struct {
-			Tiles []config.TileConfig `json:"tiles"`
-		}
+		var req map[string][]T
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON request body")
 			return
 		}
-		tiles, err := s.saveTiles(r.Context(), req.Tiles)
+		values, err := settings.save(r.Context(), req[settings.key])
 		if err != nil {
 			if errors.Is(err, store.ErrInvalidSettings) {
 				writeError(w, http.StatusBadRequest, err.Error())
 				return
 			}
-			writeError(w, http.StatusInternalServerError, "tile settings could not be saved")
+			writeError(w, http.StatusInternalServerError, settings.saveError)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"tiles": tiles})
+		writeJSON(w, http.StatusOK, map[string]any{settings.key: values})
 	default:
 		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut)
 	}
@@ -800,7 +853,10 @@ func (s *Server) currentHouseholdSettings(ctx context.Context) (store.HouseholdS
 	}, nil
 }
 
-func (s *Server) saveHouseholdSettings(ctx context.Context, settings store.HouseholdSettings) (store.HouseholdSettings, error) {
+func (s *Server) saveHouseholdSettings(
+	ctx context.Context,
+	settings store.HouseholdSettings,
+) (store.HouseholdSettings, error) {
 	current, err := s.currentHouseholdSettings(ctx)
 	if err != nil {
 		return store.HouseholdSettings{}, err
@@ -863,42 +919,22 @@ func (s *Server) currentRooms(ctx context.Context) ([]config.RoomConfig, error) 
 }
 
 func (s *Server) saveRooms(ctx context.Context, rooms []config.RoomConfig) ([]config.RoomConfig, error) {
-	if s.configPath != "" {
-		normalized, err := store.NormalizeRooms(rooms)
-		if err != nil {
-			return nil, err
-		}
-		s.mu.Lock()
-		next := s.cfg
-		next.Rooms = normalized
-		if err := config.SaveYAML(s.configPath, next); err != nil {
-			s.mu.Unlock()
-			return nil, err
-		}
-		s.cfg = next
-		s.mu.Unlock()
-		return s.currentRooms(ctx)
-	}
-
-	if s.settings != nil {
-		saved, err := s.settings.SaveRooms(ctx, rooms)
-		if err != nil {
-			return nil, err
-		}
-		s.mu.Lock()
-		s.cfg.Rooms = saved
-		s.mu.Unlock()
-		return saved, nil
-	}
-
-	normalized, err := store.NormalizeRooms(rooms)
-	if err != nil {
-		return nil, err
-	}
-	s.mu.Lock()
-	s.cfg.Rooms = normalized
-	s.mu.Unlock()
-	return s.currentRooms(ctx)
+	return saveConfigSlice(
+		ctx,
+		s,
+		rooms,
+		store.NormalizeRooms,
+		s.currentRooms,
+		func(cfg *config.Config, next []config.RoomConfig) {
+			cfg.Rooms = next
+		},
+		func(ctx context.Context, next []config.RoomConfig) ([]config.RoomConfig, error) {
+			if s.settings == nil {
+				return nil, nil
+			}
+			return s.settings.SaveRooms(ctx, next)
+		},
+	)
 }
 
 func (s *Server) currentTiles(ctx context.Context) ([]config.TileConfig, error) {
@@ -915,42 +951,69 @@ func (s *Server) currentTiles(ctx context.Context) ([]config.TileConfig, error) 
 }
 
 func (s *Server) saveTiles(ctx context.Context, tiles []config.TileConfig) ([]config.TileConfig, error) {
+	return saveConfigSlice(
+		ctx,
+		s,
+		tiles,
+		store.NormalizeTiles,
+		s.currentTiles,
+		func(cfg *config.Config, next []config.TileConfig) {
+			cfg.Tiles = next
+		},
+		func(ctx context.Context, next []config.TileConfig) ([]config.TileConfig, error) {
+			if s.settings == nil {
+				return nil, nil
+			}
+			return s.settings.SaveTiles(ctx, next)
+		},
+	)
+}
+
+func saveConfigSlice[T any](
+	ctx context.Context,
+	s *Server,
+	values []T,
+	normalize func([]T) ([]T, error),
+	current func(context.Context) ([]T, error),
+	setConfig func(*config.Config, []T),
+	saveSettings func(context.Context, []T) ([]T, error),
+) ([]T, error) {
 	if s.configPath != "" {
-		normalized, err := store.NormalizeTiles(tiles)
+		normalized, err := normalize(values)
 		if err != nil {
 			return nil, err
 		}
 		s.mu.Lock()
 		next := s.cfg
-		next.Tiles = normalized
+		setConfig(&next, normalized)
 		if err := config.SaveYAML(s.configPath, next); err != nil {
 			s.mu.Unlock()
 			return nil, err
 		}
 		s.cfg = next
 		s.mu.Unlock()
-		return s.currentTiles(ctx)
+		return current(ctx)
 	}
 
 	if s.settings != nil {
-		saved, err := s.settings.SaveTiles(ctx, tiles)
+		saved, err := saveSettings(ctx, values)
 		if err != nil {
 			return nil, err
 		}
 		s.mu.Lock()
-		s.cfg.Tiles = saved
+		setConfig(&s.cfg, saved)
 		s.mu.Unlock()
 		return saved, nil
 	}
 
-	normalized, err := store.NormalizeTiles(tiles)
+	normalized, err := normalize(values)
 	if err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
-	s.cfg.Tiles = normalized
+	setConfig(&s.cfg, normalized)
 	s.mu.Unlock()
-	return s.currentTiles(ctx)
+	return current(ctx)
 }
 
 func (s *Server) currentWidgetLayout(ctx context.Context, profileID string) (store.WidgetLayout, error) {
@@ -1415,10 +1478,6 @@ func (s *Server) loadAgentCardCache(_ context.Context, agentID string) (agentCar
 func (s *Server) refreshAgentCard(ctx context.Context, agent registry.Agent) agentCardCache {
 	configured, _ := s.configuredAgent(agent.ID)
 	return s.agentCards.refresh(ctx, agent, configured)
-}
-
-func (s *Server) saveAgentCardCache(_ context.Context, cache agentCardCache) {
-	s.agentCards.save(cache)
 }
 
 func (s *Server) dashboardContext(ctx context.Context) map[string]any {

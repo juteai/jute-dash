@@ -30,7 +30,10 @@
     return 'Connected';
   }
 
-  function defaultMessage(connectionState: AppConnectionState, isStale: boolean) {
+  function defaultMessage(
+    connectionState: AppConnectionState,
+    isStale: boolean
+  ) {
     if (connectionState === 'reconnecting') {
       return 'Showing the last dashboard state while Jute reconnects.';
     }
@@ -48,7 +51,11 @@
 </script>
 
 {#if visible}
-  <div class={`status-ribbon status-ribbon--${tone}`} role="status" aria-live="polite">
+  <div
+    class={`status-ribbon status-ribbon--${tone}`}
+    role="status"
+    aria-live="polite"
+  >
     <div class="status-ribbon-icon" aria-hidden="true">
       {#if state === 'offline' || state === 'reconnecting'}
         <WifiOff size={18} />

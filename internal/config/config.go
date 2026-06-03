@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"jute-dash/internal/a2a"
@@ -16,16 +17,16 @@ import (
 )
 
 type Config struct {
-	Home      HomeConfig      `json:"home" yaml:"home"`
-	Server    ServerConfig    `json:"server" yaml:"server"`
-	MCP       MCPConfig       `json:"mcp" yaml:"mcp"`
-	Display   DisplayConfig   `json:"display" yaml:"display"`
-	Weather   WeatherConfig   `json:"weather" yaml:"weather"`
-	Voice     VoiceConfig     `json:"voice" yaml:"voice"`
+	Home      HomeConfig      `json:"home"      yaml:"home"`
+	Server    ServerConfig    `json:"server"    yaml:"server"`
+	MCP       MCPConfig       `json:"mcp"       yaml:"mcp"`
+	Display   DisplayConfig   `json:"display"   yaml:"display"`
+	Weather   WeatherConfig   `json:"weather"   yaml:"weather"`
+	Voice     VoiceConfig     `json:"voice"     yaml:"voice"`
 	Dashboard DashboardConfig `json:"dashboard" yaml:"dashboard"`
-	Agents    []AgentConfig   `json:"agents" yaml:"agents"`
-	Rooms     []RoomConfig    `json:"rooms" yaml:"rooms"`
-	Tiles     []TileConfig    `json:"tiles" yaml:"tiles"`
+	Agents    []AgentConfig   `json:"agents"    yaml:"agents"`
+	Rooms     []RoomConfig    `json:"rooms"     yaml:"rooms"`
+	Tiles     []TileConfig    `json:"tiles"     yaml:"tiles"`
 }
 
 type DashboardConfig struct {
@@ -33,21 +34,21 @@ type DashboardConfig struct {
 }
 
 type DashboardWidgetConfig struct {
-	ID       string         `json:"id" yaml:"id"`
-	Type     string         `json:"type" yaml:"type"`
-	Title    string         `json:"title" yaml:"title"`
-	X        int            `json:"x" yaml:"x"`
-	Y        int            `json:"y" yaml:"y"`
-	W        int            `json:"w" yaml:"w"`
-	H        int            `json:"h" yaml:"h"`
-	Visible  bool           `json:"visible" yaml:"visible"`
+	ID       string         `json:"id"                 yaml:"id"`
+	Type     string         `json:"type"               yaml:"type"`
+	Title    string         `json:"title"              yaml:"title"`
+	X        int            `json:"x"                  yaml:"x"`
+	Y        int            `json:"y"                  yaml:"y"`
+	W        int            `json:"w"                  yaml:"w"`
+	H        int            `json:"h"                  yaml:"h"`
+	Visible  bool           `json:"visible"            yaml:"visible"`
 	Settings map[string]any `json:"settings,omitempty" yaml:"settings,omitempty"`
 }
 
 type HomeConfig struct {
-	Name     string `json:"name" yaml:"name"`
+	Name     string `json:"name"     yaml:"name"`
 	Timezone string `json:"timezone" yaml:"timezone"`
-	Locale   string `json:"locale" yaml:"locale"`
+	Locale   string `json:"locale"   yaml:"locale"`
 }
 
 type ServerConfig struct {
@@ -55,37 +56,37 @@ type ServerConfig struct {
 }
 
 type MCPConfig struct {
-	Enabled       bool          `json:"enabled" yaml:"enabled"`
-	Transport     string        `json:"transport" yaml:"transport"`
+	Enabled       bool          `json:"enabled"       yaml:"enabled"`
+	Transport     string        `json:"transport"     yaml:"transport"`
 	ListenAddress string        `json:"listenAddress" yaml:"listen-address"`
-	Path          string        `json:"path" yaml:"path"`
-	AllowLAN      bool          `json:"allowLan" yaml:"allow-lan"`
-	Auth          MCPAuthConfig `json:"auth" yaml:"auth"`
+	Path          string        `json:"path"          yaml:"path"`
+	AllowLAN      bool          `json:"allowLan"      yaml:"allow-lan"`
+	Auth          MCPAuthConfig `json:"auth"          yaml:"auth"`
 }
 
 type MCPAuthConfig struct {
-	Mode     string `json:"mode" yaml:"mode"`
+	Mode     string `json:"mode"     yaml:"mode"`
 	EnvToken string `json:"envToken" yaml:"env-token"`
 }
 
 type DisplayConfig struct {
-	Theme        string              `json:"theme" yaml:"theme"`
-	ColorMode    string              `json:"colorMode" yaml:"color-mode"`
-	ThemeID      string              `json:"themeId" yaml:"theme-id"`
-	Density      string              `json:"density" yaml:"density"`
-	Motion       string              `json:"motion" yaml:"motion"`
-	Background   DisplayBackground   `json:"background" yaml:"background"`
+	Theme        string              `json:"theme"        yaml:"theme"`
+	ColorMode    string              `json:"colorMode"    yaml:"color-mode"`
+	ThemeID      string              `json:"themeId"      yaml:"theme-id"`
+	Density      string              `json:"density"      yaml:"density"`
+	Motion       string              `json:"motion"       yaml:"motion"`
+	Background   DisplayBackground   `json:"background"   yaml:"background"`
 	WidgetChrome DisplayWidgetChrome `json:"widgetChrome" yaml:"widget-chrome"`
-	AccentColor  string              `json:"accentColor" yaml:"accent-color"`
-	IdleMode     string              `json:"idleMode" yaml:"idle-mode"`
+	AccentColor  string              `json:"accentColor"  yaml:"accent-color"`
+	IdleMode     string              `json:"idleMode"     yaml:"idle-mode"`
 }
 
 type DisplayBackground struct {
-	Kind     string `json:"kind" yaml:"kind"`
-	Value    string `json:"value" yaml:"value"`
-	Fit      string `json:"fit" yaml:"fit"`
+	Kind     string `json:"kind"     yaml:"kind"`
+	Value    string `json:"value"    yaml:"value"`
+	Fit      string `json:"fit"      yaml:"fit"`
 	Position string `json:"position" yaml:"position"`
-	Overlay  string `json:"overlay" yaml:"overlay"`
+	Overlay  string `json:"overlay"  yaml:"overlay"`
 }
 
 type DisplayWidgetChrome struct {
@@ -93,85 +94,85 @@ type DisplayWidgetChrome struct {
 }
 
 type WeatherConfig struct {
-	Enabled         bool    `json:"enabled" yaml:"enabled"`
-	Provider        string  `json:"provider" yaml:"provider"`
-	LocationName    string  `json:"locationName" yaml:"location-name"`
-	Latitude        float64 `json:"latitude" yaml:"latitude"`
-	Longitude       float64 `json:"longitude" yaml:"longitude"`
+	Enabled         bool    `json:"enabled"         yaml:"enabled"`
+	Provider        string  `json:"provider"        yaml:"provider"`
+	LocationName    string  `json:"locationName"    yaml:"location-name"`
+	Latitude        float64 `json:"latitude"        yaml:"latitude"`
+	Longitude       float64 `json:"longitude"       yaml:"longitude"`
 	TemperatureUnit string  `json:"temperatureUnit" yaml:"temperature-unit"`
-	WindSpeedUnit   string  `json:"windSpeedUnit" yaml:"wind-speed-unit"`
+	WindSpeedUnit   string  `json:"windSpeedUnit"   yaml:"wind-speed-unit"`
 }
 
 type VoiceConfig struct {
-	Enabled                 bool   `json:"enabled" yaml:"enabled"`
-	MutedByDefault          bool   `json:"mutedByDefault" yaml:"muted-by-default"`
-	WakeWordModelID         string `json:"wakeWordModelId" yaml:"wake-word-model-id"`
-	STTProviderID           string `json:"sttProviderId" yaml:"stt-provider-id"`
-	TTSProviderID           string `json:"ttsProviderId" yaml:"tts-provider-id"`
-	STTModelID              string `json:"sttModelId" yaml:"stt-model-id"`
-	TTSModelID              string `json:"ttsModelId" yaml:"tts-model-id"`
-	TTSVoiceID              string `json:"ttsVoiceId" yaml:"tts-voice-id"`
-	PreferredAgentID        string `json:"preferredAgentId" yaml:"preferred-agent-id"`
-	CloudOptIn              bool   `json:"cloudOptIn" yaml:"cloud-opt-in"`
+	Enabled                 bool   `json:"enabled"                 yaml:"enabled"`
+	MutedByDefault          bool   `json:"mutedByDefault"          yaml:"muted-by-default"`
+	WakeWordModelID         string `json:"wakeWordModelId"         yaml:"wake-word-model-id"`
+	STTProviderID           string `json:"sttProviderId"           yaml:"stt-provider-id"`
+	TTSProviderID           string `json:"ttsProviderId"           yaml:"tts-provider-id"`
+	STTModelID              string `json:"sttModelId"              yaml:"stt-model-id"`
+	TTSModelID              string `json:"ttsModelId"              yaml:"tts-model-id"`
+	TTSVoiceID              string `json:"ttsVoiceId"              yaml:"tts-voice-id"`
+	PreferredAgentID        string `json:"preferredAgentId"        yaml:"preferred-agent-id"`
+	CloudOptIn              bool   `json:"cloudOptIn"              yaml:"cloud-opt-in"`
 	CommandProvidersEnabled bool   `json:"commandProvidersEnabled" yaml:"command-providers-enabled"`
-	SensitiveOutputPolicy   string `json:"sensitiveOutputPolicy" yaml:"sensitive-output-policy"`
-	FollowupWindowSeconds   int    `json:"followupWindowSeconds" yaml:"followup-window-seconds"`
-	MicrophoneProfile       string `json:"microphoneProfile" yaml:"microphone-profile"`
+	SensitiveOutputPolicy   string `json:"sensitiveOutputPolicy"   yaml:"sensitive-output-policy"`
+	FollowupWindowSeconds   int    `json:"followupWindowSeconds"   yaml:"followup-window-seconds"`
+	MicrophoneProfile       string `json:"microphoneProfile"       yaml:"microphone-profile"`
 }
 
 type AgentConfig struct {
-	ID              string      `json:"id" yaml:"id"`
-	Name            string      `json:"name" yaml:"name"`
-	Description     string      `json:"description" yaml:"description"`
-	CardURL         string      `json:"cardUrl" yaml:"card-url"`
-	EndpointURL     string      `json:"endpointUrl" yaml:"endpoint-url"`
+	ID              string      `json:"id"              yaml:"id"`
+	Name            string      `json:"name"            yaml:"name"`
+	Description     string      `json:"description"     yaml:"description"`
+	CardURL         string      `json:"cardUrl"         yaml:"card-url"`
+	EndpointURL     string      `json:"endpointUrl"     yaml:"endpoint-url"`
 	ProtocolBinding string      `json:"protocolBinding" yaml:"protocol-binding"`
-	Enabled         bool        `json:"enabled" yaml:"enabled"`
-	Capabilities    []string    `json:"capabilities" yaml:"capabilities"`
-	MCPScopes       []string    `json:"mcpScopes" yaml:"mcp-scopes"`
-	Auth            *AuthConfig `json:"auth,omitempty" yaml:"auth,omitempty"`
+	Enabled         bool        `json:"enabled"         yaml:"enabled"`
+	Capabilities    []string    `json:"capabilities"    yaml:"capabilities"`
+	MCPScopes       []string    `json:"mcpScopes"       yaml:"mcp-scopes"`
+	Auth            *AuthConfig `json:"auth,omitempty"  yaml:"auth,omitempty"`
 }
 
 type AuthConfig struct {
-	Type     string `json:"type" yaml:"type"`
+	Type     string `json:"type"     yaml:"type"`
 	EnvToken string `json:"envToken" yaml:"env-token"`
 }
 
 type RoomConfig struct {
-	ID      string `json:"id" yaml:"id"`
-	Name    string `json:"name" yaml:"name"`
+	ID      string `json:"id"      yaml:"id"`
+	Name    string `json:"name"    yaml:"name"`
 	Summary string `json:"summary" yaml:"summary"`
-	Status  string `json:"status" yaml:"status"`
+	Status  string `json:"status"  yaml:"status"`
 }
 
 type TileConfig struct {
-	ID     string `json:"id" yaml:"id"`
-	Kind   string `json:"kind" yaml:"kind"`
-	Label  string `json:"label" yaml:"label"`
-	Value  string `json:"value" yaml:"value"`
+	ID     string `json:"id"     yaml:"id"`
+	Kind   string `json:"kind"   yaml:"kind"`
+	Label  string `json:"label"  yaml:"label"`
+	Value  string `json:"value"  yaml:"value"`
 	Detail string `json:"detail" yaml:"detail"`
 }
 
 type PublicConfig struct {
-	Home      HomeConfig          `json:"home" yaml:"home"`
-	Display   DisplayConfig       `json:"display" yaml:"display"`
+	Home      HomeConfig          `json:"home"      yaml:"home"`
+	Display   DisplayConfig       `json:"display"   yaml:"display"`
 	Dashboard DashboardConfig     `json:"dashboard" yaml:"dashboard"`
-	Agents    []PublicAgentConfig `json:"agents" yaml:"agents"`
-	Rooms     []RoomConfig        `json:"rooms" yaml:"rooms"`
-	Tiles     []TileConfig        `json:"tiles" yaml:"tiles"`
+	Agents    []PublicAgentConfig `json:"agents"    yaml:"agents"`
+	Rooms     []RoomConfig        `json:"rooms"     yaml:"rooms"`
+	Tiles     []TileConfig        `json:"tiles"     yaml:"tiles"`
 }
 
 type PublicAgentConfig struct {
-	ID              string   `json:"id" yaml:"id"`
-	Name            string   `json:"name" yaml:"name"`
-	Description     string   `json:"description" yaml:"description"`
-	CardURL         string   `json:"cardUrl" yaml:"card-url"`
-	EndpointURL     string   `json:"endpointUrl" yaml:"endpoint-url"`
+	ID              string   `json:"id"              yaml:"id"`
+	Name            string   `json:"name"            yaml:"name"`
+	Description     string   `json:"description"     yaml:"description"`
+	CardURL         string   `json:"cardUrl"         yaml:"card-url"`
+	EndpointURL     string   `json:"endpointUrl"     yaml:"endpoint-url"`
 	ProtocolBinding string   `json:"protocolBinding" yaml:"protocol-binding"`
-	Enabled         bool     `json:"enabled" yaml:"enabled"`
-	Capabilities    []string `json:"capabilities" yaml:"capabilities"`
-	MCPScopes       []string `json:"mcpScopes" yaml:"mcp-scopes"`
-	AuthConfigured  bool     `json:"authConfigured" yaml:"auth-configured"`
+	Enabled         bool     `json:"enabled"         yaml:"enabled"`
+	Capabilities    []string `json:"capabilities"    yaml:"capabilities"`
+	MCPScopes       []string `json:"mcpScopes"       yaml:"mcp-scopes"`
+	AuthConfigured  bool     `json:"authConfigured"  yaml:"auth-configured"`
 }
 
 const (
@@ -231,12 +232,7 @@ func SupportedThemeIDs() []string {
 
 func IsSupportedThemeID(id string) bool {
 	id = strings.TrimSpace(id)
-	for _, supported := range SupportedThemeIDs() {
-		if id == supported {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(SupportedThemeIDs(), id)
 }
 
 func Default() Config {
@@ -255,7 +251,7 @@ func Default() Config {
 			ListenAddress: "127.0.0.1:8790",
 			Path:          "/mcp",
 			AllowLAN:      false,
-			Auth: MCPAuthConfig{
+			Auth: MCPAuthConfig{ //nolint:gosec // EnvToken names an environment variable, not a credential value.
 				Mode:     "local-token",
 				EnvToken: "JUTE_MCP_TOKEN",
 			},
@@ -530,7 +526,8 @@ func applyDefaults(cfg *Config) {
 	if strings.TrimSpace(cfg.Display.ColorMode) == "" {
 		cfg.Display.ColorMode = strings.TrimSpace(cfg.Display.Theme)
 	}
-	if strings.TrimSpace(cfg.Display.Theme) != "" && cfg.Display.Theme != defaults.Display.Theme && cfg.Display.ColorMode == defaults.Display.ColorMode {
+	if strings.TrimSpace(cfg.Display.Theme) != "" && cfg.Display.Theme != defaults.Display.Theme &&
+		cfg.Display.ColorMode == defaults.Display.ColorMode {
 		cfg.Display.ColorMode = cfg.Display.Theme
 	}
 	if strings.TrimSpace(cfg.Display.ColorMode) == "" {
@@ -699,10 +696,16 @@ func validateDisplayBackground(background DisplayBackground, problems *[]string)
 	case "asset":
 		value := strings.TrimSpace(background.Value)
 		if value == "" || !strings.HasPrefix(value, "/") {
-			*problems = append(*problems, "display.background.value must be an absolute app asset path when kind is asset")
+			*problems = append(
+				*problems,
+				"display.background.value must be an absolute app asset path when kind is asset",
+			)
 		}
 		if containsRemoteReference(value) || strings.Contains(value, "..") {
-			*problems = append(*problems, "display.background.value must not contain remote URLs or parent directory segments")
+			*problems = append(
+				*problems,
+				"display.background.value must not contain remote URLs or parent directory segments",
+			)
 		}
 	case "file":
 		value := strings.TrimSpace(background.Value)

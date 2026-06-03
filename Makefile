@@ -6,7 +6,7 @@ HUB_URL ?= http://127.0.0.1:8787
 WEB_URL ?= http://127.0.0.1:5173
 NPM ?= npm
 
-.PHONY: setup dev run test web-dev web-check web-test check
+.PHONY: setup dev run lint test web-dev web-lint web-format-check web-check web-test web-build check
 
 setup:
 	cd $(WEB_DIR) && $(NPM) install
@@ -27,11 +27,20 @@ dev:
 run:
 	go run ./cmd/juted -config $(CONFIG)
 
+lint:
+	golangci-lint run --timeout=5m
+
 test:
-	go test ./...
+	go list ./... | grep -v '/apps/web/node_modules/' | xargs go test
 
 web-dev:
 	cd $(WEB_DIR) && $(NPM) run dev
+
+web-lint:
+	cd $(WEB_DIR) && $(NPM) run lint
+
+web-format-check:
+	cd $(WEB_DIR) && $(NPM) run format:check
 
 web-check:
 	cd $(WEB_DIR) && $(NPM) run check
@@ -39,4 +48,7 @@ web-check:
 web-test:
 	cd $(WEB_DIR) && $(NPM) run test
 
-check: test web-check web-test
+web-build:
+	cd $(WEB_DIR) && $(NPM) run build
+
+check: lint test web-lint web-format-check web-check web-test web-build
