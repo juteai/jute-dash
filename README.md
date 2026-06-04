@@ -177,6 +177,8 @@ The project tracks A2A as an external protocol rather than inventing a custom ag
 - Jute dashboard context uses an optional A2A extension instead of a custom protocol binding;
 - secrets stay outside public config and are referenced through environment variables or a future OS keyring integration.
 
+Loopback Agent Card URLs are allowed by default for local development. Remote Agent Card discovery must be explicitly allowed with `a2a.allowed-agent-card-urls`, using exact Agent Card URLs or a leading host wildcard such as `https://*.agents.example.com/.well-known/agent-card.json`.
+
 ## Configuration Direction
 
 Runtime settings generally live in SQLite. YAML config is the preferred human-authored bootstrap/import/export format, and JSON remains supported for machine-friendly compatibility. During the pre-v1 settings slice, household/display/weather, rooms, and dashboard tiles save to SQLite in store-backed mode and back to the active YAML config in harness mode. Configured agents are also saved back to the active YAML config so local users can add, disable, and remove A2A agents without editing SQLite directly. The hub owns durable settings, and public config responses are redacted projections.

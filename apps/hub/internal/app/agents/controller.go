@@ -569,6 +569,8 @@ func (c *Controller) writeAgentConfigError(w http.ResponseWriter, err error) {
 		c.writeError(w, http.StatusConflict, "YAML config file is required to add agents")
 	case errors.Is(err, a2aclient.ErrAgentCardUnavailable):
 		c.writeError(w, http.StatusBadGateway, "agent card could not be fetched")
+	case errors.Is(err, a2aclient.ErrAgentCardURLNotAllowed):
+		c.writeError(w, http.StatusBadRequest, "agent card URL is not allowed")
 	case errors.Is(err, a2aclient.ErrNoSupportedInterface):
 		c.writeError(w, http.StatusBadRequest, "agent card has no compatible A2A 1.0 JSON-RPC interface")
 	case strings.Contains(err.Error(), "required"):

@@ -40,13 +40,12 @@ func NewAgentCardFetcher() *AgentCardFetcher {
 	}
 }
 
-func (f *AgentCardFetcher) Fetch(ctx context.Context, cardURL, bearerToken string) (AgentCardFetchResult, error) {
-	cardURL = strings.TrimSpace(cardURL)
-	if cardURL == "" {
-		return AgentCardFetchResult{}, errors.New("agent card url is required")
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cardURL, nil)
+func (f *AgentCardFetcher) Fetch(
+	ctx context.Context,
+	cardURL AuthorizedAgentCardURL,
+	bearerToken string,
+) (AgentCardFetchResult, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cardURL.String(), nil)
 	if err != nil {
 		return AgentCardFetchResult{}, fmt.Errorf("build agent card request: %w", err)
 	}

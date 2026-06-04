@@ -316,7 +316,7 @@ func newServer(
 		}
 	}
 
-	agentCards := agents.NewCardService()
+	agentCards := agents.NewCardService(cfg.A2A)
 	agentsManager := agents.NewAgentManager(getAgentsConfig, saveAgentsConfig, agentCards, configPath)
 
 	server := &Server{

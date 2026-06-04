@@ -104,7 +104,12 @@ func (m *AgentManager) Add(ctx context.Context, cardURL string) (registry.Agent,
 	if cardURL == "" {
 		return registry.Agent{}, errors.New("cardUrl is required")
 	}
-	result, err := m.cards.cardFetcher.Fetch(ctx, cardURL, "")
+	authorizedCardURL, err := m.cards.cardPolicy.Authorize(cardURL)
+	if err != nil {
+		return registry.Agent{}, err
+	}
+	cardURL = authorizedCardURL.String()
+	result, err := m.cards.cardFetcher.Fetch(ctx, authorizedCardURL, "")
 	if err != nil {
 		return registry.Agent{}, err
 	}

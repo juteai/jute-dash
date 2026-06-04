@@ -52,6 +52,9 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.Display.WidgetChrome.Default != "solid" {
 		t.Fatalf("unexpected widget chrome default: %+v", cfg.Display.WidgetChrome)
 	}
+	if cfg.A2A.Loopback == nil || !*cfg.A2A.Loopback || len(cfg.A2A.URLs) != 0 {
+		t.Fatalf("unexpected A2A defaults: %+v", cfg.A2A)
+	}
 }
 
 func TestYAMLConfigLoadsKebabCaseFields(t *testing.T) {
@@ -69,6 +72,10 @@ mcp:
   path: /mcp
   auth:
     mode: none
+a2a:
+  allow-loopback: true
+  allowed-agent-card-urls:
+    - https://agent.example.com/.well-known/agent-card.json
 display:
   color-mode: dark
   theme-id: jute-mono
@@ -133,6 +140,10 @@ tiles: []
 	}
 	if !cfg.MCP.Enabled || cfg.MCP.Auth.Mode != "none" || cfg.MCP.Path != "/mcp" {
 		t.Fatalf("unexpected MCP config: %+v", cfg.MCP)
+	}
+	if len(cfg.A2A.URLs) != 1 ||
+		cfg.A2A.URLs[0] != "https://agent.example.com/.well-known/agent-card.json" {
+		t.Fatalf("unexpected A2A policy: %+v", cfg.A2A)
 	}
 	if cfg.Display.AccentColor != "neutral" || cfg.Weather.LocationName != "York" {
 		t.Fatalf("kebab-case YAML fields were not decoded: %+v", cfg)
@@ -520,6 +531,29 @@ tiles: []
 	}
 	if !strings.Contains(err.Error(), "mcpScopes") || !strings.Contains(err.Error(), "not supported") ||
 		!strings.Contains(err.Error(), "duplicates another MCP scope") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidA2AAgentCardAllowList(t *testing.T) {
+	path := writeYAMLConfig(t, `
+home:
+  name: Workshop
+server: {}
+a2a:
+  allowed-agent-card-urls:
+    - https://api.*.example.com/.well-known/agent-card.json
+display: {}
+agents: []
+rooms: []
+tiles: []
+`)
+
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("LoadConfig() expected invalid A2A allow-list error")
+	}
+	if !strings.Contains(err.Error(), "a2a.allowedAgentCardURLs[0]") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

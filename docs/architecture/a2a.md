@@ -30,6 +30,8 @@ The hub resolves the Agent Card, validates it, caches it, and records:
 - security requirements;
 - icon and documentation links.
 
+Agent Card discovery is an outbound network request owned by the hub. To avoid request-forgery risks, the hub only fetches Agent Cards whose URLs match the configured A2A allow policy. Loopback Agent Card URLs are allowed by default for local development harnesses. Remote Agent Card URLs must be listed under `a2a.allowed-agent-card-urls`; entries may be exact URLs or use a leading host wildcard such as `https://*.agents.example.com/.well-known/agent-card.json`. Agent Card URLs must use `http` or `https` and must not include user info, query strings, or fragments.
+
 ## Protocol Binding Selection
 
 Jute does not create a custom protocol binding for v1. It selects from standard A2A bindings in this order:

@@ -23,6 +23,7 @@ type Config struct {
 	Home      homestate.HomeConfig      `json:"home"      yaml:"home"`
 	Server    ServerConfig              `json:"server"    yaml:"server"`
 	MCP       mcp.Config                `json:"mcp"       yaml:"mcp"`
+	A2A       a2a.AgentCardURLPolicy    `json:"a2a"       yaml:"a2a"`
 	Display   dashboard.DisplayConfig   `json:"display"   yaml:"display"`
 	Weather   homestate.WeatherConfig   `json:"weather"   yaml:"weather"`
 	Voice     voice.Config              `json:"voice"     yaml:"voice"`
@@ -52,6 +53,7 @@ func DefaultConfig() Config {
 			ListenAddress: "127.0.0.1:8787",
 		},
 		MCP:     mcp.DefaultConfig(),
+		A2A:     a2a.DefaultAgentCardURLPolicy(),
 		Display: dashboard.DefaultDisplayConfig(),
 		Weather: homestate.DefaultWeatherConfig(),
 		Voice:   voice.DefaultConfig(),
@@ -106,6 +108,7 @@ func ValidateConfig(cfg Config) error {
 	}
 
 	problems = append(problems, mcp.Validate(cfg.MCP)...)
+	problems = append(problems, a2a.ValidateAgentCardURLPolicy(cfg.A2A)...)
 	problems = append(problems, dashboard.ValidateDisplay(cfg.Display)...)
 	problems = append(problems, homestate.ValidateWeather(cfg.Weather)...)
 	problems = append(problems, voice.Validate(cfg.Voice)...)
@@ -194,6 +197,10 @@ func ApplyDefaults(cfg *Config) {
 		cfg.Server.ListenAddress = "127.0.0.1:8787"
 	}
 	mcp.ApplyDefaults(&cfg.MCP)
+	if cfg.A2A.Loopback == nil {
+		allowLoopback := true
+		cfg.A2A.Loopback = &allowLoopback
+	}
 	dashboard.ApplyDisplayDefaults(&cfg.Display)
 	homestate.ApplyWeatherDefaults(&cfg.Weather)
 	voice.ApplyDefaults(&cfg.Voice)

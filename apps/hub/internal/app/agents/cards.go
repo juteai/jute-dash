@@ -15,12 +15,18 @@ type CardService struct {
 	mu          sync.Mutex
 	cards       map[string]AgentCardCacheEntry
 	cardFetcher *a2aclient.AgentCardFetcher
+	cardPolicy  a2aclient.AgentCardURLPolicy
 }
 
-func NewCardService() *CardService {
+func NewCardService(policy ...a2aclient.AgentCardURLPolicy) *CardService {
+	cardPolicy := a2aclient.DefaultAgentCardURLPolicy()
+	if len(policy) > 0 {
+		cardPolicy = policy[0]
+	}
 	return &CardService{
 		cards:       map[string]AgentCardCacheEntry{},
 		cardFetcher: a2aclient.NewAgentCardFetcher(),
+		cardPolicy:  cardPolicy,
 	}
 }
 
@@ -77,8 +83,14 @@ func (svc *CardService) Refresh(
 		FetchedAt:               now,
 		ExpiresAt:               now,
 	}
+	cardURL, err := svc.cardPolicy.Authorize(agent.CardURL)
+	if err != nil {
+		c.CardError = "agent card url is not allowed"
+		svc.Save(c)
+		return c
+	}
 	bearerToken, _ := AgentBearerToken(configuredAgent)
-	result, err := svc.cardFetcher.Fetch(ctx, agent.CardURL, bearerToken)
+	result, err := svc.cardFetcher.Fetch(ctx, cardURL, bearerToken)
 	if err != nil {
 		c.CardError = "agent card could not be fetched"
 		svc.Save(c)

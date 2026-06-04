@@ -199,6 +199,21 @@ func TestAgentManager_Add(t *testing.T) {
 	}
 }
 
+func TestAgentManager_AddRejectsUnallowedRemoteCardURL(t *testing.T) {
+	cards := NewCardService()
+	mgr := NewAgentManager(
+		func() []AgentConfig { return nil },
+		func([]AgentConfig) error { return nil },
+		cards,
+		"config.yaml",
+	)
+
+	_, err := mgr.Add(t.Context(), "https://agent.example.com/.well-known/agent-card.json")
+	if !errors.Is(err, a2aclient.ErrAgentCardURLNotAllowed) {
+		t.Fatalf("expected ErrAgentCardURLNotAllowed, got %v", err)
+	}
+}
+
 func TestAgentManager_Patch_And_Delete(t *testing.T) {
 	configs := []AgentConfig{
 		{

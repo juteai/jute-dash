@@ -2,6 +2,7 @@ package a2a
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -34,7 +35,11 @@ func TestAgentCardFetcherFetchesA2A10Card(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := NewAgentCardFetcher().Fetch(t.Context(), server.URL, "")
+	cardURL, err := DefaultAgentCardURLPolicy().Authorize(server.URL)
+	if err != nil {
+		t.Fatalf("Authorize() error = %v", err)
+	}
+	result, err := NewAgentCardFetcher().Fetch(t.Context(), cardURL, "")
 	if err != nil {
 		t.Fatalf("Fetch() error = %v", err)
 	}
@@ -86,5 +91,49 @@ func TestSelectInterfaceRejectsLegacyCardWithoutSupportedInterfaces(t *testing.T
 
 	if _, err := SelectInterface(card); err == nil {
 		t.Fatal("expected unsupported interface error")
+	}
+}
+
+func TestAgentCardURLPolicyAllowsLoopbackByDefault(t *testing.T) {
+	got, err := DefaultAgentCardURLPolicy().Authorize(" http://127.0.0.1:9797/.well-known/agent-card.json ")
+	if err != nil {
+		t.Fatalf("Authorize() error = %v", err)
+	}
+	if got.String() != "http://127.0.0.1:9797/.well-known/agent-card.json" {
+		t.Fatalf("unexpected authorized URL: %s", got.String())
+	}
+}
+
+func TestAgentCardURLPolicyAllowsConfiguredWildcardHost(t *testing.T) {
+	policy := AgentCardURLPolicy{
+		URLs: []string{"https://*.agents.example.com/.well-known/agent-card.json"},
+	}
+	got, err := policy.Authorize("https://kitchen.agents.example.com/.well-known/agent-card.json")
+	if err != nil {
+		t.Fatalf("Authorize() error = %v", err)
+	}
+	if got.String() != "https://kitchen.agents.example.com/.well-known/agent-card.json" {
+		t.Fatalf("unexpected authorized URL: %s", got.String())
+	}
+}
+
+func TestAgentCardURLPolicyRejectsUnconfiguredRemoteHost(t *testing.T) {
+	_, err := DefaultAgentCardURLPolicy().Authorize("https://agent.example.com/.well-known/agent-card.json")
+	if !errors.Is(err, ErrAgentCardURLNotAllowed) {
+		t.Fatalf("expected ErrAgentCardURLNotAllowed, got %v", err)
+	}
+}
+
+func TestAgentCardURLPolicyRejectsURLConfusionParts(t *testing.T) {
+	for _, raw := range []string{
+		"https://agent.example.com@127.0.0.1/.well-known/agent-card.json",
+		"https://agent.example.com/.well-known/agent-card.json?next=http://127.0.0.1",
+		"https://agent.example.com/.well-known/agent-card.json#http://127.0.0.1",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			if _, err := DefaultAgentCardURLPolicy().Authorize(raw); err == nil {
+				t.Fatal("expected URL to be rejected")
+			}
+		})
 	}
 }
