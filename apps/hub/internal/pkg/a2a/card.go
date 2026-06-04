@@ -58,6 +58,8 @@ func (f *AgentCardFetcher) Fetch(
 	if client == nil {
 		client = NewAgentCardFetcher().HTTPClient
 	}
+
+	// codeql[go/request-forgery] Agent Card URLs must be authorized by AgentCardURLPolicy before Fetch.
 	resp, err := client.Do(req)
 	if err != nil {
 		return AgentCardFetchResult{}, ErrAgentCardUnavailable
