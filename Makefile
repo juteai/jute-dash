@@ -1,40 +1,42 @@
 SHELL := /bin/bash
 
 WEB_DIR := apps/web
-CONFIG ?= examples/config/jute.example.yaml
-HUB_URL ?= http://127.0.0.1:8787
-WEB_URL ?= http://127.0.0.1:5173
 NPM ?= npm
 
-.PHONY: setup dev run lint test web-dev web-lint web-format-check web-check web-test web-build check
+.PHONY: setup pre-commit-install lint test web-lint web-format-check web-check web-test web-build check reset
 
 setup:
+	@echo "Checking for Homebrew dependencies..."
+	@if command -v brew >/dev/null 2>&1; then \
+		echo "Running brew bundle install..."; \
+		brew bundle install; \
+	else \
+		echo "Homebrew not found. Skipping system package installation."; \
+	fi
+	@echo "Setting up web app dependencies..."
 	cd $(WEB_DIR) && $(NPM) install
+	@echo "Setting up pre-commit hooks..."
+	$(MAKE) pre-commit-install
 
-dev:
-	@echo "Jute hub: $(HUB_URL)"
-	@echo "Jute web: $(WEB_URL)"
-	@set -e; \
-	cleanup() { \
-		if [[ -n "$$HUB_PID" ]]; then kill "$$HUB_PID" 2>/dev/null || true; fi; \
-		if [[ -n "$$WEB_PID" ]]; then kill "$$WEB_PID" 2>/dev/null || true; fi; \
-	}; \
-	trap cleanup INT TERM EXIT; \
-	(cd apps/hub && go run ./cmd/juted -config ../../$(CONFIG)) & HUB_PID=$$!; \
-	(cd $(WEB_DIR) && $(NPM) run dev) & WEB_PID=$$!; \
-	wait "$$HUB_PID" "$$WEB_PID"
-
-run:
-	cd apps/hub && go run ./cmd/juted -config ../../$(CONFIG)
+pre-commit-install:
+	@if command -v pre-commit >/dev/null 2>&1; then \
+		echo "Installing pre-commit hooks..."; \
+		pre-commit install --install-hooks -t pre-commit -t commit-msg; \
+	else \
+		echo "pre-commit command not found. Attempting brew install..."; \
+		if command -v brew >/dev/null 2>&1; then \
+			brew install pre-commit; \
+			pre-commit install --install-hooks -t pre-commit -t commit-msg; \
+		else \
+			echo "Failed to install pre-commit automatically. Please install pre-commit manually (https://pre-commit.com)."; \
+		fi \
+	fi
 
 lint:
 	cd apps/hub && golangci-lint run --timeout=5m
 
 test:
 	cd apps/hub && go test ./...
-
-web-dev:
-	cd $(WEB_DIR) && $(NPM) run dev
 
 web-lint:
 	cd $(WEB_DIR) && $(NPM) run lint
@@ -52,3 +54,7 @@ web-build:
 	cd $(WEB_DIR) && $(NPM) run build
 
 check: lint test web-lint web-format-check web-check web-test web-build
+
+reset:
+	@echo "Resetting development store directories..."
+	rm -rf .jute/dev-mock-a2a .jute/dev-kronk-a2a .jute/dev-kronk-a2a-mcp

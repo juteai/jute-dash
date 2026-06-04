@@ -629,7 +629,7 @@ func TestDevMockA2AConfigLoads(t *testing.T) {
 
 func TestDevMockA2AMCPConfigLoads(t *testing.T) {
 	cfg, err := LoadConfig(
-		filepath.Join("..", "..", "..", "..", "..", "examples", "harnesses", "mock-a2a-mcp", "config.yaml"),
+		filepath.Join("..", "..", "..", "..", "..", "examples", "harnesses", "mock-a2a", "config.yaml"),
 	)
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
@@ -652,7 +652,7 @@ func TestDevKronkA2AConfigLoads(t *testing.T) {
 
 func TestDevKronkA2AMCPConfigLoads(t *testing.T) {
 	cfg, err := LoadConfig(
-		filepath.Join("..", "..", "..", "..", "..", "examples", "harnesses", "kronk-a2a", "config.mcp.yaml"),
+		filepath.Join("..", "..", "..", "..", "..", "examples", "harnesses", "kronk-a2a", "config.yaml"),
 	)
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)

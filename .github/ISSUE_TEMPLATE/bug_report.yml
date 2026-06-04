@@ -39,7 +39,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: OS, Go version (`go version`), module version or commit, model ID if relevant.
+      description: OS, Go version (`go version`), Node/Svelte Version, module version or commit, model ID if relevant.
       render: markdown
     validations:
       required: false

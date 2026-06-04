@@ -118,30 +118,20 @@ Run Go tests:
 make test
 ```
 
-Install web dependencies:
+Setup dev environment (npm, pre-commit, and optional system dependencies):
 
 ```sh
 make setup
 ```
 
-Run the hub and web app together:
-
-```sh
-make dev
-```
-
-Run self-contained local A2A dev stacks from the harness directories, not the root `Makefile`:
+Run self-contained local A2A dev stacks from the harness directories:
 
 ```sh
 cd examples/harnesses/mock-a2a
-make dev
-
-cd ../mock-a2a-mcp
-make dev
+make run
 
 cd ../kronk-a2a
-make dev
-make dev-mcp
+make run
 ```
 
 Run Svelte checks after dependencies are installed:
