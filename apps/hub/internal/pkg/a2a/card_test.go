@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -35,7 +36,7 @@ func TestAgentCardFetcherFetchesA2A10Card(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cardURL, err := DefaultAgentCardURLPolicy().Authorize(server.URL)
+	cardURL, err := AgentCardURLPolicy{URLs: []string{server.URL}}.Authorize(server.URL)
 	if err != nil {
 		t.Fatalf("Authorize() error = %v", err)
 	}
@@ -104,9 +105,9 @@ func TestAgentCardURLPolicyAllowsLoopbackByDefault(t *testing.T) {
 	}
 }
 
-func TestAgentCardURLPolicyAllowsConfiguredWildcardHost(t *testing.T) {
+func TestAgentCardURLPolicyAllowsConfiguredExactURL(t *testing.T) {
 	policy := AgentCardURLPolicy{
-		URLs: []string{"https://*.agents.example.com/.well-known/agent-card.json"},
+		URLs: []string{"https://kitchen.agents.example.com/.well-known/agent-card.json"},
 	}
 	got, err := policy.Authorize("https://kitchen.agents.example.com/.well-known/agent-card.json")
 	if err != nil {
@@ -114,6 +115,15 @@ func TestAgentCardURLPolicyAllowsConfiguredWildcardHost(t *testing.T) {
 	}
 	if got.String() != "https://kitchen.agents.example.com/.well-known/agent-card.json" {
 		t.Fatalf("unexpected authorized URL: %s", got.String())
+	}
+}
+
+func TestAgentCardURLPolicyRejectsConfiguredWildcardHost(t *testing.T) {
+	problems := ValidateAgentCardURLPolicy(AgentCardURLPolicy{
+		URLs: []string{"https://*.agents.example.com/.well-known/agent-card.json"},
+	})
+	if len(problems) != 1 || !strings.Contains(problems[0], "wildcards are not supported") {
+		t.Fatalf("unexpected validation problems: %+v", problems)
 	}
 }
 

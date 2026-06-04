@@ -177,7 +177,7 @@ The project tracks A2A as an external protocol rather than inventing a custom ag
 - Jute dashboard context uses an optional A2A extension instead of a custom protocol binding;
 - secrets stay outside public config and are referenced through environment variables or a future OS keyring integration.
 
-Loopback Agent Card URLs are allowed by default for local development. Remote Agent Card discovery must be explicitly allowed with `a2a.allowed-agent-card-urls`, using exact Agent Card URLs or a leading host wildcard such as `https://*.agents.example.com/.well-known/agent-card.json`.
+The standard local development Agent Card URLs on `127.0.0.1:9797` and `localhost:9797` are allowed by default. Other local ports and remote Agent Card discovery must be explicitly allowed with exact entries in `a2a.allowed-agent-card-urls`.
 
 ## Configuration Direction
 

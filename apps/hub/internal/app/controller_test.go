@@ -184,6 +184,7 @@ func TestMessageEndpointUsesDiscoveredA2A10InterfaceAndDashboardContext(t *testi
 
 	cfg := testConfig()
 	cfg.Agents[0].CardURL = agentCardServer.URL
+	allowAgentCardURL(&cfg, agentCardServer.URL)
 	cfg.Agents[0].EndpointURL = "http://configured.local/legacy"
 	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"))
 	if err != nil {
@@ -956,6 +957,7 @@ func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
 	cfg := testConfig()
 	cfg.Agents = cfg.Agents[:1]
 	cfg.Agents[0].CardURL = agentCardServer.URL
+	allowAgentCardURL(&cfg, agentCardServer.URL)
 	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
@@ -1045,6 +1047,7 @@ func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "jute.yaml")
 	cfg := testConfig()
 	cfg.Agents = nil
+	allowAgentCardURL(&cfg, agentCardServer.URL)
 	if err := SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
@@ -1276,6 +1279,7 @@ func TestConversationTurnStreamEmitsDeltasAndCompletion(t *testing.T) {
 	defer agentCardServer.Close()
 	cfg := testConfig()
 	cfg.Agents[0].CardURL = agentCardServer.URL
+	allowAgentCardURL(&cfg, agentCardServer.URL)
 	streamer := a2a.NewInMemoryClient()
 	streamer.StubStreamMessage([]a2a.StreamEvent{
 		{Kind: "task", ConversationID: "ctx-1", TaskID: "task-1", Status: "working"},
@@ -1338,6 +1342,7 @@ func TestConversationTurnStreamFallsBackForNonStreamingAgent(t *testing.T) {
 	defer agentCardServer.Close()
 	cfg := testConfig()
 	cfg.Agents[0].CardURL = agentCardServer.URL
+	allowAgentCardURL(&cfg, agentCardServer.URL)
 	sender := a2a.NewInMemoryClient()
 	sender.StubSendMessage(a2a.SendMessageResult{
 		ConversationID: "ctx-1",
@@ -1381,6 +1386,7 @@ func TestConversationTurnStreamEmitsSafeFailureAfterPartialStream(t *testing.T) 
 	defer agentCardServer.Close()
 	cfg := testConfig()
 	cfg.Agents[0].CardURL = agentCardServer.URL
+	allowAgentCardURL(&cfg, agentCardServer.URL)
 	streamer := a2a.NewInMemoryClient()
 	streamer.StubStreamMessage([]a2a.StreamEvent{
 		{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "Partial", Append: true},
@@ -1437,6 +1443,10 @@ func testConfig() config.Config {
 		},
 	}
 	return cfg
+}
+
+func allowAgentCardURL(cfg *config.Config, cardURL string) {
+	cfg.A2A.URLs = append(cfg.A2A.URLs, cardURL)
 }
 
 func openInitializedServerStore(t *testing.T) *Store {

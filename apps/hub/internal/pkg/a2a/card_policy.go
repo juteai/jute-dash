@@ -3,12 +3,16 @@ package a2a
 import (
 	"errors"
 	"fmt"
-	"net"
 	"net/url"
 	"strings"
 )
 
 var ErrAgentCardURLNotAllowed = errors.New("agent card url is not allowed")
+
+var defaultLoopbackAgentCardURLs = []string{
+	"http://127.0.0.1:9797/.well-known/agent-card.json",
+	"http://localhost:9797/.well-known/agent-card.json",
+}
 
 type AgentCardURLPolicy struct {
 	URLs     []string `json:"allowedAgentCardURLs" yaml:"allowed-agent-card-urls"`
@@ -37,23 +41,25 @@ func (p AgentCardURLPolicy) Authorize(raw string) (AuthorizedAgentCardURL, error
 	if err != nil {
 		return AuthorizedAgentCardURL{}, err
 	}
-	if p.loopbackAllowed() && isLoopbackHost(parsed.Hostname()) {
-		return AuthorizedAgentCardURL{raw: parsed.String()}, nil
-	}
-	for _, allowed := range p.URLs {
+	for _, allowed := range p.allowedURLs() {
 		allowed = strings.TrimSpace(allowed)
 		if allowed == "" {
 			continue
 		}
-		if matchesAllowedAgentCardURL(parsed, allowed) {
-			return AuthorizedAgentCardURL{raw: parsed.String()}, nil
+		authorized, ok := selectAllowedAgentCardURL(parsed, allowed)
+		if ok {
+			return AuthorizedAgentCardURL{raw: authorized}, nil
 		}
 	}
 	return AuthorizedAgentCardURL{}, ErrAgentCardURLNotAllowed
 }
 
-func (p AgentCardURLPolicy) loopbackAllowed() bool {
-	return p.Loopback == nil || *p.Loopback
+func (p AgentCardURLPolicy) allowedURLs() []string {
+	urls := append([]string(nil), p.URLs...)
+	if p.Loopback == nil || *p.Loopback {
+		urls = append(urls, defaultLoopbackAgentCardURLs...)
+	}
+	return urls
 }
 
 func ValidateAgentCardURLPolicy(p AgentCardURLPolicy) []string {
@@ -97,43 +103,31 @@ func parseAllowedAgentCardURL(raw string) (*url.URL, error) {
 		return nil, errors.New(strings.NewReplacer("agent card url ", "").Replace(err.Error()))
 	}
 	host := parsed.Hostname()
-	if strings.Contains(host, "*") && !strings.HasPrefix(host, "*.") {
-		return nil, errors.New("wildcards must be a leading host label such as *.example.com")
+	if strings.Contains(host, "*") {
+		return nil, errors.New("wildcards are not supported; list each Agent Card URL explicitly")
 	}
 	return parsed, nil
 }
 
-func matchesAllowedAgentCardURL(candidate *url.URL, allowedRaw string) bool {
+func selectAllowedAgentCardURL(candidate *url.URL, allowedRaw string) (string, bool) {
 	allowed, err := parseAllowedAgentCardURL(allowedRaw)
 	if err != nil {
-		return false
+		return "", false
 	}
 	if candidate.Scheme != allowed.Scheme || candidate.Port() != allowed.Port() {
-		return false
+		return "", false
 	}
-	if !matchesAllowedHost(candidate.Hostname(), allowed.Hostname()) {
-		return false
+	if normalizedHost(candidate.Hostname()) != normalizedHost(allowed.Hostname()) {
+		return "", false
 	}
-	return cleanURLPath(candidate.EscapedPath()) == cleanURLPath(allowed.EscapedPath())
+	if cleanURLPath(candidate.EscapedPath()) != cleanURLPath(allowed.EscapedPath()) {
+		return "", false
+	}
+	return allowed.String(), true
 }
 
-func matchesAllowedHost(candidate, allowed string) bool {
-	candidate = strings.ToLower(strings.TrimSuffix(candidate, "."))
-	allowed = strings.ToLower(strings.TrimSuffix(allowed, "."))
-	if !strings.HasPrefix(allowed, "*.") {
-		return candidate == allowed
-	}
-	suffix := strings.TrimPrefix(allowed, "*")
-	return strings.HasSuffix(candidate, suffix) && candidate != strings.TrimPrefix(suffix, ".")
-}
-
-func isLoopbackHost(host string) bool {
-	host = strings.TrimSuffix(strings.ToLower(host), ".")
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+func normalizedHost(host string) string {
+	return strings.ToLower(strings.TrimSuffix(host, "."))
 }
 
 func cleanURLPath(path string) string {

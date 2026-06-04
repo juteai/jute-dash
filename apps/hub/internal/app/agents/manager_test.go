@@ -73,7 +73,7 @@ func TestAgentManager_List_EnrichesAndTriggersDiscovery(t *testing.T) {
 
 	getConfig := func() []AgentConfig { return configs }
 	saveConfig := func(c []AgentConfig) error { return nil }
-	cards := NewCardService()
+	cards := NewCardService(a2aclient.AgentCardURLPolicy{URLs: []string{configs[0].CardURL}})
 
 	mgr := NewAgentManager(getConfig, saveConfig, cards, "config.yaml")
 
@@ -109,7 +109,7 @@ func TestAgentManager_Find(t *testing.T) {
 
 	getConfig := func() []AgentConfig { return configs }
 	saveConfig := func(c []AgentConfig) error { return nil }
-	cards := NewCardService()
+	cards := NewCardService(a2aclient.AgentCardURLPolicy{URLs: []string{configs[0].CardURL}})
 
 	mgr := NewAgentManager(getConfig, saveConfig, cards, "config.yaml")
 
@@ -134,8 +134,6 @@ func TestAgentManager_Add(t *testing.T) {
 		savedConfigs = c
 		return nil
 	}
-	cards := NewCardService()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		card := a2aclient.AgentCard{
 			Name:        "New Agent",
@@ -152,6 +150,7 @@ func TestAgentManager_Add(t *testing.T) {
 	}))
 	defer server.Close()
 
+	cards := NewCardService(a2aclient.AgentCardURLPolicy{URLs: []string{server.URL}})
 	mgr := NewAgentManager(getConfig, saveConfig, cards, "config.yaml")
 
 	// Try adding with empty url
@@ -234,7 +233,7 @@ func TestAgentManager_Patch_And_Delete(t *testing.T) {
 		savedConfigs = c
 		return nil
 	}
-	cards := NewCardService()
+	cards := NewCardService(a2aclient.AgentCardURLPolicy{URLs: []string{configs[0].CardURL}})
 
 	mgr := NewAgentManager(getConfig, saveConfig, cards, "config.yaml")
 
@@ -365,7 +364,7 @@ func TestAgentManager_RefreshCard(t *testing.T) {
 
 	getConfig := func() []AgentConfig { return configs }
 	saveConfig := func(c []AgentConfig) error { return nil }
-	cards := NewCardService()
+	cards := NewCardService(a2aclient.AgentCardURLPolicy{URLs: []string{configs[0].CardURL}})
 
 	mgr := NewAgentManager(getConfig, saveConfig, cards, "config.yaml")
 
