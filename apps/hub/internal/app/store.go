@@ -106,6 +106,9 @@ func (s *Store) Migrate(_ context.Context) error {
 }
 
 func (s *Store) IsSeeded(ctx context.Context) (bool, error) {
+	if !s.db.DB().Migrator().HasTable(&homestate.HouseholdSettingsDB{}) {
+		return false, nil
+	}
 	var count int64
 	if err := s.db.DB().WithContext(ctx).Model(&homestate.HouseholdSettingsDB{}).Count(&count).Error; err != nil {
 		return false, fmt.Errorf("check seeded store: %w", err)
