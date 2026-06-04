@@ -16,13 +16,13 @@ The decision:
 
 ## Storage Stack
 
-Use SQLite for the runtime store. The Go driver is [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) because it is a CGo-free `database/sql` driver and supports the multi-platform binary path.
+Use SQLite for the runtime store. Jute Hub utilizes the [GORM](https://gorm.io/) ORM with the standard [gorm.io/driver/sqlite](https://github.com/go-gorm/sqlite) driver.
 
 Use SQLite WAL mode for normal runtime. [SQLite WAL](https://www.sqlite.org/wal.html) allows readers and writers to proceed concurrently, which fits Jute's shape: the hub is the single writer, while displays, widgets, and local tools mostly read.
 
 Runtime rules:
 
-- open the database through an `internal/store` package;
+- open the database through the `apps/hub/internal/pkg/database` and `apps/hub/internal/app/store.go` persistence modules;
 - run migrations before serving APIs;
 - enable WAL mode for normal local filesystems;
 - do not place the runtime database on a network filesystem;
@@ -102,7 +102,7 @@ Production first-run should not include fake remote agents or call remote servic
 
 ## Runtime Store Model
 
-Jute uses `internal/store` as the runtime persistence package, built on `database/sql` plus `modernc.org/sqlite`.
+Jute uses `apps/hub/internal/pkg/database` for database connection pragmas, and `apps/hub/internal/app/store.go` as the runtime persistence wrapper, built on [GORM](https://gorm.io/) and SQLite (`gorm.io/driver/sqlite`).
 
 The store owns:
 

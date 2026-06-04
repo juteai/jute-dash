@@ -16,6 +16,12 @@ mcp:
     mode: local-token
     env-token: JUTE_MCP_TOKEN
 
+a2a:
+  allow-loopback: true
+  allowed-agent-card-urls:
+    - https://agent.example.com/.well-known/agent-card.json
+    - https://energy.example.com/.well-known/agent-card.json
+
 display:
   theme: system
   color-mode: system

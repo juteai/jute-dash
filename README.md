@@ -99,21 +99,15 @@ curl -s http://127.0.0.1:8790/mcp \
 ## Project Layout
 
 ```text
-cmd/juted/             Go entrypoint for the local hub
-internal/a2a/          A2A protocol-facing types and constants
-internal/config/       Config loading, defaults, validation, public config projection
-internal/home/         Home dashboard state assembled from config
-internal/mcpbridge/    Optional local MCP bridge for Widget Skills and dashboard context
-internal/mcpclient/    Small stdlib MCP client used by local developer agents
-internal/registry/     Runtime view of configured agents
-internal/server/       HTTP API surface consumed by the UI and future clients
-internal/store/        SQLite runtime store, migrations, seeding, and setup status
-internal/weather/      Open-Meteo weather client and weather state mapping
-internal/widgetskills/ Hub-owned Widget Skill registry exposed through MCP
-apps/web/              SvelteKit dashboard app, currently throwaway POC UI
-config/                Generic example local configuration
-docs/                  Architecture notes, roadmap, and decisions
-examples/harnesses/    Self-contained local dev stacks with embedded fixtures
+apps/hub/cmd/juted/             Go entrypoint for the local hub
+apps/hub/internal/app/          Internal hub application layers (config, agents, homestate, mcp, voice, etc.)
+apps/hub/internal/pkg/          Reusable hub packages (a2a client/mock, database, registry, displayactions, etc.)
+apps/web/                       SvelteKit Display application (dashboard, chat sheet, settings)
+themes/                         Theme Pack definitions (design tokens only)
+widgets/                        Native dashboard widgets (Svelte components + Go providers)
+config/                         Generic example local configuration
+docs/                           Architecture notes, decisions (ADRs), and developer guidelines
+examples/harnesses/             Self-contained local dev stacks with embedded fixtures
 ```
 
 ## Widget Development
@@ -182,6 +176,8 @@ The project tracks A2A as an external protocol rather than inventing a custom ag
 - standard A2A bindings are selected in this order: `JSONRPC`, `HTTP+JSON`, then `GRPC`;
 - Jute dashboard context uses an optional A2A extension instead of a custom protocol binding;
 - secrets stay outside public config and are referenced through environment variables or a future OS keyring integration.
+
+The standard local development Agent Card URLs on `127.0.0.1:9797` and `localhost:9797` are allowed by default. Other local ports and remote Agent Card discovery must be explicitly allowed with exact entries in `a2a.allowed-agent-card-urls`.
 
 ## Configuration Direction
 

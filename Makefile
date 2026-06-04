@@ -20,18 +20,18 @@ dev:
 		if [[ -n "$$WEB_PID" ]]; then kill "$$WEB_PID" 2>/dev/null || true; fi; \
 	}; \
 	trap cleanup INT TERM EXIT; \
-	go run ./cmd/juted -config $(CONFIG) & HUB_PID=$$!; \
+	(cd apps/hub && go run ./cmd/juted -config ../../$(CONFIG)) & HUB_PID=$$!; \
 	(cd $(WEB_DIR) && $(NPM) run dev) & WEB_PID=$$!; \
 	wait "$$HUB_PID" "$$WEB_PID"
 
 run:
-	go run ./cmd/juted -config $(CONFIG)
+	cd apps/hub && go run ./cmd/juted -config ../../$(CONFIG)
 
 lint:
-	golangci-lint run --timeout=5m
+	cd apps/hub && golangci-lint run --timeout=5m
 
 test:
-	go list ./... | grep -v '/apps/web/node_modules/' | xargs go test
+	cd apps/hub && go test ./...
 
 web-dev:
 	cd $(WEB_DIR) && $(NPM) run dev

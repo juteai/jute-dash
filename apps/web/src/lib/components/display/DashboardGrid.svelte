@@ -10,18 +10,13 @@
     Trash2
   } from 'lucide-svelte';
   import WidgetFrame from '$lib/components/display/WidgetFrame.svelte';
-  import ChatHistoryWidget from '$widgets/chathistory/ChatHistoryWidget.svelte';
-  import DateTimeWidget from '$widgets/datetime/DateTimeWidget.svelte';
-  import WeatherWidget from '$widgets/weather/WeatherWidget.svelte';
-  import RSSWidget from '$widgets/rss/RSSWidget.svelte';
-  import MarketsWidget from '$widgets/markets/MarketsWidget.svelte';
+  import { widgetRegistry } from '$lib/components/display/widget-registry';
   import { resolveWidgetChrome } from '$lib/themes';
   import type {
     Agent,
     AgentAvailability,
     ChatMessage,
     DashboardData,
-    WeatherState,
     WidgetInstance
   } from '$lib/types';
 
@@ -71,27 +66,37 @@
     return `grid-column: span ${columns}; min-height: ${rows * 132}px;`;
   }
 
-  function weatherData(widget: WidgetInstance): WeatherState {
-    return (
-      (widget.data as WeatherState | undefined) ?? {
-        locationName: 'Not configured',
-        temperature: null,
-        temperatureUnit: 'celsius',
-        apparentTemperature: null,
-        condition: 'Weather unavailable',
-        icon: 'cloud',
-        weatherCode: null,
-        humidity: null,
-        windSpeed: null,
-        windSpeedUnit: 'kmh',
-        sunrise: '',
-        sunset: '',
-        isDay: null,
-        updatedAt: '',
-        source: 'widget',
-        status: 'unavailable'
-      }
-    );
+  function determineWidgetState(
+    widget: WidgetInstance,
+    appStale: boolean
+  ):
+    | 'ok'
+    | 'loading'
+    | 'empty'
+    | 'unavailable'
+    | 'error'
+    | 'permission_required'
+    | 'stale' {
+    if (appStale) {
+      return 'stale';
+    }
+    const data = widget.data as { status?: string } | undefined;
+    if (!data) {
+      return 'empty';
+    }
+    if (data.status === 'unavailable' || data.status === 'offline') {
+      return 'unavailable';
+    }
+    if (data.status === 'error' || data.status === 'failed') {
+      return 'error';
+    }
+    if (data.status === 'loading') {
+      return 'loading';
+    }
+    if (data.status === 'permission_required') {
+      return 'permission_required';
+    }
+    return 'ok';
   }
 
   function startDrag(
@@ -177,6 +182,7 @@
         focused={focusedWidgetId === widget.id}
         chrome={resolveWidgetChrome(widget, data.config.display)}
         overflow={(widget.overflow ?? 'clip') as 'clip' | 'scroll' | 'expand'}
+        state={determineWidgetState(widget, stale)}
         onMoveStart={(event) => startDrag(widget, 'move', event)}
         onResizeStart={(event) => startDrag(widget, 'resize', event)}
       >
@@ -240,21 +246,18 @@
             </button>
           {/if}
         </svelte:fragment>
-        {#if widget.kind === 'date-time'}
-          <DateTimeWidget home={data.config.home} {stale} />
-        {:else if widget.kind === 'weather'}
-          <WeatherWidget weather={weatherData(widget)} {stale} />
-        {:else if widget.kind === 'rss'}
-          <RSSWidget data={widget.data} {stale} />
-        {:else if widget.kind === 'markets'}
-          <MarketsWidget data={widget.data} {stale} />
-        {:else if widget.kind === 'chat-history'}
-          <ChatHistoryWidget
-            agents={data.agents}
-            {messages}
-            {selectedAgent}
-            {selectedAvailability}
-            {onOpenChat}
+        {#if widgetRegistry[widget.kind]}
+          <svelte:component
+            this={widgetRegistry[widget.kind].component}
+            {...widgetRegistry[widget.kind].props({
+              widget,
+              data,
+              stale,
+              messages,
+              selectedAgent,
+              selectedAvailability,
+              onOpenChat
+            })}
           />
         {:else}
           <div class="widget-empty-state">

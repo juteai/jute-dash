@@ -18,6 +18,13 @@
       "envToken": "JUTE_MCP_TOKEN"
     }
   },
+  "a2a": {
+    "allowLoopback": true,
+    "allowedAgentCardURLs": [
+      "https://agent.example.com/.well-known/agent-card.json",
+      "https://energy.example.com/.well-known/agent-card.json"
+    ]
+  },
   "display": {
     "theme": "system",
     "colorMode": "system",

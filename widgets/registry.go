@@ -3,7 +3,7 @@ package widgets
 import (
 	"sync"
 
-	"jute-dash/internal/widgetskills"
+	"jute-dash/apps/hub/pkg/widgetskills"
 )
 
 var (
