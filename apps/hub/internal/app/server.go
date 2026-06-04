@@ -22,22 +22,21 @@ import (
 )
 
 type Server struct {
-	cfg         config.Config
-	registry    registry.Registry
-	messages    a2aclient.MessageSender
-	agentCards  *agents.CardService
-	setup       homestate.SetupStatus
-	layout      dashboard.WidgetLayout
-	layoutStore dashboard.LayoutStore
-	settings    homestate.SettingsStore
-	voice       voice.Config
-	voiceStore  voice.Store
-	configPath  string
-	display     *displayactions.Dispatcher
-	turnRunner  *agents.Runner
-	mu          sync.Mutex
-	started     time.Time
-	version     string
+	cfg           config.Config
+	agentsManager *agents.AgentManager
+	messages      a2aclient.MessageSender
+	setup         homestate.SetupStatus
+	layout        dashboard.WidgetLayout
+	layoutStore   dashboard.LayoutStore
+	settings      homestate.SettingsStore
+	voice         voice.Config
+	voiceStore    voice.Store
+	configPath    string
+	display       *displayactions.Dispatcher
+	turnRunner    *agents.Runner
+	mu            sync.Mutex
+	started       time.Time
+	version       string
 }
 
 type HealthResponse struct {
@@ -283,48 +282,68 @@ func newServer(
 		display = displayactions.NewDispatcher()
 	}
 
-	regConfigs := make([]registry.AgentConfig, len(cfg.Agents))
-	for i, a := range cfg.Agents {
-		regConfigs[i] = registry.AgentConfig{
-			ID:              a.ID,
-			Name:            a.Name,
-			Description:     a.Description,
-			CardURL:         a.CardURL,
-			EndpointURL:     a.EndpointURL,
-			ProtocolBinding: a.ProtocolBinding,
-			Enabled:         a.Enabled,
-			Capabilities:    a.Capabilities,
-			MCPScopes:       a.MCPScopes,
-			AuthConfigured:  a.Auth != nil,
+	var getAgentsConfig func() []agents.AgentConfig
+	var saveAgentsConfig func([]agents.AgentConfig) error
+	if configPath != "" {
+		getAgentsConfig = func() []agents.AgentConfig {
+			c, err := config.LoadConfig(configPath)
+			if err != nil {
+				return nil
+			}
+			return c.Agents
+		}
+		saveAgentsConfig = func(next []agents.AgentConfig) error {
+			c, err := config.LoadConfig(configPath)
+			if err != nil {
+				return err
+			}
+			c.Agents = next
+			return config.SaveYAML(configPath, c)
+		}
+	} else {
+		var memAgentsMu sync.Mutex
+		memAgents := cfg.Agents
+		getAgentsConfig = func() []agents.AgentConfig {
+			memAgentsMu.Lock()
+			defer memAgentsMu.Unlock()
+			return memAgents
+		}
+		saveAgentsConfig = func(next []agents.AgentConfig) error {
+			memAgentsMu.Lock()
+			memAgents = next
+			memAgentsMu.Unlock()
+			return nil
 		}
 	}
 
+	agentCards := agents.NewCardService()
+	agentsManager := agents.NewAgentManager(getAgentsConfig, saveAgentsConfig, agentCards, configPath)
+
 	server := &Server{
-		cfg:         cfg,
-		registry:    registry.New(regConfigs),
-		messages:    messageSender,
-		agentCards:  agents.NewCardService(),
-		setup:       setup,
-		layout:      layout,
-		layoutStore: activeLayoutStore,
-		settings:    activeSettingsStore,
-		voice:       cfg.Voice,
-		voiceStore:  activeVoiceStore,
-		configPath:  configPath,
-		display:     display,
-		started:     time.Now().UTC(),
-		version:     version,
+		cfg:           cfg,
+		agentsManager: agentsManager,
+		messages:      messageSender,
+		setup:         setup,
+		layout:        layout,
+		layoutStore:   activeLayoutStore,
+		settings:      activeSettingsStore,
+		voice:         cfg.Voice,
+		voiceStore:    activeVoiceStore,
+		configPath:    configPath,
+		display:       display,
+		started:       time.Now().UTC(),
+		version:       version,
 	}
 
 	agents.SetEnvReader(os.Getenv)
 	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
-		Registry:       server.registry,
-		GetAgentConfig: server.configuredAgent,
+		GetRegistry: server.agentsManager.ActiveRegistry,
+		GetAgentConfig: func(agentID string) (agents.AgentConfig, bool) {
+			return server.agentsManager.ConfiguredAgent(agentID)
+		},
 		GetAgentCardCache: func(ctx context.Context, agent registry.Agent) (agents.AgentCardCache, bool) {
-			cache, ok := server.currentAgentCardCache(ctx, agent)
-			if !ok {
-				return agents.AgentCardCache{}, false
-			}
+			configured, _ := server.agentsManager.ConfiguredAgent(agent.ID)
+			cache := agentCards.Current(ctx, agent, configured)
 			return agents.AgentCardCache{
 				SelectedEndpointURL:       cache.SelectedEndpointURL,
 				SelectedProtocolBinding:   cache.SelectedProtocolBinding,
@@ -376,54 +395,11 @@ func newServer(
 		server.display,
 	).RegisterRoutes(mux)
 
-	var getAgentsConfig func() []agents.AgentConfig
-	var saveAgentsConfig func([]agents.AgentConfig) error
-	if configPath != "" {
-		getAgentsConfig = func() []agents.AgentConfig {
-			c, err := config.LoadConfig(configPath)
-			if err != nil {
-				return nil
-			}
-			return c.Agents
-		}
-		saveAgentsConfig = func(next []agents.AgentConfig) error {
-			c, err := config.LoadConfig(configPath)
-			if err != nil {
-				return err
-			}
-			c.Agents = next
-			return config.SaveYAML(configPath, c)
-		}
-	} else {
-		var memAgentsMu sync.Mutex
-		memAgents := cfg.Agents
-		getAgentsConfig = func() []agents.AgentConfig {
-			memAgentsMu.Lock()
-			defer memAgentsMu.Unlock()
-			return memAgents
-		}
-		saveAgentsConfig = func(next []agents.AgentConfig) error {
-			memAgentsMu.Lock()
-			memAgents = next
-			memAgentsMu.Unlock()
-			return nil
-		}
-	}
-
 	agents.NewController(agents.ControllerOptions{
-		Registry:            server.registry,
-		CardService:         server.agentCards,
+		Manager:             server.agentsManager,
 		Messages:            server.messages,
 		TurnRunner:          server.turnRunner,
-		ConfigPath:          configPath,
-		GetAgentsConfig:     getAgentsConfig,
-		SaveAgentsConfig:    saveAgentsConfig,
 		GetDashboardContext: server.dashboardContext,
-		OnRegistryUpdated: func(r registry.Registry) {
-			server.mu.Lock()
-			server.registry = r
-			server.mu.Unlock()
-		},
 	}).RegisterRoutes(mux)
 
 	// SSE broker mount
@@ -536,117 +512,7 @@ func (s *Server) currentVoiceStatus(ctx context.Context) (voice.StatusResponse, 
 }
 
 func (s *Server) agentStatusSummary(ctx context.Context) agents.AgentStatusSummary {
-	agentsList := s.agentsWithDiscovery(ctx, false)
-	summary := agents.AgentStatusSummary{Total: len(agentsList)}
-	for _, agent := range agentsList {
-		if agent.Enabled {
-			summary.Enabled++
-		} else {
-			summary.Disabled++
-		}
-		if agent.Enabled && agent.CardStatus == "available" && s.agentAuthAvailableFromPublic(agent) {
-			summary.Available++
-		}
-		if agent.Enabled && agent.CardStatus != "" && agent.CardStatus != "available" {
-			summary.Unavailable++
-		}
-		if agent.DashboardContextSupported {
-			summary.DashboardContextSupported++
-		}
-		if len(agent.MCPScopes) > 0 {
-			summary.MCPScoped++
-		}
-	}
-	return summary
-}
-
-func (s *Server) agentAuthAvailableFromPublic(agent registry.Agent) bool {
-	configured, ok := s.configuredAgent(agent.ID)
-	if !ok {
-		return false
-	}
-	return s.agentAuthAvailable(configured)
-}
-
-func (s *Server) agentAuthAvailable(agent agents.AgentConfig) bool {
-	if agent.Auth == nil {
-		return true
-	}
-	return strings.TrimSpace(os.Getenv(agent.Auth.EnvToken)) != ""
-}
-
-func (s *Server) configuredAgent(agentID string) (agents.AgentConfig, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, a := range s.cfg.Agents {
-		if a.ID == agentID {
-			return a, true
-		}
-	}
-	return agents.AgentConfig{}, false
-}
-
-func (s *Server) agentsWithDiscovery(ctx context.Context, refreshMissing bool) []registry.Agent {
-	s.mu.Lock()
-	agentsList := s.registry.List()
-	s.mu.Unlock()
-	for i := range agentsList {
-		var cache agents.AgentCardCache
-		var ok bool
-		if refreshMissing {
-			cache, ok = s.currentAgentCardCache(ctx, agentsList[i])
-		} else {
-			cache, ok = s.loadAgentCardCache(ctx, agentsList[i].ID)
-		}
-		if ok {
-			agentsList[i] = s.agentWithDiscovery(agentsList[i], cache)
-		}
-	}
-	return agentsList
-}
-
-func (s *Server) agentWithDiscovery(agent registry.Agent, cache agents.AgentCardCache) registry.Agent {
-	agent.CardStatus = cache.SelectedProtocolBinding
-	agent.CardFetchedAt = ""
-	agent.CardError = ""
-	agent.SelectedEndpointURL = cache.SelectedEndpointURL
-	agent.SelectedProtocolBinding = cache.SelectedProtocolBinding
-	agent.SelectedProtocolVersion = ""
-	agent.Streaming = cache.Streaming
-	agent.DashboardContextSupported = cache.DashboardContextSupported
-	if agent.SelectedEndpointURL != "" {
-		agent.EndpointURL = agent.SelectedEndpointURL
-	}
-	if agent.SelectedProtocolBinding != "" {
-		agent.ProtocolBinding = agent.SelectedProtocolBinding
-	}
-	return agent
-}
-
-func (s *Server) currentAgentCardCache(ctx context.Context, agent registry.Agent) (agents.AgentCardCache, bool) {
-	configured, _ := s.configuredAgent(agent.ID)
-	res := s.agentCards.Current(ctx, agent, configured)
-	return agents.AgentCardCache{
-		SelectedEndpointURL:       res.SelectedEndpointURL,
-		SelectedProtocolBinding:   res.SelectedProtocolBinding,
-		SelectedProtocolVersion:   res.SelectedProtocolVersion,
-		Streaming:                 res.Streaming,
-		DashboardContextSupported: res.DashboardContextSupported,
-	}, true
-}
-
-func (s *Server) loadAgentCardCache(_ context.Context, agentID string) (agents.AgentCardCache, bool) {
-	res, ok := s.agentCards.Load(agentID)
-	if ok {
-		return agents.AgentCardCache{
-			SelectedEndpointURL:       res.SelectedEndpointURL,
-			SelectedProtocolBinding:   res.SelectedProtocolBinding,
-			SelectedProtocolVersion:   res.SelectedProtocolVersion,
-			Streaming:                 res.Streaming,
-			DashboardContextSupported: res.DashboardContextSupported,
-		}, true
-	}
-	return agents.AgentCardCache{}, false
+	return s.agentsManager.StatusSummary(ctx)
 }
 
 func (s *Server) dashboardContext(ctx context.Context) map[string]any {

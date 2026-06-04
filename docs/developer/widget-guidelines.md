@@ -53,7 +53,7 @@ func init() {
 ```
 
 ### Server Instantiation (Blank Imports)
-To trigger the widget's `init()` block, add a blank import for your subpackage inside Jute's main server file [internal/server/server.go](file:///Users/craig/Repos/jute-dash/internal/server/server.go):
+To trigger the widget's `init()` block, add a blank import for your subpackage inside Jute's main entrypoint [main.go](file:///Users/craig/Repos/jute-dash/apps/hub/cmd/juted/main.go):
 
 ```go
 import (
@@ -107,7 +107,7 @@ Visual customization rules are defined in [Visual Customization](../architecture
 
 When contributing a new widget:
 1. **Directory**: Create `widgets/[name]/` containing `[name].go` and `[Name]Widget.svelte`.
-2. **Dynamic Boot**: Blank import your package inside `internal/server/server.go`.
+2. **Dynamic Boot**: Blank import your package inside `apps/hub/cmd/juted/main.go`.
 3. **Dashboard Mapping**: Import and map the component inside `DashboardGrid.svelte`.
 4. **Documentation**: Write a `README.md` inside your widget folder detailing its kind, supported sizes, and custom settings schemas.
 5. **Visual Verification**: Check the widget in light and dark mode, and with at least `solid` and `smoked` widget chrome.

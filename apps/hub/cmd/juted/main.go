@@ -16,6 +16,12 @@ import (
 	"jute-dash/apps/hub/internal/app/mcp"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/pkg/widgetskills"
+
+	_ "jute-dash/widgets/chathistory"
+	_ "jute-dash/widgets/datetime"
+	_ "jute-dash/widgets/markets"
+	_ "jute-dash/widgets/rss"
+	_ "jute-dash/widgets/weather"
 )
 
 var version = "dev"

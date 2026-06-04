@@ -75,6 +75,13 @@ type TaskHistoryClient interface {
 	GetTask(ctx context.Context, req GetTaskRequest) (TaskRecord, error)
 }
 
+// Client consolidates all A2A client operations under a single port.
+type Client interface {
+	MessageSender
+	StreamingMessageSender
+	TaskHistoryClient
+}
+
 type JSONRPCClient struct {
 	HTTPClient *http.Client
 }

@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +15,7 @@ import (
 )
 
 type RunnerOptions struct {
-	Registry            registry.Registry
+	GetRegistry         func() registry.Registry
 	GetAgentConfig      func(string) (AgentConfig, bool)
 	GetAgentCardCache   func(ctx context.Context, agent registry.Agent) (AgentCardCache, bool)
 	GetDashboardContext func(ctx context.Context) map[string]any
@@ -47,7 +46,7 @@ func (runner *Runner) prepare(
 	if text == "" {
 		return turnContext{}, errors.New("text is required")
 	}
-	agent, ok := runner.opts.Registry.Find(strings.TrimSpace(req.AgentID))
+	agent, ok := runner.opts.GetRegistry().Find(strings.TrimSpace(req.AgentID))
 	if !ok {
 		return turnContext{}, errors.New("agent not found")
 	}
@@ -383,11 +382,4 @@ func AgentBearerToken(agent AgentConfig) (string, bool) {
 	return token, true
 }
 
-// Injected [os.Getenv] fallback
-//
-//nolint:gochecknoglobals // mock fallback function for testing
-var osGetenv = os.Getenv
-
-func SetEnvReader(fn func(string) string) {
-	osGetenv = fn
-}
+// Injected [os.Getenv] fallback is defined in manager.go

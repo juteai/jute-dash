@@ -112,7 +112,7 @@ func TestMessageEndpointRejectsDisabledAgent(t *testing.T) {
 }
 
 func TestMessageEndpointRejectsUnknownAgentBeforeTransport(t *testing.T) {
-	sender := &fakeMessageSender{}
+	sender := a2a.NewInMemoryClient()
 	handler := NewWithMessageSender(testConfig(), "test", sender)
 	payload := bytes.NewBufferString(`{"agentId":"missing","text":"Hello?"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
@@ -123,19 +123,18 @@ func TestMessageEndpointRejectsUnknownAgentBeforeTransport(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected status 404, got %d", rec.Code)
 	}
-	if sender.called {
+	if len(sender.SentMessages) > 0 {
 		t.Fatal("sender should not be called for unknown agent")
 	}
 }
 
 func TestMessageEndpointAcceptsEnabledAgent(t *testing.T) {
-	sender := &fakeMessageSender{
-		result: a2a.SendMessageResult{
-			ConversationID: "ctx-1",
-			Status:         "completed",
-			Text:           "The house looks calm.",
-		},
-	}
+	sender := a2a.NewInMemoryClient()
+	sender.StubSendMessage(a2a.SendMessageResult{
+		ConversationID: "ctx-1",
+		Status:         "completed",
+		Text:           "The house looks calm.",
+	}, nil)
 	handler := NewWithMessageSender(testConfig(), "test", sender)
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"What needs attention?"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
@@ -153,8 +152,9 @@ func TestMessageEndpointAcceptsEnabledAgent(t *testing.T) {
 	if body.AgentID != "house" || body.Status != "completed" || body.Message != "The house looks calm." {
 		t.Fatalf("unexpected response: %+v", body)
 	}
-	if sender.last.EndpointURL != "https://agent.example.com/a2a/v1" || sender.last.Text != "What needs attention?" {
-		t.Fatalf("unexpected sender request: %+v", sender.last)
+	lastSent := sender.SentMessages[len(sender.SentMessages)-1]
+	if lastSent.EndpointURL != "https://agent.example.com/a2a/v1" || lastSent.Text != "What needs attention?" {
+		t.Fatalf("unexpected sender request: %+v", lastSent)
 	}
 }
 
@@ -194,11 +194,12 @@ func TestMessageEndpointUsesDiscoveredA2A10InterfaceAndDashboardContext(t *testi
 	if err != nil {
 		t.Fatalf("initialize store: %v", err)
 	}
-	sender := &fakeMessageSender{result: a2a.SendMessageResult{
+	sender := a2a.NewInMemoryClient()
+	sender.StubSendMessage(a2a.SendMessageResult{
 		ConversationID: "ctx-discovered",
 		Status:         "completed",
 		Text:           "Context received.",
-	}}
+	}, nil)
 	handler := newServer(cfg, "test", sender, result.Setup, DefaultWidgetLayout(), runtimeStore, "", nil)
 
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"What can you see?","conversationId":"ctx-existing"}`)
@@ -209,28 +210,31 @@ func TestMessageEndpointUsesDiscoveredA2A10InterfaceAndDashboardContext(t *testi
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if !sender.called {
+	if len(sender.SentMessages) == 0 {
 		t.Fatal("sender was not called")
 	}
-	if sender.last.EndpointURL != "http://agent.local/invoke" || sender.last.ProtocolVersion != a2a.ProtocolVersion10 {
-		t.Fatalf("unexpected selected interface: %+v", sender.last)
+	lastSent := sender.SentMessages[len(sender.SentMessages)-1]
+	if lastSent.EndpointURL != "http://agent.local/invoke" || lastSent.ProtocolVersion != a2a.ProtocolVersion10 {
+		t.Fatalf("unexpected selected interface: %+v", lastSent)
 	}
-	if sender.last.ConversationID != "ctx-existing" {
-		t.Fatalf("unexpected conversation ID: %+v", sender.last)
+	if lastSent.ConversationID != "ctx-existing" {
+		t.Fatalf("unexpected conversation ID: %+v", lastSent)
 	}
-	if len(sender.last.Extensions) != 1 || sender.last.Extensions[0] != a2a.DashboardContextExtensionURI {
-		t.Fatalf("dashboard extension not activated: %+v", sender.last.Extensions)
+	if len(lastSent.Extensions) != 1 || lastSent.Extensions[0] != a2a.DashboardContextExtensionURI {
+		t.Fatalf("dashboard extension not activated: %+v", lastSent.Extensions)
 	}
-	if sender.last.Metadata[a2a.DashboardContextExtensionURI] == nil {
-		t.Fatalf("dashboard metadata missing: %+v", sender.last.Metadata)
+	if lastSent.Metadata[a2a.DashboardContextExtensionURI] == nil {
+		t.Fatalf("dashboard metadata missing: %+v", lastSent.Metadata)
 	}
 }
 
 func TestMessageEndpointReturnsSafeAgentFailure(t *testing.T) {
+	sender := a2a.NewInMemoryClient()
+	sender.StubSendMessage(a2a.SendMessageResult{}, errors.New("raw remote failure with internal details"))
 	handler := NewWithMessageSender(
 		testConfig(),
 		"test",
-		&fakeMessageSender{err: errors.New("raw remote failure with internal details")},
+		sender,
 	)
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"What needs attention?"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
@@ -253,7 +257,7 @@ func TestMessageEndpointReturnsSafeAgentFailure(t *testing.T) {
 func TestMessageEndpointRejectsUnsupportedBindingBeforeTransport(t *testing.T) {
 	cfg := testConfig()
 	cfg.Agents[0].ProtocolBinding = a2a.ProtocolHTTPJSON
-	sender := &fakeMessageSender{}
+	sender := a2a.NewInMemoryClient()
 	handler := NewWithMessageSender(cfg, "test", sender)
 	payload := bytes.NewBufferString(`{"agentId":"house","text":"What needs attention?"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
@@ -264,7 +268,7 @@ func TestMessageEndpointRejectsUnsupportedBindingBeforeTransport(t *testing.T) {
 	if rec.Code != http.StatusNotImplemented {
 		t.Fatalf("expected status 501, got %d", rec.Code)
 	}
-	if sender.called {
+	if len(sender.SentMessages) > 0 {
 		t.Fatal("sender should not be called for unsupported binding")
 	}
 }
@@ -1081,8 +1085,9 @@ func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
 }
 
 func TestConversationListUsesAgentTaskHistory(t *testing.T) {
-	history := &fakeTaskHistorySender{
-		tasks: []a2a.TaskRecord{
+	history := a2a.NewInMemoryClient()
+	history.StubListTasks(a2a.ListTasksResult{
+		Tasks: []a2a.TaskRecord{
 			{
 				ID:        "task-1",
 				ContextID: "ctx-1",
@@ -1094,7 +1099,7 @@ func TestConversationListUsesAgentTaskHistory(t *testing.T) {
 				UpdatedAt: "2026-05-19T10:00:00Z",
 			},
 		},
-	}
+	}, nil)
 	handler := newServer(
 		testConfig(),
 		"test",
@@ -1123,29 +1128,32 @@ func TestConversationListUsesAgentTaskHistory(t *testing.T) {
 		body.Conversations[0].Title != "What is happening?" {
 		t.Fatalf("unexpected conversations: %+v", body.Conversations)
 	}
-	if history.listReq.EndpointURL != "https://agent.example.com/a2a/v1" || history.listReq.PageSize != 50 {
-		t.Fatalf("unexpected list request: %+v", history.listReq)
+	if len(history.ListTasksRequests) == 0 {
+		t.Fatal("ListTasks was not called")
+	}
+	lastReq := history.ListTasksRequests[len(history.ListTasksRequests)-1]
+	if lastReq.EndpointURL != "https://agent.example.com/a2a/v1" || lastReq.PageSize != 50 {
+		t.Fatalf("unexpected list request: %+v", lastReq)
 	}
 }
 
 func TestConversationDetailUsesGetTaskHistory(t *testing.T) {
-	history := &fakeTaskHistorySender{
-		tasks: []a2a.TaskRecord{
+	history := a2a.NewInMemoryClient()
+	history.StubListTasks(a2a.ListTasksResult{
+		Tasks: []a2a.TaskRecord{
 			{ID: "task-1", ContextID: "ctx-1", Status: "completed", UpdatedAt: "2026-05-19T10:00:00Z"},
 		},
-		records: map[string]a2a.TaskRecord{
-			"task-1": {
-				ID:        "task-1",
-				ContextID: "ctx-1",
-				Status:    "completed",
-				Messages: []a2a.TaskMessage{
-					{ID: "user-1", Role: "user", Text: "Hello"},
-					{ID: "agent-1", Role: "assistant", Text: "Hello back"},
-				},
-				UpdatedAt: "2026-05-19T10:01:00Z",
-			},
+	}, nil)
+	history.StubGetTask(a2a.TaskRecord{
+		ID:        "task-1",
+		ContextID: "ctx-1",
+		Status:    "completed",
+		Messages: []a2a.TaskMessage{
+			{ID: "user-1", Role: "user", Text: "Hello"},
+			{ID: "agent-1", Role: "assistant", Text: "Hello back"},
 		},
-	}
+		UpdatedAt: "2026-05-19T10:01:00Z",
+	}, nil)
 	handler := newServer(
 		testConfig(),
 		"test",
@@ -1174,32 +1182,33 @@ func TestConversationDetailUsesGetTaskHistory(t *testing.T) {
 	if len(detail.Messages) != 2 || detail.Messages[1].Content != "Hello back" {
 		t.Fatalf("unexpected messages: %+v", detail.Messages)
 	}
-	if history.getReq.TaskID != "task-1" || history.getReq.HistoryLength != 50 {
-		t.Fatalf("unexpected get request: %+v", history.getReq)
+	if len(history.GetTaskRequests) == 0 {
+		t.Fatal("GetTask was not called")
+	}
+	lastReq := history.GetTaskRequests[len(history.GetTaskRequests)-1]
+	if lastReq.TaskID != "task-1" || lastReq.HistoryLength != 50 {
+		t.Fatalf("unexpected get request: %+v", lastReq)
 	}
 }
 
 func TestConversationCreateWithInitialTextSendsTurnToAgent(t *testing.T) {
-	sender := &fakeTaskHistorySender{
-		fakeMessageSender: fakeMessageSender{result: a2a.SendMessageResult{
-			ConversationID: "ctx-created",
-			TaskID:         "task-created",
-			Status:         "completed",
-			Text:           "Welcome home.",
-		}},
-		records: map[string]a2a.TaskRecord{
-			"task-created": {
-				ID:        "task-created",
-				ContextID: "ctx-created",
-				Status:    "completed",
-				Messages: []a2a.TaskMessage{
-					{ID: "user-created", Role: "user", Text: "Hello"},
-					{ID: "agent-created", Role: "assistant", Text: "Welcome home."},
-				},
-				UpdatedAt: "2026-06-02T10:01:00Z",
-			},
+	sender := a2a.NewInMemoryClient()
+	sender.StubSendMessage(a2a.SendMessageResult{
+		ConversationID: "ctx-created",
+		TaskID:         "task-created",
+		Status:         "completed",
+		Text:           "Welcome home.",
+	}, nil)
+	sender.StubGetTask(a2a.TaskRecord{
+		ID:        "task-created",
+		ContextID: "ctx-created",
+		Status:    "completed",
+		Messages: []a2a.TaskMessage{
+			{ID: "user-created", Role: "user", Text: "Hello"},
+			{ID: "agent-created", Role: "assistant", Text: "Welcome home."},
 		},
-	}
+		UpdatedAt: "2026-06-02T10:01:00Z",
+	}, nil)
 	handler := newServer(
 		testConfig(),
 		"test",
@@ -1223,8 +1232,12 @@ func TestConversationCreateWithInitialTextSendsTurnToAgent(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&detail); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !sender.called || sender.last.Text != "Hello" || sender.last.EndpointURL != "https://agent.example.com/a2a/v1" {
-		t.Fatalf("unexpected send request: %+v", sender.last)
+	if len(sender.SentMessages) == 0 {
+		t.Fatal("SendMessage was not called")
+	}
+	lastReq := sender.SentMessages[len(sender.SentMessages)-1]
+	if lastReq.Text != "Hello" || lastReq.EndpointURL != "https://agent.example.com/a2a/v1" {
+		t.Fatalf("unexpected send request: %+v", lastReq)
 	}
 	if detail.Conversation.ID != "ctx-created" || detail.Conversation.LatestTaskID != "task-created" {
 		t.Fatalf("unexpected conversation: %+v", detail.Conversation)
@@ -1234,8 +1247,12 @@ func TestConversationCreateWithInitialTextSendsTurnToAgent(t *testing.T) {
 	}
 }
 
+type messageOnlySender struct {
+	a2a.MessageSender
+}
+
 func TestConversationListShowsUnsupportedStateWhenAgentDoesNotExposeHistory(t *testing.T) {
-	handler := NewWithMessageSender(testConfig(), "test", &fakeMessageSender{})
+	handler := NewWithMessageSender(testConfig(), "test", &messageOnlySender{a2a.NewInMemoryClient()})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?agentId=house", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -1259,28 +1276,23 @@ func TestConversationTurnStreamEmitsDeltasAndCompletion(t *testing.T) {
 	defer agentCardServer.Close()
 	cfg := testConfig()
 	cfg.Agents[0].CardURL = agentCardServer.URL
-	streamer := &fakeStreamingSender{
-		streamEvents: []a2a.StreamEvent{
-			{Kind: "task", ConversationID: "ctx-1", TaskID: "task-1", Status: "working"},
-			{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "Hel", Append: true},
-			{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "lo", Append: true},
-			{Kind: "status", ConversationID: "ctx-1", TaskID: "task-1", Status: "completed", Terminal: true},
+	streamer := a2a.NewInMemoryClient()
+	streamer.StubStreamMessage([]a2a.StreamEvent{
+		{Kind: "task", ConversationID: "ctx-1", TaskID: "task-1", Status: "working"},
+		{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "Hel", Append: true},
+		{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "lo", Append: true},
+		{Kind: "status", ConversationID: "ctx-1", TaskID: "task-1", Status: "completed", Terminal: true},
+	}, nil)
+	streamer.StubGetTask(a2a.TaskRecord{
+		ID:        "task-1",
+		ContextID: "ctx-1",
+		Status:    "completed",
+		Messages: []a2a.TaskMessage{
+			{ID: "user-1", Role: "user", Text: "Hello"},
+			{ID: "agent-1", Role: "assistant", Text: "Hello"},
 		},
-		fakeTaskHistorySender: fakeTaskHistorySender{
-			records: map[string]a2a.TaskRecord{
-				"task-1": {
-					ID:        "task-1",
-					ContextID: "ctx-1",
-					Status:    "completed",
-					Messages: []a2a.TaskMessage{
-						{ID: "user-1", Role: "user", Text: "Hello"},
-						{ID: "agent-1", Role: "assistant", Text: "Hello"},
-					},
-					UpdatedAt: "2026-05-19T10:01:00Z",
-				},
-			},
-		},
-	}
+		UpdatedAt: "2026-05-19T10:01:00Z",
+	}, nil)
 	handler := newServer(
 		cfg,
 		"test",
@@ -1312,8 +1324,12 @@ func TestConversationTurnStreamEmitsDeltasAndCompletion(t *testing.T) {
 	if events[2].Data["text"] != "Hel" || events[3].Data["text"] != "lo" {
 		t.Fatalf("unexpected delta events: %+v", events)
 	}
-	if !streamer.streamCalled || streamer.lastStream.ConversationID != "ctx-1" || streamer.lastStream.Text != "Hello" {
-		t.Fatalf("unexpected stream request: %+v", streamer.lastStream)
+	if len(streamer.StreamRequests) == 0 {
+		t.Fatal("StreamMessage was not called")
+	}
+	lastStream := streamer.StreamRequests[len(streamer.StreamRequests)-1]
+	if lastStream.ConversationID != "ctx-1" || lastStream.Text != "Hello" {
+		t.Fatalf("unexpected stream request: %+v", lastStream)
 	}
 }
 
@@ -1322,16 +1338,13 @@ func TestConversationTurnStreamFallsBackForNonStreamingAgent(t *testing.T) {
 	defer agentCardServer.Close()
 	cfg := testConfig()
 	cfg.Agents[0].CardURL = agentCardServer.URL
-	sender := &fakeStreamingSender{
-		fakeTaskHistorySender: fakeTaskHistorySender{
-			fakeMessageSender: fakeMessageSender{result: a2a.SendMessageResult{
-				ConversationID: "ctx-1",
-				TaskID:         "task-1",
-				Status:         "completed",
-				Text:           "Blocking answer",
-			}},
-		},
-	}
+	sender := a2a.NewInMemoryClient()
+	sender.StubSendMessage(a2a.SendMessageResult{
+		ConversationID: "ctx-1",
+		TaskID:         "task-1",
+		Status:         "completed",
+		Text:           "Blocking answer",
+	}, nil)
 	handler := newServer(
 		cfg,
 		"test",
@@ -1355,10 +1368,10 @@ func TestConversationTurnStreamFallsBackForNonStreamingAgent(t *testing.T) {
 	if got := eventNames(events); strings.Join(got, ",") != "turn_started,turn_completed" {
 		t.Fatalf("unexpected events: %+v", got)
 	}
-	if sender.streamCalled {
+	if len(sender.StreamRequests) > 0 {
 		t.Fatal("streamer should not be called for non-streaming agent")
 	}
-	if !sender.called {
+	if len(sender.SentMessages) == 0 {
 		t.Fatal("blocking sender should be called")
 	}
 }
@@ -1368,12 +1381,10 @@ func TestConversationTurnStreamEmitsSafeFailureAfterPartialStream(t *testing.T) 
 	defer agentCardServer.Close()
 	cfg := testConfig()
 	cfg.Agents[0].CardURL = agentCardServer.URL
-	streamer := &fakeStreamingSender{
-		streamEvents: []a2a.StreamEvent{
-			{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "Partial", Append: true},
-		},
-		streamErr: errors.New("raw remote stream failure with internals"),
-	}
+	streamer := a2a.NewInMemoryClient()
+	streamer.StubStreamMessage([]a2a.StreamEvent{
+		{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "Partial", Append: true},
+	}, errors.New("raw remote stream failure with internals"))
 	handler := newServer(
 		cfg,
 		"test",
@@ -1460,77 +1471,7 @@ func (s *failingLayoutStore) ResetWidgetLayout(ctx context.Context, profileID st
 	return WidgetLayout{}, s.err
 }
 
-type fakeMessageSender struct {
-	result a2a.SendMessageResult
-	err    error
-	last   a2a.SendMessageRequest
-	called bool
-}
-
-func (s *fakeMessageSender) SendMessage(
-	ctx context.Context,
-	req a2a.SendMessageRequest,
-) (a2a.SendMessageResult, error) {
-	s.called = true
-	s.last = req
-	if s.err != nil {
-		return a2a.SendMessageResult{}, s.err
-	}
-	return s.result, nil
-}
-
-type fakeTaskHistorySender struct {
-	fakeMessageSender
-
-	tasks   []a2a.TaskRecord
-	records map[string]a2a.TaskRecord
-	listReq a2a.ListTasksRequest
-	getReq  a2a.GetTaskRequest
-}
-
-func (s *fakeTaskHistorySender) ListTasks(ctx context.Context, req a2a.ListTasksRequest) (a2a.ListTasksResult, error) {
-	s.listReq = req
-	tasks := make([]a2a.TaskRecord, 0, len(s.tasks))
-	for _, task := range s.tasks {
-		if req.ContextID != "" && task.ContextID != req.ContextID {
-			continue
-		}
-		tasks = append(tasks, task)
-	}
-	return a2a.ListTasksResult{Tasks: tasks}, nil
-}
-
-func (s *fakeTaskHistorySender) GetTask(ctx context.Context, req a2a.GetTaskRequest) (a2a.TaskRecord, error) {
-	s.getReq = req
-	if task, ok := s.records[req.TaskID]; ok {
-		return task, nil
-	}
-	return a2a.TaskRecord{}, errors.New("task not found")
-}
-
-type fakeStreamingSender struct {
-	fakeTaskHistorySender
-
-	streamEvents []a2a.StreamEvent
-	streamErr    error
-	lastStream   a2a.SendMessageRequest
-	streamCalled bool
-}
-
-func (s *fakeStreamingSender) StreamMessage(
-	ctx context.Context,
-	req a2a.SendMessageRequest,
-	handler a2a.StreamHandler,
-) error {
-	s.streamCalled = true
-	s.lastStream = req
-	for _, event := range s.streamEvents {
-		if err := handler(event); err != nil {
-			return err
-		}
-	}
-	return s.streamErr
-}
+// Removed fakeMessageSender, fakeTaskHistorySender, fakeStreamingSender structs in favor of a2a.InMemoryClient
 
 type sseEvent struct {
 	Name string

@@ -45,10 +45,9 @@ Vite file system permissions are proactively granted inside `apps/web/vite.confi
 ### Dynamic Go Self-Registration
 Backend packages self-register with Jute's catalog and dynamic skill registries via package initialization (`init()`). Since Go compiles package files together, importing a package automatically registers its widgets. 
 
-To maintain clean and acyclic Go package dependencies (since subpackages import the root `widgets` package to register), all package blank imports are consolidated inside [server.go](file:///Users/craig/Repos/jute-dash/internal/server/server.go):
+To maintain clean and acyclic Go package dependencies (since subpackages import the root `widgets` package to register), all package blank imports are consolidated inside [main.go](file:///Users/craig/Repos/jute-dash/apps/hub/cmd/juted/main.go):
 ```go
 import (
-	"jute-dash/widgets"
 	_ "jute-dash/widgets/chathistory"
 	_ "jute-dash/widgets/datetime"
 	_ "jute-dash/widgets/markets"
@@ -91,7 +90,7 @@ Jute Dash ships with five built-in widgets:
 To build a new widget:
 1. Create a folder `widgets/[name]/`.
 2. Implement your backend provider in `widgets/[name]/[name].go` under `package [name]`. Make sure it registers itself inside `init()`.
-3. Add a blank import for your subpackage in `internal/server/server.go` to trigger auto-registration.
+3. Add a blank import for your subpackage in `apps/hub/cmd/juted/main.go` to trigger auto-registration.
 4. Implement your frontend view in `widgets/[name]/[Name]Widget.svelte`.
 5. Import your view in `DashboardGrid.svelte` and map it inside the widget render block.
 6. Document usage, settings schemas, and examples in a `README.md` file inside your widget folder.

@@ -1,4 +1,3 @@
-//nolint:revive // allow unused parameters in MCP routers
 package mcp
 
 import (
@@ -12,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
@@ -213,12 +211,17 @@ func (h *Handler) readResource(ctx context.Context, r *http.Request, uri string)
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	for _, router := range resourceRouters {
-		if router.Match(uri) {
-			if !caller.has(router.Scope) {
-				return nil, missingScope(router.Scope)
+	for _, route := range ResourceRoutes {
+		if route.Match(uri) {
+			if !caller.has(route.Scope()) {
+				return nil, missingScope(route.Scope())
 			}
-			val, err := router.Read(ctx, snapshot, uri)
+			routeCtx := RouteContext{
+				Context:  ctx,
+				Snapshot: snapshot,
+				Display:  h.display,
+			}
+			val, err := route.Read(routeCtx, uri)
 			if err != nil {
 				if errors.Is(err, widgetskills.ErrNotFound) {
 					return nil, notFound("resource not found")
@@ -252,12 +255,17 @@ func (h *Handler) callTool(ctx context.Context, r *http.Request, req toolCallPar
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	for _, router := range toolRouters {
-		if router.Name == req.Name {
-			if !caller.has(router.Scope) {
-				return nil, missingScope(router.Scope)
+	for _, route := range ToolRoutes {
+		if route.Name() == req.Name {
+			if !caller.has(route.Scope()) {
+				return nil, missingScope(route.Scope())
 			}
-			val, err := router.Call(ctx, h, snapshot, req.Arguments)
+			routeCtx := RouteContext{
+				Context:  ctx,
+				Snapshot: snapshot,
+				Display:  h.display,
+			}
+			val, err := route.Call(routeCtx, req.Arguments)
 			if err != nil {
 				var rpcErr *rpcError
 				if errors.As(err, &rpcErr) {
@@ -298,36 +306,38 @@ func (h *Handler) getPrompt(
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	if !caller.has(agents.MCPScopeSkillsPromptRead) {
-		return nil, missingScope(agents.MCPScopeSkillsPromptRead)
-	}
-	var text string
-	switch name {
-	case "jute_home_assistant_guidance":
-		text = widgetskills.HomeAssistantGuidance()
-	case "jute_widget_skill_guidance":
-		text, err = widgetskills.PromptText(snapshot, stringArg(arguments, "skillId"), stringArg(arguments, "promptId"))
-	default:
-		return nil, notFound("prompt not found")
-	}
-	if err != nil {
-		if errors.Is(err, widgetskills.ErrNotFound) {
-			return nil, notFound("prompt not found")
-		}
-		return nil, invalidParams(err)
-	}
-	return map[string]any{
-		"description": "Jute MCP prompt guidance",
-		"messages": []map[string]any{
-			{
-				"role": "user",
-				"content": map[string]any{
-					"type": "text",
-					"text": text,
+	for _, route := range PromptRoutes {
+		if route.Name() == name {
+			if !caller.has(route.Scope()) {
+				return nil, missingScope(route.Scope())
+			}
+			routeCtx := RouteContext{
+				Context:  ctx,
+				Snapshot: snapshot,
+				Display:  h.display,
+			}
+			text, err := route.Get(routeCtx, name, arguments)
+			if err != nil {
+				if errors.Is(err, widgetskills.ErrNotFound) {
+					return nil, notFound("prompt not found")
+				}
+				return nil, invalidParams(err)
+			}
+			return map[string]any{
+				"description": "Jute MCP prompt guidance",
+				"messages": []map[string]any{
+					{
+						"role": "user",
+						"content": map[string]any{
+							"type": "text",
+							"text": text,
+						},
+					},
 				},
-			},
-		},
-	}, nil
+			}, nil
+		}
+	}
+	return nil, notFound("prompt not found")
 }
 
 func (h *Handler) snapshot(ctx context.Context) (widgetskills.Snapshot, error) {
@@ -412,394 +422,25 @@ func (h *Handler) authorized(r *http.Request) bool {
 	return r.Header.Get("Authorization") == "Bearer "+token
 }
 
-type ResourceRouter struct {
-	Scope string
-	List  func(snapshot widgetskills.Snapshot) []map[string]any
-	Match func(uri string) bool
-	Read  func(ctx context.Context, snapshot widgetskills.Snapshot, uri string) (any, error)
-}
-
-type ToolRouter struct {
-	Name        string
-	Title       string
-	Description string
-	Scope       string
-	InputSchema map[string]any
-	Call        func(ctx context.Context, h *Handler, snapshot widgetskills.Snapshot, args map[string]any) (any, error)
-}
-
-//nolint:gochecknoglobals // static resource routers table
-var resourceRouters = []ResourceRouter{
-	{
-		Scope: agents.MCPScopeDashboardRead,
-		List: func(snapshot widgetskills.Snapshot) []map[string]any {
-			return []map[string]any{
-				resource(
-					"jute://dashboard/current",
-					"dashboard-current",
-					"Current Dashboard Context",
-					"Safe current dashboard context and visible Widget Skills.",
-				),
-			}
-		},
-		Match: func(uri string) bool { return uri == "jute://dashboard/current" },
-		Read: func(ctx context.Context, snapshot widgetskills.Snapshot, uri string) (any, error) {
-			return widgetskills.DashboardSnapshot(snapshot), nil
-		},
-	},
-	{
-		Scope: agents.MCPScopeDashboardRead,
-		List: func(snapshot widgetskills.Snapshot) []map[string]any {
-			return []map[string]any{
-				resource("jute://home/state", "home-state", "Home State", "Normalized non-secret home state summary."),
-			}
-		},
-		Match: func(uri string) bool { return uri == "jute://home/state" },
-		Read: func(ctx context.Context, snapshot widgetskills.Snapshot, uri string) (any, error) {
-			generatedAt := snapshot.GeneratedAt
-			if generatedAt.IsZero() {
-				generatedAt = time.Now().UTC()
-			}
-			return map[string]any{
-				"schema":      "https://jute.dev/mcp/resources/home-state/v1",
-				"generatedAt": generatedAt.UTC().Format(time.RFC3339Nano),
-				"home":        snapshot.Config.Home,
-				"rooms":       snapshot.Config.Rooms,
-				"tiles":       snapshot.Config.Tiles,
-			}, nil
-		},
-	},
-	{
-		Scope: agents.MCPScopeWidgetsRead,
-		List: func(snapshot widgetskills.Snapshot) []map[string]any {
-			return []map[string]any{
-				resource(
-					"jute://widgets/visible",
-					"widgets-visible",
-					"Visible Widgets",
-					"Visible dashboard widgets and their Widget Skill mappings.",
-				),
-			}
-		},
-		Match: func(uri string) bool { return uri == "jute://widgets/visible" },
-		Read: func(ctx context.Context, snapshot widgetskills.Snapshot, uri string) (any, error) {
-			return widgetskills.VisibleWidgetsSnapshot(snapshot), nil
-		},
-	},
-	{
-		Scope: agents.MCPScopeSkillsRead,
-		List: func(snapshot widgetskills.Snapshot) []map[string]any {
-			return []map[string]any{
-				resource(
-					"jute://skills",
-					"widget-skills",
-					"Widget Skills",
-					"Available Widget Skills for this display.",
-				),
-			}
-		},
-		Match: func(uri string) bool { return uri == "jute://skills" },
-		Read: func(ctx context.Context, snapshot widgetskills.Snapshot, uri string) (any, error) {
-			return widgetskills.SkillListSnapshot(snapshot), nil
-		},
-	},
-	{
-		Scope: agents.MCPScopeSkillsRead,
-		List: func(snapshot widgetskills.Snapshot) []map[string]any {
-			resources := []map[string]any{}
-			for _, skill := range widgetskills.Available(snapshot) {
-				resources = append(resources, resource(
-					"jute://skills/"+skill.SkillID,
-					"skill-"+skill.SkillID,
-					skill.DisplayName+" Skill",
-					skill.Summary,
-				))
-			}
-			return resources
-		},
-		Match: func(uri string) bool {
-			if !strings.HasPrefix(uri, "jute://skills/") {
-				return false
-			}
-			rest := strings.TrimPrefix(uri, "jute://skills/")
-			return !strings.Contains(rest, "/")
-		},
-		Read: func(ctx context.Context, snapshot widgetskills.Snapshot, uri string) (any, error) {
-			skillID := strings.TrimPrefix(uri, "jute://skills/")
-			skill, err := widgetskills.FindSkill(snapshot, skillID, "")
-			if err != nil {
-				return nil, err
-			}
-			generatedAt := snapshot.GeneratedAt
-			if generatedAt.IsZero() {
-				generatedAt = time.Now().UTC()
-			}
-			return map[string]any{
-				"schema":      "https://jute.dev/mcp/resources/widget-skills/v1",
-				"generatedAt": generatedAt.UTC().Format(time.RFC3339Nano),
-				"skill":       skill,
-				"contextUri":  "jute://skills/" + skill.SkillID + "/context",
-				"actions":     skill.Actions,
-				"prompts":     skill.Prompts,
-			}, nil
-		},
-	},
-	{
-		Scope: agents.MCPScopeSkillsRead,
-		List: func(snapshot widgetskills.Snapshot) []map[string]any {
-			resources := []map[string]any{}
-			for _, skill := range widgetskills.Available(snapshot) {
-				resources = append(resources, resource(
-					"jute://widgets/"+skill.WidgetInstanceID+"/skill",
-					"widget-"+skill.WidgetInstanceID+"-skill",
-					skill.WidgetTitle+" Skill",
-					"Widget instance to Widget Skill mapping.",
-				))
-			}
-			return resources
-		},
-		Match: func(uri string) bool {
-			return strings.HasPrefix(uri, "jute://widgets/") && strings.HasSuffix(uri, "/skill")
-		},
-		Read: func(ctx context.Context, snapshot widgetskills.Snapshot, uri string) (any, error) {
-			widgetID := strings.TrimSuffix(strings.TrimPrefix(uri, "jute://widgets/"), "/skill")
-			skill, err := widgetskills.FindSkill(snapshot, "", widgetID)
-			if err != nil {
-				return nil, err
-			}
-			generatedAt := snapshot.GeneratedAt
-			if generatedAt.IsZero() {
-				generatedAt = time.Now().UTC()
-			}
-			return map[string]any{
-				"schema":      "https://jute.dev/mcp/resources/widget-skills/v1",
-				"generatedAt": generatedAt.UTC().Format(time.RFC3339Nano),
-				"skill":       skill,
-				"contextUri":  "jute://skills/" + skill.SkillID + "/context",
-				"actions":     skill.Actions,
-				"prompts":     skill.Prompts,
-			}, nil
-		},
-	},
-	{
-		Scope: agents.MCPScopeSkillsContextRead,
-		List: func(snapshot widgetskills.Snapshot) []map[string]any {
-			resources := []map[string]any{}
-			for _, skill := range widgetskills.Available(snapshot) {
-				resources = append(resources, resource(
-					"jute://skills/"+skill.SkillID+"/context",
-					"skill-"+skill.SkillID+"-context",
-					skill.DisplayName+" Context",
-					"Current public context for "+skill.DisplayName+".",
-				))
-			}
-			return resources
-		},
-		Match: func(uri string) bool {
-			return strings.HasPrefix(uri, "jute://skills/") && strings.HasSuffix(uri, "/context")
-		},
-		Read: func(ctx context.Context, snapshot widgetskills.Snapshot, uri string) (any, error) {
-			skillID := strings.TrimSuffix(strings.TrimPrefix(uri, "jute://skills/"), "/context")
-			return widgetskills.SkillContext(snapshot, skillID, "")
-		},
-	},
-	{
-		Scope: agents.MCPScopeSkillsContextRead,
-		List: func(snapshot widgetskills.Snapshot) []map[string]any {
-			resources := []map[string]any{}
-			for _, skill := range widgetskills.Available(snapshot) {
-				resources = append(resources, resource(
-					"jute://widgets/"+skill.WidgetInstanceID+"/context",
-					"widget-"+skill.WidgetInstanceID+"-context",
-					skill.WidgetTitle+" Context",
-					"Current public Widget Skill context for "+skill.WidgetTitle+".",
-				))
-			}
-			return resources
-		},
-		Match: func(uri string) bool {
-			return strings.HasPrefix(uri, "jute://widgets/") && strings.HasSuffix(uri, "/context")
-		},
-		Read: func(ctx context.Context, snapshot widgetskills.Snapshot, uri string) (any, error) {
-			widgetID := strings.TrimSuffix(strings.TrimPrefix(uri, "jute://widgets/"), "/context")
-			return widgetskills.WidgetContext(snapshot, widgetID)
-		},
-	},
-}
-
-//nolint:gochecknoglobals // static tool routers table
-var toolRouters = []ToolRouter{
-	{
-		Name:        "jute_dashboard_context_get",
-		Title:       "Get Dashboard Context",
-		Description: "Return safe current Jute dashboard context.",
-		Scope:       agents.MCPScopeDashboardRead,
-		InputSchema: emptySchema(),
-		Call: func(ctx context.Context, h *Handler, snapshot widgetskills.Snapshot, args map[string]any) (any, error) {
-			for _, r := range resourceRouters {
-				if r.Match("jute://dashboard/current") {
-					return r.Read(ctx, snapshot, "jute://dashboard/current")
-				}
-			}
-			return nil, errors.New("dashboard context resource not found")
-		},
-	},
-	{
-		Name:        "jute_skill_list",
-		Title:       "List Widget Skills",
-		Description: "List available Jute Widget Skills.",
-		Scope:       agents.MCPScopeSkillsRead,
-		InputSchema: emptySchema(),
-		Call: func(ctx context.Context, h *Handler, snapshot widgetskills.Snapshot, args map[string]any) (any, error) {
-			for _, r := range resourceRouters {
-				if r.Match("jute://skills") {
-					return r.Read(ctx, snapshot, "jute://skills")
-				}
-			}
-			return nil, errors.New("skills resource not found")
-		},
-	},
-	{
-		Name:        "jute_skill_read_context",
-		Title:       "Read Widget Skill Context",
-		Description: "Read public context for a Widget Skill.",
-		Scope:       agents.MCPScopeSkillsContextRead,
-		InputSchema: objectSchema(map[string]any{
-			"skillId":          map[string]any{"type": "string"},
-			"widgetInstanceId": map[string]any{"type": "string"},
-		}, []string{"skillId"}),
-		Call: func(ctx context.Context, h *Handler, snapshot widgetskills.Snapshot, args map[string]any) (any, error) {
-			skillID, widgetID := stringArg(args, "skillId"), stringArg(args, "widgetInstanceId")
-			return widgetskills.SkillContext(snapshot, skillID, widgetID)
-		},
-	},
-	{
-		Name:        "jute_skill_invoke_action",
-		Title:       "Invoke Widget Skill Action",
-		Description: "Invoke a declared low-risk Widget Skill action through the hub.",
-		Scope:       agents.MCPScopeSkillsActionInvoke,
-		InputSchema: objectSchema(map[string]any{
-			"skillId":          map[string]any{"type": "string"},
-			"widgetInstanceId": map[string]any{"type": "string"},
-			"actionId":         map[string]any{"type": "string"},
-		}, []string{"skillId", "actionId"}),
-		Call: func(ctx context.Context, h *Handler, snapshot widgetskills.Snapshot, args map[string]any) (any, error) {
-			return widgetskills.InvokeAction(
-				snapshot,
-				stringArg(args, "skillId"),
-				stringArg(args, "widgetInstanceId"),
-				stringArg(args, "actionId"),
-				args,
-			)
-		},
-	},
-	{
-		Name:        "jute_skill_prompt_get",
-		Title:       "Get Widget Skill Prompt",
-		Description: "Get hub-approved prompt guidance for a Widget Skill.",
-		Scope:       agents.MCPScopeSkillsPromptRead,
-		InputSchema: objectSchema(map[string]any{
-			"skillId":  map[string]any{"type": "string"},
-			"promptId": map[string]any{"type": "string"},
-		}, []string{"skillId", "promptId"}),
-		Call: func(ctx context.Context, h *Handler, snapshot widgetskills.Snapshot, args map[string]any) (any, error) {
-			text, err := widgetskills.PromptText(
-				snapshot,
-				stringArg(args, "skillId"),
-				stringArg(args, "promptId"),
-			)
-			if err != nil {
-				return nil, err
-			}
-			return map[string]any{"text": text}, nil
-		},
-	},
-	{
-		Name:        "jute_display_notification",
-		Title:       "Display Notification",
-		Description: "Show a short hub-sanitized notification on the Jute display.",
-		Scope:       agents.MCPScopeDisplayWrite,
-		InputSchema: objectSchema(map[string]any{
-			"message":  map[string]any{"type": "string"},
-			"severity": map[string]any{"type": "string", "enum": []string{"info", "success", "warning", "error"}},
-		}, []string{"message"}),
-		Call: func(ctx context.Context, h *Handler, snapshot widgetskills.Snapshot, args map[string]any) (any, error) {
-			if h.display == nil {
-				return nil, &rpcError{Code: -32005, Message: "display actions are unavailable"}
-			}
-			notification, err := h.display.Notify(
-				stringArg(args, "message"),
-				stringArg(args, "severity"),
-			)
-			if err != nil {
-				return nil, err
-			}
-			return map[string]any{
-				"status":       "queued",
-				"eventType":    displayactions.EventNotification,
-				"notification": notification,
-			}, nil
-		},
-	},
-	{
-		Name:        "jute_display_focus_widget",
-		Title:       "Focus Widget",
-		Description: "Ask the Jute display to highlight a visible widget instance.",
-		Scope:       agents.MCPScopeDisplayFocusWidget,
-		InputSchema: objectSchema(map[string]any{
-			"widgetInstanceId": map[string]any{"type": "string"},
-			"reason":           map[string]any{"type": "string"},
-		}, []string{"widgetInstanceId"}),
-		Call: func(ctx context.Context, h *Handler, snapshot widgetskills.Snapshot, args map[string]any) (any, error) {
-			if h.display == nil {
-				return nil, &rpcError{Code: -32005, Message: "display actions are unavailable"}
-			}
-			widgetID := stringArg(args, "widgetInstanceId")
-			if _, err := widgetskills.WidgetContext(snapshot, widgetID); err != nil {
-				return nil, err
-			}
-			focus, err := h.display.FocusWidget(widgetID, stringArg(args, "reason"))
-			if err != nil {
-				return nil, err
-			}
-			return map[string]any{
-				"status":    "queued",
-				"eventType": displayactions.EventFocusWidget,
-				"focus":     focus,
-			}, nil
-		},
-	},
-}
-
 func resourcesList(snapshot widgetskills.Snapshot, caller caller) []map[string]any {
 	resources := []map[string]any{}
-	for _, router := range resourceRouters {
-		if caller.has(router.Scope) {
-			resources = append(resources, router.List(snapshot)...)
+	for _, route := range ResourceRoutes {
+		if caller.has(route.Scope()) {
+			resources = append(resources, route.List(snapshot)...)
 		}
 	}
 	return resources
 }
 
-func resource(uri, name, title, description string) map[string]any {
-	return map[string]any{
-		"uri":         uri,
-		"name":        name,
-		"title":       title,
-		"description": description,
-		"mimeType":    "application/json",
-	}
-}
-
 func toolsList(caller caller) []map[string]any {
 	tools := []map[string]any{}
-	for _, router := range toolRouters {
-		if caller.has(router.Scope) {
+	for _, route := range ToolRoutes {
+		if caller.has(route.Scope()) {
 			tools = append(tools, tool(
-				router.Name,
-				router.Title,
-				router.Description,
-				router.InputSchema,
+				route.Name(),
+				route.Title(),
+				route.Description(),
+				route.InputSchema(),
 			))
 		}
 	}
@@ -816,25 +457,21 @@ func tool(name, title, description string, inputSchema map[string]any) map[strin
 }
 
 func promptsList(caller caller) []map[string]any {
-	if !caller.has(agents.MCPScopeSkillsPromptRead) {
-		return []map[string]any{}
+	prompts := []map[string]any{}
+	for _, route := range PromptRoutes {
+		if caller.has(route.Scope()) {
+			p := map[string]any{
+				"name":        route.Name(),
+				"title":       route.Title(),
+				"description": route.Description(),
+			}
+			if args := route.Arguments(); len(args) > 0 {
+				p["arguments"] = args
+			}
+			prompts = append(prompts, p)
+		}
 	}
-	return []map[string]any{
-		{
-			"name":        "jute_home_assistant_guidance",
-			"title":       "Jute Home Assistant Guidance",
-			"description": "Guidance for using Jute dashboard context and Widget Skills safely.",
-		},
-		{
-			"name":        "jute_widget_skill_guidance",
-			"title":       "Jute Widget Skill Guidance",
-			"description": "Guidance for using a specific Widget Skill prompt.",
-			"arguments": []map[string]any{
-				{"name": "skillId", "description": "Widget Skill ID.", "required": true},
-				{"name": "promptId", "description": "Skill prompt ID.", "required": true},
-			},
-		},
-	}
+	return prompts
 }
 
 func emptySchema() map[string]any {
