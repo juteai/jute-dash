@@ -42,11 +42,11 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
+	events := b.source.Subscribe(r.Context())
 	sendDisplaySSE(w, flusher, "hub.connected", map[string]any{
 		"connectedAt": time.Now().UTC().Format(time.RFC3339Nano),
 	})
 
-	events := b.source.Subscribe(r.Context())
 	heartbeat := time.NewTicker(25 * time.Second)
 	defer heartbeat.Stop()
 
