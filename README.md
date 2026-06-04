@@ -1,7 +1,7 @@
 <p align="center">
   <img
-    src="docs/images/readme-header.png"
-    alt="Jute Dash Logo Header"
+    src="docs/images/readme-header.svg"
+    alt="Jute Dash"
     width="100%"
   />
 </p>

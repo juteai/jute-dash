@@ -31,6 +31,6 @@ body:
     id: scope
     attributes:
       label: Scope / compatibility notes
-      description: Kronk version, model ID or URL, GGUF, OS/GPU/runtime, breaking-change concerns, and links to Kronk docs if helpful.
+      description: OS/GPU/runtime, breaking-change concerns, and links to relevant 3rd party docs if helpful.
     validations:
       required: false
