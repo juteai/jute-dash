@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"jute-dash/apps/hub/internal/app"
+	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/dashboard"
+	"jute-dash/apps/hub/internal/app/mcp"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/pkg/widgetskills"
-	"jute-dash/widgets"
 )
 
 var version = "dev"
@@ -46,15 +48,18 @@ func run() error {
 		}
 	}()
 
-	needsSeed, err := runtimeStore.NeedsSeed(ctx)
+	needsSeed, err := runtimeStore.IsSeeded(ctx)
 	if err != nil {
 		return fmt.Errorf("inspect store: %w", err)
 	}
+	// needsSeed is true if count == 0, wait, runtimeStore.IsSeeded returns true ifCount > 0, so needsSeed should be !seeded
+	seeded := needsSeed
+	needsSeed = !seeded
 
-	bootstrap := app.DefaultConfig()
+	bootstrap := config.DefaultConfig()
 	configProvided := strings.TrimSpace(*configPath) != ""
 	if configProvided {
-		bootstrap, err = app.LoadConfig(*configPath)
+		bootstrap, err = config.LoadConfig(*configPath)
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
@@ -66,7 +71,10 @@ func run() error {
 		return fmt.Errorf("initialize store: %w", err)
 	}
 
-	cfg := result.Config
+	cfg, ok := result.Config.(config.Config)
+	if !ok {
+		return fmt.Errorf("unexpected config type: %T", result.Config)
+	}
 	cfg.Server = bootstrap.Server
 	cfg.MCP = bootstrap.MCP
 	if configProvided {
@@ -95,7 +103,7 @@ func run() error {
 			store:      runtimeStore,
 		}
 		mcpMux := http.NewServeMux()
-		mcpMux.Handle(cfg.MCP.Path, app.NewHandler(cfg.MCP, version, mcpProvider, displayActions))
+		mcpMux.Handle(cfg.MCP.Path, mcp.NewHandler(cfg.MCP, version, mcpProvider, displayActions))
 		mcpServer = &http.Server{
 			Addr:              cfg.MCP.ListenAddress,
 			Handler:           mcpMux,
@@ -135,7 +143,7 @@ func run() error {
 }
 
 type mcpSnapshotProvider struct {
-	cfg        app.Config
+	cfg        config.Config
 	configPath string
 	store      *app.Store
 }
@@ -146,10 +154,10 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 	if err != nil {
 		return widgetskills.Snapshot{}, err
 	}
-	layout = hydrateWidgetLayout(ctx, layout)
-	agents := []widgetskills.Agent{}
+	layout = dashboard.HydrateWidgetLayout(ctx, layout)
+	agentsList := []widgetskills.Agent{}
 	for _, agent := range cfg.Agents {
-		agents = append(agents, widgetskills.Agent{
+		agentsList = append(agentsList, widgetskills.Agent{
 			ID:              agent.ID,
 			Name:            agent.Name,
 			Description:     agent.Description,
@@ -161,7 +169,6 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 		})
 	}
 
-	// Map app.Config to widgetskills.Config
 	wsCfg := widgetskills.Config{}
 	wsCfg.Home.Locale = cfg.Home.Locale
 	wsCfg.Home.Timezone = cfg.Home.Timezone
@@ -190,7 +197,6 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 	}
 	wsCfg.Tiles = wsTiles
 
-	// Map app.WidgetLayout to widgetskills.WidgetLayout
 	wsWidgets := make([]widgetskills.WidgetInstance, len(layout.Widgets))
 	for i, w := range layout.Widgets {
 		wsWidgets[i] = widgetskills.WidgetInstance{
@@ -215,37 +221,16 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 	return widgetskills.Snapshot{
 		Config:      wsCfg,
 		Layout:      wsLayout,
-		Agents:      agents,
+		Agents:      agentsList,
 		GeneratedAt: time.Now().UTC(),
 	}, nil
 }
 
-func hydrateWidgetLayout(ctx context.Context, layout app.WidgetLayout) app.WidgetLayout {
-	for i := range layout.Widgets {
-		widget := &layout.Widgets[i]
-		if !widget.Visible {
-			continue
-		}
-		provider, ok := widgets.Get(widget.Kind)
-		if !ok {
-			continue
-		}
-		if widget.Overflow == "" {
-			widget.Overflow = provider.CatalogInfo().Overflow
-		}
-		data, err := provider.FetchData(ctx, widget.Settings)
-		if err == nil {
-			widget.Data = data
-		}
-	}
-	return layout
-}
-
-func (p *mcpSnapshotProvider) currentConfig() app.Config {
+func (p *mcpSnapshotProvider) currentConfig() config.Config {
 	if strings.TrimSpace(p.configPath) == "" {
 		return p.cfg
 	}
-	cfg, err := app.LoadConfig(p.configPath)
+	cfg, err := config.LoadConfig(p.configPath)
 	if err != nil {
 		return p.cfg
 	}

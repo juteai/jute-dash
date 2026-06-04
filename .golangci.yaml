@@ -507,7 +507,7 @@ linters:
           - nestif
       # Package registries and built-in widget registration are intentional
       # singleton extension points until the widget registry is redesigned.
-      - path: ^(internal/a2a|internal/widgetskills|widgets)/
+      - path: ^(apps/hub/)?(internal/pkg/a2a|internal/a2a|pkg/widgetskills|internal/widgetskills|widgets)/
         linters:
           - gochecknoglobals
           - gochecknoinits

@@ -1,10 +1,13 @@
-package app
+package config
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"jute-dash/apps/hub/internal/app/agents"
+	"jute-dash/apps/hub/internal/app/dashboard"
 )
 
 func TestLoadAppliesDefaults(t *testing.T) {
@@ -182,8 +185,8 @@ tiles: []
 }
 
 func TestSupportedThemeIDs(t *testing.T) {
-	for _, themeID := range SupportedThemeIDs() {
-		cfg := Default()
+	for _, themeID := range dashboard.SupportedThemeIDs() {
+		cfg := DefaultConfig()
 		cfg.Display.ThemeID = themeID
 		if err := ValidateConfig(cfg); err != nil {
 			t.Fatalf("ValidateConfig() rejected theme %q: %v", themeID, err)
@@ -542,14 +545,20 @@ func TestAgentMCPScopesDefaultToReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
-	if got, want := strings.Join(cfg.Agents[0].MCPScopes, ","), strings.Join(DefaultMCPReadScopes(), ","); got != want {
+	if got, want := strings.Join(
+		cfg.Agents[0].MCPScopes,
+		",",
+	), strings.Join(
+		agents.DefaultMCPReadScopes(),
+		",",
+	); got != want {
 		t.Fatalf("unexpected default scopes: got %s want %s", got, want)
 	}
 }
 
 func TestPublicConfigOmitsAuthDetails(t *testing.T) {
-	cfg := Default()
-	cfg.Agents = []AgentConfig{
+	cfg := DefaultConfig()
+	cfg.Agents = []agents.AgentConfig{
 		{
 			ID:              "house",
 			Name:            "House",
@@ -557,8 +566,8 @@ func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 			EndpointURL:     "https://agent.example.com/a2a/v1",
 			ProtocolBinding: "JSONRPC",
 			Enabled:         true,
-			MCPScopes:       []string{MCPScopeDashboardRead},
-			Auth:            &AuthConfig{Type: "bearer", EnvToken: "SECRET_TOKEN"},
+			MCPScopes:       []string{agents.MCPScopeDashboardRead},
+			Auth:            &agents.AuthConfig{Type: "bearer", EnvToken: "SECRET_TOKEN"},
 		},
 	}
 
@@ -569,13 +578,15 @@ func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 	if !public.Agents[0].AuthConfigured {
 		t.Fatal("expected authConfigured to be true")
 	}
-	if strings.Join(public.Agents[0].MCPScopes, ",") != MCPScopeDashboardRead {
+	if strings.Join(public.Agents[0].MCPScopes, ",") != agents.MCPScopeDashboardRead {
 		t.Fatalf("unexpected public MCP scopes: %+v", public.Agents[0].MCPScopes)
 	}
 }
 
 func TestDevMockA2AConfigLoads(t *testing.T) {
-	cfg, err := LoadConfig(filepath.Join("..", "..", "examples", "harnesses", "mock-a2a", "config.yaml"))
+	cfg, err := LoadConfig(
+		filepath.Join("..", "..", "..", "..", "..", "examples", "harnesses", "mock-a2a", "config.yaml"),
+	)
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
@@ -583,7 +594,9 @@ func TestDevMockA2AConfigLoads(t *testing.T) {
 }
 
 func TestDevMockA2AMCPConfigLoads(t *testing.T) {
-	cfg, err := LoadConfig(filepath.Join("..", "..", "examples", "harnesses", "mock-a2a-mcp", "config.yaml"))
+	cfg, err := LoadConfig(
+		filepath.Join("..", "..", "..", "..", "..", "examples", "harnesses", "mock-a2a-mcp", "config.yaml"),
+	)
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
@@ -594,7 +607,9 @@ func TestDevMockA2AMCPConfigLoads(t *testing.T) {
 }
 
 func TestDevKronkA2AConfigLoads(t *testing.T) {
-	cfg, err := LoadConfig(filepath.Join("..", "..", "examples", "harnesses", "kronk-a2a", "config.yaml"))
+	cfg, err := LoadConfig(
+		filepath.Join("..", "..", "..", "..", "..", "examples", "harnesses", "kronk-a2a", "config.yaml"),
+	)
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
@@ -602,7 +617,9 @@ func TestDevKronkA2AConfigLoads(t *testing.T) {
 }
 
 func TestDevKronkA2AMCPConfigLoads(t *testing.T) {
-	cfg, err := LoadConfig(filepath.Join("..", "..", "examples", "harnesses", "kronk-a2a", "config.mcp.yaml"))
+	cfg, err := LoadConfig(
+		filepath.Join("..", "..", "..", "..", "..", "examples", "harnesses", "kronk-a2a", "config.mcp.yaml"),
+	)
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
@@ -627,7 +644,7 @@ func assertSingleDevAgent(t *testing.T, cfg Config, wantID string) {
 }
 
 func TestExampleYAMLConfigLoads(t *testing.T) {
-	cfg, err := LoadConfig(filepath.Join("..", "..", "examples", "config", "jute.example.yaml"))
+	cfg, err := LoadConfig(filepath.Join("..", "..", "..", "..", "..", "examples", "config", "jute.example.yaml"))
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}

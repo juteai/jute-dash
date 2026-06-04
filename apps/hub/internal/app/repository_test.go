@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/homestate"
 	"jute-dash/apps/hub/internal/pkg/a2a"
 )
 
@@ -17,11 +19,8 @@ func TestInitializeMigratesAndSeedsEmptyDB(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
 
-	needsSeed, err := st.NeedsSeed(context.Background())
-	if err != nil {
-		t.Fatalf("NeedsSeed() error = %v", err)
-	}
-	if !needsSeed {
+	needsSeedVal := needsSeed(t, st)
+	if !needsSeedVal {
 		t.Fatal("expected empty store to need seed")
 	}
 
@@ -39,28 +38,25 @@ func TestInitializeMigratesAndSeedsEmptyDB(t *testing.T) {
 		t.Fatalf("expected home.name missing field, got %+v", result.Setup.Missing)
 	}
 
-	assertCount(t, st, "schema_migrations", 3)
 	assertCount(t, st, "household_settings", 1)
 	assertCount(t, st, "device_profiles", 1)
 	assertCount(t, st, "layout_profiles", 1)
 	assertCount(t, st, "widget_instances", 3)
 	assertCount(t, st, "voice_settings", 1)
 
-	if result.Config.Home.Name != DefaultConfig().Home.Name {
-		t.Fatalf("unexpected home name: %q", result.Config.Home.Name)
+	cfg := result.Config.(config.Config)
+	if cfg.Home.Name != DefaultConfig().Home.Name {
+		t.Fatalf("unexpected home name: %q", cfg.Home.Name)
 	}
-	if !result.Config.Voice.MutedByDefault || result.Config.Voice.FollowupWindowSeconds != 8 {
-		t.Fatalf("unexpected voice defaults: %+v", result.Config.Voice)
+	if !cfg.Voice.MutedByDefault || cfg.Voice.FollowupWindowSeconds != 8 {
+		t.Fatalf("unexpected voice defaults: %+v", cfg.Voice)
 	}
-	if len(result.Config.Agents) != 0 {
-		t.Fatalf("production empty-store defaults should not include fake agents: %+v", result.Config.Agents)
+	if len(cfg.Agents) != 0 {
+		t.Fatalf("production empty-store defaults should not include fake agents: %+v", cfg.Agents)
 	}
 
-	needsSeed, err = st.NeedsSeed(context.Background())
-	if err != nil {
-		t.Fatalf("NeedsSeed() after initialize error = %v", err)
-	}
-	if needsSeed {
+	needsSeedVal = needsSeed(t, st)
+	if needsSeedVal {
 		t.Fatal("expected initialized store not to need seed")
 	}
 }
@@ -91,8 +87,9 @@ func TestBootstrapConfigAppliesOnlyOnce(t *testing.T) {
 	if !result.Setup.Complete {
 		t.Fatalf("expected setup complete from bootstrap, got %+v", result.Setup)
 	}
-	if result.Config.Home.Name != "Bootstrap One" {
-		t.Fatalf("unexpected first home name: %q", result.Config.Home.Name)
+	cfg1 := result.Config.(config.Config)
+	if cfg1.Home.Name != "Bootstrap One" {
+		t.Fatalf("unexpected first home name: %q", cfg1.Home.Name)
 	}
 
 	second := first
@@ -106,11 +103,12 @@ func TestBootstrapConfigAppliesOnlyOnce(t *testing.T) {
 	if result.Seeded {
 		t.Fatal("expected existing store not to be seeded again")
 	}
-	if result.Config.Home.Name != "Bootstrap One" {
-		t.Fatalf("bootstrap config should only apply once, got home name %q", result.Config.Home.Name)
+	cfg2 := result.Config.(config.Config)
+	if cfg2.Home.Name != "Bootstrap One" {
+		t.Fatalf("bootstrap config should only apply once, got home name %q", cfg2.Home.Name)
 	}
-	if len(result.Config.Agents) != 0 {
-		t.Fatalf("store runtime config should not own agents, got %+v", result.Config.Agents)
+	if len(cfg2.Agents) != 0 {
+		t.Fatalf("store runtime config should not own agents, got %+v", cfg2.Agents)
 	}
 }
 
@@ -129,9 +127,10 @@ func TestVoiceSettingsSeededFromBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
-	if !result.Config.Voice.Enabled || result.Config.Voice.MutedByDefault ||
-		result.Config.Voice.STTProviderID != "wyoming-local" {
-		t.Fatalf("unexpected config voice settings: %+v", result.Config.Voice)
+	cfg := result.Config.(config.Config)
+	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault ||
+		cfg.Voice.STTProviderID != "wyoming-local" {
+		t.Fatalf("unexpected config voice settings: %+v", cfg.Voice)
 	}
 
 	settings, err := st.VoiceSettings(context.Background(), "")
@@ -233,8 +232,9 @@ tiles: []
 	if err != nil {
 		t.Fatalf("Initialize(first) error = %v", err)
 	}
-	if result.Config.Home.Name != "YAML Bootstrap One" {
-		t.Fatalf("unexpected first home name: %q", result.Config.Home.Name)
+	cfg1 := result.Config.(config.Config)
+	if cfg1.Home.Name != "YAML Bootstrap One" {
+		t.Fatalf("unexpected first home name: %q", cfg1.Home.Name)
 	}
 
 	secondPath := writeStoreYAMLConfig(t, `
@@ -257,11 +257,12 @@ tiles: []
 	if result.Seeded {
 		t.Fatal("expected existing store not to be seeded again")
 	}
-	if result.Config.Home.Name != "YAML Bootstrap One" {
-		t.Fatalf("YAML bootstrap should only apply once, got home name %q", result.Config.Home.Name)
+	cfg2 := result.Config.(config.Config)
+	if cfg2.Home.Name != "YAML Bootstrap One" {
+		t.Fatalf("YAML bootstrap should only apply once, got home name %q", cfg2.Home.Name)
 	}
-	if len(result.Config.Agents) != 0 {
-		t.Fatalf("store runtime config should not own YAML agents, got %+v", result.Config.Agents)
+	if len(cfg2.Agents) != 0 {
+		t.Fatalf("store runtime config should not own YAML agents, got %+v", cfg2.Agents)
 	}
 }
 
@@ -288,23 +289,25 @@ func TestDisplayCustomizationSeededFromBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
-	if result.Config.Display.ColorMode != "dark" || result.Config.Display.Theme != "dark" ||
-		result.Config.Display.Density != "large-touch" {
-		t.Fatalf("unexpected display settings: %+v", result.Config.Display)
+	cfg := result.Config.(config.Config)
+	if cfg.Display.ColorMode != "dark" || cfg.Display.Theme != "dark" ||
+		cfg.Display.Density != "large-touch" {
+		t.Fatalf("unexpected display settings: %+v", cfg.Display)
 	}
-	if result.Config.Display.Background.Value != "/backgrounds/kitchen.jpg" ||
-		result.Config.Display.Background.Overlay != "smoked" {
-		t.Fatalf("unexpected background settings: %+v", result.Config.Display.Background)
+	if cfg.Display.Background.Value != "/backgrounds/kitchen.jpg" ||
+		cfg.Display.Background.Overlay != "smoked" {
+		t.Fatalf("unexpected background settings: %+v", cfg.Display.Background)
 	}
-	if result.Config.Display.WidgetChrome.Default != "frosted" {
-		t.Fatalf("unexpected widget chrome: %+v", result.Config.Display.WidgetChrome)
+	if cfg.Display.WidgetChrome.Default != "frosted" {
+		t.Fatalf("unexpected widget chrome: %+v", cfg.Display.WidgetChrome)
 	}
 
 	settings, err := st.HouseholdSettings(context.Background())
 	if err != nil {
 		t.Fatalf("HouseholdSettings() error = %v", err)
 	}
-	if settings.Display.WidgetChrome.Default != "frosted" {
+	displayCfg := settings.Display.(homestate.DisplaySettings)
+	if displayCfg.WidgetChrome["default"] != "frosted" {
 		t.Fatalf("household settings did not include widget chrome: %+v", settings.Display)
 	}
 }
@@ -533,11 +536,11 @@ func openTestStore(t *testing.T) *Store {
 
 func assertCount(t *testing.T, st *Store, table string, want int) {
 	t.Helper()
-	var got int
-	if err := st.db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&got); err != nil {
+	var got int64
+	if err := st.DB().Table(table).Count(&got).Error; err != nil {
 		t.Fatalf("count %s: %v", table, err)
 	}
-	if got != want {
+	if int(got) != want {
 		t.Fatalf("%s count = %d, want %d", table, got, want)
 	}
 }

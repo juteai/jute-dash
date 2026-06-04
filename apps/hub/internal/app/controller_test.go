@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 
+	"jute-dash/apps/hub/internal/app/agents"
+	"jute-dash/apps/hub/internal/app/config"
 	a2a "jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 )
@@ -1404,8 +1406,8 @@ func TestConversationTurnStreamEmitsSafeFailureAfterPartialStream(t *testing.T) 
 }
 
 func testConfig() config.Config {
-	cfg := config.Default()
-	cfg.Agents = []config.AgentConfig{
+	cfg := config.DefaultConfig()
+	cfg.Agents = []agents.AgentConfig{
 		{
 			ID:              "house",
 			Name:            "House Concierge",
@@ -1426,7 +1428,7 @@ func testConfig() config.Config {
 	return cfg
 }
 
-func openInitializedServerStore(t *testing.T) *store.Store {
+func openInitializedServerStore(t *testing.T) *Store {
 	t.Helper()
 	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"))
 	if err != nil {
