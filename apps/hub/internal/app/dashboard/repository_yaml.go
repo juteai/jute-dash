@@ -64,14 +64,19 @@ func (y *YAMLRepository) WidgetLayout(_ context.Context, _ string) (WidgetLayout
 	}
 	for _, w := range cfg.Widgets {
 		wi := WidgetInstance{
-			ID:      w.ID,
-			Kind:    w.Type,
-			Title:   w.Title,
-			X:       w.X,
-			Y:       w.Y,
-			W:       w.W,
-			H:       w.H,
-			Visible: w.Visible,
+			ID:       w.ID,
+			Kind:     w.Type,
+			Title:    w.Title,
+			X:        w.X,
+			Y:        w.Y,
+			W:        w.W,
+			H:        w.H,
+			Mode:     normalizeMode(w.Mode),
+			Settings: w.Settings,
+			Visible:  w.Visible,
+		}
+		if wi.Settings == nil {
+			wi.Settings = map[string]any{}
 		}
 		if item, ok := y.catalog[wi.Kind]; ok {
 			wi.MinW = item.MinW
@@ -98,14 +103,16 @@ func (y *YAMLRepository) SaveWidgetLayout(_ context.Context, layout WidgetLayout
 	widgets := make([]DashboardWidgetConfig, 0, len(normalized.Widgets))
 	for _, w := range normalized.Widgets {
 		widgets = append(widgets, DashboardWidgetConfig{
-			ID:      w.ID,
-			Type:    w.Kind,
-			Title:   w.Title,
-			X:       w.X,
-			Y:       w.Y,
-			W:       w.W,
-			H:       w.H,
-			Visible: w.Visible,
+			ID:       w.ID,
+			Type:     w.Kind,
+			Title:    w.Title,
+			X:        w.X,
+			Y:        w.Y,
+			W:        w.W,
+			H:        w.H,
+			Visible:  w.Visible,
+			Mode:     w.Mode,
+			Settings: w.Settings,
 		})
 	}
 	cfg := DashboardConfig{Widgets: widgets}
@@ -125,14 +132,16 @@ func (y *YAMLRepository) ResetWidgetLayout(_ context.Context, profileID string) 
 	widgets := make([]DashboardWidgetConfig, 0, len(layout.Widgets))
 	for _, w := range layout.Widgets {
 		widgets = append(widgets, DashboardWidgetConfig{
-			ID:      w.ID,
-			Type:    w.Kind,
-			Title:   w.Title,
-			X:       w.X,
-			Y:       w.Y,
-			W:       w.W,
-			H:       w.H,
-			Visible: w.Visible,
+			ID:       w.ID,
+			Type:     w.Kind,
+			Title:    w.Title,
+			X:        w.X,
+			Y:        w.Y,
+			W:        w.W,
+			H:        w.H,
+			Visible:  w.Visible,
+			Mode:     w.Mode,
+			Settings: w.Settings,
 		})
 	}
 	cfg := DashboardConfig{Widgets: widgets}

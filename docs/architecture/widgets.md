@@ -2,7 +2,7 @@
 
 ## Strategy
 
-Jute Dash's widget ecosystem is designed for maximum speed, visual polish, and ease of development. All widgets are compiled natively as **first-party Svelte components** on the frontend and **Go packages** on the backend. 
+Jute Dash's widget ecosystem is designed for maximum speed, visual polish, and ease of development. All widgets are compiled natively as **first-party Svelte components** on the frontend and **Go packages** on the backend.
 
 There are no sandboxed iframes, postMessage bridges, or third-party runtime sandboxing layers. This choice enables:
 - **Flawless UI Integration**: Widgets blend natively with our black-on-white (BOW) and white-on-black (WOB) display design system, supporting smooth layout resizing, theme swapping, and hover micro-animations.
@@ -19,7 +19,7 @@ Widgets also declare agent-facing capabilities through [Widget Skills](widget-sk
 
 ## Monorepo Widgets Library
 
-All widgets live in the unified **monorepo widgets library** under the root `widgets/` directory. 
+All widgets live in the unified **monorepo widgets library** under the root `widgets/` directory.
 
 Each widget occupies its own self-contained subfolder containing:
 1. A **Go provider** (`[kind].go`, e.g., `widgets/rss/rss.go`) representing the back-end data aggregator and skill definitions under a subpackage (e.g. `package rss`).
@@ -43,7 +43,7 @@ import RSSWidget from '$widgets/rss/RSSWidget.svelte';
 Vite file system permissions are proactively granted inside `apps/web/vite.config.ts` via `server.fs.allow`.
 
 ### Dynamic Go Self-Registration
-Backend packages self-register with Jute's catalog and dynamic skill registries via package initialization (`init()`). Since Go compiles package files together, importing a package automatically registers its widgets. 
+Backend packages self-register with Jute's catalog and dynamic skill registries via package initialization (`init()`). Since Go compiles package files together, importing a package automatically registers its widgets.
 
 To maintain clean and acyclic Go package dependencies (since subpackages import the root `widgets` package to register), all package blank imports are consolidated inside [main.go](file:///Users/craig/Repos/jute-dash/apps/hub/cmd/juted/main.go):
 ```go
@@ -66,10 +66,40 @@ To align monorepo workspace tooling, a symbolic link `widgets/node_modules -> ..
 
 The widget system is structured around three key contracts:
 
-- **Frame contract**: every widget renders inside a native Svelte `WidgetFrame` and obeys the dashboard grid layout, sizing coordinates (`x`, `y`, `w`, `h`), and edit-mode rules from [Display UX](display-ux.md).
+- **Frame contract**: every widget renders inside a native Svelte `WidgetFrame` and obeys the dashboard grid layout, sizing coordinates (`x`, `y`, `w`, `h`) on the 12-column base grid, and edit-mode rules from [Display UX](display-ux.md).
 - **Visual contract**: every widget uses theme tokens and supports the host's `solid`, `clear`, `smoked`, `frosted`, or `auto` widget chrome modes from [Visual Customization](visual-customization.md).
-- **Backend contract**: widgets implement the `Widget` Go interface in `widgets/widget.go` to provide static metadata, fetching and caching logic, and agent-facing skills.
+- **Backend contract**: widgets implement the `Widget` Go interface in `widgets/widget.go` to provide static metadata, a settings schema, fetching and caching logic, and agent-facing skills.
 - **Agent contract**: widgets expose agent-facing context, prompts, and actions through [Widget Skills](widget-skills.md).
+
+---
+
+## Widget Modes
+
+Each widget instance has a `mode`:
+
+- `ui`: the widget renders a tile in the dashboard grid and (if it declares one) also exposes its skill/context to agents.
+- `headless`: the widget renders **no** tile. It still runs `FetchData` on its normal cadence and still exposes its skill/context to agents.
+
+Headless mode is for context-only or sensor-like use: a widget contributes household context to the conversation pipeline without occupying screen space. Because every built-in widget already declares a skill, any widget can be added as headless.
+
+`mode` is distinct from the `visible` field. `visible: false` means the instance has been removed from the profile (no fetch, no context). `mode: headless` means the instance is active (fetch + context) but not drawn. The hub includes a widget instance in data hydration and agent context when it is not removed — that is, when it is `ui` **or** `headless` — and excludes only removed instances.
+
+Headless instances are added, configured, and removed from the **headless tray** in edit mode (see [Display UX](display-ux.md)).
+
+## Settings Schema
+
+Widgets declare a typed settings schema so the display can render a settings form without bespoke per-widget UI, and so the hub can validate and introspect settings.
+
+The Go `Widget` interface exposes `SettingsSchema() []SettingField`. Each field declares:
+
+- `id`: settings key;
+- `type`: one of `string`, `number`, `boolean`, `enum`, `string-list`, or `object-list`;
+- `label`: human-facing label;
+- `default`: default value;
+- `options`: allowed values for `enum`;
+- `fields`: nested `SettingField` list for `object-list` items (e.g. RSS `feeds` of `{name, url}`).
+
+The schema is surfaced through the widget catalog API alongside the catalog metadata, and a single generic form renderer in the display builds the settings sheet from it. Frame-level settings (title, chrome, size, and `mode`) are common to all widgets and are not part of the per-widget schema.
 
 ---
 
@@ -89,7 +119,7 @@ Jute Dash ships with five built-in widgets:
 
 To build a new widget:
 1. Create a folder `widgets/[name]/`.
-2. Implement your backend provider in `widgets/[name]/[name].go` under `package [name]`. Make sure it registers itself inside `init()`.
+2. Implement your backend provider in `widgets/[name]/[name].go` under `package [name]`. Make sure it registers itself inside `init()`, and declare a `SettingsSchema()` so the widget is configurable from the UI.
 3. Add a blank import for your subpackage in `apps/hub/cmd/juted/main.go` to trigger auto-registration.
 4. Implement your frontend view in `widgets/[name]/[Name]Widget.svelte`.
 5. Import your view in `DashboardGrid.svelte` and map it inside the widget render block.

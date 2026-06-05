@@ -1,6 +1,7 @@
 import type {
   Agent,
   AppStatus,
+  BackgroundImage,
   Conversation,
   ConversationDetail,
   ConversationStreamEvent,
@@ -469,6 +470,65 @@ export async function saveWidgetLayout(
     );
   }
   return response.json() as Promise<WidgetLayout>;
+}
+
+const BACKGROUNDS_BASE = '/api/v1/backgrounds';
+
+export async function getBackgroundImages(
+  fetcher: typeof fetch
+): Promise<BackgroundImage[]> {
+  const response = await getJSON<{ images: BackgroundImage[] }>(
+    fetcher,
+    BACKGROUNDS_BASE
+  );
+  return response.images ?? [];
+}
+
+export async function uploadBackgroundImage(
+  fetcher: typeof fetch,
+  file: File
+): Promise<BackgroundImage> {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await fetcher(`${API_BASE}${BACKGROUNDS_BASE}`, {
+    method: 'POST',
+    body: form
+  });
+  if (!response.ok) {
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Background upload failed: ${response.status}`
+    );
+  }
+  return response.json() as Promise<BackgroundImage>;
+}
+
+export async function deleteBackgroundImage(
+  fetcher: typeof fetch,
+  name: string
+): Promise<void> {
+  const response = await fetcher(
+    `${API_BASE}${BACKGROUNDS_BASE}?name=${encodeURIComponent(name)}`,
+    { method: 'DELETE' }
+  );
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Background delete failed: ${response.status}`);
+  }
+}
+
+/** Resolves a stored background image file name to an absolute hub URL. */
+export function backgroundImageURL(name: string): string {
+  if (!name) {
+    return '';
+  }
+  if (/^https?:\/\//i.test(name) || name.startsWith('/api/')) {
+    return name.startsWith('/api/') ? `${API_BASE}${name}` : name;
+  }
+  return `${API_BASE}${BACKGROUNDS_BASE}/files/${encodeURIComponent(name)}`;
 }
 
 export async function resetWidgetLayout(

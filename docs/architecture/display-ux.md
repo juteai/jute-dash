@@ -95,11 +95,12 @@ Layout rules:
 
 - date and time appear in the top-left by default;
 - top-left date/time uses configured locale and timezone;
-- the dashboard includes the Jute logo, home name, active layout profile, and compact controls;
+- dashboard chrome is minimal: the header shows only a compact, always-visible icon row (chat, voice/mute, edit, settings) and no brand lockup;
+- the Jute logo, home name, and active layout profile are not shown on the dashboard; identity moves to `Settings → About`;
 - dashboard controls use icons for chat, voice/mute, settings, and edit mode;
 - widget canvas scrolls vertically when widgets exceed the viewport;
 - horizontal overflow is not allowed;
-- dashboard chrome remains minimal so widgets are the main content.
+- widgets are the main content; the dashboard avoids developer-grade clutter.
 
 ## Settings UX
 
@@ -113,15 +114,17 @@ Initial sections:
 - `Agents`: add an agent by Agent Card URL, enable or disable agents, remove agents, and refresh Agent Cards;
 - `MCP`: read-only bridge status and startup configuration summary;
 - `Voice`: read-only voice/provider status until provider selection is implemented;
-- `About`: version, setup, config mode, and enabled-agent summary.
+- `Appearance`: theme, color mode, density, and background — including background image upload, the local image library, single-image vs slideshow selection, slideshow interval, and fit/overlay;
+- `About`: home name, active layout profile, version, setup, config mode, and enabled-agent summary.
 
 Settings writes go through the hub. Store-backed runs persist to SQLite. YAML-backed local harnesses persist the same records to the active YAML config for easy developer iteration. Browser storage is not durable settings storage.
 
 Responsive behavior:
 
-- phone and narrow tablets use a single-column canvas;
-- tablets use a 2 to 4 column canvas;
-- desktop and wall displays use a wider responsive grid;
+- the display is **mobile-first**: base styles target phones, and `min-width` breakpoints progressively add tablet/desktop affordances (do not author desktop-first with `max-width` patches);
+- the dashboard layout is authored once on a **12-column base grid** and stored at that resolution; the display **proportionally remaps** it to fewer columns per breakpoint at render time (there are no per-device stored layouts);
+- column targets by breakpoint: phone → 1–2, small tablet → 4–6, large tablet/desktop → 12; the remap scales widget spans and wraps widgets into rows deterministically;
+- overlays (settings panel, widget catalog, widget settings sheet, chat) present as full-width bottom sheets on phones and as centered panels/dialogs on larger screens;
 - large wall displays may keep chat as a side focus area, but ordinary displays use full chat focus mode.
 
 Spacing:
@@ -135,23 +138,28 @@ Spacing:
 
 The dashboard grid is draggable and resizable.
 
-Persisted widget layout fields:
+Persisted widget layout fields (all coordinates are on the **12-column base grid**):
 
 - `id`: widget instance ID;
 - `kind`: widget kind matching the widget's registered type;
-- `x`: grid column start;
+- `x`: grid column start (0–11);
 - `y`: grid row start;
-- `w`: grid width;
-- `h`: grid height;
+- `w`: grid width in base columns;
+- `h`: grid height in row units;
 - `minW`: minimum grid width;
 - `minH`: minimum grid height;
 - `size`: named size such as `small`, `medium`, `wide`, or `large`;
+- `mode`: `ui` (renders a tile) or `headless` (no tile; still fetches data and feeds the agent — see [Widgets](widgets.md));
 - `settings`: non-secret widget settings;
-- `visible`: whether the widget appears on the current profile.
+- `visible`: whether the widget instance exists on the current profile (a removed widget sets `visible: false`; this is distinct from `mode`).
+
+Layouts stored before the 12-column grid (4-column coordinates) are migrated on load by scaling `x`/`w` ×3.
 
 Implementation guidance:
 
 - v1 uses a small custom Svelte grid editor for the built-in widget set;
+- the base grid is 12 columns with a small row unit for fine vertical placement; drag and resize snap to base cells;
+- the stored layout is always 12-column; smaller screens render a proportionally remapped copy and never overwrite the base;
 - revisit a proven Svelte-compatible drag/resize grid library only when denser layouts make the custom editor too costly;
 - preserve layout through hub APIs, not browser local storage;
 - debounce layout saves while dragging;
@@ -186,21 +194,30 @@ Long press defaults:
 
 Edit mode supports:
 
-- add widget;
+- add widget (as a tile or as a headless context-only instance);
 - move widget;
 - resize widget;
 - remove widget;
 - configure widget;
+- toggle a widget between `ui` and `headless` mode;
 - duplicate widget when the widget supports multiple instances;
 - reset layout profile.
 
 Edit mode UI:
 
+- direct manipulation is primary: drag a tile to move, drag its corner to resize, snapping to the 12-column base grid;
+- per-tile controls collapse into a single overflow (⋯) menu offering Configure, Make headless / Restore to dashboard, and Remove — not a cluster of always-visible buttons;
+- Configure opens the schema-driven widget settings sheet (see [Widgets](widgets.md)); it includes frame settings (title, chrome, size) and the `ui`/`headless` toggle;
+- headless instances do not appear on the grid; edit mode shows a **headless tray** listing them as chips for configure/restore/remove;
+- arrow/size keyboard nudges remain available as a focus-visible accessibility fallback, not as always-visible buttons;
 - show a subtle grid overlay;
-- show drag handles and resize handles;
-- show a top or bottom edit toolbar;
-- show clear Done and Cancel actions;
+- show a top or bottom edit toolbar with Add widget, Reset, and clear Done and Cancel actions;
 - avoid accidental deletes by requiring confirmation or undo.
+
+Edit mode by device:
+
+- on tablet and desktop, full placement editing (drag move, corner resize) is available;
+- on phones the layout is a derived remap, so fine drag/resize is disabled; edit mode there allows reorder (move up/down in the stack via the ⋯ menu), configure, headless toggle, add, and remove.
 
 ## Widget Frame
 
@@ -327,9 +344,9 @@ The hub is the durable source of truth.
 Persist through SQLite:
 
 - layout profiles;
-- widget instance layout;
+- widget instance layout, including each widget's `mode` (`ui`/`headless`);
 - widget settings;
-- theme selection, background policy, and widget chrome settings;
+- theme selection, background policy (single image or slideshow), and widget chrome settings;
 - edit-mode saved changes;
 - selected theme mode;
 - default display profile;

@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -87,8 +89,18 @@ func (s *Store) Initialize(
 	return result, nil
 }
 
+// appMetaDB is a tiny key/value table for schema/data migration markers.
+type appMetaDB struct {
+	Key   string `gorm:"primaryKey;column:key"`
+	Value string `gorm:"column:value"`
+}
+
+func (appMetaDB) TableName() string { return "app_meta" }
+
+const gridBaseColumnsMetaKey = "grid_base_columns"
+
 func (s *Store) Migrate(_ context.Context) error {
-	return s.db.Migrate(
+	if err := s.db.Migrate(
 		&homestate.HouseholdSettingsDB{},
 		&homestate.WeatherSettingsDB{},
 		&homestate.DeviceProfileDB{},
@@ -102,7 +114,47 @@ func (s *Store) Migrate(_ context.Context) error {
 		&voice.SettingsDB{},
 		&homestate.AdapterConnectionDB{},
 		&homestate.SettingAuditLogDB{},
-	)
+		&appMetaDB{},
+	); err != nil {
+		return err
+	}
+	return s.migrateGridToBaseColumns()
+}
+
+// migrateGridToBaseColumns scales legacy 4-column widget coordinates onto the
+// 12-column base grid. It is idempotent: a marker row records that the grid is
+// at the base resolution. It runs before seeding, so fresh installs (which seed
+// 12-column defaults) scale zero rows and simply record the marker.
+func (s *Store) migrateGridToBaseColumns() error {
+	db := s.db.DB()
+	var meta appMetaDB
+	err := db.Where("key = ?", gridBaseColumnsMetaKey).First(&meta).Error
+	if err == nil && meta.Value == strconv.Itoa(dashboard.BaseColumns) {
+		return nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("check grid migration marker: %w", err)
+	}
+
+	scale := dashboard.LegacyColumnScale
+	if updErr := db.Model(&dashboard.WidgetInstanceDB{}).
+		Where("1 = 1").
+		Updates(map[string]any{
+			"x":     gorm.Expr("x * ?", scale),
+			"w":     gorm.Expr("w * ?", scale),
+			"min_w": gorm.Expr("min_w * ?", scale),
+		}).Error; updErr != nil {
+		return fmt.Errorf("scale legacy widget columns: %w", updErr)
+	}
+
+	marker := appMetaDB{
+		Key:   gridBaseColumnsMetaKey,
+		Value: strconv.Itoa(dashboard.BaseColumns),
+	}
+	if saveErr := db.Save(&marker).Error; saveErr != nil {
+		return fmt.Errorf("save grid migration marker: %w", saveErr)
+	}
+	return nil
 }
 
 func (s *Store) IsSeeded(ctx context.Context) (bool, error) {
@@ -231,6 +283,7 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 				MinW:            widget.minW,
 				MinH:            widget.minH,
 				Size:            widget.size,
+				Mode:            dashboard.WidgetModeUI,
 				SettingsJSON:    "{}",
 				Visible:         boolToInt(widget.visible),
 				SortOrder:       i,
@@ -448,9 +501,9 @@ func defaultWidgetInstances() []defaultWidgetInstance {
 			title:   "Date & Time",
 			x:       0,
 			y:       0,
-			w:       2,
+			w:       6,
 			h:       1,
-			minW:    1,
+			minW:    3,
 			minH:    1,
 			size:    "wide",
 			visible: true,
@@ -459,11 +512,11 @@ func defaultWidgetInstances() []defaultWidgetInstance {
 			id:      "weather",
 			kind:    "weather",
 			title:   "Weather",
-			x:       2,
+			x:       6,
 			y:       0,
-			w:       2,
+			w:       6,
 			h:       1,
-			minW:    1,
+			minW:    3,
 			minH:    1,
 			size:    "wide",
 			visible: true,
@@ -474,9 +527,9 @@ func defaultWidgetInstances() []defaultWidgetInstance {
 			title:   "Chat History",
 			x:       0,
 			y:       1,
-			w:       2,
+			w:       6,
 			h:       2,
-			minW:    1,
+			minW:    3,
 			minH:    1,
 			size:    "medium",
 			visible: true,

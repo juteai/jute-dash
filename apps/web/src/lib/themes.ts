@@ -600,7 +600,8 @@ export function resolveColorMode(
 
 export function displayThemeStyle(
   display: DisplayConfig,
-  mode: ResolvedThemeMode
+  mode: ResolvedThemeMode,
+  resolvedImageURL = ''
 ): string {
   const tokens =
     themeTokens[display.themeId]?.[mode] ?? themeTokens['jute-mono'][mode];
@@ -615,10 +616,12 @@ export function displayThemeStyle(
     background.kind === 'color' && background.value
       ? background.value
       : tokens.background;
-  const image =
-    background.kind === 'asset' && background.value
-      ? `url("${cssEscapeURL(background.value)}")`
-      : 'none';
+  // For asset/file/slideshow kinds, DisplayShell resolves the absolute image
+  // URL (slideshow also handles cycling); asset paths fall back to the value.
+  const imageURL =
+    resolvedImageURL ||
+    (background.kind === 'asset' && background.value ? background.value : '');
+  const image = imageURL ? `url("${cssEscapeURL(imageURL)}")` : 'none';
   const repeat = background.fit === 'tile' ? 'repeat' : 'no-repeat';
   const size =
     background.fit === 'tile'

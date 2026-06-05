@@ -11,6 +11,7 @@
   import StatusRibbon from '$lib/components/display/StatusRibbon.svelte';
   import {
     addAgent,
+    backgroundImageURL,
     createConversation,
     deleteAgent,
     eventsURL,
@@ -66,8 +67,12 @@
     addWidget as editorAddWidget,
     moveWidget as editorMoveWidget,
     resizeWidget as editorResizeWidget,
-    removeWidget as editorRemoveWidget
+    removeWidget as editorRemoveWidget,
+    setWidgetMode as editorSetWidgetMode,
+    reorderWidget as editorReorderWidget,
+    updateWidget as editorUpdateWidget
   } from '$lib/layout-editor';
+  import WidgetSettingsSheet from '$lib/components/display/WidgetSettingsSheet.svelte';
 
   export let data: DashboardData;
 
@@ -83,6 +88,7 @@
   let dashboard: DashboardData = data;
   let dashboardForView: DashboardData = data;
   let draftLayout: WidgetLayout | undefined;
+  let configuringWidgetId = '';
   let widgetCatalog: WidgetCatalogItem[] = [];
   let editIssue = '';
   let savingLayout = false;
@@ -118,6 +124,8 @@
   let hasConnected = data.connectionState === 'connected';
   let retrying = false;
   let longPressTimer: number | undefined;
+  let slideshowIndex = 0;
+  let slideshowTimer: number | undefined;
   let eventSource: EventSource | undefined;
   let displayNotifications: DisplayNotification[] = [];
   let notificationTimers: number[] = [];
@@ -157,11 +165,78 @@
   $: showStartupLoading =
     !hasConnected && dashboard.connectionState === 'starting';
   $: activeTheme = resolveColorMode(dashboard.config.display, prefersDark);
-  $: displayStyle = displayThemeStyle(dashboard.config.display, activeTheme);
+  $: backgroundConfig = dashboard.config.display.background;
+  $: slideshowImages =
+    backgroundConfig?.kind === 'slideshow'
+      ? (backgroundConfig.images ?? [])
+      : [];
+  $: currentBackgroundImage = resolveBackgroundImage(
+    backgroundConfig,
+    slideshowIndex
+  );
+  $: displayStyle = displayThemeStyle(
+    dashboard.config.display,
+    activeTheme,
+    currentBackgroundImage
+  );
+  $: manageSlideshow(
+    slideshowImages,
+    backgroundConfig?.intervalSeconds,
+    dashboard.config.display.motion
+  );
+
+  function resolveBackgroundImage(
+    bg: typeof backgroundConfig,
+    index: number
+  ): string {
+    if (!bg) {
+      return '';
+    }
+    if (bg.kind === 'file' && bg.value) {
+      return backgroundImageURL(bg.value);
+    }
+    if (bg.kind === 'asset' && bg.value) {
+      return bg.value;
+    }
+    if (bg.kind === 'slideshow') {
+      const images = bg.images ?? [];
+      if (images.length > 0) {
+        return backgroundImageURL(images[index % images.length]);
+      }
+    }
+    return '';
+  }
+
+  function manageSlideshow(
+    images: string[],
+    intervalSeconds: number | undefined,
+    motion: string
+  ) {
+    if (!browser) {
+      return;
+    }
+    if (slideshowTimer) {
+      window.clearInterval(slideshowTimer);
+      slideshowTimer = undefined;
+    }
+    if (images.length > 1 && motion !== 'none') {
+      const delay = Math.max(3, intervalSeconds || 30) * 1000;
+      slideshowTimer = window.setInterval(() => {
+        slideshowIndex = (slideshowIndex + 1) % images.length;
+      }, delay);
+    }
+  }
   $: dashboardForView = {
     ...dashboard,
     layout: mode === 'edit' && draftLayout ? draftLayout : dashboard.layout
   };
+  $: configuringWidget =
+    configuringWidgetId && draftLayout
+      ? draftLayout.widgets.find((widget) => widget.id === configuringWidgetId)
+      : undefined;
+  $: configuringCatalogItem = configuringWidget
+    ? widgetCatalog.find((item) => item.kind === configuringWidget?.kind)
+    : undefined;
   $: if (
     mounted &&
     selectedAgent &&
@@ -188,6 +263,9 @@
       clearLongPress();
       disconnectDisplayEvents();
       clearFocusTimer();
+      if (slideshowTimer) {
+        window.clearInterval(slideshowTimer);
+      }
     };
   });
 
@@ -570,6 +648,7 @@
         loadedAt: new Date().toISOString()
       };
       draftLayout = undefined;
+      configuringWidgetId = '';
       mode = 'dashboard';
     } catch {
       editIssue =
@@ -587,6 +666,7 @@
 
   function cancelEdit() {
     draftLayout = undefined;
+    configuringWidgetId = '';
     editIssue = '';
     mode = 'dashboard';
   }
@@ -624,7 +704,7 @@
     }
   }
 
-  function addWidget(kind: string) {
+  function addWidget(kind: string, mode: 'ui' | 'headless' = 'ui') {
     if (!draftLayout) {
       return;
     }
@@ -633,9 +713,51 @@
       editIssue = 'That widget is not available in this display build.';
       return;
     }
-    const res = editorAddWidget(draftLayout, item);
+    const res = editorAddWidget(draftLayout, item, mode);
     draftLayout = res.layout;
     editIssue = res.error || '';
+  }
+
+  function setWidgetHeadless(widgetId: string) {
+    if (!draftLayout) {
+      return;
+    }
+    draftLayout = editorSetWidgetMode(draftLayout, widgetId, 'headless');
+  }
+
+  function restoreWidget(widgetId: string) {
+    if (!draftLayout) {
+      return;
+    }
+    draftLayout = editorSetWidgetMode(draftLayout, widgetId, 'ui');
+  }
+
+  function reorderWidget(widgetId: string, direction: -1 | 1) {
+    if (!draftLayout) {
+      return;
+    }
+    draftLayout = editorReorderWidget(draftLayout, widgetId, direction);
+  }
+
+  function openWidgetConfig(widgetId: string) {
+    configuringWidgetId = widgetId;
+  }
+
+  function saveWidgetConfig(patch: {
+    title: string;
+    settings: Record<string, unknown>;
+    mode: 'ui' | 'headless';
+  }) {
+    if (!draftLayout || !configuringWidgetId) {
+      return;
+    }
+    let next = editorUpdateWidget(draftLayout, configuringWidgetId, {
+      title: patch.title,
+      settings: patch.settings
+    });
+    next = editorSetWidgetMode(next, configuringWidgetId, patch.mode);
+    draftLayout = next;
+    configuringWidgetId = '';
   }
 
   function moveWidget(widgetId: string, x: number, y: number) {
@@ -1233,7 +1355,6 @@
       data={dashboardForView}
       editMode={mode === 'edit'}
       {messages}
-      theme={activeTheme}
       stale={dashboard.stale}
       {selectedAgent}
       {selectedAvailability}
@@ -1252,8 +1373,21 @@
       onMoveWidget={moveWidget}
       onResizeWidget={resizeWidget}
       onRemoveWidget={removeWidget}
+      onConfigureWidget={openWidgetConfig}
+      onSetHeadless={setWidgetHeadless}
+      onRestoreWidget={restoreWidget}
+      onReorderWidget={reorderWidget}
       onManageAgents={() => openSettings('household')}
     />
+
+    {#if configuringWidget}
+      <WidgetSettingsSheet
+        widget={configuringWidget}
+        catalogItem={configuringCatalogItem}
+        onClose={() => (configuringWidgetId = '')}
+        onSave={saveWidgetConfig}
+      />
+    {/if}
 
     {#if showAgentManager}
       <SettingsPanel

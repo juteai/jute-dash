@@ -56,6 +56,7 @@ func Project(_ context.Context, layout WidgetLayout, locale, timezone string) Da
 			W:        w.W,
 			H:        w.H,
 			Visible:  w.Visible,
+			Mode:     w.Mode,
 			Size:     w.Size,
 			Settings: w.Settings,
 			Data:     w.Data,
@@ -83,9 +84,14 @@ func Project(_ context.Context, layout WidgetLayout, locale, timezone string) Da
 
 	for _, widget := range layout.Widgets {
 		if !widget.Visible {
+			// Removed from the profile: no fetch, no context.
 			continue
 		}
-		visibleWidgetIDs = append(visibleWidgetIDs, widget.ID)
+		// Headless widgets feed agent context but are not on screen, so they
+		// contribute a WidgetInfo but are excluded from the visible widget IDs.
+		if widget.Mode != WidgetModeHeadless {
+			visibleWidgetIDs = append(visibleWidgetIDs, widget.ID)
+		}
 
 		info := WidgetInfo{
 			ID:    widget.ID,

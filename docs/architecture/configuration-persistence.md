@@ -160,6 +160,14 @@ Before adding a new setting, classify it as one of:
 - `cache`: refreshable data such as Agent Cards, health checks, provider status, and weather snapshots.
 - `secret reference`: environment variable name, keyring key, or OAuth credential reference.
 - `transient UI state`: open menus, drag state, local focus state, and unsaved form edits.
+- `local media asset`: hub-managed binary media such as uploaded background images, stored under the hub data directory and referenced by id/path, never inlined into config or public API responses.
+
+Classification of the new display/widget settings:
+
+- widget instance `mode` (`ui`/`headless`), widget settings values, and the 12-column layout are `household durable` (SQLite truth, YAML bootstrap/export);
+- a widget's settings schema is part of its `install record` / built-in widget metadata (surfaced via the catalog), not a per-home setting;
+- the background reference and slideshow configuration (image references, interval, fit, overlay) are `household durable`;
+- uploaded background image binaries are `local media assets`.
 
 Do not store durable settings only in browser local storage.
 

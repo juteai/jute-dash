@@ -361,7 +361,7 @@ func newServer(
 	if st, ok := activeLayoutStore.(interface {
 		SetCatalog([]dashboard.WidgetCatalogItem)
 	}); ok {
-		st.SetCatalog(dashboard.WidgetCatalog())
+		st.SetCatalog(dashboard.RegisteredCatalog())
 	}
 
 	mux := http.NewServeMux()
@@ -389,6 +389,8 @@ func newServer(
 			server.mu.Unlock()
 		},
 	).RegisterRoutes(mux)
+
+	dashboard.NewBackgroundsController(backgroundsDir).RegisterRoutes(mux)
 
 	voice.NewController(
 		server.voiceStore,

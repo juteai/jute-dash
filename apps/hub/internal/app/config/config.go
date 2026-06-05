@@ -207,9 +207,9 @@ func ApplyDefaults(cfg *Config) {
 
 	if len(cfg.Dashboard.Widgets) == 0 {
 		cfg.Dashboard.Widgets = []dashboard.DashboardWidgetConfig{
-			{ID: "date-time", Type: "date-time", Title: "Date & Time", X: 0, Y: 0, W: 2, H: 1, Visible: true},
-			{ID: "weather", Type: "weather", Title: "Weather", X: 2, Y: 0, W: 2, H: 1, Visible: true},
-			{ID: "chat-history", Type: "chat-history", Title: "Chat History", X: 0, Y: 1, W: 2, H: 2, Visible: true},
+			{ID: "date-time", Type: "date-time", Title: "Date & Time", X: 0, Y: 0, W: 6, H: 1, Visible: true},
+			{ID: "weather", Type: "weather", Title: "Weather", X: 6, Y: 0, W: 6, H: 1, Visible: true},
+			{ID: "chat-history", Type: "chat-history", Title: "Chat History", X: 0, Y: 1, W: 6, H: 2, Visible: true},
 		}
 	}
 	for i := range cfg.Agents {

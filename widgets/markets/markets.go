@@ -60,13 +60,21 @@ func (w *MarketsWidget) CatalogInfo() widgets.WidgetCatalogItem {
 		Name:          "Markets (Stocks)",
 		Description:   "Displays stock, commodity, or crypto market prices.",
 		DefaultTitle:  "Markets",
-		DefaultW:      2,
+		DefaultW:      6,
 		DefaultH:      2,
-		MinW:          1,
+		MinW:          3,
 		MinH:          1,
 		DefaultSize:   "medium",
 		Overflow:      "clip",
 		AllowMultiple: true,
+		SettingsSchema: []widgets.SettingField{
+			{
+				ID:    "tickers",
+				Type:  widgets.SettingStringList,
+				Label: "Tickers",
+				Help:  "Symbols such as AAPL, GOOG, BTC-USD.",
+			},
+		},
 	}
 }
 

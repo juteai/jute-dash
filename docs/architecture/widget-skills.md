@@ -97,7 +97,7 @@ Field rules:
 - `skillId` uses reverse-DNS or `jute.*` naming and must be stable across versions.
 - `summary` is a short capability description, not an instruction to the model.
 - `requiredPermissions` must be a subset of the widget's manifest permissions.
-- `visibilityPolicy` is `visible`, `focused`, or `visible_or_focused` for v1.
+- `visibilityPolicy` is `visible`, `focused`, `visible_or_focused`, or `always` for v1. `always` covers `headless`-mode instances, which are active and feed the agent but render no tile.
 - `context.fields`, `actions`, and `prompts` must use stable IDs because agents may learn or cache them.
 
 ## Context
@@ -109,7 +109,9 @@ Rules:
 - context fields must be explicitly declared;
 - each value must be produced by the hub or by hub-approved widget state;
 - context includes freshness metadata where possible;
-- hidden widgets do not expose context unless a future background policy explicitly allows it;
+- a widget instance exposes context when it is present on the profile in either `ui` or `headless` mode; `headless` is the supported way to feed agent context without rendering a tile;
+- removed instances (`visible: false`) expose no context;
+- hidden widgets do not expose context unless a background policy such as `headless` explicitly allows it;
 - exact presence, private notes, raw adapter payloads, secrets, camera frames, microphone audio, browser storage, and undeclared fields are never context.
 
 `contextPolicy.publicFields` is replaced by `agentSkill.context.fields`. Existing POC code may still use public fields internally until the new contract is implemented, but new architecture work should use Widget Skills.

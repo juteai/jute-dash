@@ -44,6 +44,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("resolve data directory: %w", err)
 	}
+	app.SetBackgroundsDir(app.BackgroundsDir(dataDir))
 	runtimeStore, err := app.Open(app.DatabasePath(dataDir))
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
@@ -214,6 +215,7 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 			W:        w.W,
 			H:        w.H,
 			Visible:  w.Visible,
+			Mode:     w.Mode,
 			Size:     w.Size,
 			Settings: w.Settings,
 			Data:     w.Data,

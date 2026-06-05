@@ -1,17 +1,22 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import {
-    ArrowDown,
-    ArrowLeft,
-    ArrowRight,
+    MoreVertical,
+    Settings2,
+    EyeOff,
+    Trash2,
     ArrowUp,
-    Minus,
-    Plus,
-    Trash2
+    ArrowDown
   } from 'lucide-svelte';
   import WidgetFrame from '$lib/components/display/WidgetFrame.svelte';
   import { widgetRegistry } from '$lib/components/display/widget-registry';
   import { resolveWidgetChrome } from '$lib/themes';
+  import {
+    BASE_COLUMNS,
+    columnsForWidth,
+    remapLayout,
+    rendersTile
+  } from '$lib/layout-editor';
   import type {
     Agent,
     AgentAvailability,
@@ -39,8 +44,31 @@
     h: number
   ) => void = () => {};
   export let onRemoveWidget: (widgetId: string) => void = () => {};
+  export let onConfigureWidget: (widgetId: string) => void = () => {};
+  export let onSetHeadless: (widgetId: string) => void = () => {};
+  export let onReorderWidget: (
+    widgetId: string,
+    direction: -1 | 1
+  ) => void = () => {};
 
   let canvasEl: HTMLElement;
+  let viewportWidth = 1280;
+  let openMenuId = '';
+
+  // Fine drag/resize placement is available only on tablet and larger; phones
+  // use reorder-only editing through the per-tile menu.
+  $: fineEdit = editMode && viewportWidth >= 768;
+  // In fine-edit the user edits the canonical 12-column base layout; otherwise
+  // render a proportional remap for the current viewport.
+  $: activeColumns = fineEdit ? BASE_COLUMNS : columnsForWidth(viewportWidth);
+  $: displayLayout =
+    activeColumns >= BASE_COLUMNS
+      ? data.layout
+      : remapLayout(data.layout, activeColumns);
+  $: widgets = displayLayout.widgets
+    .filter(rendersTile)
+    .sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
+
   let drag:
     | {
         id: string;
@@ -56,14 +84,30 @@
       }
     | undefined;
 
-  $: widgets = [...data.layout.widgets]
-    .filter((widget) => widget.visible)
-    .sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
+  function updateViewport() {
+    if (typeof window !== 'undefined') {
+      viewportWidth = window.innerWidth;
+    }
+  }
+
+  onMount(() => {
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
+  });
 
   function gridStyle(widget: WidgetInstance) {
-    const columns = Math.min(Math.max(widget.w, widget.minW, 1), 4);
+    const columns = Math.min(Math.max(widget.w, widget.minW, 1), activeColumns);
     const rows = Math.max(widget.h, widget.minH, 1);
-    return `grid-column: span ${columns}; min-height: ${rows * 132}px;`;
+    return `grid-column: span ${columns}; min-height: ${rows * 124}px;`;
+  }
+
+  function toggleMenu(id: string) {
+    openMenuId = openMenuId === id ? '' : id;
+  }
+
+  function closeMenu() {
+    openMenuId = '';
   }
 
   function determineWidgetState(
@@ -104,7 +148,7 @@
     mode: 'move' | 'resize',
     event: PointerEvent
   ) {
-    if (!editMode || !canvasEl) {
+    if (!fineEdit || !canvasEl) {
       return;
     }
     event.stopPropagation();
@@ -149,7 +193,8 @@
   function gridMetrics() {
     const styles = window.getComputedStyle(canvasEl);
     const columns =
-      styles.gridTemplateColumns.split(' ').filter(Boolean).length || 4;
+      styles.gridTemplateColumns.split(' ').filter(Boolean).length ||
+      activeColumns;
     const gap = Number.parseFloat(styles.columnGap || '12') || 12;
     const rect = canvasEl.getBoundingClientRect();
     return {
@@ -157,17 +202,20 @@
         1,
         (rect.width - gap * Math.max(0, columns - 1)) / columns + gap
       ),
-      rowHeight: 144
+      rowHeight: 124
     };
   }
 
   onDestroy(endDrag);
 </script>
 
+<svelte:window on:click={closeMenu} />
+
 <section
   bind:this={canvasEl}
   class:dashboard-grid-edit={editMode}
   class="dashboard-canvas"
+  style={`grid-template-columns: repeat(${activeColumns}, minmax(0, 1fr));`}
   aria-label="Widget dashboard"
 >
   {#each widgets as widget (widget.id)}
@@ -178,7 +226,7 @@
     >
       <WidgetFrame
         {widget}
-        {editMode}
+        editMode={fineEdit}
         focused={focusedWidgetId === widget.id}
         chrome={resolveWidgetChrome(widget, data.config.display)}
         overflow={(widget.overflow ?? 'clip') as 'clip' | 'scroll' | 'expand'}
@@ -188,62 +236,80 @@
       >
         <svelte:fragment slot="actions">
           {#if editMode}
-            <button
-              type="button"
-              class="widget-frame-handle"
-              aria-label={`Move ${widget.title} left`}
-              on:click={() => onMoveWidget(widget.id, widget.x - 1, widget.y)}
-            >
-              <ArrowLeft size={15} />
-            </button>
-            <button
-              type="button"
-              class="widget-frame-handle"
-              aria-label={`Move ${widget.title} right`}
-              on:click={() => onMoveWidget(widget.id, widget.x + 1, widget.y)}
-            >
-              <ArrowRight size={15} />
-            </button>
-            <button
-              type="button"
-              class="widget-frame-handle"
-              aria-label={`Move ${widget.title} up`}
-              on:click={() => onMoveWidget(widget.id, widget.x, widget.y - 1)}
-            >
-              <ArrowUp size={15} />
-            </button>
-            <button
-              type="button"
-              class="widget-frame-handle"
-              aria-label={`Move ${widget.title} down`}
-              on:click={() => onMoveWidget(widget.id, widget.x, widget.y + 1)}
-            >
-              <ArrowDown size={15} />
-            </button>
-            <button
-              type="button"
-              class="widget-frame-handle"
-              aria-label={`Make ${widget.title} smaller`}
-              on:click={() => onResizeWidget(widget.id, widget.w - 1, widget.h)}
-            >
-              <Minus size={15} />
-            </button>
-            <button
-              type="button"
-              class="widget-frame-handle"
-              aria-label={`Make ${widget.title} wider`}
-              on:click={() => onResizeWidget(widget.id, widget.w + 1, widget.h)}
-            >
-              <Plus size={15} />
-            </button>
-            <button
-              type="button"
-              class="widget-frame-handle widget-frame-handle--danger"
-              aria-label={`Remove ${widget.title}`}
-              on:click={() => onRemoveWidget(widget.id)}
-            >
-              <Trash2 size={15} />
-            </button>
+            <div class="widget-menu">
+              <button
+                type="button"
+                class="widget-frame-handle"
+                aria-label={`Widget options for ${widget.title}`}
+                aria-haspopup="menu"
+                aria-expanded={openMenuId === widget.id}
+                on:click|stopPropagation={() => toggleMenu(widget.id)}
+              >
+                <MoreVertical size={17} />
+              </button>
+              {#if openMenuId === widget.id}
+                <div class="widget-menu-dropdown" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    on:click|stopPropagation={() => {
+                      onConfigureWidget(widget.id);
+                      closeMenu();
+                    }}
+                  >
+                    <Settings2 size={15} />
+                    <span>Configure</span>
+                  </button>
+                  {#if !fineEdit}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      on:click|stopPropagation={() => {
+                        onReorderWidget(widget.id, -1);
+                        closeMenu();
+                      }}
+                    >
+                      <ArrowUp size={15} />
+                      <span>Move up</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      on:click|stopPropagation={() => {
+                        onReorderWidget(widget.id, 1);
+                        closeMenu();
+                      }}
+                    >
+                      <ArrowDown size={15} />
+                      <span>Move down</span>
+                    </button>
+                  {/if}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    on:click|stopPropagation={() => {
+                      onSetHeadless(widget.id);
+                      closeMenu();
+                    }}
+                  >
+                    <EyeOff size={15} />
+                    <span>Make headless</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="widget-menu-danger"
+                    on:click|stopPropagation={() => {
+                      onRemoveWidget(widget.id);
+                      closeMenu();
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    <span>Remove</span>
+                  </button>
+                </div>
+              {/if}
+            </div>
           {/if}
         </svelte:fragment>
         {#if widgetRegistry[widget.kind]}
@@ -268,3 +334,45 @@
     </div>
   {/each}
 </section>
+
+<style>
+  .widget-menu {
+    position: relative;
+    display: inline-flex;
+  }
+  .widget-menu-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    border-radius: 10px;
+    background: var(--surface, #161616);
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  }
+  .widget-menu-dropdown button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    color: var(--foreground, inherit);
+    font-size: 0.86rem;
+    text-align: left;
+    border-radius: 7px;
+    cursor: pointer;
+    min-height: 40px;
+  }
+  .widget-menu-dropdown button:hover {
+    background: var(--strong-surface, rgba(255, 255, 255, 0.08));
+  }
+  .widget-menu-danger {
+    color: var(--danger, #ef4444);
+  }
+</style>

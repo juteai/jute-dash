@@ -34,6 +34,32 @@ func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/widgets/layout/reset", c.handleWidgetLayoutReset)
 }
 
+// RegisteredCatalog returns catalog metadata for every registered widget,
+// converted into the dashboard package's catalog item shape. This is the single
+// source the layout store uses for normalization, so all registered kinds
+// (including rss and markets) are known and share their authored defaults.
+func RegisteredCatalog() []WidgetCatalogItem {
+	items := widgets.List()
+	catalog := make([]WidgetCatalogItem, 0, len(items))
+	for _, it := range items {
+		info := it.CatalogInfo()
+		catalog = append(catalog, WidgetCatalogItem{
+			Kind:          info.Kind,
+			Name:          info.Name,
+			Description:   info.Description,
+			DefaultTitle:  info.DefaultTitle,
+			DefaultW:      info.DefaultW,
+			DefaultH:      info.DefaultH,
+			MinW:          info.MinW,
+			MinH:          info.MinH,
+			DefaultSize:   info.DefaultSize,
+			Overflow:      info.Overflow,
+			AllowMultiple: info.AllowMultiple,
+		})
+	}
+	return catalog
+}
+
 func (c *Controller) handleWidgetCatalog(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		c.writeMethodNotAllowed(w, http.MethodGet)

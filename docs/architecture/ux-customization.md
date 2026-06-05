@@ -23,6 +23,18 @@ Supported surfaces:
 
 The same hub can serve multiple surfaces, each with its own device profile.
 
+## Responsive Layout
+
+The dashboard is mobile-first and uses a single authored layout across all surfaces:
+
+- a layout profile stores widget placement once on a **12-column base grid**;
+- each surface renders a **proportional remap** of that base to a target column count chosen by viewport width (phone → 1–2, small tablet → 4–6, large tablet/desktop/wall → 12);
+- the remap is deterministic and read-only — smaller surfaces never overwrite the stored base layout, so there are no per-device stored arrangements to maintain;
+- because the phone layout is derived, on-phone editing is limited to reorder, configure, headless toggle, add, and remove; fine drag/resize placement happens on tablet and larger;
+- this keeps one source of truth per profile while still adapting cleanly from a phone to a wall display.
+
+Device profiles still carry per-surface preferences (density, interaction mode, preferred agent, ambient behavior); they do not carry separate widget arrangements.
+
 ## Layout Profiles
 
 A layout profile defines:
