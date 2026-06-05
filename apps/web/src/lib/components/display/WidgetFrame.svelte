@@ -157,9 +157,8 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    min-height: 90px;
     gap: 8px;
-    padding: 12px;
+    padding: 8px;
     text-align: center;
   }
   .widget-state-icon {

@@ -12,6 +12,15 @@ export const BASE_COLUMNS = 12;
 // MAX_ROWS bounds vertical placement (matches the hub validation).
 export const MAX_ROWS = 12;
 
+// Visual grid metrics shared by dashboard rendering and edit-mode math.
+export const GRID_ROW_HEIGHT = 136;
+export const GRID_GAP = 12;
+
+export function gridItemHeight(rows: number): number {
+  const safeRows = Math.max(1, Math.floor(rows));
+  return safeRows * GRID_ROW_HEIGHT + Math.max(0, safeRows - 1) * GRID_GAP;
+}
+
 export function cloneLayout(layout: WidgetLayout): WidgetLayout {
   return JSON.parse(JSON.stringify(layout)) as WidgetLayout;
 }

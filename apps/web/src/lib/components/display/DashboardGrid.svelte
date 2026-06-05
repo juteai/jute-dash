@@ -13,7 +13,10 @@
   import { resolveWidgetChrome } from '$lib/themes';
   import {
     BASE_COLUMNS,
+    GRID_GAP,
+    GRID_ROW_HEIGHT,
     columnsForWidth,
+    gridItemHeight,
     remapLayout,
     rendersTile
   } from '$lib/layout-editor';
@@ -110,7 +113,7 @@
   function gridStyle(widget: WidgetInstance) {
     const columns = Math.min(Math.max(widget.w, widget.minW, 1), activeColumns);
     const rows = Math.max(widget.h, widget.minH, 1);
-    return `grid-column-start: ${widget.x + 1}; grid-column-end: span ${columns}; grid-row-start: ${widget.y + 1}; grid-row-end: span ${rows}; min-height: ${rows * 124 - 12}px;`;
+    return `grid-column-start: ${widget.x + 1}; grid-column-end: span ${columns}; grid-row-start: ${widget.y + 1}; grid-row-end: span ${rows}; min-height: ${gridItemHeight(rows)}px;`;
   }
 
   function dragStyle(widget: WidgetInstance) {
@@ -123,15 +126,15 @@
     let extra = '';
     if (drag.mode === 'resize-w' || drag.mode === 'resize') {
       const targetWidth = Math.max(
-        drag.cellWidth - 12,
-        drag.startW * drag.cellWidth + dragDX - 12
+        drag.cellWidth - GRID_GAP,
+        drag.startW * drag.cellWidth + dragDX - GRID_GAP
       );
       extra += `width: ${targetWidth}px; max-width: none;`;
     }
     if (drag.mode === 'resize-h' || drag.mode === 'resize') {
       const targetHeight = Math.max(
-        124 - 12,
-        drag.startH * drag.rowHeight + dragDY - 12
+        GRID_ROW_HEIGHT,
+        gridItemHeight(drag.startH) + dragDY
       );
       extra += `height: ${targetHeight}px; max-height: none;`;
     }
@@ -293,14 +296,15 @@
     const columns =
       styles.gridTemplateColumns.split(' ').filter(Boolean).length ||
       activeColumns;
-    const gap = Number.parseFloat(styles.columnGap || '12') || 12;
+    const gap =
+      Number.parseFloat(styles.columnGap || `${GRID_GAP}`) || GRID_GAP;
     const rect = canvasEl.getBoundingClientRect();
     return {
       cellWidth: Math.max(
         1,
         (rect.width - gap * Math.max(0, columns - 1)) / columns + gap
       ),
-      rowHeight: 124
+      rowHeight: GRID_ROW_HEIGHT + GRID_GAP
     };
   }
 
@@ -313,7 +317,7 @@
   bind:this={canvasEl}
   class:dashboard-grid-edit={editMode}
   class="dashboard-canvas"
-  style={`grid-template-columns: repeat(${activeColumns}, minmax(0, 1fr));`}
+  style={`--dashboard-grid-row-height: ${GRID_ROW_HEIGHT}px; --dashboard-grid-gap: ${GRID_GAP}px; grid-template-columns: repeat(${activeColumns}, minmax(0, 1fr));`}
   aria-label="Widget dashboard"
 >
   {#if editMode && fineEdit}
@@ -332,7 +336,9 @@
       class="dashboard-widget-placeholder"
       style="grid-column-start: {ghostX +
         1}; grid-column-end: span {ghostW}; grid-row-start: {ghostY +
-        1}; grid-row-end: span {ghostH}; min-height: {ghostH * 124 - 12}px;"
+        1}; grid-row-end: span {ghostH}; min-height: {gridItemHeight(
+        ghostH
+      )}px;"
     ></div>
   {/if}
 

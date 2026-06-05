@@ -10,6 +10,13 @@
   background: #ffffff;
   color: #000000;
   letter-spacing: 0;
+  --dashboard-grid-row-height: 136px;
+  --dashboard-grid-gap: 12px;
+  --widget-title-size: 0.74rem;
+  --widget-body-size: 0.84rem;
+  --widget-label-size: 0.78rem;
+  --widget-value-size: 1rem;
+  --widget-display-size: 2.7rem;
 }
 
 * {
@@ -468,8 +475,8 @@ button {
   position: relative;
   grid-row: -2 / -1;
   display: grid;
-  grid-auto-rows: 112px;
-  gap: 12px;
+  grid-auto-rows: var(--dashboard-grid-row-height);
+  gap: var(--dashboard-grid-gap);
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -484,13 +491,13 @@ button {
   right: 2px;
   bottom: 24px;
   display: grid;
-  gap: 12px;
+  gap: var(--dashboard-grid-gap);
   pointer-events: none;
   z-index: 0;
 }
 
 .dashboard-grid-cell-guide {
-  height: 112px;
+  height: var(--dashboard-grid-row-height);
   border: 1px dashed var(--border);
   border-radius: 8px;
   background: color-mix(in srgb, var(--border) 6%, transparent);
@@ -522,11 +529,47 @@ button {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 132px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
+  --widget-title-size: 0.74rem;
+  --widget-body-size: 0.84rem;
+  --widget-label-size: 0.78rem;
+  --widget-value-size: 1rem;
+  --widget-display-size: 2.7rem;
+}
+
+.widget-frame--small {
+  --widget-title-size: 0.7rem;
+  --widget-body-size: 0.8rem;
+  --widget-label-size: 0.74rem;
+  --widget-value-size: 0.92rem;
+  --widget-display-size: 2.1rem;
+}
+
+.widget-frame--wide {
+  --widget-title-size: 0.72rem;
+  --widget-body-size: 0.84rem;
+  --widget-label-size: 0.78rem;
+  --widget-value-size: 1.05rem;
+  --widget-display-size: 3rem;
+}
+
+.widget-frame--medium {
+  --widget-title-size: 0.78rem;
+  --widget-body-size: 0.86rem;
+  --widget-label-size: 0.8rem;
+  --widget-value-size: 1.1rem;
+  --widget-display-size: 3.25rem;
+}
+
+.widget-frame--large {
+  --widget-title-size: 0.82rem;
+  --widget-body-size: 0.9rem;
+  --widget-label-size: 0.84rem;
+  --widget-value-size: 1.2rem;
+  --widget-display-size: 3.8rem;
 }
 
 .widget-frame--chrome-clear {
@@ -572,14 +615,14 @@ select:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 42px;
-  padding: 10px 12px 0;
+  min-height: 32px;
+  padding: 8px 12px 0;
 }
 
 .widget-frame-title {
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--widget-title-size);
   font-weight: 760;
   text-overflow: ellipsis;
   text-transform: uppercase;
@@ -597,11 +640,15 @@ select:focus-visible {
 .widget-frame-body {
   flex: 1;
   min-height: 0;
-  padding: 12px;
+  padding: 8px 12px 12px;
 }
 
 .widget-frame--small .widget-frame-body {
-  padding: 10px;
+  padding: 8px 10px 10px;
+}
+
+.widget-frame--wide .widget-frame-body {
+  padding: 6px 12px 10px;
 }
 
 .widget-frame--large .widget-frame-body {
@@ -723,14 +770,14 @@ select:focus-visible {
   flex-direction: column;
   justify-content: flex-end;
   min-height: 100%;
-  gap: 12px;
+  gap: 8px;
 }
 
 .date-time-clock {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: clamp(3rem, 8vw, 5.5rem);
+  font-size: var(--widget-display-size);
   font-weight: 780;
   line-height: 1;
 }
@@ -740,14 +787,27 @@ select:focus-visible {
   align-items: center;
   gap: 8px;
   color: var(--muted-strong);
-  font-size: 1.04rem;
+  font-size: var(--widget-value-size);
   font-weight: 680;
 }
 
 .date-time-zone {
   color: var(--muted);
-  font-size: 0.84rem;
+  font-size: var(--widget-label-size);
   font-weight: 650;
+}
+
+.widget-frame--wide .date-time-widget {
+  justify-content: center;
+}
+
+.widget-frame--wide .date-time-clock {
+  font-size: 3.6rem;
+}
+
+.widget-frame--wide .date-time-date,
+.widget-frame--wide .date-time-zone {
+  display: none;
 }
 
 .widget-stale {
@@ -768,7 +828,7 @@ select:focus-visible {
 }
 
 .weather-widget {
-  gap: 12px;
+  gap: 10px;
 }
 
 .weather-primary,
@@ -780,14 +840,14 @@ select:focus-visible {
 
 .weather-location {
   color: var(--foreground);
-  font-size: 1.1rem;
+  font-size: var(--widget-value-size);
   font-weight: 760;
 }
 
 .weather-condition {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: var(--widget-body-size);
 }
 
 .weather-icon {
@@ -795,7 +855,7 @@ select:focus-visible {
 }
 
 .weather-temp {
-  font-size: 3.2rem;
+  font-size: var(--widget-display-size);
   font-weight: 780;
   line-height: 1;
 }
@@ -806,7 +866,7 @@ select:focus-visible {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: var(--widget-label-size);
   font-weight: 640;
 }
 
@@ -820,7 +880,34 @@ select:focus-visible {
 .weather-footer {
   margin-top: auto;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--widget-label-size);
+}
+
+.widget-frame--wide .weather-widget {
+  justify-content: center;
+}
+
+.widget-frame--wide .weather-primary {
+  min-height: 54px;
+}
+
+.widget-frame--wide .weather-location {
+  font-size: 1.05rem;
+}
+
+.widget-frame--wide .weather-condition {
+  font-size: 0.86rem;
+}
+
+.widget-frame--wide .weather-icon :is(svg) {
+  width: 38px;
+  height: 38px;
+}
+
+.widget-frame--wide .weather-temp,
+.widget-frame--wide .weather-meta,
+.widget-frame--wide .weather-footer {
+  display: none;
 }
 
 .weather-widget--unavailable,
@@ -829,7 +916,8 @@ select:focus-visible {
 }
 
 .chat-history-widget {
-  gap: 14px;
+  gap: 10px;
+  font-size: var(--widget-body-size);
 }
 
 .chat-history-summary {
@@ -842,7 +930,7 @@ select:focus-visible {
   gap: 8px;
   min-width: 0;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--widget-label-size);
   font-weight: 680;
 }
 
@@ -853,7 +941,7 @@ select:focus-visible {
 }
 
 .chat-history-count {
-  font-size: 2.2rem;
+  font-size: calc(var(--widget-display-size) * 0.68);
   font-weight: 780;
   line-height: 1;
 }
@@ -862,7 +950,7 @@ select:focus-visible {
 .chat-history-footer,
 .chat-history-list p {
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: var(--widget-body-size);
 }
 
 .chat-history-list {
@@ -873,7 +961,7 @@ select:focus-visible {
 
 .chat-history-item {
   min-width: 0;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-muted);
@@ -881,7 +969,7 @@ select:focus-visible {
 
 .chat-history-item span {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 760;
   text-transform: uppercase;
 }
@@ -892,6 +980,22 @@ select:focus-visible {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.widget-frame--medium .rss-widget,
+.widget-frame--medium .markets-widget {
+  font-size: var(--widget-body-size);
+}
+
+.widget-frame--medium .rss-widget h4,
+.widget-frame--medium .markets-widget .text-xs {
+  font-size: 0.72rem;
+}
+
+.widget-frame--medium .rss-widget a,
+.widget-frame--medium .markets-widget .text-sm {
+  font-size: 0.84rem;
+  line-height: 1.25;
 }
 
 .chat-layer {

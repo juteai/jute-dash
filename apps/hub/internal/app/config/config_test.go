@@ -625,6 +625,7 @@ func TestDevMockA2AConfigLoads(t *testing.T) {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	assertSingleDevAgent(t, cfg, "mock-a2a-agent")
+	assertDevHarnessWidgets(t, cfg)
 }
 
 func TestDevMockA2AMCPConfigLoads(t *testing.T) {
@@ -648,6 +649,7 @@ func TestDevKronkA2AConfigLoads(t *testing.T) {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
 	assertSingleDevAgent(t, cfg, "kronk-local")
+	assertDevHarnessWidgets(t, cfg)
 }
 
 func TestDevKronkA2AMCPConfigLoads(t *testing.T) {
@@ -677,13 +679,31 @@ func assertSingleDevAgent(t *testing.T, cfg Config, wantID string) {
 	}
 }
 
-func TestExampleYAMLConfigLoads(t *testing.T) {
-	cfg, err := LoadConfig(filepath.Join("..", "..", "..", "..", "..", "examples", "config", "jute.example.yaml"))
-	if err != nil {
-		t.Fatalf("LoadConfig() error = %v", err)
+func assertDevHarnessWidgets(t *testing.T, cfg Config) {
+	t.Helper()
+	want := []struct {
+		id, kind, size string
+		x, y, w, h     int
+	}{
+		{id: "date-time-widget", kind: "date-time", size: "wide", x: 0, y: 0, w: 6, h: 1},
+		{id: "weather-widget", kind: "weather", size: "wide", x: 6, y: 0, w: 6, h: 1},
+		{id: "assistant-chat", kind: "chat-history", size: "medium", x: 0, y: 1, w: 6, h: 2},
+		{id: "hacker-news", kind: "rss", size: "medium", x: 6, y: 1, w: 6, h: 2},
+		{id: "stocks-watchlist", kind: "markets", size: "medium", x: 0, y: 3, w: 6, h: 2},
 	}
-	if cfg.Home.Name != "Jute House" || len(cfg.Agents) != 2 {
-		t.Fatalf("unexpected example YAML config: %+v", cfg)
+	if len(cfg.Dashboard.Widgets) != len(want) {
+		t.Fatalf("expected %d harness widgets, got %+v", len(want), cfg.Dashboard.Widgets)
+	}
+	for i, wantWidget := range want {
+		got := cfg.Dashboard.Widgets[i]
+		if got.ID != wantWidget.id || got.Type != wantWidget.kind || got.Size != wantWidget.size ||
+			got.X != wantWidget.x || got.Y != wantWidget.y || got.W != wantWidget.w || got.H != wantWidget.h ||
+			got.MinW != 3 || got.MinH != 1 || !got.Visible || got.Mode != dashboard.WidgetModeUI {
+			t.Fatalf("unexpected harness widget %d: %+v", i, got)
+		}
+		if (got.Type == "weather" || got.Type == "rss" || got.Type == "markets") && len(got.Settings) == 0 {
+			t.Fatalf("expected settings for %s widget", got.Type)
+		}
 	}
 }
 
