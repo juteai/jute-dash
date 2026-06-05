@@ -2,53 +2,39 @@ package homestate
 
 import (
 	"context"
-	"errors"
 	"sync"
 )
 
+// Syncer defines the interface needed for homestate config persistence.
+type Syncer interface {
+	SyncHome(
+		ctx context.Context,
+		home HomeConfig,
+		display any,
+		weather WeatherConfig,
+		rooms []RoomConfig,
+		tiles []TileConfig,
+	) error
+	HomeConfig(ctx context.Context) (
+		HomeConfig, any, WeatherConfig, []RoomConfig, []TileConfig, error,
+	)
+}
+
 type YAMLRepository struct {
-	mu         sync.RWMutex
-	configPath string
-	loadFn     func(path string) (HomeConfig, any, WeatherConfig, []RoomConfig, []TileConfig, error)
-	saveFn     func(path string, home HomeConfig, display any, weather WeatherConfig, rooms []RoomConfig, tiles []TileConfig) error
+	mu     sync.RWMutex
+	syncer Syncer
 }
 
-func NewYAMLRepository(
-	configPath string,
-	loadFn func(path string) (HomeConfig, any, WeatherConfig, []RoomConfig, []TileConfig, error),
-	saveFn func(path string, home HomeConfig, display any, weather WeatherConfig, rooms []RoomConfig, tiles []TileConfig) error,
-) *YAMLRepository {
+func NewYAMLRepository(syncer Syncer) *YAMLRepository {
 	return &YAMLRepository{
-		configPath: configPath,
-		loadFn:     loadFn,
-		saveFn:     saveFn,
+		syncer: syncer,
 	}
 }
 
-func (y *YAMLRepository) load() (HomeConfig, any, WeatherConfig, []RoomConfig, []TileConfig, error) {
-	if y.configPath == "" {
-		return HomeConfig{}, nil, WeatherConfig{}, nil, nil, errors.New("config path is empty")
-	}
-	return y.loadFn(y.configPath)
-}
-
-func (y *YAMLRepository) save(
-	home HomeConfig,
-	display any,
-	weather WeatherConfig,
-	rooms []RoomConfig,
-	tiles []TileConfig,
-) error {
-	if y.configPath == "" {
-		return errors.New("cannot save: config path is empty")
-	}
-	return y.saveFn(y.configPath, home, display, weather, rooms, tiles)
-}
-
-func (y *YAMLRepository) SetupStatus(_ context.Context) (SetupStatus, error) {
+func (y *YAMLRepository) SetupStatus(ctx context.Context) (SetupStatus, error) {
 	y.mu.RLock()
 	defer y.mu.RUnlock()
-	home, _, weather, _, _, err := y.load()
+	home, _, weather, _, _, err := y.syncer.HomeConfig(ctx)
 	if err != nil {
 		return SetupStatus{}, err
 	}
@@ -59,10 +45,10 @@ func (y *YAMLRepository) SetupStatus(_ context.Context) (SetupStatus, error) {
 	}, nil
 }
 
-func (y *YAMLRepository) HouseholdSettings(_ context.Context) (HouseholdSettings, error) {
+func (y *YAMLRepository) HouseholdSettings(ctx context.Context) (HouseholdSettings, error) {
 	y.mu.RLock()
 	defer y.mu.RUnlock()
-	home, display, weather, _, _, err := y.load()
+	home, display, weather, _, _, err := y.syncer.HomeConfig(ctx)
 	if err != nil {
 		return HouseholdSettings{}, err
 	}
@@ -79,12 +65,12 @@ func (y *YAMLRepository) HouseholdSettings(_ context.Context) (HouseholdSettings
 }
 
 func (y *YAMLRepository) SaveHouseholdSettings(
-	_ context.Context,
+	ctx context.Context,
 	settings HouseholdSettings,
 ) (HouseholdSettings, error) {
 	y.mu.Lock()
 	defer y.mu.Unlock()
-	_, display, _, rooms, tiles, err := y.load()
+	_, display, _, rooms, tiles, err := y.syncer.HomeConfig(ctx)
 	if err != nil {
 		display = settings.Display
 	}
@@ -93,7 +79,7 @@ func (y *YAMLRepository) SaveHouseholdSettings(
 	if settings.Display != nil {
 		display = settings.Display
 	}
-	if err := y.save(settings.Home, display, settings.Weather, rooms, tiles); err != nil {
+	if err := y.syncer.SyncHome(ctx, settings.Home, display, settings.Weather, rooms, tiles); err != nil {
 		return HouseholdSettings{}, err
 	}
 	missing := missingSetupFields(settings.Home, settings.Weather, true)
@@ -108,20 +94,20 @@ func (y *YAMLRepository) SaveHouseholdSettings(
 	}, nil
 }
 
-func (y *YAMLRepository) Rooms(_ context.Context) ([]RoomConfig, error) {
+func (y *YAMLRepository) Rooms(ctx context.Context) ([]RoomConfig, error) {
 	y.mu.RLock()
 	defer y.mu.RUnlock()
-	_, _, _, rooms, _, err := y.load()
+	_, _, _, rooms, _, err := y.syncer.HomeConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return rooms, nil
 }
 
-func (y *YAMLRepository) SaveRooms(_ context.Context, rooms []RoomConfig) ([]RoomConfig, error) {
+func (y *YAMLRepository) SaveRooms(ctx context.Context, rooms []RoomConfig) ([]RoomConfig, error) {
 	y.mu.Lock()
 	defer y.mu.Unlock()
-	home, display, weather, _, tiles, err := y.load()
+	home, display, weather, _, tiles, err := y.syncer.HomeConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -129,26 +115,26 @@ func (y *YAMLRepository) SaveRooms(_ context.Context, rooms []RoomConfig) ([]Roo
 	if err != nil {
 		return nil, err
 	}
-	if err := y.save(home, display, weather, normalized, tiles); err != nil {
+	if err := y.syncer.SyncHome(ctx, home, display, weather, normalized, tiles); err != nil {
 		return nil, err
 	}
 	return normalized, nil
 }
 
-func (y *YAMLRepository) Tiles(_ context.Context) ([]TileConfig, error) {
+func (y *YAMLRepository) Tiles(ctx context.Context) ([]TileConfig, error) {
 	y.mu.RLock()
 	defer y.mu.RUnlock()
-	_, _, _, _, tiles, err := y.load()
+	_, _, _, _, tiles, err := y.syncer.HomeConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return tiles, nil
 }
 
-func (y *YAMLRepository) SaveTiles(_ context.Context, tiles []TileConfig) ([]TileConfig, error) {
+func (y *YAMLRepository) SaveTiles(ctx context.Context, tiles []TileConfig) ([]TileConfig, error) {
 	y.mu.Lock()
 	defer y.mu.Unlock()
-	home, display, weather, rooms, _, err := y.load()
+	home, display, weather, rooms, _, err := y.syncer.HomeConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +142,7 @@ func (y *YAMLRepository) SaveTiles(_ context.Context, tiles []TileConfig) ([]Til
 	if err != nil {
 		return nil, err
 	}
-	if err := y.save(home, display, weather, rooms, normalized); err != nil {
+	if err := y.syncer.SyncHome(ctx, home, display, weather, rooms, normalized); err != nil {
 		return nil, err
 	}
 	return normalized, nil

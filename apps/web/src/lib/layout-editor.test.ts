@@ -211,4 +211,27 @@ describe('layout-editor', () => {
     expect(b!.w).toBe(1);
     expect(b!.y).toBe(1);
   });
+
+  it('resolves overlaps recursively by pushing overlapping widgets down', () => {
+    // a is moved to x=0, y=0.
+    // b is at x=0, y=0, w=2, h=1. Should be pushed down to y=1.
+    // c is at x=0, y=1, w=2, h=1. Should be recursively pushed down to y=2.
+    // d is at x=4, y=0, w=2, h=2 (non-overlapping). Should not move.
+    const layout = createLayout([
+      createWidget({ id: 'a', x: 0, y: 0, w: 2, h: 1 }),
+      createWidget({ id: 'b', x: 0, y: 0, w: 2, h: 1 }),
+      createWidget({ id: 'c', x: 0, y: 1, w: 2, h: 1 }),
+      createWidget({ id: 'd', x: 4, y: 0, w: 2, h: 2 })
+    ]);
+    const resolved = moveWidget(layout, 'a', 0, 0);
+    const a = resolved.widgets.find((w) => w.id === 'a')!;
+    const b = resolved.widgets.find((w) => w.id === 'b')!;
+    const c = resolved.widgets.find((w) => w.id === 'c')!;
+    const d = resolved.widgets.find((w) => w.id === 'd')!;
+
+    expect(a.y).toBe(0);
+    expect(b.y).toBe(1);
+    expect(c.y).toBe(2);
+    expect(d.y).toBe(0);
+  });
 });

@@ -63,7 +63,6 @@
   import { cn } from '$lib/utils';
   import {
     cloneLayout,
-    packLayout,
     addWidget as editorAddWidget,
     moveWidget as editorMoveWidget,
     resizeWidget as editorResizeWidget,
@@ -127,6 +126,7 @@
   let slideshowIndex = 0;
   let slideshowTimer: number | undefined;
   let eventSource: EventSource | undefined;
+  let pollingTimer: number | undefined;
   let displayNotifications: DisplayNotification[] = [];
   let notificationTimers: number[] = [];
   let focusedWidgetId = '';
@@ -256,12 +256,14 @@
     updateTheme();
     query.addEventListener('change', updateTheme);
     void retryDashboard();
+    startPolling();
 
     return () => {
       mounted = false;
       query.removeEventListener('change', updateTheme);
       clearLongPress();
       disconnectDisplayEvents();
+      stopPolling();
       clearFocusTimer();
       if (slideshowTimer) {
         window.clearInterval(slideshowTimer);
@@ -638,7 +640,7 @@
     savingLayout = true;
     editIssue = '';
     try {
-      const saved = await saveWidgetLayout(fetch, packLayout(draftLayout));
+      const saved = await saveWidgetLayout(fetch, draftLayout);
       dashboard = {
         ...dashboard,
         layout: saved,
@@ -802,25 +804,109 @@
     }
   }
 
+  function startPolling() {
+    if (!browser || pollingTimer) {
+      return;
+    }
+    pollingTimer = window.setInterval(async () => {
+      await pollStatus();
+    }, 10000);
+  }
+
+  function stopPolling() {
+    if (pollingTimer) {
+      window.clearInterval(pollingTimer);
+      pollingTimer = undefined;
+    }
+  }
+
+  async function pollStatus() {
+    try {
+      const fresh = await getDashboard(fetch);
+      if (
+        dashboard.connectionState === 'offline' ||
+        dashboard.connectionState === 'reconnecting'
+      ) {
+        dashboard = fresh;
+        markConnected();
+      } else {
+        dashboard = {
+          ...fresh,
+          connectionState: dashboard.connectionState,
+          issue: dashboard.issue
+        };
+      }
+    } catch {
+      if (hasConnected) {
+        markIssue('reconnecting', {
+          code: 'hub_unreachable',
+          severity: 'error',
+          title: 'Hub not reachable',
+          message: `Jute Dash cannot connect to the local hub at ${dashboard.hubUrl}.`,
+          action: {
+            label: 'Retry',
+            target: 'retry'
+          }
+        });
+      } else {
+        markIssue('offline', {
+          code: 'hub_unreachable',
+          severity: 'error',
+          title: 'Hub not reachable',
+          message: `Jute Dash cannot connect to the local hub at ${dashboard.hubUrl}.`,
+          action: {
+            label: 'Retry',
+            target: 'retry'
+          }
+        });
+      }
+    }
+  }
+
   function connectDisplayEvents() {
     if (!browser || eventSource) {
       return;
     }
     eventSource = new EventSource(eventsURL());
-    eventSource.addEventListener('open', () => {
+    eventSource.addEventListener('open', async () => {
       if (hasConnected) {
+        try {
+          const fresh = await getDashboard(fetch);
+          dashboard = fresh;
+        } catch {
+          // ignore
+        }
         markConnected();
       }
     });
-    eventSource.addEventListener('error', () => {
+    eventSource.addEventListener('error', async () => {
       if (mounted && hasConnected) {
-        markIssue('reconnecting', {
-          code: 'event_stream_disconnected',
-          severity: 'warning',
-          title: 'Reconnecting',
-          message:
-            'Jute lost the live display event stream. Dashboard data may be stale.'
-        });
+        try {
+          const fresh = await getDashboard(fetch);
+          dashboard = {
+            ...fresh,
+            connectionState: 'degraded',
+            stale: false,
+            issue: {
+              code: 'event_stream_disconnected',
+              severity: 'warning',
+              title: 'Event stream disconnected',
+              message:
+                'Jute lost the live display event stream. Dashboard data may be stale.'
+            }
+          };
+        } catch {
+          markIssue('reconnecting', {
+            code: 'hub_unreachable',
+            severity: 'error',
+            title: 'Hub not reachable',
+            message: `Jute Dash cannot connect to the local hub at ${dashboard.hubUrl}.`,
+            action: {
+              label: 'Retry',
+              target: 'retry'
+            }
+          });
+        }
       }
     });
     eventSource.addEventListener('display.notification', (event) => {

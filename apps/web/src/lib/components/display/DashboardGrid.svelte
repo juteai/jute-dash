@@ -72,7 +72,7 @@
   let drag:
     | {
         id: string;
-        mode: 'move' | 'resize';
+        mode: 'move' | 'resize' | 'resize-w' | 'resize-h';
         startClientX: number;
         startClientY: number;
         startX: number;
@@ -81,8 +81,19 @@
         startH: number;
         cellWidth: number;
         rowHeight: number;
+        pointerId: number;
       }
     | undefined;
+
+  let dragDX = 0;
+  let dragDY = 0;
+  let ghostX = 0;
+  let ghostY = 0;
+  let ghostW = 0;
+  let ghostH = 0;
+
+  $: highestY = widgets.reduce((max, w) => Math.max(max, w.y + w.h), 0);
+  $: bgRows = Math.max(8, highestY + 4);
 
   function updateViewport() {
     if (typeof window !== 'undefined') {
@@ -99,7 +110,32 @@
   function gridStyle(widget: WidgetInstance) {
     const columns = Math.min(Math.max(widget.w, widget.minW, 1), activeColumns);
     const rows = Math.max(widget.h, widget.minH, 1);
-    return `grid-column: span ${columns}; min-height: ${rows * 124}px;`;
+    return `grid-column-start: ${widget.x + 1}; grid-column-end: span ${columns}; grid-row-start: ${widget.y + 1}; grid-row-end: span ${rows}; min-height: ${rows * 124 - 12}px;`;
+  }
+
+  function dragStyle(widget: WidgetInstance) {
+    if (!drag || drag.id !== widget.id) {
+      return '';
+    }
+    if (drag.mode === 'move') {
+      return `transform: translate3d(${dragDX}px, ${dragDY}px, 0) scale(1.02);`;
+    }
+    let extra = '';
+    if (drag.mode === 'resize-w' || drag.mode === 'resize') {
+      const targetWidth = Math.max(
+        drag.cellWidth - 12,
+        drag.startW * drag.cellWidth + dragDX - 12
+      );
+      extra += `width: ${targetWidth}px; max-width: none;`;
+    }
+    if (drag.mode === 'resize-h' || drag.mode === 'resize') {
+      const targetHeight = Math.max(
+        124 - 12,
+        drag.startH * drag.rowHeight + dragDY - 12
+      );
+      extra += `height: ${targetHeight}px; max-height: none;`;
+    }
+    return extra;
   }
 
   function toggleMenu(id: string) {
@@ -145,13 +181,21 @@
 
   function startDrag(
     widget: WidgetInstance,
-    mode: 'move' | 'resize',
+    mode: 'move' | 'resize' | 'resize-w' | 'resize-h',
     event: PointerEvent
   ) {
     if (!fineEdit || !canvasEl) {
       return;
     }
     event.stopPropagation();
+    event.preventDefault();
+
+    try {
+      canvasEl.setPointerCapture(event.pointerId);
+    } catch {
+      // ignore
+    }
+
     const metrics = gridMetrics();
     drag = {
       id: widget.id,
@@ -163,8 +207,16 @@
       startW: widget.w,
       startH: widget.h,
       cellWidth: metrics.cellWidth,
-      rowHeight: metrics.rowHeight
+      rowHeight: metrics.rowHeight,
+      pointerId: event.pointerId
     };
+    dragDX = 0;
+    dragDY = 0;
+    ghostX = widget.x;
+    ghostY = widget.y;
+    ghostW = widget.w;
+    ghostH = widget.h;
+
     window.addEventListener('pointermove', handleDragMove);
     window.addEventListener('pointerup', endDrag, { once: true });
     window.addEventListener('pointercancel', endDrag, { once: true });
@@ -174,16 +226,62 @@
     if (!drag) {
       return;
     }
-    const dx = Math.round((event.clientX - drag.startClientX) / drag.cellWidth);
-    const dy = Math.round((event.clientY - drag.startClientY) / drag.rowHeight);
+    dragDX = event.clientX - drag.startClientX;
+    dragDY = event.clientY - drag.startClientY;
+
+    const gridDX = Math.round(dragDX / drag.cellWidth);
+    const gridDY = Math.round(dragDY / drag.rowHeight);
+
+    const widget = widgets.find((w) => w.id === drag!.id);
+    const minW = widget ? widget.minW || 1 : 1;
+    const minH = widget ? widget.minH || 1 : 1;
+
     if (drag.mode === 'move') {
-      onMoveWidget(drag.id, drag.startX + dx, drag.startY + dy);
+      ghostX = Math.min(
+        Math.max(drag.startX + gridDX, 0),
+        activeColumns - drag.startW
+      );
+      ghostY = Math.max(drag.startY + gridDY, 0);
+      ghostW = drag.startW;
+      ghostH = drag.startH;
     } else {
-      onResizeWidget(drag.id, drag.startW + dx, drag.startH + dy);
+      ghostX = drag.startX;
+      ghostY = drag.startY;
+      if (drag.mode === 'resize-w' || drag.mode === 'resize') {
+        ghostW = Math.min(
+          Math.max(drag.startW + gridDX, minW),
+          activeColumns - drag.startX
+        );
+      } else {
+        ghostW = drag.startW;
+      }
+      if (drag.mode === 'resize-h' || drag.mode === 'resize') {
+        ghostH = Math.max(drag.startH + gridDY, minH);
+      } else {
+        ghostH = drag.startH;
+      }
     }
   }
 
-  function endDrag() {
+  function endDrag(event?: PointerEvent) {
+    if (drag) {
+      const pId = event?.pointerId ?? drag.pointerId;
+      try {
+        canvasEl.releasePointerCapture(pId);
+      } catch {
+        // ignore
+      }
+
+      if (drag.mode === 'move') {
+        if (ghostX !== drag.startX || ghostY !== drag.startY) {
+          onMoveWidget(drag.id, ghostX, ghostY);
+        }
+      } else {
+        if (ghostW !== drag.startW || ghostH !== drag.startH) {
+          onResizeWidget(drag.id, ghostW, ghostH);
+        }
+      }
+    }
     drag = undefined;
     if (typeof window !== 'undefined') {
       window.removeEventListener('pointermove', handleDragMove);
@@ -218,10 +316,33 @@
   style={`grid-template-columns: repeat(${activeColumns}, minmax(0, 1fr));`}
   aria-label="Widget dashboard"
 >
+  {#if editMode && fineEdit}
+    <div
+      class="dashboard-grid-background-grid"
+      style="grid-template-columns: repeat({activeColumns}, minmax(0, 1fr));"
+    >
+      {#each Array.from({ length: bgRows * activeColumns }, (_, idx) => idx) as idx (idx)}
+        <div class="dashboard-grid-cell-guide"></div>
+      {/each}
+    </div>
+  {/if}
+
+  {#if drag}
+    <div
+      class="dashboard-widget-placeholder"
+      style="grid-column-start: {ghostX +
+        1}; grid-column-end: span {ghostW}; grid-row-start: {ghostY +
+        1}; grid-row-end: span {ghostH}; min-height: {ghostH * 124 - 12}px;"
+    ></div>
+  {/if}
+
   {#each widgets as widget (widget.id)}
     <div
       class="dashboard-widget-slot"
-      style={gridStyle(widget)}
+      class:dashboard-widget-slot--dragging={drag && drag.id === widget.id}
+      style="{gridStyle(widget)} {drag && drag.id === widget.id
+        ? dragStyle(widget)
+        : ''}"
       data-widget-id={widget.id}
     >
       <WidgetFrame
@@ -232,11 +353,20 @@
         overflow={(widget.overflow ?? 'clip') as 'clip' | 'scroll' | 'expand'}
         state={determineWidgetState(widget, stale)}
         onMoveStart={(event) => startDrag(widget, 'move', event)}
-        onResizeStart={(event) => startDrag(widget, 'resize', event)}
+        onResizeStart={(event, resizeMode) =>
+          startDrag(
+            widget,
+            resizeMode === 'w'
+              ? 'resize-w'
+              : resizeMode === 'h'
+                ? 'resize-h'
+                : 'resize',
+            event
+          )}
       >
         <svelte:fragment slot="actions">
           {#if editMode}
-            <div class="widget-menu">
+            <div class="widget-menu" role="none" on:pointerdown|stopPropagation>
               <button
                 type="button"
                 class="widget-frame-handle"
@@ -370,7 +500,7 @@
     min-height: 40px;
   }
   .widget-menu-dropdown button:hover {
-    background: var(--strong-surface, rgba(255, 255, 255, 0.08));
+    background: var(--surface-strong, rgba(255, 255, 255, 0.08));
   }
   .widget-menu-danger {
     color: var(--danger, #ef4444);

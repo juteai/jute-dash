@@ -227,6 +227,74 @@ func NormalizeWidgetLayout(layout WidgetLayout, catalog map[string]WidgetCatalog
 	return layout, nil
 }
 
+func WidgetLayoutFromDashboardConfig(
+	cfg DashboardConfig,
+	catalog map[string]WidgetCatalogItem,
+) (WidgetLayout, error) {
+	layout := WidgetLayout{
+		ProfileID: DefaultLayoutProfileID,
+		Widgets:   make([]WidgetInstance, 0, len(cfg.Widgets)),
+	}
+	legacyColumns := usesLegacyColumns(cfg, catalog)
+	for _, w := range cfg.Widgets {
+		x := w.X
+		width := w.W
+		minW := w.MinW
+		if legacyColumns {
+			x *= LegacyColumnScale
+			width *= LegacyColumnScale
+			if minW > 0 {
+				minW *= LegacyColumnScale
+			}
+		}
+		if item, ok := catalog[w.Type]; ok {
+			if width == 0 {
+				width = item.DefaultW
+			}
+			if w.H == 0 {
+				w.H = item.DefaultH
+			}
+		}
+		layout.Widgets = append(layout.Widgets, WidgetInstance{
+			ID:       w.ID,
+			Kind:     w.Type,
+			Title:    w.Title,
+			X:        x,
+			Y:        w.Y,
+			W:        width,
+			H:        w.H,
+			MinW:     minW,
+			MinH:     w.MinH,
+			Size:     w.Size,
+			Mode:     normalizeMode(w.Mode),
+			Settings: w.Settings,
+			Visible:  w.Visible,
+		})
+	}
+	return NormalizeWidgetLayout(layout, catalog)
+}
+
+func usesLegacyColumns(cfg DashboardConfig, catalog map[string]WidgetCatalogItem) bool {
+	maxRight := 0
+	hasTile := false
+	for _, widget := range cfg.Widgets {
+		if normalizeMode(widget.Mode) == WidgetModeHeadless || !widget.Visible {
+			continue
+		}
+		hasTile = true
+		if right := widget.X + widget.W; right > maxRight {
+			maxRight = right
+		}
+		if widget.MinW > 0 || widget.MinH > 0 || strings.TrimSpace(widget.Size) != "" {
+			return false
+		}
+		if item, ok := catalog[widget.Type]; ok && widget.W > item.DefaultW {
+			return false
+		}
+	}
+	return hasTile && maxRight > 0 && maxRight <= 4
+}
+
 func DefaultWidgetLayout() WidgetLayout {
 	widgets := defaultWidgetInstances()
 	layout := WidgetLayout{

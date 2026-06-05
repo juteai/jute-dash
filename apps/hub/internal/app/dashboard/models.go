@@ -69,6 +69,9 @@ type DashboardWidgetConfig struct {
 	Y        int            `json:"y"                  yaml:"y"`
 	W        int            `json:"w"                  yaml:"w"`
 	H        int            `json:"h"                  yaml:"h"`
+	MinW     int            `json:"minW,omitempty"     yaml:"min-w,omitempty"`
+	MinH     int            `json:"minH,omitempty"     yaml:"min-h,omitempty"`
+	Size     string         `json:"size,omitempty"     yaml:"size,omitempty"`
 	Visible  bool           `json:"visible"            yaml:"visible"`
 	Mode     string         `json:"mode,omitempty"     yaml:"mode,omitempty"`
 	Settings map[string]any `json:"settings,omitempty" yaml:"settings,omitempty"`

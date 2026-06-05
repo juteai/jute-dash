@@ -19,6 +19,9 @@ import (
 	"jute-dash/apps/hub/internal/app/config"
 	a2a "jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
+	"jute-dash/apps/hub/mocks"
+
+	"github.com/stretchr/testify/mock"
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -866,14 +869,16 @@ func TestWidgetLayoutResetEndpoint(t *testing.T) {
 
 func TestWidgetLayoutPutReturnsSafeStoreFailure(t *testing.T) {
 	layout := DefaultWidgetLayout()
+	layoutStore := mocks.NewLayoutStore(t)
+	layoutStore.EXPECT().WidgetLayout(mock.Anything, "").Return(layout, nil)
+	layoutStore.EXPECT().
+		SaveWidgetLayout(mock.Anything, mock.Anything).
+		Return(WidgetLayout{}, errors.New("sqlite path /private/raw/details failed"))
 	handler := NewWithSetupStatusAndLayoutStore(
 		testConfig(),
 		"test",
 		SetupStatus{Complete: true},
-		&failingLayoutStore{
-			layout: layout,
-			err:    errors.New("sqlite path /private/raw/details failed"),
-		},
+		layoutStore,
 	)
 	payload, err := json.Marshal(layout)
 	if err != nil {
@@ -1250,12 +1255,8 @@ func TestConversationCreateWithInitialTextSendsTurnToAgent(t *testing.T) {
 	}
 }
 
-type messageOnlySender struct {
-	a2a.MessageSender
-}
-
 func TestConversationListShowsUnsupportedStateWhenAgentDoesNotExposeHistory(t *testing.T) {
-	handler := NewWithMessageSender(testConfig(), "test", &messageOnlySender{a2a.NewInMemoryClient()})
+	handler := NewWithMessageSender(testConfig(), "test", mocks.NewMessageSender(t))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?agentId=house", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -1461,26 +1462,6 @@ func openInitializedServerStore(t *testing.T) *Store {
 	return runtimeStore
 }
 
-type failingLayoutStore struct {
-	layout WidgetLayout
-	err    error
-}
-
-func (s *failingLayoutStore) WidgetLayout(ctx context.Context, profileID string) (WidgetLayout, error) {
-	return s.layout, nil
-}
-
-func (s *failingLayoutStore) SaveWidgetLayout(
-	ctx context.Context,
-	layout WidgetLayout,
-) (WidgetLayout, error) {
-	return WidgetLayout{}, s.err
-}
-
-func (s *failingLayoutStore) ResetWidgetLayout(ctx context.Context, profileID string) (WidgetLayout, error) {
-	return WidgetLayout{}, s.err
-}
-
 // Removed fakeMessageSender, fakeTaskHistorySender, fakeStreamingSender structs in favor of a2a.InMemoryClient
 
 type sseEvent struct {
@@ -1550,4 +1531,11 @@ func streamingAgentCardServer(t *testing.T, streaming bool) *httptest.Server {
 			"defaultOutputModes": []string{"text/plain"},
 		})
 	}))
+}
+
+//nolint:unparam // status is always 200 in tests but kept for API consistency with production writeJSON.
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
 }

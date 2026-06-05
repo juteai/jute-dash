@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"jute-dash/apps/hub/internal/pkg/httphelper"
 )
 
 var errInvalidHouseholdSettings = errors.New("invalid household settings")
@@ -53,15 +55,15 @@ func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
 
 func (c *Controller) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		c.writeMethodNotAllowed(w, http.MethodGet)
+		httphelper.WriteMethodNotAllowed(w, http.MethodGet)
 		return
 	}
 	status, err := c.settings.SetupStatus(r.Context())
 	if err != nil {
-		c.writeError(w, http.StatusInternalServerError, "setup status is unavailable")
+		httphelper.WriteError(w, http.StatusInternalServerError, "setup status is unavailable")
 		return
 	}
-	c.writeJSON(w, http.StatusOK, status)
+	httphelper.WriteJSON(w, http.StatusOK, status)
 }
 
 func (c *Controller) handleHouseholdSettings(w http.ResponseWriter, r *http.Request) {
@@ -69,14 +71,14 @@ func (c *Controller) handleHouseholdSettings(w http.ResponseWriter, r *http.Requ
 	case http.MethodGet:
 		settings, err := c.settings.HouseholdSettings(r.Context())
 		if err != nil {
-			c.writeError(w, http.StatusInternalServerError, "household settings are unavailable")
+			httphelper.WriteError(w, http.StatusInternalServerError, "household settings are unavailable")
 			return
 		}
-		c.writeJSON(w, http.StatusOK, settings)
+		httphelper.WriteJSON(w, http.StatusOK, settings)
 	case http.MethodPatch:
 		var req HouseholdSettings
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			c.writeError(w, http.StatusBadRequest, "invalid JSON request body")
+			httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
 			return
 		}
 
@@ -87,13 +89,13 @@ func (c *Controller) handleHouseholdSettings(w http.ResponseWriter, r *http.Requ
 
 		merged := mergeHouseholdSettings(current, req)
 		if err := validateHouseholdSettings(merged); err != nil {
-			c.writeError(w, http.StatusBadRequest, err.Error())
+			httphelper.WriteError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
 		saved, err := c.settings.SaveHouseholdSettings(r.Context(), merged)
 		if err != nil {
-			c.writeError(w, http.StatusInternalServerError, "household settings could not be saved")
+			httphelper.WriteError(w, http.StatusInternalServerError, "household settings could not be saved")
 			return
 		}
 
@@ -101,9 +103,9 @@ func (c *Controller) handleHouseholdSettings(w http.ResponseWriter, r *http.Requ
 			c.onUpdate(saved)
 		}
 
-		c.writeJSON(w, http.StatusOK, saved)
+		httphelper.WriteJSON(w, http.StatusOK, saved)
 	default:
-		c.writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPatch)
+		httphelper.WriteMethodNotAllowed(w, http.MethodGet+", "+http.MethodPatch)
 	}
 }
 
@@ -145,25 +147,25 @@ func (c *Controller) handleTileSettings(w http.ResponseWriter, r *http.Request) 
 
 func (c *Controller) handleHome(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		c.writeMethodNotAllowed(w, http.MethodGet)
+		httphelper.WriteMethodNotAllowed(w, http.MethodGet)
 		return
 	}
 	settings, err := c.settings.HouseholdSettings(r.Context())
 	if err != nil {
-		c.writeError(w, http.StatusInternalServerError, "home state is unavailable")
+		httphelper.WriteError(w, http.StatusInternalServerError, "home state is unavailable")
 		return
 	}
 	rooms, err := c.settings.Rooms(r.Context())
 	if err != nil {
-		c.writeError(w, http.StatusInternalServerError, "home state is unavailable")
+		httphelper.WriteError(w, http.StatusInternalServerError, "home state is unavailable")
 		return
 	}
 	tiles, err := c.settings.Tiles(r.Context())
 	if err != nil {
-		c.writeError(w, http.StatusInternalServerError, "home state is unavailable")
+		httphelper.WriteError(w, http.StatusInternalServerError, "home state is unavailable")
 		return
 	}
-	c.writeJSON(w, http.StatusOK, FromConfig(settings.Home, rooms, tiles, time.Now()))
+	httphelper.WriteJSON(w, http.StatusOK, FromConfig(settings.Home, rooms, tiles, time.Now()))
 }
 
 // Helpers
@@ -177,7 +179,7 @@ type configSliceSettings[T any] struct {
 }
 
 func handleConfigSliceSettingsGeneric[T any](
-	c *Controller,
+	_ *Controller,
 	w http.ResponseWriter,
 	r *http.Request,
 	settings configSliceSettings[T],
@@ -186,28 +188,28 @@ func handleConfigSliceSettingsGeneric[T any](
 	case http.MethodGet:
 		values, err := settings.load(r.Context())
 		if err != nil {
-			c.writeError(w, http.StatusInternalServerError, settings.loadError)
+			httphelper.WriteError(w, http.StatusInternalServerError, settings.loadError)
 			return
 		}
-		c.writeJSON(w, http.StatusOK, map[string]any{settings.key: values})
+		httphelper.WriteJSON(w, http.StatusOK, map[string]any{settings.key: values})
 	case http.MethodPut:
 		var req map[string][]T
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			c.writeError(w, http.StatusBadRequest, "invalid JSON request body")
+			httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
 			return
 		}
 		values, err := settings.save(r.Context(), req[settings.key])
 		if err != nil {
 			if errors.Is(err, ErrInvalidSettings) {
-				c.writeError(w, http.StatusBadRequest, err.Error())
+				httphelper.WriteError(w, http.StatusBadRequest, err.Error())
 				return
 			}
-			c.writeError(w, http.StatusInternalServerError, settings.saveError)
+			httphelper.WriteError(w, http.StatusInternalServerError, settings.saveError)
 			return
 		}
-		c.writeJSON(w, http.StatusOK, map[string]any{settings.key: values})
+		httphelper.WriteJSON(w, http.StatusOK, map[string]any{settings.key: values})
 	default:
-		c.writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut)
+		httphelper.WriteMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut)
 	}
 }
 
@@ -239,7 +241,11 @@ func mergeHouseholdSettings(current, next HouseholdSettings) HouseholdSettings {
 	}
 
 	// We handle Display as a generic map or shape.
-	currentDisplay, _ := current.Display.(DisplaySettings)
+	currentDisplayBytes, err := json.Marshal(current.Display)
+	var currentDisplay DisplaySettings
+	if err == nil {
+		_ = json.Unmarshal(currentDisplayBytes, &currentDisplay)
+	}
 	nextDisplayBytes, err := json.Marshal(next.Display)
 	var nextDisplay DisplaySettings
 	if err == nil {
@@ -309,19 +315,4 @@ func validateHouseholdSettings(settings HouseholdSettings) error {
 		return fmt.Errorf("%w: %s", errInvalidHouseholdSettings, strings.Join(probs, "; "))
 	}
 	return nil
-}
-
-func (c *Controller) writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
-}
-
-func (c *Controller) writeError(w http.ResponseWriter, status int, message string) {
-	c.writeJSON(w, status, map[string]string{"error": message})
-}
-
-func (c *Controller) writeMethodNotAllowed(w http.ResponseWriter, allow string) {
-	w.Header().Set("Allow", allow)
-	c.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 }

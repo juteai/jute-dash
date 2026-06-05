@@ -784,7 +784,7 @@
     min-height: 44px;
   }
   .background-upload:hover {
-    background: var(--strong-surface, rgba(255, 255, 255, 0.06));
+    background: var(--surface-strong, rgba(255, 255, 255, 0.06));
   }
   .background-grid {
     display: grid;

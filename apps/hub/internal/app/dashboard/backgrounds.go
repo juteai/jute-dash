@@ -81,6 +81,7 @@ func (c *BackgroundsController) handleUpload(w http.ResponseWriter, r *http.Requ
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBackgroundUploadBytes+1024)
 
+	//nolint:gosec // G120: body is already bounded by MaxBytesReader above.
 	if err := r.ParseMultipartForm(maxBackgroundUploadBytes + 1024); err != nil {
 		writeBackgroundError(w, http.StatusRequestEntityTooLarge, "uploaded image is too large or malformed")
 		return

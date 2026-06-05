@@ -5,9 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"jute-dash/apps/hub/internal/app"
@@ -102,6 +106,9 @@ func run() error {
 	)
 	log.Printf("jute data directory: %q", dataDir) //nolint:gosec // Quoted local path is useful startup diagnostics.
 
+	baseCtx, cancelBase := context.WithCancel(context.Background())
+	defer cancelBase()
+
 	var mcpServer *http.Server
 	if cfg.MCP.Enabled {
 		mcpProvider := &mcpSnapshotProvider{
@@ -118,18 +125,14 @@ func run() error {
 			ReadTimeout:       30 * time.Second,
 			WriteTimeout:      30 * time.Second,
 			IdleTimeout:       60 * time.Second,
+			BaseContext: func(_ net.Listener) context.Context {
+				return baseCtx
+			},
 		}
 		go func() {
 			log.Printf("jute MCP bridge listening on http://%s%s", cfg.MCP.ListenAddress, cfg.MCP.Path)
 			if err := mcpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Printf("serve MCP bridge: %v", err)
-			}
-		}()
-		defer func() {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := mcpServer.Shutdown(shutdownCtx); err != nil {
-				log.Printf("shutdown MCP bridge: %v", err)
 			}
 		}()
 	}
@@ -142,10 +145,53 @@ func run() error {
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
+		BaseContext: func(_ net.Listener) context.Context {
+			return baseCtx
+		},
 	}
-	if err := hubServer.ListenAndServe(); err != nil {
-		return fmt.Errorf("serve: %w", err)
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	errChan := make(chan error, 2)
+	go func() {
+		if err := hubServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errChan <- fmt.Errorf("serve: %w", err)
+		}
+	}()
+
+	select {
+	case sig := <-stop:
+		log.Printf("received signal %v, shutting down gracefully...", sig)
+	case err := <-errChan:
+		return err
 	}
+
+	cancelBase()
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	if mcpServer != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := mcpServer.Shutdown(shutdownCtx); err != nil {
+				log.Printf("shutdown MCP bridge: %v", err)
+			}
+		}()
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := hubServer.Shutdown(shutdownCtx); err != nil {
+			log.Printf("shutdown hub server: %v", err)
+		}
+	}()
+
+	wg.Wait()
 	return nil
 }
 

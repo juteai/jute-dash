@@ -3,7 +3,7 @@ SHELL := /bin/bash
 WEB_DIR := apps/web
 NPM ?= npm
 
-.PHONY: setup pre-commit-install lint test web-lint web-format-check web-check web-test web-build check reset
+.PHONY: setup pre-commit-install lint test generate-mocks web-lint web-format-check web-check web-test web-build check reset
 
 setup:
 	@echo "Checking for Homebrew dependencies..."
@@ -38,6 +38,10 @@ lint:
 test:
 	cd apps/hub && go test ./...
 
+generate-mocks:
+	go run github.com/vektra/mockery/v2@latest --config=.mockery.yaml
+	go run github.com/vektra/mockery/v2@latest --config=/dev/null --name=Syncer --srcpkg=jute-dash/apps/hub/internal/app/agents --output=apps/hub/internal/app/agents --filename=agent_syncer_mock_test.go --structname=AgentSyncer --with-expecter --inpackage --testonly
+
 web-lint:
 	cd $(WEB_DIR) && $(NPM) run lint
 
@@ -53,7 +57,7 @@ web-test:
 web-build:
 	cd $(WEB_DIR) && $(NPM) run build
 
-check: lint test web-lint web-format-check web-check web-test web-build
+check: generate-mocks lint test web-lint web-format-check web-check web-test web-build
 
 reset:
 	@echo "Resetting development store directories..."

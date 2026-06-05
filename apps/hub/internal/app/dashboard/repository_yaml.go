@@ -2,28 +2,25 @@ package dashboard
 
 import (
 	"context"
-	"errors"
 	"sync"
 )
 
-type YAMLRepository struct {
-	mu         sync.RWMutex
-	configPath string
-	catalog    map[string]WidgetCatalogItem
-	loadFn     func(path string) (DashboardConfig, error)
-	saveFn     func(path string, cfg DashboardConfig) error
+// Syncer defines the interface needed for dashboard config persistence.
+type Syncer interface {
+	SyncDashboard(ctx context.Context, cfg DashboardConfig) error
+	DashboardConfig(ctx context.Context) (DashboardConfig, error)
 }
 
-func NewYAMLRepository(
-	configPath string,
-	loadFn func(path string) (DashboardConfig, error),
-	saveFn func(path string, cfg DashboardConfig) error,
-) *YAMLRepository {
+type YAMLRepository struct {
+	mu      sync.RWMutex
+	catalog map[string]WidgetCatalogItem
+	syncer  Syncer
+}
+
+func NewYAMLRepository(syncer Syncer) *YAMLRepository {
 	return &YAMLRepository{
-		configPath: configPath,
-		catalog:    widgetCatalogByKind(),
-		loadFn:     loadFn,
-		saveFn:     saveFn,
+		catalog: widgetCatalogByKind(),
+		syncer:  syncer,
 	}
 }
 
@@ -37,62 +34,20 @@ func (y *YAMLRepository) SetCatalog(items []WidgetCatalogItem) {
 	y.catalog = m
 }
 
-func (y *YAMLRepository) load() (DashboardConfig, error) {
-	if y.configPath == "" {
-		return DashboardConfig{}, errors.New("config path is empty")
-	}
-	return y.loadFn(y.configPath)
-}
-
-func (y *YAMLRepository) save(cfg DashboardConfig) error {
-	if y.configPath == "" {
-		return errors.New("cannot save: config path is empty")
-	}
-	return y.saveFn(y.configPath, cfg)
-}
-
-func (y *YAMLRepository) WidgetLayout(_ context.Context, _ string) (WidgetLayout, error) {
+func (y *YAMLRepository) WidgetLayout(ctx context.Context, _ string) (WidgetLayout, error) {
 	y.mu.RLock()
 	defer y.mu.RUnlock()
-	cfg, err := y.load()
+	cfg, err := y.syncer.DashboardConfig(ctx)
 	if err != nil {
 		return WidgetLayout{}, err
 	}
-	layout := WidgetLayout{
-		ProfileID: DefaultLayoutProfileID,
-		Widgets:   make([]WidgetInstance, 0, len(cfg.Widgets)),
-	}
-	for _, w := range cfg.Widgets {
-		wi := WidgetInstance{
-			ID:       w.ID,
-			Kind:     w.Type,
-			Title:    w.Title,
-			X:        w.X,
-			Y:        w.Y,
-			W:        w.W,
-			H:        w.H,
-			Mode:     normalizeMode(w.Mode),
-			Settings: w.Settings,
-			Visible:  w.Visible,
-		}
-		if wi.Settings == nil {
-			wi.Settings = map[string]any{}
-		}
-		if item, ok := y.catalog[wi.Kind]; ok {
-			wi.MinW = item.MinW
-			wi.MinH = item.MinH
-			wi.Size = item.DefaultSize
-			wi.Overflow = item.Overflow
-		}
-		layout.Widgets = append(layout.Widgets, wi)
-	}
-	return layout, nil
+	return WidgetLayoutFromDashboardConfig(cfg, y.catalog)
 }
 
-func (y *YAMLRepository) SaveWidgetLayout(_ context.Context, layout WidgetLayout) (WidgetLayout, error) {
+func (y *YAMLRepository) SaveWidgetLayout(ctx context.Context, layout WidgetLayout) (WidgetLayout, error) {
 	y.mu.Lock()
 	defer y.mu.Unlock()
-	_, err := y.load()
+	_, err := y.syncer.DashboardConfig(ctx)
 	if err != nil {
 		return WidgetLayout{}, err
 	}
@@ -110,19 +65,22 @@ func (y *YAMLRepository) SaveWidgetLayout(_ context.Context, layout WidgetLayout
 			Y:        w.Y,
 			W:        w.W,
 			H:        w.H,
+			MinW:     w.MinW,
+			MinH:     w.MinH,
+			Size:     w.Size,
 			Visible:  w.Visible,
 			Mode:     w.Mode,
 			Settings: w.Settings,
 		})
 	}
 	cfg := DashboardConfig{Widgets: widgets}
-	if err := y.save(cfg); err != nil {
+	if err := y.syncer.SyncDashboard(ctx, cfg); err != nil {
 		return WidgetLayout{}, err
 	}
 	return normalized, nil
 }
 
-func (y *YAMLRepository) ResetWidgetLayout(_ context.Context, profileID string) (WidgetLayout, error) {
+func (y *YAMLRepository) ResetWidgetLayout(ctx context.Context, profileID string) (WidgetLayout, error) {
 	y.mu.Lock()
 	defer y.mu.Unlock()
 	layout := DefaultWidgetLayout()
@@ -139,13 +97,16 @@ func (y *YAMLRepository) ResetWidgetLayout(_ context.Context, profileID string) 
 			Y:        w.Y,
 			W:        w.W,
 			H:        w.H,
+			MinW:     w.MinW,
+			MinH:     w.MinH,
+			Size:     w.Size,
 			Visible:  w.Visible,
 			Mode:     w.Mode,
 			Settings: w.Settings,
 		})
 	}
 	cfg := DashboardConfig{Widgets: widgets}
-	if err := y.save(cfg); err != nil {
+	if err := y.syncer.SyncDashboard(ctx, cfg); err != nil {
 		return WidgetLayout{}, err
 	}
 	return layout, nil

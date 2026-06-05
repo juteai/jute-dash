@@ -185,6 +185,41 @@ export function addWidget(
   };
 }
 
+export function overlaps(a: WidgetInstance, b: WidgetInstance): boolean {
+  return (
+    a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+  );
+}
+
+export function pushDown(
+  widgets: WidgetInstance[],
+  target: WidgetInstance,
+  activeId: string,
+  pushed = new Set<string>()
+): void {
+  pushed.add(target.id);
+  for (const other of widgets) {
+    if (other.id === target.id || !rendersTile(other) || pushed.has(other.id)) {
+      continue;
+    }
+    if (overlaps(target, other)) {
+      other.y = target.y + target.h;
+      pushDown(widgets, other, activeId, pushed);
+    }
+  }
+}
+
+export function resolveOverlaps(
+  widgets: WidgetInstance[],
+  activeId: string
+): void {
+  const active = widgets.find((w) => w.id === activeId);
+  if (!active || !rendersTile(active)) {
+    return;
+  }
+  pushDown(widgets, active, activeId);
+}
+
 export function moveWidget(
   layout: WidgetLayout,
   widgetId: string,
@@ -198,7 +233,9 @@ export function moveWidget(
   }
   widget.x = x;
   widget.y = y;
-  return packLayout(next, widgetId);
+  clampWidget(widget);
+  resolveOverlaps(next.widgets, widgetId);
+  return next;
 }
 
 export function resizeWidget(
@@ -214,8 +251,9 @@ export function resizeWidget(
   }
   widget.w = w;
   widget.h = h;
-  widget.size = sizeFromDimensions(w, h);
-  return packLayout(next, widgetId);
+  clampWidget(widget);
+  resolveOverlaps(next.widgets, widgetId);
+  return next;
 }
 
 export function removeWidget(
@@ -228,7 +266,7 @@ export function removeWidget(
     return layout;
   }
   widget.visible = false;
-  return packLayout(next);
+  return next;
 }
 
 /**

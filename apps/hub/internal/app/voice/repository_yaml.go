@@ -2,48 +2,31 @@ package voice
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 )
 
+// Syncer defines the interface needed for voice config persistence.
+type Syncer interface {
+	SyncVoice(ctx context.Context, cfg Config) error
+	VoiceConfig(ctx context.Context) (Config, error)
+}
+
 type YAMLRepository struct {
-	mu         sync.RWMutex
-	configPath string
-	loadFn     func(path string) (Config, error)
-	saveFn     func(path string, cfg Config) error
+	mu     sync.RWMutex
+	syncer Syncer
 }
 
-func NewYAMLRepository(
-	configPath string,
-	loadFn func(path string) (Config, error),
-	saveFn func(path string, cfg Config) error,
-) *YAMLRepository {
+func NewYAMLRepository(syncer Syncer) *YAMLRepository {
 	return &YAMLRepository{
-		configPath: configPath,
-		loadFn:     loadFn,
-		saveFn:     saveFn,
+		syncer: syncer,
 	}
 }
 
-func (y *YAMLRepository) load() (Config, error) {
-	if y.configPath == "" {
-		return Config{}, errors.New("config path is empty")
-	}
-	return y.loadFn(y.configPath)
-}
-
-func (y *YAMLRepository) save(cfg Config) error {
-	if y.configPath == "" {
-		return errors.New("cannot save: config path is empty")
-	}
-	return y.saveFn(y.configPath, cfg)
-}
-
-func (y *YAMLRepository) VoiceSettings(_ context.Context, _ string) (Settings, error) {
+func (y *YAMLRepository) VoiceSettings(ctx context.Context, _ string) (Settings, error) {
 	y.mu.RLock()
 	defer y.mu.RUnlock()
-	cfg, err := y.load()
+	cfg, err := y.syncer.VoiceConfig(ctx)
 	if err != nil {
 		return Settings{}, err
 	}
@@ -68,18 +51,18 @@ func (y *YAMLRepository) VoiceSettings(_ context.Context, _ string) (Settings, e
 }
 
 func (y *YAMLRepository) SetVoiceMuted(
-	_ context.Context,
+	ctx context.Context,
 	_ string,
 	muted bool,
 ) (Settings, error) {
 	y.mu.Lock()
 	defer y.mu.Unlock()
-	cfg, err := y.load()
+	cfg, err := y.syncer.VoiceConfig(ctx)
 	if err != nil {
 		return Settings{}, err
 	}
 	cfg.MutedByDefault = muted
-	if err := y.save(cfg); err != nil {
+	if err := y.syncer.SyncVoice(ctx, cfg); err != nil {
 		return Settings{}, err
 	}
 	return Settings{

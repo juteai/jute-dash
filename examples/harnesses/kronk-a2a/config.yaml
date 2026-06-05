@@ -17,8 +17,8 @@ a2a:
     allowed-agent-card-urls: []
     allow-loopback: true
 display:
-    theme: light
-    color-mode: light
+    theme: system
+    color-mode: system
     theme-id: jute-mono
     density: comfortable
     motion: full
@@ -57,70 +57,33 @@ voice:
     microphone-profile: ""
 dashboard:
     widgets:
-        - id: date-time-widget
+        - id: date-time
           type: date-time
-          title: Clock
+          title: Date & Time
           x: 0
           "y": 0
-          w: 3
+          w: 6
           h: 1
           visible: true
           mode: ui
-          settings:
-            chrome: smoked
-        - id: weather-widget
+        - id: weather
           type: weather
-          title: Local Weather
-          x: 3
-          "y": 0
-          w: 3
-          h: 1
-          visible: true
-          mode: ui
-          settings:
-            chrome: smoked
-            latitude: 51.5072
-            location: London
-            longitude: -0.1276
-            temperature-unit: celsius
-            wind-speed-unit: kmh
-        - id: assistant-chat
-          type: chat-history
-          title: Concierge Chat
-          x: 9
-          "y": 0
-          w: 3
-          h: 2
-          visible: true
-          mode: ui
-        - id: hacker-news
-          type: rss
-          title: Tech News
+          title: Weather
           x: 6
           "y": 0
-          w: 3
+          w: 6
           h: 1
           visible: true
           mode: ui
-          settings:
-            feeds:
-                - name: Hacker News
-                  url: https://news.ycombinator.com/rss
-            limit: 5
-        - id: stocks-watchlist
-          type: markets
-          title: Markets
+        - id: chat-history
+          type: chat-history
+          title: Chat History
           x: 0
           "y": 1
-          w: 3
+          w: 6
           h: 2
           visible: true
           mode: ui
-          settings:
-            tickers:
-                - AAPL
-                - GOOG
-                - symbol: BTC-USD
 agents:
     - id: kronk-local
       name: Kronk Local

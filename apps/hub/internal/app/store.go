@@ -270,28 +270,36 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 			}
 		}
 
-		for i, widget := range defaultWidgetInstances() {
+		layout, err := dashboard.WidgetLayoutFromDashboardConfig(
+			cfg.Dashboard,
+			widgetCatalogForSeed(),
+		)
+		if err != nil {
+			return fmt.Errorf("seed dashboard widgets: %w", err)
+		}
+
+		for i, widget := range layout.Widgets {
 			wDB := dashboard.WidgetInstanceDB{
-				ID:              widget.id,
-				Kind:            widget.kind,
-				Title:           widget.title,
+				ID:              widget.ID,
+				Kind:            widget.Kind,
+				Title:           widget.Title,
 				LayoutProfileID: homestate.DefaultLayoutProfileID,
-				X:               widget.x,
-				Y:               widget.y,
-				W:               widget.w,
-				H:               widget.h,
-				MinW:            widget.minW,
-				MinH:            widget.minH,
-				Size:            widget.size,
-				Mode:            dashboard.WidgetModeUI,
-				SettingsJSON:    "{}",
-				Visible:         boolToInt(widget.visible),
+				X:               widget.X,
+				Y:               widget.Y,
+				W:               widget.W,
+				H:               widget.H,
+				MinW:            widget.MinW,
+				MinH:            widget.MinH,
+				Size:            widget.Size,
+				Mode:            widget.Mode,
+				SettingsJSON:    mustJSONString(widget.Settings),
+				Visible:         boolToInt(widget.Visible),
 				SortOrder:       i,
 				CreatedAt:       now,
 				UpdatedAt:       now,
 			}
 			if err := tx.Create(&wDB).Error; err != nil {
-				return fmt.Errorf("seed widget %s: %w", widget.id, err)
+				return fmt.Errorf("seed widget %s: %w", widget.ID, err)
 			}
 		}
 
@@ -447,6 +455,30 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 		}
 	}
 
+	layoutRepo := dashboard.NewRepository(s.DB())
+	layout, err := layoutRepo.WidgetLayout(ctx, "")
+	if err == nil {
+		widgets := make([]dashboard.DashboardWidgetConfig, 0, len(layout.Widgets))
+		for _, w := range layout.Widgets {
+			widgets = append(widgets, dashboard.DashboardWidgetConfig{
+				ID:       w.ID,
+				Type:     w.Kind,
+				Title:    w.Title,
+				X:        w.X,
+				Y:        w.Y,
+				W:        w.W,
+				H:        w.H,
+				MinW:     w.MinW,
+				MinH:     w.MinH,
+				Size:     w.Size,
+				Visible:  w.Visible,
+				Mode:     w.Mode,
+				Settings: w.Settings,
+			})
+		}
+		cfg.Dashboard.Widgets = widgets
+	}
+
 	cfg.Agents = nil
 	cfg.Rooms = rooms
 	cfg.Tiles = tiles
@@ -479,62 +511,16 @@ func (s *Store) SetupStatus(ctx context.Context) (homestate.SetupStatus, error) 
 
 // Helpers
 
-type defaultWidgetInstance struct {
-	id      string
-	kind    string
-	title   string
-	x       int
-	y       int
-	w       int
-	h       int
-	minW    int
-	minH    int
-	size    string
-	visible bool
-}
-
-func defaultWidgetInstances() []defaultWidgetInstance {
-	return []defaultWidgetInstance{
-		{
-			id:      "date-time",
-			kind:    "date-time",
-			title:   "Date & Time",
-			x:       0,
-			y:       0,
-			w:       6,
-			h:       1,
-			minW:    3,
-			minH:    1,
-			size:    "wide",
-			visible: true,
-		},
-		{
-			id:      "weather",
-			kind:    "weather",
-			title:   "Weather",
-			x:       6,
-			y:       0,
-			w:       6,
-			h:       1,
-			minW:    3,
-			minH:    1,
-			size:    "wide",
-			visible: true,
-		},
-		{
-			id:      "chat-history",
-			kind:    "chat-history",
-			title:   "Chat History",
-			x:       0,
-			y:       1,
-			w:       6,
-			h:       2,
-			minW:    3,
-			minH:    1,
-			size:    "medium",
-			visible: true,
-		},
+func widgetCatalogForSeed() map[string]dashboard.WidgetCatalogItem {
+	items := dashboard.RegisteredCatalog()
+	if len(items) == 0 {
+		items = dashboard.WidgetCatalog()
 	}
+	catalog := make(map[string]dashboard.WidgetCatalogItem, len(items))
+	for _, item := range items {
+		catalog[item.Kind] = item
+	}
+	return catalog
 }
 
 func setupStatusForSeed(cfg config.Config, bootstrapProvided bool) homestate.SetupStatus {

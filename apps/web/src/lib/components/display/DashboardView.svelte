@@ -302,7 +302,7 @@
     gap: 8px;
     padding: 6px 10px;
     border-radius: 999px;
-    background: var(--strong-surface, rgba(255, 255, 255, 0.08));
+    background: var(--surface-strong, rgba(255, 255, 255, 0.08));
     border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   }
   .headless-chip-title {

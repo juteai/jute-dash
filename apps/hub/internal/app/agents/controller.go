@@ -10,6 +10,7 @@ import (
 	"time"
 
 	a2aclient "jute-dash/apps/hub/internal/pkg/a2a"
+	"jute-dash/apps/hub/internal/pkg/httphelper"
 	"jute-dash/apps/hub/internal/pkg/registry"
 )
 
@@ -83,14 +84,14 @@ func (c *Controller) handleAgentSubroutes(w http.ResponseWriter, r *http.Request
 				c.writeError(w, http.StatusBadRequest, "invalid JSON request body")
 				return
 			}
-			agent, err := c.opts.Manager.Patch(agentID, req.Enabled)
+			agent, err := c.opts.Manager.Patch(r.Context(), agentID, req.Enabled)
 			if err != nil {
 				c.writeAgentConfigError(w, err)
 				return
 			}
 			c.writeJSON(w, http.StatusOK, agent)
 		case http.MethodDelete:
-			if err := c.opts.Manager.Delete(agentID); err != nil {
+			if err := c.opts.Manager.Delete(r.Context(), agentID); err != nil {
 				c.writeAgentConfigError(w, err)
 				return
 			}
@@ -323,6 +324,9 @@ func (c *Controller) handleConversationTurnStream(
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
+
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
 
 	ch := make(chan Event, 100)
 	done := make(chan struct{})
@@ -583,18 +587,15 @@ func (c *Controller) writeAgentConfigError(w http.ResponseWriter, err error) {
 }
 
 func (c *Controller) writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	httphelper.WriteJSON(w, status, value)
 }
 
 func (c *Controller) writeError(w http.ResponseWriter, status int, message string) {
-	c.writeJSON(w, status, map[string]string{"error": message})
+	httphelper.WriteError(w, status, message)
 }
 
 func (c *Controller) writeMethodNotAllowed(w http.ResponseWriter, allow string) {
-	w.Header().Set("Allow", allow)
-	c.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	httphelper.WriteMethodNotAllowed(w, allow)
 }
 
 func (c *Controller) writeConversationError(w http.ResponseWriter, err error) {
