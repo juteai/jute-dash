@@ -110,6 +110,18 @@ describe('api conversation history', () => {
     ]);
   });
 
+  it('does not hide temporary history failures as unsupported capability', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        jsonResponse({ error: 'agent proxy unavailable' }, { status: 502 })
+      );
+
+    await expect(getConversations(fetcher, 'house')).rejects.toThrow(
+      /Status: 502/
+    );
+  });
+
   it('creates a conversation detail locally', async () => {
     const fetcher = vi.fn<typeof fetch>();
 
@@ -178,6 +190,159 @@ describe('api conversation history', () => {
         body: expect.stringContaining('"SendMessage"')
       })
     );
+  });
+
+  it('uses a direct blocking message without requiring task history', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        if (body.method === 'SendMessage') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {
+              message: message('ROLE_AGENT', 'Direct response', 'msg-2')
+            }
+          });
+        }
+        return jsonResponse(
+          {
+            jsonrpc: '2.0',
+            id: body.id,
+            error: { code: -32601, message: 'Method not found' }
+          },
+          { status: 501 }
+        );
+      });
+
+    const result = await sendConversationTurn(
+      fetcher,
+      'ctx-1',
+      'house',
+      'Hello'
+    );
+
+    expect(result.conversation).toEqual(
+      expect.objectContaining({
+        id: 'ctx-1',
+        status: 'completed',
+        historyUnsupported: true
+      })
+    );
+    expect(result.messages).toEqual([
+      expect.objectContaining({ role: 'user', content: 'Hello' }),
+      expect.objectContaining({
+        role: 'assistant',
+        content: 'Direct response'
+      })
+    ]);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a terminal failed task without loading history', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        return jsonResponse({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: {
+            task: {
+              ...task('task-1', 'ctx-1'),
+              status: {
+                state: 'TASK_STATE_FAILED',
+                timestamp: '2026-06-02T10:01:00Z'
+              }
+            }
+          }
+        });
+      });
+
+    await expect(
+      sendConversationTurn(fetcher, 'ctx-1', 'house', 'Hello')
+    ).rejects.toThrow('Agent task failed');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders task artifact text in blocking conversation results', async () => {
+    const artifactTask = {
+      ...task('task-1', 'ctx-1', [
+        message('ROLE_USER', 'Summarize it', 'msg-1')
+      ]),
+      artifacts: [
+        {
+          artifactId: 'artifact-1',
+          name: 'Summary',
+          parts: [{ text: 'The summary result' }]
+        }
+      ]
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        if (body.method === 'SendMessage') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { task: artifactTask }
+          });
+        }
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [artifactTask] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: artifactTask
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+
+    const result = await sendConversationTurn(
+      fetcher,
+      'ctx-1',
+      'house',
+      'Summarize it'
+    );
+
+    expect(result.messages).toContainEqual(
+      expect.objectContaining({
+        role: 'assistant',
+        content: 'The summary result',
+        a2aTaskId: 'task-1'
+      })
+    );
+  });
+
+  it('passes cancellation through a blocking turn', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(
+      async (url, options) =>
+        new Promise<Response>((resolve, reject) => {
+          if (options?.signal?.aborted) {
+            reject(new DOMException('Aborted', 'AbortError'));
+            return;
+          }
+          reject(new Error('request was not canceled'));
+        })
+    );
+
+    await expect(
+      sendConversationTurn(fetcher, 'ctx-1', 'house', 'Hello', {
+        signal: controller.signal
+      })
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -488,6 +653,179 @@ describe('api conversation streaming', () => {
       text: 'Complete',
       terminal: true
     });
+  });
+
+  it('stops after an agent reports a terminal failure', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: body.id,
+                  result: {
+                    statusUpdate: {
+                      taskId: 'task-1',
+                      contextId: 'ctx-1',
+                      status: {
+                        state: 'TASK_STATE_FAILED',
+                        message: message(
+                          'ROLE_AGENT',
+                          'Unable to complete the request',
+                          'status-1'
+                        )
+                      }
+                    }
+                  }
+                })}\n\n`
+              )
+            );
+            controller.close();
+          }
+        });
+        return new Response(stream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' }
+        });
+      });
+    const events: unknown[] = [];
+
+    await sendConversationTurnStream(
+      fetcher,
+      'ctx-1',
+      'house',
+      'Hello',
+      (event) => events.push(event)
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'turn_failed',
+        conversationId: 'ctx-1',
+        agentId: 'house',
+        message: 'Agent task failed'
+      })
+    );
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: 'turn_completed' })
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts an in-flight stream without reporting a failure', async () => {
+    const controller = new AbortController();
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(
+      async (url, options) =>
+        new Promise<Response>((resolve, reject) => {
+          const signal = options?.signal;
+          if (!signal) {
+            reject(new Error('missing abort signal'));
+            return;
+          }
+          if (signal.aborted) {
+            reject(new DOMException('Aborted', 'AbortError'));
+            return;
+          }
+          signal.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true }
+          );
+        })
+    );
+    const events: unknown[] = [];
+
+    const turn = sendConversationTurnStream(
+      fetcher,
+      'ctx-1',
+      'house',
+      'Hello',
+      (event) => events.push(event),
+      { signal: controller.signal }
+    );
+    controller.abort();
+    await turn;
+
+    expect(events).toContainEqual({
+      type: 'turn_canceled',
+      conversationId: 'ctx-1',
+      agentId: 'house'
+    });
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: 'turn_failed' })
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('completes from streamed text when task history is unsupported', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        const accept = (
+          options?.headers as Record<string, string> | undefined
+        )?.['Accept'];
+        if (accept === 'text/event-stream') {
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `data: ${JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: body.id,
+                    result: {
+                      message: message('ROLE_AGENT', 'Hello', 'msg-2')
+                    }
+                  })}\n\n`
+                )
+              );
+              controller.close();
+            }
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' }
+          });
+        }
+        return jsonResponse(
+          {
+            jsonrpc: '2.0',
+            id: body.id,
+            error: { code: -32601, message: 'Method not found' }
+          },
+          { status: 501 }
+        );
+      });
+    const events: unknown[] = [];
+
+    await sendConversationTurnStream(
+      fetcher,
+      'ctx-1',
+      'house',
+      'Hello?',
+      (event) => events.push(event)
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'turn_completed',
+        conversation: expect.objectContaining({
+          id: 'ctx-1',
+          historyUnsupported: true
+        }),
+        messages: [
+          expect.objectContaining({ role: 'user', content: 'Hello?' }),
+          expect.objectContaining({ role: 'assistant', content: 'Hello' })
+        ]
+      })
+    );
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: 'turn_failed' })
+    );
   });
 });
 

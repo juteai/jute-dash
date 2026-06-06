@@ -48,6 +48,10 @@ interface LegacyTask {
   updatedAt?: string;
 }
 
+type TurnRequestOptions = {
+  signal?: AbortSignal;
+};
+
 const API_BASE = import.meta.env.VITE_JUTE_API_URL ?? 'http://127.0.0.1:8787';
 const proxyAgentCard = {
   capabilities: { streaming: true }
@@ -135,6 +139,38 @@ function isTerminalTaskState(state: TaskState): boolean {
   ].includes(state);
 }
 
+function terminalTaskFailureMessage(status: string): string | undefined {
+  switch (status) {
+    case 'failed':
+      return 'Agent task failed';
+    case 'rejected':
+      return 'Agent rejected the request';
+    case 'canceled':
+      return 'Agent canceled the request';
+    default:
+      return undefined;
+  }
+}
+
+function isHistoryUnsupportedError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('status: 501') ||
+    message.includes('code: -32601') ||
+    message.includes('method not found')
+  );
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  );
+}
+
 function newUserMessage(conversationId: string, text: string): A2AMessage {
   return {
     messageId: crypto.randomUUID(),
@@ -152,6 +188,56 @@ function newUserMessage(conversationId: string, text: string): A2AMessage {
     metadata: undefined,
     extensions: [],
     referenceTaskIds: []
+  };
+}
+
+function localConversationDetail(
+  conversationId: string,
+  agentId: string,
+  userText: string,
+  assistantText: string,
+  taskId: string,
+  status: string
+): ConversationDetail {
+  const now = new Date().toISOString();
+  return {
+    conversation: {
+      id: conversationId,
+      agentId,
+      title: userText,
+      status,
+      a2aContextId: conversationId,
+      latestTaskId: taskId,
+      createdAt: now,
+      updatedAt: now,
+      historyUnsupported: true
+    },
+    messages: [
+      {
+        id: crypto.randomUUID(),
+        conversationId,
+        agentId,
+        role: 'user',
+        content: userText,
+        status: 'sent',
+        a2aMessageId: '',
+        a2aTaskId: taskId,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: crypto.randomUUID(),
+        conversationId,
+        agentId,
+        role: 'assistant',
+        content: assistantText,
+        status: 'sent',
+        a2aMessageId: '',
+        a2aTaskId: taskId,
+        createdAt: now,
+        updatedAt: now
+      }
+    ]
   };
 }
 
@@ -320,7 +406,9 @@ export async function getConversations(
 
     return Object.values(byContext);
   } catch (err) {
-    console.error('Failed to list conversations from proxy:', err);
+    if (!isHistoryUnsupportedError(err)) {
+      throw err;
+    }
     return [
       {
         id: `history-unsupported-${agentId}`,
@@ -362,17 +450,21 @@ export async function createConversation(
 export async function getConversation(
   fetcher: typeof fetch,
   conversationId: string,
-  agentId: string
+  agentId: string,
+  options: TurnRequestOptions = {}
 ): Promise<ConversationDetail> {
   const client = await getClient(fetcher, agentId);
-  const result = await client.listTasks({
-    tenant: '',
-    contextId: conversationId,
-    status: TaskState.TASK_STATE_UNSPECIFIED,
-    pageSize: 50,
-    pageToken: '',
-    statusTimestampAfter: undefined
-  });
+  const result = await client.listTasks(
+    {
+      tenant: '',
+      contextId: conversationId,
+      status: TaskState.TASK_STATE_UNSPECIFIED,
+      pageSize: 50,
+      pageToken: '',
+      statusTimestampAfter: undefined
+    },
+    { signal: options.signal }
+  );
   const tasks = result.tasks;
 
   const detail: ConversationDetail = {
@@ -401,15 +493,21 @@ export async function getConversation(
     let record = task;
     if (task.id) {
       try {
-        const fullTask = await client.getTask({
-          tenant: '',
-          id: task.id,
-          historyLength: 50
-        });
+        const fullTask = await client.getTask(
+          {
+            tenant: '',
+            id: task.id,
+            historyLength: 50
+          },
+          { signal: options.signal }
+        );
         if (fullTask) {
           record = fullTask;
         }
       } catch (e) {
+        if (isAbortError(e)) {
+          throw e;
+        }
         console.warn('Failed to get full task details for', task.id, e);
       }
     }
@@ -450,6 +548,25 @@ export async function getConversation(
         });
       }
     }
+    for (const [index, artifact] of (record.artifacts ?? []).entries()) {
+      const content = textFromParts(artifact.parts);
+      if (!content) {
+        continue;
+      }
+      const artifactID = artifact.artifactId || String(index);
+      detail.messages.push({
+        id: `${record.id}:artifact:${artifactID}`,
+        conversationId,
+        agentId,
+        role: 'assistant',
+        content,
+        status: 'sent',
+        a2aMessageId: artifact.artifactId,
+        a2aTaskId: record.id || '',
+        createdAt: recordUpdatedAt,
+        updatedAt: recordUpdatedAt
+      });
+    }
   }
 
   const firstUser = detail.messages.find((m) => m.role === 'user');
@@ -464,17 +581,39 @@ export async function sendConversationTurn(
   fetcher: typeof fetch,
   conversationId: string,
   agentId: string,
-  text: string
+  text: string,
+  options: TurnRequestOptions = {}
 ): Promise<ConversationDetail> {
   const client = await getClient(fetcher, agentId);
-  await client.sendMessage({
-    tenant: '',
-    message: newUserMessage(conversationId, text),
-    configuration: undefined,
-    metadata: undefined
-  });
+  const result = await client.sendMessage(
+    {
+      tenant: '',
+      message: newUserMessage(conversationId, text),
+      configuration: undefined,
+      metadata: undefined
+    },
+    { signal: options.signal }
+  );
+  if ('messageId' in result) {
+    const assistantText = textFromParts(result.parts);
+    if (!assistantText.trim()) {
+      throw new Error('Agent response contained no displayable text');
+    }
+    return localConversationDetail(
+      result.contextId || conversationId,
+      agentId,
+      text,
+      assistantText,
+      result.taskId,
+      'completed'
+    );
+  }
+  const failureMessage = terminalTaskFailureMessage(statusFromTask(result));
+  if (failureMessage) {
+    throw new Error(failureMessage);
+  }
 
-  return getConversation(fetcher, conversationId, agentId);
+  return getConversation(fetcher, conversationId, agentId, options);
 }
 
 export async function sendConversationTurnStream(
@@ -482,8 +621,13 @@ export async function sendConversationTurnStream(
   conversationId: string,
   agentId: string,
   text: string,
-  onEvent: (event: ConversationStreamEvent) => void
+  onEvent: (event: ConversationStreamEvent) => void,
+  options: TurnRequestOptions = {}
 ): Promise<void> {
+  let assistantText = '';
+  let latestTaskId = '';
+  let latestStatus = 'completed';
+
   onEvent({
     type: 'turn_started',
     conversationId,
@@ -493,16 +637,20 @@ export async function sendConversationTurnStream(
   try {
     const client = await getClient(fetcher, agentId);
 
-    for await (const event of client.sendMessageStream({
-      tenant: '',
-      message: newUserMessage(conversationId, text),
-      configuration: undefined,
-      metadata: undefined
-    })) {
+    for await (const event of client.sendMessageStream(
+      {
+        tenant: '',
+        message: newUserMessage(conversationId, text),
+        configuration: undefined,
+        metadata: undefined
+      },
+      { signal: options.signal }
+    )) {
       const payload = event.payload;
       if (payload?.$case === 'message') {
         const content = textFromParts(payload.value.parts);
         if (content) {
+          assistantText += content;
           onEvent({
             type: 'assistant_delta',
             conversationId,
@@ -513,24 +661,41 @@ export async function sendConversationTurnStream(
         }
       } else if (payload?.$case === 'statusUpdate') {
         const statusText = textFromParts(payload.value.status?.message?.parts);
+        const status = payload.value.status
+          ? taskStateToJSON(payload.value.status.state)
+              .replace(/^TASK_STATE_/, '')
+              .toLowerCase()
+          : 'working';
+        latestTaskId = payload.value.taskId;
+        latestStatus = status;
         onEvent({
           type: 'status_changed',
           conversationId,
           agentId,
           taskId: payload.value.taskId,
-          status: payload.value.status
-            ? taskStateToJSON(payload.value.status.state)
-                .replace(/^TASK_STATE_/, '')
-                .toLowerCase()
-            : 'working',
+          status,
           text: statusText,
           terminal: payload.value.status
             ? isTerminalTaskState(payload.value.status.state)
             : false
         });
+        const failureMessage = terminalTaskFailureMessage(status);
+        if (failureMessage) {
+          onEvent({
+            type: 'turn_failed',
+            conversationId,
+            agentId,
+            message: failureMessage
+          });
+          return;
+        }
       } else if (payload?.$case === 'artifactUpdate') {
         const content = textFromParts(payload.value.artifact?.parts);
         if (content) {
+          assistantText = payload.value.append
+            ? assistantText + content
+            : content;
+          latestTaskId = payload.value.taskId;
           onEvent({
             type: 'assistant_delta',
             conversationId,
@@ -541,26 +706,67 @@ export async function sendConversationTurnStream(
         }
       } else if (payload?.$case === 'task') {
         const statusText = textFromParts(payload.value.status?.message?.parts);
+        const status = statusFromTask(payload.value);
+        latestTaskId = payload.value.id;
+        latestStatus = status;
         onEvent({
           type: 'status_changed',
           conversationId,
           agentId,
           taskId: payload.value.id,
-          status: statusFromTask(payload.value),
+          status,
           text: statusText,
           terminal: payload.value.status
             ? isTerminalTaskState(payload.value.status.state)
             : false
         });
+        const failureMessage = terminalTaskFailureMessage(status);
+        if (failureMessage) {
+          onEvent({
+            type: 'turn_failed',
+            conversationId,
+            agentId,
+            message: failureMessage
+          });
+          return;
+        }
       }
     }
 
-    const detail = await getConversation(fetcher, conversationId, agentId);
+    let detail: ConversationDetail;
+    try {
+      detail = await getConversation(fetcher, conversationId, agentId, options);
+    } catch (err) {
+      if (!isHistoryUnsupportedError(err)) {
+        throw err;
+      }
+      if (!assistantText.trim()) {
+        throw new Error('Agent response contained no displayable text', {
+          cause: err
+        });
+      }
+      detail = localConversationDetail(
+        conversationId,
+        agentId,
+        text,
+        assistantText,
+        latestTaskId,
+        latestStatus
+      );
+    }
     onEvent({
       type: 'turn_completed',
       ...detail
     });
   } catch (err: unknown) {
+    if (isAbortError(err)) {
+      onEvent({
+        type: 'turn_canceled',
+        conversationId,
+        agentId
+      });
+      return;
+    }
     const errMsg = err instanceof Error ? err.message : 'Unknown error';
     onEvent({
       type: 'turn_failed',

@@ -94,6 +94,7 @@
   let mode: DisplayMode = 'dashboard';
   let chatState: ChatState = 'idle';
   let assistantStatusText = '';
+  let activeChatTurn: AbortController | undefined;
   let messages: ChatMessage[] = [];
   let conversations: Conversation[] = [];
   let selectedConversationId = '';
@@ -1095,10 +1096,13 @@
     const temporaryMessageId = retryMessageId ?? makeID();
     chatState = 'thinking';
     assistantStatusText = '';
-    let streamedOutput = false;
     let completed = false;
-    let failedFromStream = false;
+    let canceled = false;
+    let streamFailure: Error | undefined;
     const assistantMessageId = makeID();
+    activeChatTurn?.abort();
+    const turnController = new AbortController();
+    activeChatTurn = turnController;
 
     try {
       const conversationId = await ensureConversation(agent);
@@ -1112,71 +1116,85 @@
           agentId: agent.id
         })
       ];
-      await sendConversationTurnStream(
-        fetch,
-        conversationId,
-        agent.id,
-        text,
-        (event) => {
-          if (event.type === 'turn_started') {
-            chatState = 'thinking';
-            return;
-          }
-          if (event.type === 'assistant_delta') {
-            streamedOutput = true;
-            chatState = 'streaming';
-            upsertAssistantDelta(assistantMessageId, event);
-            return;
-          }
-          if (event.type === 'status_changed') {
-            chatState = event.status === 'completed' ? 'streaming' : 'thinking';
-            assistantStatusText = event.text || '';
-            return;
-          }
-          if (event.type === 'turn_completed') {
-            completed = true;
-            applyConversationDetail({
-              conversation: event.conversation,
-              messages: event.messages
-            });
-            return;
-          }
-          if (event.type === 'turn_failed') {
-            failedFromStream = true;
-            throw new Error(event.message);
-          }
-        }
-      );
+      if (agent.streaming) {
+        await sendConversationTurnStream(
+          fetch,
+          conversationId,
+          agent.id,
+          text,
+          (event) => {
+            if (
+              turnController.signal.aborted &&
+              event.type !== 'turn_canceled'
+            ) {
+              return;
+            }
+            if (event.type === 'turn_started') {
+              chatState = 'thinking';
+              return;
+            }
+            if (event.type === 'assistant_delta') {
+              chatState = 'streaming';
+              upsertAssistantDelta(assistantMessageId, event);
+              return;
+            }
+            if (event.type === 'status_changed') {
+              chatState =
+                event.status === 'completed' ? 'streaming' : 'thinking';
+              assistantStatusText = event.text || '';
+              return;
+            }
+            if (event.type === 'turn_completed') {
+              completed = true;
+              applyConversationDetail({
+                conversation: event.conversation,
+                messages: event.messages
+              });
+              return;
+            }
+            if (event.type === 'turn_failed') {
+              streamFailure = new Error(event.message);
+              return;
+            }
+            if (event.type === 'turn_canceled') {
+              canceled = true;
+              chatState = 'idle';
+              assistantStatusText = '';
+            }
+          },
+          { signal: turnController.signal }
+        );
+      } else {
+        const detail = await sendConversationTurn(
+          fetch,
+          conversationId,
+          agent.id,
+          text,
+          { signal: turnController.signal }
+        );
+        completed = true;
+        applyConversationDetail(detail);
+      }
+      if (canceled || turnController.signal.aborted) {
+        return;
+      }
+      if (streamFailure) {
+        throw streamFailure;
+      }
       if (!completed) {
         throw new Error('stream ended before completion');
       }
       markConnected();
     } catch (err) {
-      let failure = err;
-      if (!streamedOutput && !failedFromStream) {
-        try {
-          const conversationId =
-            selectedConversationId || (await ensureConversation(agent));
-          const detail = await sendConversationTurn(
-            fetch,
-            conversationId,
-            agent.id,
-            text
-          );
-          applyConversationDetail(detail);
-          markConnected();
-          return;
-        } catch (fallbackErr) {
-          failure = fallbackErr;
-          // Fall through to the standard retryable failure state.
-        }
+      if (canceled || turnController.signal.aborted) {
+        return;
       }
       messages = messages.map((message) =>
         message.id === temporaryMessageId
           ? { ...message, status: 'failed', retryText: text }
           : message
       );
-      messages = [...messages, systemMessage(chatFailureMessage(failure))];
+      messages = [...messages, systemMessage(chatFailureMessage(err))];
       markIssue('degraded', {
         code: 'message_failed',
         severity: 'warning',
@@ -1184,6 +1202,10 @@
         message: chatFailureIssueMessage(err)
       });
       chatState = 'error';
+    } finally {
+      if (activeChatTurn === turnController) {
+        activeChatTurn = undefined;
+      }
     }
   }
 
@@ -1227,6 +1249,8 @@
   }
 
   function cancelChatTurn() {
+    activeChatTurn?.abort();
+    assistantStatusText = '';
     chatState = 'idle';
   }
 

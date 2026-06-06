@@ -445,6 +445,11 @@ export type ConversationStreamEvent =
       conversationId?: string;
       agentId?: string;
       message: string;
+    }
+  | {
+      type: 'turn_canceled';
+      conversationId: string;
+      agentId: string;
     };
 
 export type MessageResponse = {
