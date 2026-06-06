@@ -626,7 +626,7 @@
           <div class="settings-form-grid">
             <label>
               <span>Background</span>
-              <select bind:value={bg.kind}>
+              <select bind:value={draft.display.background.kind}>
                 {#each BACKGROUND_KINDS as kind (kind)}
                   <option value={kind}>{kind}</option>
                 {/each}
@@ -635,12 +635,15 @@
             {#if bg.kind === 'color'}
               <label>
                 <span>Color value</span>
-                <input bind:value={bg.value} placeholder="#101010" />
+                <input
+                  bind:value={draft.display.background.value}
+                  placeholder="#101010"
+                />
               </label>
             {/if}
             <label>
               <span>Fit</span>
-              <select bind:value={bg.fit}>
+              <select bind:value={draft.display.background.fit}>
                 <option value="cover">Cover</option>
                 <option value="contain">Contain</option>
                 <option value="tile">Tile</option>
@@ -648,7 +651,7 @@
             </label>
             <label>
               <span>Overlay</span>
-              <select bind:value={bg.overlay}>
+              <select bind:value={draft.display.background.overlay}>
                 <option value="none">None</option>
                 <option value="dim">Dim</option>
                 <option value="smoked">Smoked</option>
