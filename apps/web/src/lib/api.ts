@@ -1,5 +1,17 @@
-import { JsonRpcTransport } from '@a2a-js/sdk/client';
-import type { Task as A2ATask } from '@a2a-js/sdk';
+import {
+  Client,
+  JsonRpcTransportFactory,
+  type Transport
+} from '@a2a-js/sdk/client';
+import {
+  Role,
+  TaskState,
+  taskStateToJSON,
+  type AgentCard,
+  type Message as A2AMessage,
+  type Part as A2APart,
+  type Task as A2ATask
+} from '@a2a-js/sdk';
 import type {
   Agent,
   AppStatus,
@@ -37,6 +49,9 @@ interface LegacyTask {
 }
 
 const API_BASE = import.meta.env.VITE_JUTE_API_URL ?? 'http://127.0.0.1:8787';
+const proxyAgentCard = {
+  capabilities: { streaming: true }
+} as AgentCard;
 
 async function getJSON<T>(fetcher: typeof fetch, path: string): Promise<T> {
   const response = await fetcher(`${API_BASE}${path}`);
@@ -82,14 +97,62 @@ export async function getDashboard(
   };
 }
 
-function getTransport(
+async function getTransport(
   fetcher: typeof fetch,
   agentId: string
-): JsonRpcTransport {
-  return new JsonRpcTransport({
-    endpoint: `${API_BASE}/api/v1/proxy/agents/${encodeURIComponent(agentId)}`,
-    fetchImpl: fetcher
-  });
+): Promise<Transport> {
+  return new JsonRpcTransportFactory({ fetchImpl: fetcher }).create(
+    `${API_BASE}/api/v1/proxy/agents/${encodeURIComponent(agentId)}`,
+    proxyAgentCard
+  );
+}
+
+async function getClient(fetcher: typeof fetch, agentId: string) {
+  const transport = await getTransport(fetcher, agentId);
+  return new Client(transport, proxyAgentCard);
+}
+
+function textFromParts(parts: A2APart[] | undefined): string {
+  return (parts ?? [])
+    .map((part) => (part.content?.$case === 'text' ? part.content.value : ''))
+    .join('');
+}
+
+function statusFromTask(task: A2ATask): string {
+  return task.status
+    ? taskStateToJSON(task.status.state)
+        .replace(/^TASK_STATE_/, '')
+        .toLowerCase()
+    : 'completed';
+}
+
+function isTerminalTaskState(state: TaskState): boolean {
+  return [
+    TaskState.TASK_STATE_COMPLETED,
+    TaskState.TASK_STATE_FAILED,
+    TaskState.TASK_STATE_CANCELED,
+    TaskState.TASK_STATE_REJECTED
+  ].includes(state);
+}
+
+function newUserMessage(conversationId: string, text: string): A2AMessage {
+  return {
+    messageId: crypto.randomUUID(),
+    contextId: conversationId,
+    taskId: '',
+    role: Role.ROLE_USER,
+    parts: [
+      {
+        content: { $case: 'text', value: text },
+        metadata: undefined,
+        filename: '',
+        mediaType: 'text/plain'
+      }
+    ],
+    metadata: undefined,
+    extensions: [],
+    referenceTaskIds: []
+  };
 }
 
 export async function getHouseholdSettings(
@@ -196,13 +259,16 @@ export async function getConversations(
     return [];
   }
   try {
-    const transport = getTransport(fetcher, agentId);
-    const result = (await transport.callExtensionMethod(
-      'ListTasks',
-      { pageSize: 50 },
-      Math.floor(Math.random() * 1000000)
-    )) as { result?: { tasks?: A2ATask[] } };
-    const tasks = result?.result?.tasks || [];
+    const client = await getClient(fetcher, agentId);
+    const result = await client.listTasks({
+      tenant: '',
+      contextId: '',
+      status: TaskState.TASK_STATE_UNSPECIFIED,
+      pageSize: 50,
+      pageToken: '',
+      statusTimestampAfter: undefined
+    });
+    const tasks = result.tasks;
 
     const byContext: Record<string, Conversation> = {};
     for (const task of tasks) {
@@ -212,20 +278,17 @@ export async function getConversations(
       let title = '';
       const history = (task.history ||
         (task as unknown as LegacyTask).messages) as
-        | Array<{
-            role: string;
-            parts?: Array<{ kind: string; text?: string }>;
-            text?: string;
-          }>
+        | Array<A2AMessage | LegacyMessage>
         | undefined;
       if (history && history.length > 0) {
-        const firstUser = history.find((m) => m.role === 'user');
-        if (firstUser && firstUser.parts && firstUser.parts.length > 0) {
-          title = firstUser.parts
-            .map((p) => (p.kind === 'text' ? p.text || '' : ''))
-            .join('');
-        } else if (firstUser && firstUser.text) {
-          title = firstUser.text;
+        const firstUser = history.find(
+          (message) =>
+            message.role === Role.ROLE_USER || message.role === 'user'
+        );
+        if (firstUser && typeof firstUser.role === 'number') {
+          title = textFromParts((firstUser as A2AMessage).parts);
+        } else if (firstUser) {
+          title = firstUser.text ?? '';
         }
       }
       if (!title) {
@@ -240,7 +303,7 @@ export async function getConversations(
         id: contextId,
         agentId,
         title,
-        status: task.status?.state || 'completed',
+        status: statusFromTask(task),
         a2aContextId: contextId,
         latestTaskId: task.id || '',
         createdAt: updatedAt,
@@ -250,7 +313,7 @@ export async function getConversations(
       if (updatedAt && updatedAt >= conversation.updatedAt) {
         conversation.updatedAt = updatedAt;
         conversation.latestTaskId = task.id || '';
-        conversation.status = task.status?.state || 'completed';
+        conversation.status = statusFromTask(task);
       }
       byContext[contextId] = conversation;
     }
@@ -301,16 +364,16 @@ export async function getConversation(
   conversationId: string,
   agentId: string
 ): Promise<ConversationDetail> {
-  const transport = getTransport(fetcher, agentId);
-  const result = (await transport.callExtensionMethod(
-    'ListTasks',
-    {
-      contextId: conversationId,
-      pageSize: 50
-    },
-    Math.floor(Math.random() * 1000000)
-  )) as { result?: { tasks?: A2ATask[] } };
-  const tasks = result?.result?.tasks || [];
+  const client = await getClient(fetcher, agentId);
+  const result = await client.listTasks({
+    tenant: '',
+    contextId: conversationId,
+    status: TaskState.TASK_STATE_UNSPECIFIED,
+    pageSize: 50,
+    pageToken: '',
+    statusTimestampAfter: undefined
+  });
+  const tasks = result.tasks;
 
   const detail: ConversationDetail = {
     conversation: {
@@ -338,7 +401,8 @@ export async function getConversation(
     let record = task;
     if (task.id) {
       try {
-        const fullTask = await transport.getTask({
+        const fullTask = await client.getTask({
+          tenant: '',
           id: task.id,
           historyLength: 50
         });
@@ -355,34 +419,31 @@ export async function getConversation(
       (record as unknown as LegacyTask).updatedAt ||
       detail.conversation.updatedAt;
     detail.conversation.latestTaskId = record.id || '';
-    detail.conversation.status = record.status?.state || 'completed';
+    detail.conversation.status = statusFromTask(record);
     detail.conversation.updatedAt = recordUpdatedAt;
 
     const history = (record.history ||
       (record as unknown as LegacyTask).messages) as
-      | Array<{
-          id?: string;
-          messageId?: string;
-          role: string;
-          parts?: Array<{ kind: string; text?: string }>;
-          text?: string;
-        }>
+      | Array<A2AMessage | LegacyMessage>
       | undefined;
     if (history) {
       for (const msg of history) {
-        const content = msg.parts
-          ? msg.parts
-              .map((p) => (p.kind === 'text' ? p.text || '' : ''))
-              .join('')
-          : msg.text || '';
+        const isA2AMessage = 'messageId' in msg && typeof msg.role === 'number';
+        const legacyMessage = msg as LegacyMessage;
+        const content = isA2AMessage
+          ? textFromParts(msg.parts as A2APart[])
+          : legacyMessage.text || '';
         detail.messages.push({
-          id: msg.id || msg.messageId || Math.random().toString(),
+          id: legacyMessage.id || msg.messageId || Math.random().toString(),
           conversationId,
           agentId,
-          role: msg.role === 'user' ? 'user' : 'assistant',
+          role:
+            msg.role === Role.ROLE_USER || msg.role === 'user'
+              ? 'user'
+              : 'assistant',
           content,
           status: 'sent',
-          a2aMessageId: msg.id || msg.messageId || '',
+          a2aMessageId: legacyMessage.id || msg.messageId || '',
           a2aTaskId: record.id || '',
           createdAt: recordUpdatedAt,
           updatedAt: recordUpdatedAt
@@ -405,20 +466,12 @@ export async function sendConversationTurn(
   agentId: string,
   text: string
 ): Promise<ConversationDetail> {
-  const transport = getTransport(fetcher, agentId);
-  await transport.sendMessage({
-    message: {
-      kind: 'message',
-      messageId: crypto.randomUUID(),
-      role: 'user',
-      contextId: conversationId,
-      parts: [
-        {
-          kind: 'text',
-          text
-        }
-      ]
-    }
+  const client = await getClient(fetcher, agentId);
+  await client.sendMessage({
+    tenant: '',
+    message: newUserMessage(conversationId, text),
+    configuration: undefined,
+    metadata: undefined
   });
 
   return getConversation(fetcher, conversationId, agentId);
@@ -438,30 +491,17 @@ export async function sendConversationTurnStream(
   });
 
   try {
-    const transport = getTransport(fetcher, agentId);
+    const client = await getClient(fetcher, agentId);
 
-    for await (const event of transport.sendMessageStream({
-      message: {
-        kind: 'message',
-        messageId: crypto.randomUUID(),
-        role: 'user',
-        contextId: conversationId,
-        parts: [
-          {
-            kind: 'text',
-            text
-          }
-        ]
-      }
+    for await (const event of client.sendMessageStream({
+      tenant: '',
+      message: newUserMessage(conversationId, text),
+      configuration: undefined,
+      metadata: undefined
     })) {
-      if (event.kind === 'message') {
-        const content = event.parts
-          ? event.parts
-              .map((p) =>
-                p.kind === 'text' ? (p as { text?: string }).text || '' : ''
-              )
-              .join('')
-          : (event as unknown as { text?: string }).text || '';
+      const payload = event.payload;
+      if (payload?.$case === 'message') {
+        const content = textFromParts(payload.value.parts);
         if (content) {
           onEvent({
             type: 'assistant_delta',
@@ -471,65 +511,46 @@ export async function sendConversationTurnStream(
             append: true
           });
         }
-      } else if (event.kind === 'status-update') {
-        let statusText = '';
-        if (event.status?.message?.parts) {
-          statusText = event.status.message.parts
-            .map((p) =>
-              p.kind === 'text' ? (p as { text?: string }).text || '' : ''
-            )
-            .join('');
-        } else if (
-          (event.status?.message as unknown as { text?: string })?.text
-        ) {
-          statusText =
-            (event.status.message as unknown as { text?: string }).text || '';
-        }
-
+      } else if (payload?.$case === 'statusUpdate') {
+        const statusText = textFromParts(payload.value.status?.message?.parts);
         onEvent({
           type: 'status_changed',
           conversationId,
           agentId,
-          taskId: event.taskId,
-          status: event.status?.state || 'working',
+          taskId: payload.value.taskId,
+          status: payload.value.status
+            ? taskStateToJSON(payload.value.status.state)
+                .replace(/^TASK_STATE_/, '')
+                .toLowerCase()
+            : 'working',
           text: statusText,
-          terminal: event.final || false
+          terminal: payload.value.status
+            ? isTerminalTaskState(payload.value.status.state)
+            : false
         });
-      } else if (event.kind === 'artifact-update') {
-        const content = event.artifact?.parts
-          ? event.artifact.parts
-              .map((p) =>
-                p.kind === 'text' ? (p as { text?: string }).text || '' : ''
-              )
-              .join('')
-          : '';
+      } else if (payload?.$case === 'artifactUpdate') {
+        const content = textFromParts(payload.value.artifact?.parts);
         if (content) {
           onEvent({
             type: 'assistant_delta',
             conversationId,
             agentId,
             text: content,
-            append: event.append || false
+            append: payload.value.append
           });
         }
-      } else if (event.kind === 'task') {
-        let statusText = '';
-        if (event.status?.message?.parts) {
-          statusText = event.status.message.parts
-            .map((p) =>
-              p.kind === 'text' ? (p as { text?: string }).text || '' : ''
-            )
-            .join('');
-        }
-
+      } else if (payload?.$case === 'task') {
+        const statusText = textFromParts(payload.value.status?.message?.parts);
         onEvent({
           type: 'status_changed',
           conversationId,
           agentId,
-          taskId: event.id,
-          status: event.status?.state || 'working',
+          taskId: payload.value.id,
+          status: statusFromTask(payload.value),
           text: statusText,
-          terminal: false
+          terminal: payload.value.status
+            ? isTerminalTaskState(payload.value.status.state)
+            : false
         });
       }
     }

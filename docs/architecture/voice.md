@@ -230,11 +230,10 @@ Future hub APIs:
 
 - `GET /api/v1/voice/providers/{id}`: returns provider details, capabilities, and setup status.
 - `POST /api/v1/voice/providers/{id}/test`: runs a safe provider health or preview test.
-- `POST /api/v1/conversations`: starts a typed, push-to-talk, or wake-word conversation.
-- `POST /api/v1/conversations/{id}/turns`: appends a user turn to an existing conversation.
+- A future hub-owned conversation API starts push-to-talk or wake-word conversations and appends final transcripts as turns.
 - `PATCH /api/v1/devices/{id}/voice-settings`: updates selected providers and per-device voice settings.
 
-The existing `POST /api/v1/messages` endpoint remains a starter contract. Conversation APIs become the durable interface once multi-turn state exists.
+Typed display chat currently uses the standard A2A JavaScript SDK through `/api/v1/proxy/agents/{agentId}`. Voice remains hub-owned because the hub must enforce wake-word, privacy, follow-up-window, and routing policy before sending final transcripts to agents.
 
 ## Event Contracts
 

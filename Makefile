@@ -3,7 +3,7 @@ SHELL := /bin/bash
 WEB_DIR := apps/web
 NPM ?= npm
 
-.PHONY: setup pre-commit-install lint test generate-mocks web-lint web-format-check web-check web-test web-build check reset
+.PHONY: setup pre-commit-install lint test test-coverage generate-mocks web-lint web-format-check web-check web-test web-test-coverage web-build check reset
 
 setup:
 	@echo "Checking for Homebrew dependencies..."
@@ -38,6 +38,10 @@ lint:
 test:
 	cd apps/hub && go test ./...
 
+test-coverage:
+	cd apps/hub && go test -coverprofile=coverage.out ./...
+	cd apps/hub && go tool cover -func=coverage.out
+
 generate-mocks:
 	go run github.com/vektra/mockery/v2@latest --config=.mockery.yaml
 	go run github.com/vektra/mockery/v2@latest --config=/dev/null --name=Syncer --srcpkg=jute-dash/apps/hub/internal/app/agents --output=apps/hub/internal/app/agents --filename=agent_syncer_mock_test.go --structname=AgentSyncer --with-expecter --inpackage --testonly
@@ -53,6 +57,9 @@ web-check:
 
 web-test:
 	cd $(WEB_DIR) && $(NPM) run test
+
+web-test-coverage:
+	cd $(WEB_DIR) && $(NPM) run test:coverage
 
 web-build:
 	cd $(WEB_DIR) && $(NPM) run build

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -799,7 +800,7 @@ func TestStoreBackedConfigWorksWithExistingEndpoints(t *testing.T) {
 func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
 	agentCardServer := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			writeJSON(w, http.StatusOK, map[string]any{
+			writeJSON(w, map[string]any{
 				"name":        "Discovered Agent",
 				"description": "Test card",
 				"version":     "1.0.0",
@@ -904,11 +905,21 @@ func TestAgentsEndpointIncludesSafeAuthAvailability(t *testing.T) {
 
 func TestAgentProxyEndpoint(t *testing.T) {
 	var receivedAuthHeader string
+	var receivedA2AVersion string
+	var receivedAccept string
+	var receivedBody string
 	var receivedPath string
 	var receivedQuery string
 	agentServer := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			receivedAuthHeader = r.Header.Get("Authorization")
+			receivedA2AVersion = r.Header.Get("A2a-Version")
+			receivedAccept = r.Header.Get("Accept")
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read proxied body: %v", err)
+			}
+			receivedBody = string(body)
 			receivedPath = r.URL.Path
 			receivedQuery = r.URL.RawQuery
 			w.Header().Set("Content-Type", "application/json")
@@ -944,6 +955,8 @@ func TestAgentProxyEndpoint(t *testing.T) {
 		strings.NewReader(`{"hello":"world"}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("A2a-Version", "1.0")
+	req.Header.Set("Accept", "text/event-stream")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -965,11 +978,269 @@ func TestAgentProxyEndpoint(t *testing.T) {
 			receivedAuthHeader,
 		)
 	}
+	if receivedA2AVersion != "1.0" {
+		t.Errorf("expected A2A-Version 1.0, got %q", receivedA2AVersion)
+	}
+	if receivedAccept != "text/event-stream" {
+		t.Errorf("expected streaming Accept header, got %q", receivedAccept)
+	}
+	if receivedBody != `{"hello":"world"}` {
+		t.Errorf("expected request body to pass through unchanged, got %q", receivedBody)
+	}
 	if receivedPath != "/api/v1/rpc/foo/bar" {
 		t.Errorf("expected proxied path '/api/v1/rpc/foo/bar', got %q", receivedPath)
 	}
 	if receivedQuery != "baz=qux" {
 		t.Errorf("expected proxied query 'baz=qux', got %q", receivedQuery)
+	}
+}
+
+func TestAgentProxyReturnsSafeBadGatewayWhenUpstreamIsUnavailable(t *testing.T) {
+	agentServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	endpointURL := agentServer.URL + "/invoke"
+	agentServer.Close()
+
+	cfg := testConfig()
+	cfg.Agents = []agents.AgentConfig{
+		{
+			ID:              "offline-proxy",
+			Name:            "Offline Proxy",
+			CardURL:         "https://agent.example.com/.well-known/agent-card.json",
+			EndpointURL:     endpointURL,
+			ProtocolBinding: a2a.ProtocolJSONRPC,
+			Enabled:         true,
+			Auth: &agents.AuthConfig{
+				Type:     "bearer",
+				EnvToken: "OFFLINE_PROXY_TOKEN",
+			},
+		},
+	}
+	t.Setenv("OFFLINE_PROXY_TOKEN", "must-not-leak")
+	handler := New(cfg, "test")
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/proxy/agents/offline-proxy",
+		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"SendMessage"}`),
+	)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, sensitive := range []string{endpointURL, "OFFLINE_PROXY_TOKEN", "must-not-leak"} {
+		if strings.Contains(body, sensitive) {
+			t.Fatalf("gateway response leaked %q: %s", sensitive, body)
+		}
+	}
+}
+
+func TestAgentProxyDoesNotAcceptBrowserSuppliedAuthorization(t *testing.T) {
+	var receivedAuthHeader string
+	agentServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuthHeader = r.Header.Get("Authorization")
+		writeJSON(w, map[string]bool{"success": true})
+	}))
+	defer agentServer.Close()
+
+	cfg := testConfig()
+	cfg.Agents = []agents.AgentConfig{
+		{
+			ID:              "no-auth-proxy",
+			Name:            "No Auth Proxy",
+			CardURL:         "https://agent.example.com/.well-known/agent-card.json",
+			EndpointURL:     agentServer.URL + "/invoke",
+			ProtocolBinding: a2a.ProtocolJSONRPC,
+			Enabled:         true,
+		},
+	}
+	handler := New(cfg, "test")
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/proxy/agents/no-auth-proxy",
+		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"SendMessage"}`),
+	)
+	req.Header.Set("Authorization", "Bearer browser-controlled-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("proxy status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if receivedAuthHeader != "" {
+		t.Fatalf("proxy forwarded browser-supplied authorization: %q", receivedAuthHeader)
+	}
+}
+
+func TestAgentProxyRejectsUnknownAndDisabledAgents(t *testing.T) {
+	var upstreamCalls int
+	agentServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		writeJSON(w, map[string]bool{"success": true})
+	}))
+	defer agentServer.Close()
+
+	cfg := testConfig()
+	cfg.Agents = []agents.AgentConfig{
+		{
+			ID:              "disabled-proxy",
+			Name:            "Disabled Proxy",
+			CardURL:         "https://agent.example.com/.well-known/agent-card.json",
+			EndpointURL:     agentServer.URL + "/invoke",
+			ProtocolBinding: a2a.ProtocolJSONRPC,
+			Enabled:         false,
+		},
+	}
+	handler := New(cfg, "test")
+
+	tests := []struct {
+		name       string
+		agentID    string
+		wantStatus int
+	}{
+		{name: "unknown", agentID: "unknown-proxy", wantStatus: http.StatusNotFound},
+		{name: "disabled", agentID: "disabled-proxy", wantStatus: http.StatusForbidden},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/api/v1/proxy/agents/"+tt.agentID,
+				strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"SendMessage"}`),
+			)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d: %s", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+		})
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("rejected proxy requests reached upstream %d times", upstreamCalls)
+	}
+}
+
+func TestAgentProxyDoesNotFallBackToBrowserAuthWhenHubCredentialIsMissing(t *testing.T) {
+	var upstreamCalls int
+	var receivedAuthHeader string
+	agentServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		receivedAuthHeader = r.Header.Get("Authorization")
+		writeJSON(w, map[string]bool{"success": true})
+	}))
+	defer agentServer.Close()
+
+	cfg := testConfig()
+	cfg.Agents = []agents.AgentConfig{
+		{
+			ID:              "missing-token-proxy",
+			Name:            "Missing Token Proxy",
+			CardURL:         "https://agent.example.com/.well-known/agent-card.json",
+			EndpointURL:     agentServer.URL + "/invoke",
+			ProtocolBinding: a2a.ProtocolJSONRPC,
+			Enabled:         true,
+			Auth: &agents.AuthConfig{
+				Type:     "bearer",
+				EnvToken: "MISSING_PROXY_TOKEN",
+			},
+		},
+	}
+	t.Setenv("MISSING_PROXY_TOKEN", "")
+	handler := New(cfg, "test")
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/proxy/agents/missing-token-proxy",
+		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"SendMessage"}`),
+	)
+	req.Header.Set("Authorization", "Bearer browser-fallback-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("proxy status = %d, want 503: %s", rec.Code, rec.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("request without hub credential reached upstream %d times", upstreamCalls)
+	}
+	if receivedAuthHeader != "" {
+		t.Fatalf("proxy used browser auth when hub credential was missing: %q", receivedAuthHeader)
+	}
+}
+
+func TestAgentProxyUsesDiscoveredEndpoint(t *testing.T) {
+	var staleEndpointCalled bool
+	staleServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		staleEndpointCalled = true
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer staleServer.Close()
+
+	var selectedEndpointCalled bool
+	selectedServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		selectedEndpointCalled = true
+		writeJSON(w, map[string]bool{"success": true})
+	}))
+	defer selectedServer.Close()
+
+	cardServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"name":    "Discovered Proxy Agent",
+			"version": "1.0.0",
+			"supportedInterfaces": []map[string]string{
+				{
+					"url":             selectedServer.URL + "/invoke",
+					"protocolBinding": "JSONRPC",
+					"protocolVersion": "1.0",
+				},
+			},
+			"defaultInputModes":  []string{"text/plain"},
+			"defaultOutputModes": []string{"text/plain"},
+		})
+	}))
+	defer cardServer.Close()
+
+	cfg := testConfig()
+	cfg.Agents = []agents.AgentConfig{
+		{
+			ID:              "discovered-proxy",
+			Name:            "Discovered Proxy Agent",
+			CardURL:         cardServer.URL,
+			EndpointURL:     staleServer.URL + "/stale",
+			ProtocolBinding: a2a.ProtocolJSONRPC,
+			Enabled:         true,
+		},
+	}
+	allowAgentCardURL(&cfg, cardServer.URL)
+	handler := New(cfg, "test")
+
+	discoverReq := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
+	discoverRec := httptest.NewRecorder()
+	handler.ServeHTTP(discoverRec, discoverReq)
+	if discoverRec.Code != http.StatusOK {
+		t.Fatalf("discover status = %d, want 200: %s", discoverRec.Code, discoverRec.Body.String())
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/proxy/agents/discovered-proxy",
+		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"SendMessage"}`),
+	)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("proxy status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if !selectedEndpointCalled {
+		t.Fatal("expected proxy to use the endpoint selected from the Agent Card")
+	}
+	if staleEndpointCalled {
+		t.Fatal("proxy used the stale configured endpoint")
 	}
 }
 
@@ -1039,7 +1310,7 @@ func TestAgentProxyEndpoint_EmptySubpath(t *testing.T) {
 func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
 	agentCardServer := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			writeJSON(w, http.StatusOK, map[string]any{
+			writeJSON(w, map[string]any{
 				"name":        "Kitchen Helper",
 				"description": "Local kitchen assistant",
 				"version":     "1.0.0",
@@ -1142,8 +1413,8 @@ func openInitializedServerStore(t *testing.T) *Store {
 
 // Removed fakeMessageSender, fakeTaskHistorySender, fakeStreamingSender structs in favor of a2a.InMemoryClient
 
-func writeJSON(w http.ResponseWriter, status int, value any) {
+func writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
+	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(value)
 }

@@ -159,18 +159,29 @@ func (c *Controller) handleProxyAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	agentID := strings.TrimSpace(parts[0])
 
-	agent, ok := c.opts.Manager.ConfiguredAgent(agentID)
+	publicAgent, ok := c.opts.Manager.Find(agentID)
 	if !ok {
 		c.writeError(w, http.StatusNotFound, "agent config not found")
 		return
 	}
 
-	if !agent.Enabled {
+	if !publicAgent.Enabled {
 		c.writeError(w, http.StatusForbidden, "agent is disabled")
 		return
 	}
 
-	targetBase, err := url.Parse(agent.EndpointURL)
+	agent, ok := c.opts.Manager.ConfiguredAgent(agentID)
+	if !ok {
+		c.writeError(w, http.StatusNotFound, "agent config not found")
+		return
+	}
+	bearerToken, authAvailable := AgentBearerToken(agent)
+	if !authAvailable {
+		c.writeError(w, http.StatusServiceUnavailable, "agent credentials are not available")
+		return
+	}
+
+	targetBase, err := url.Parse(publicAgent.EndpointURL)
 	if err != nil {
 		c.writeError(w, http.StatusInternalServerError, "invalid agent endpoint URL")
 		return
@@ -190,12 +201,9 @@ func (c *Controller) handleProxyAgent(w http.ResponseWriter, r *http.Request) {
 		Director: func(req *http.Request) {
 			req.URL = &targetURL
 			req.Host = targetBase.Host
-			// Inject Authorization header if configured
-			if agent.Auth != nil && agent.Auth.Type == "bearer" && agent.Auth.EnvToken != "" {
-				token := strings.TrimSpace(osGetenv(agent.Auth.EnvToken))
-				if token != "" {
-					req.Header.Set("Authorization", "Bearer "+token)
-				}
+			req.Header.Del("Authorization")
+			if bearerToken != "" {
+				req.Header.Set("Authorization", "Bearer "+bearerToken)
 			}
 		},
 	}

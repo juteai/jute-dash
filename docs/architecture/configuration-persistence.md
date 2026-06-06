@@ -185,7 +185,7 @@ Rules:
 
 Jute intentionally does not copy Glance's live config reload model in v1. Most runtime edits happen through the hub and persist to SQLite. The exception in the current pre-v1 implementation is A2A agent registration: adding, enabling/disabling, and removing agents through the UI writes the active YAML config file when the hub was started with a writable `.yaml` or `.yml` config path. Editing YAML by hand is still not watched or automatically reloaded; restart or use future import flows for broader changes.
 
-Conversation transcripts are not stored in YAML, JSON, or SQLite in the current implementation. Jute reads history from the selected A2A agent through `ListTasks` and `GetTask`; agents that do not expose those methods produce a history-unavailable state in the UI.
+Conversation transcripts are not stored in YAML, JSON, or SQLite in the current implementation. The display reads history from the selected A2A agent through standard `ListTasks` and `GetTask` requests sent via the hub's authenticated agent proxy.
 
 ## Secrets
 
