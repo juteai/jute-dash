@@ -6,20 +6,21 @@ import type {
 } from './types';
 
 // BASE_COLUMNS is the authored base grid resolution. Layouts are stored at this
-// resolution and proportionally remapped to fewer columns on smaller screens.
+// resolution and render identically on every real screen, scaled to fit (the
+// dashboard grid uses proportional 1fr columns and rows). columnsForWidth() and
+// remapLayout() below are retained for a potential phone reflow but are not used
+// in the current render path.
 export const BASE_COLUMNS = 12;
 
-// MAX_ROWS bounds vertical placement (matches the hub validation).
+// MAX_ROWS bounds the editor's per-tile height clamp (matches the hub
+// validation). It does NOT cap the rendered row count, which follows the
+// configured layout's actual extent.
 export const MAX_ROWS = 12;
 
-// Visual grid metrics shared by dashboard rendering and edit-mode math.
-export const GRID_ROW_HEIGHT = 136;
+// Gap between grid cells; shared by dashboard rendering and edit-mode math.
+// Row/column sizes themselves are proportional (1fr) and measured from the DOM
+// during drag/resize rather than derived from a fixed pixel height.
 export const GRID_GAP = 12;
-
-export function gridItemHeight(rows: number): number {
-  const safeRows = Math.max(1, Math.floor(rows));
-  return safeRows * GRID_ROW_HEIGHT + Math.max(0, safeRows - 1) * GRID_GAP;
-}
 
 export function cloneLayout(layout: WidgetLayout): WidgetLayout {
   return JSON.parse(JSON.stringify(layout)) as WidgetLayout;

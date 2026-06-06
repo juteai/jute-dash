@@ -11,15 +11,7 @@
   import WidgetFrame from '$lib/components/display/WidgetFrame.svelte';
   import { widgetRegistry } from '$lib/components/display/widget-registry';
   import { resolveWidgetChrome } from '$lib/themes';
-  import {
-    BASE_COLUMNS,
-    GRID_GAP,
-    GRID_ROW_HEIGHT,
-    columnsForWidth,
-    gridItemHeight,
-    remapLayout,
-    rendersTile
-  } from '$lib/layout-editor';
+  import { BASE_COLUMNS, GRID_GAP, rendersTile } from '$lib/layout-editor';
   import type {
     Agent,
     AgentAvailability,
@@ -61,14 +53,11 @@
   // Fine drag/resize placement is available only on tablet and larger; phones
   // use reorder-only editing through the per-tile menu.
   $: fineEdit = editMode && viewportWidth >= 768;
-  // In fine-edit the user edits the canonical 12-column base layout; otherwise
-  // render a proportional remap for the current viewport.
-  $: activeColumns = fineEdit ? BASE_COLUMNS : columnsForWidth(viewportWidth);
-  $: displayLayout =
-    activeColumns >= BASE_COLUMNS
-      ? data.layout
-      : remapLayout(data.layout, activeColumns);
-  $: widgets = displayLayout.widgets
+  // The configured 12-column layout renders identically on every real screen and
+  // is scaled to fit (see proportional rows below). Only the <=640px phone
+  // fallback collapses to a single scrolling column, handled purely in CSS.
+  const activeColumns = BASE_COLUMNS;
+  $: widgets = data.layout.widgets
     .filter(rendersTile)
     .sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
 
@@ -95,8 +84,12 @@
   let ghostW = 0;
   let ghostH = 0;
 
+  // The canvas fills its height with exactly as many proportional (1fr) rows as
+  // the configured layout occupies, so the same layout scales to any screen.
+  // Not capped at MAX_ROWS: stored layouts may legitimately run deeper and we
+  // render them faithfully rather than clipping.
   $: highestY = widgets.reduce((max, w) => Math.max(max, w.y + w.h), 0);
-  $: bgRows = Math.max(8, highestY + 4);
+  $: rowCount = Math.max(1, highestY);
 
   function updateViewport() {
     if (typeof window !== 'undefined') {
@@ -113,7 +106,8 @@
   function gridStyle(widget: WidgetInstance) {
     const columns = Math.min(Math.max(widget.w, widget.minW, 1), activeColumns);
     const rows = Math.max(widget.h, widget.minH, 1);
-    return `grid-column-start: ${widget.x + 1}; grid-column-end: span ${columns}; grid-row-start: ${widget.y + 1}; grid-row-end: span ${rows}; min-height: ${gridItemHeight(rows)}px;`;
+    // Cell height comes from the proportional 1fr row tracks; no fixed px height.
+    return `grid-column-start: ${widget.x + 1}; grid-column-end: span ${columns}; grid-row-start: ${widget.y + 1}; grid-row-end: span ${rows};`;
   }
 
   function dragStyle(widget: WidgetInstance) {
@@ -133,8 +127,8 @@
     }
     if (drag.mode === 'resize-h' || drag.mode === 'resize') {
       const targetHeight = Math.max(
-        GRID_ROW_HEIGHT,
-        gridItemHeight(drag.startH) + dragDY
+        drag.rowHeight - GRID_GAP,
+        drag.startH * drag.rowHeight + dragDY - GRID_GAP
       );
       extra += `height: ${targetHeight}px; max-height: none;`;
     }
@@ -293,18 +287,29 @@
 
   function gridMetrics() {
     const styles = window.getComputedStyle(canvasEl);
+    const rect = canvasEl.getBoundingClientRect();
+
     const columns =
       styles.gridTemplateColumns.split(' ').filter(Boolean).length ||
       activeColumns;
-    const gap =
+    const columnGap =
       Number.parseFloat(styles.columnGap || `${GRID_GAP}`) || GRID_GAP;
-    const rect = canvasEl.getBoundingClientRect();
+
+    // Rows are proportional (1fr) so the rendered row step must be measured from
+    // the DOM rather than assumed from a fixed pixel height.
+    const rows =
+      styles.gridTemplateRows.split(' ').filter(Boolean).length || rowCount || 1;
+    const rowGap = Number.parseFloat(styles.rowGap || `${GRID_GAP}`) || GRID_GAP;
+
     return {
       cellWidth: Math.max(
         1,
-        (rect.width - gap * Math.max(0, columns - 1)) / columns + gap
+        (rect.width - columnGap * Math.max(0, columns - 1)) / columns + columnGap
       ),
-      rowHeight: GRID_ROW_HEIGHT + GRID_GAP
+      rowHeight: Math.max(
+        1,
+        (rect.height - rowGap * Math.max(0, rows - 1)) / rows + rowGap
+      )
     };
   }
 
@@ -317,15 +322,15 @@
   bind:this={canvasEl}
   class:dashboard-grid-edit={editMode}
   class="dashboard-canvas"
-  style={`--dashboard-grid-row-height: ${GRID_ROW_HEIGHT}px; --dashboard-grid-gap: ${GRID_GAP}px; grid-template-columns: repeat(${activeColumns}, minmax(0, 1fr));`}
+  style={`--dashboard-grid-gap: ${GRID_GAP}px; grid-template-columns: repeat(${activeColumns}, minmax(0, 1fr)); grid-template-rows: repeat(${rowCount}, minmax(0, 1fr));`}
   aria-label="Widget dashboard"
 >
   {#if editMode && fineEdit}
     <div
       class="dashboard-grid-background-grid"
-      style="grid-template-columns: repeat({activeColumns}, minmax(0, 1fr));"
+      style="grid-template-columns: repeat({activeColumns}, minmax(0, 1fr)); grid-template-rows: repeat({rowCount}, minmax(0, 1fr));"
     >
-      {#each Array.from({ length: bgRows * activeColumns }, (_, idx) => idx) as idx (idx)}
+      {#each Array.from({ length: rowCount * activeColumns }, (_, idx) => idx) as idx (idx)}
         <div class="dashboard-grid-cell-guide"></div>
       {/each}
     </div>
@@ -336,9 +341,7 @@
       class="dashboard-widget-placeholder"
       style="grid-column-start: {ghostX +
         1}; grid-column-end: span {ghostW}; grid-row-start: {ghostY +
-        1}; grid-row-end: span {ghostH}; min-height: {gridItemHeight(
-        ghostH
-      )}px;"
+        1}; grid-row-end: span {ghostH};"
     ></div>
   {/if}
 

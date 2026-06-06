@@ -121,9 +121,10 @@ Settings writes go through the hub. Store-backed runs persist to SQLite. YAML-ba
 
 Responsive behavior:
 
-- the display is **mobile-first**: base styles target phones, and `min-width` breakpoints progressively add tablet/desktop affordances (do not author desktop-first with `max-width` patches);
-- the dashboard layout is authored once on a **12-column base grid** and stored at that resolution; the display **proportionally remaps** it to fewer columns per breakpoint at render time (there are no per-device stored layouts);
-- column targets by breakpoint: phone → 1–2, small tablet → 4–6, large tablet/desktop → 12; the remap scales widget spans and wraps widgets into rows deterministically;
+- the dashboard layout is authored once on a **12-column base grid** and stored at that resolution; on every real screen (desktop, tablet, edge kiosk) the display renders that **same layout, scaled to fill the viewport** — there is no column remap or widget reflow, so a layout configured on a desktop looks identical on a smaller edge device;
+- the grid is **fully proportional**: both columns and rows are `1fr` tracks. The number of rows equals the configured layout's vertical extent (`max(y + h)`), so the whole grid fills the viewport height with no scrolling. Cell aspect ratio flexes with the device; arrangement and relative sizes are preserved;
+- **widgets own their content sizing**: each widget frame is a CSS [size container](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_containment/Container_queries) and widget fonts, icons, and padding scale with the cell using container-query units (`cqmin`). Avoid fixed `px`/`rem` sizing inside widgets;
+- the only exception is a **narrow-phone fallback (≤640px)**: the grid collapses to a single scrolling column of content-height tiles (fine drag/resize disabled; reorder via the ⋯ menu). At this width frames switch to an inline-size container with fixed-size fallbacks (an inline-size container has no block axis, so `cqmin` would collapse to zero);
 - overlays (settings panel, widget catalog, widget settings sheet, chat) present as full-width bottom sheets on phones and as centered panels/dialogs on larger screens;
 - large wall displays may keep chat as a side focus area, but ordinary displays use full chat focus mode.
 
@@ -158,8 +159,8 @@ Layouts stored before the 12-column grid (4-column coordinates) are migrated on 
 Implementation guidance:
 
 - v1 uses a small custom Svelte grid editor for the built-in widget set;
-- the base grid is 12 columns with a small row unit for fine vertical placement; drag and resize snap to base cells;
-- the stored layout is always 12-column; smaller screens render a proportionally remapped copy and never overwrite the base;
+- the base grid is 12 columns; rows are proportional (`1fr`) and the rendered row count follows the layout's extent. Drag and resize snap to base cells — edit-mode pixel↔cell math measures the actual rendered cell width and row step from the DOM (rows are not a fixed pixel height);
+- the stored layout is always 12-column and renders identically at every size by scaling; only the ≤640px phone fallback collapses to a single column, and it never overwrites the base;
 - revisit a proven Svelte-compatible drag/resize grid library only when denser layouts make the custom editor too costly;
 - preserve layout through hub APIs, not browser local storage;
 - debounce layout saves while dragging;
@@ -217,7 +218,7 @@ Edit mode UI:
 Edit mode by device:
 
 - on tablet and desktop, full placement editing (drag move, corner resize) is available;
-- on phones the layout is a derived remap, so fine drag/resize is disabled; edit mode there allows reorder (move up/down in the stack via the ⋯ menu), configure, headless toggle, add, and remove.
+- on phones (≤640px) the layout collapses to a single scrolling column, so fine drag/resize is disabled; edit mode there allows reorder (move up/down in the stack via the ⋯ menu), configure, headless toggle, add, and remove.
 
 ## Widget Frame
 

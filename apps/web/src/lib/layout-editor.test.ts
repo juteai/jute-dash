@@ -15,8 +15,6 @@ import {
   remapLayout,
   columnsForWidth,
   GRID_GAP,
-  GRID_ROW_HEIGHT,
-  gridItemHeight,
   BASE_COLUMNS
 } from './layout-editor';
 import type { WidgetLayout, WidgetInstance, WidgetCatalogItem } from './types';
@@ -79,12 +77,8 @@ describe('layout-editor', () => {
     expect(sizeFromDimensions(9, 1)).toBe('large');
   });
 
-  it('calculates visual grid item heights with row gaps', () => {
-    expect(GRID_ROW_HEIGHT).toBe(136);
+  it('exposes the grid gap constant', () => {
     expect(GRID_GAP).toBe(12);
-    expect(gridItemHeight(1)).toBe(136);
-    expect(gridItemHeight(2)).toBe(284);
-    expect(gridItemHeight(0)).toBe(136);
   });
 
   it('clamps widget coordinates and sizes to the 12-column grid', () => {
