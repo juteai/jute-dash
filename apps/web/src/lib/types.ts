@@ -434,6 +434,7 @@ export type ConversationStreamEvent =
       agentId: string;
       taskId?: string;
       status: string;
+      text?: string;
       terminal?: boolean;
     }
   | ({

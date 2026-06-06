@@ -93,6 +93,7 @@
   let savingLayout = false;
   let mode: DisplayMode = 'dashboard';
   let chatState: ChatState = 'idle';
+  let assistantStatusText = '';
   let messages: ChatMessage[] = [];
   let conversations: Conversation[] = [];
   let selectedConversationId = '';
@@ -1093,6 +1094,7 @@
 
     const temporaryMessageId = retryMessageId ?? makeID();
     chatState = 'thinking';
+    assistantStatusText = '';
     let streamedOutput = false;
     let completed = false;
     let failedFromStream = false;
@@ -1128,6 +1130,7 @@
           }
           if (event.type === 'status_changed') {
             chatState = event.status === 'completed' ? 'streaming' : 'thinking';
+            assistantStatusText = event.text || '';
             return;
           }
           if (event.type === 'turn_completed') {
@@ -1511,6 +1514,7 @@
           {messages}
           {conversations}
           state={chatState}
+          statusText={assistantStatusText}
           voice={dashboard.voice}
           {voiceIssue}
           {selectedAgentId}
@@ -1522,6 +1526,7 @@
             selectedConversationId = '';
             messages = [];
             chatState = 'idle';
+            assistantStatusText = '';
             void loadConversationHistory('');
           }}
           onConversationSelect={(conversationId) =>

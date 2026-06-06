@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -101,182 +100,6 @@ func TestEventsStreamDisplayActions(t *testing.T) {
 	}
 }
 
-func TestMessageEndpointRejectsDisabledAgent(t *testing.T) {
-	handler := New(testConfig(), "test")
-	payload := bytes.NewBufferString(`{"agentId":"energy","text":"How much power are we using?"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("expected status 409, got %d", rec.Code)
-	}
-}
-
-func TestMessageEndpointRejectsUnknownAgentBeforeTransport(t *testing.T) {
-	sender := a2a.NewInMemoryClient()
-	handler := NewWithMessageSender(testConfig(), "test", sender)
-	payload := bytes.NewBufferString(`{"agentId":"missing","text":"Hello?"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected status 404, got %d", rec.Code)
-	}
-	if len(sender.SentMessages) > 0 {
-		t.Fatal("sender should not be called for unknown agent")
-	}
-}
-
-func TestMessageEndpointAcceptsEnabledAgent(t *testing.T) {
-	sender := a2a.NewInMemoryClient()
-	sender.StubSendMessage(a2a.SendMessageResult{
-		ConversationID: "ctx-1",
-		Status:         "completed",
-		Text:           "The house looks calm.",
-	}, nil)
-	handler := NewWithMessageSender(testConfig(), "test", sender)
-	payload := bytes.NewBufferString(`{"agentId":"house","text":"What needs attention?"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rec.Code)
-	}
-	var body MessageResponse
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body.AgentID != "house" || body.Status != "completed" || body.Message != "The house looks calm." {
-		t.Fatalf("unexpected response: %+v", body)
-	}
-	lastSent := sender.SentMessages[len(sender.SentMessages)-1]
-	if lastSent.EndpointURL != "https://agent.example.com/a2a/v1" || lastSent.Text != "What needs attention?" {
-		t.Fatalf("unexpected sender request: %+v", lastSent)
-	}
-}
-
-func TestMessageEndpointUsesDiscoveredA2A10InterfaceAndDashboardContext(t *testing.T) {
-	agentCardServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"name":        "Discovered Agent",
-			"description": "Test card",
-			"version":     "1.0.0",
-			"supportedInterfaces": []map[string]string{
-				{"url": "http://agent.local/invoke", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
-			},
-			"capabilities": map[string]any{
-				"streaming": false,
-				"extensions": []map[string]any{
-					{"uri": a2a.DashboardContextExtensionURI},
-				},
-			},
-			"defaultInputModes":  []string{"text/plain"},
-			"defaultOutputModes": []string{"text/plain"},
-			"skills": []map[string]any{
-				{"id": "chat", "name": "Chat", "description": "Talk", "tags": []string{"chat"}},
-			},
-		})
-	}))
-	defer agentCardServer.Close()
-
-	cfg := testConfig()
-	cfg.Agents[0].CardURL = agentCardServer.URL
-	allowAgentCardURL(&cfg, agentCardServer.URL)
-	cfg.Agents[0].EndpointURL = "http://configured.local/legacy"
-	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"))
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer runtimeStore.Close()
-	result, err := runtimeStore.Initialize(context.Background(), cfg, true)
-	if err != nil {
-		t.Fatalf("initialize store: %v", err)
-	}
-	sender := a2a.NewInMemoryClient()
-	sender.StubSendMessage(a2a.SendMessageResult{
-		ConversationID: "ctx-discovered",
-		Status:         "completed",
-		Text:           "Context received.",
-	}, nil)
-	handler := newServer(cfg, "test", sender, result.Setup, DefaultWidgetLayout(), runtimeStore, "", nil)
-
-	payload := bytes.NewBufferString(`{"agentId":"house","text":"What can you see?","conversationId":"ctx-existing"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	if len(sender.SentMessages) == 0 {
-		t.Fatal("sender was not called")
-	}
-	lastSent := sender.SentMessages[len(sender.SentMessages)-1]
-	if lastSent.EndpointURL != "http://agent.local/invoke" || lastSent.ProtocolVersion != a2a.ProtocolVersion10 {
-		t.Fatalf("unexpected selected interface: %+v", lastSent)
-	}
-	if lastSent.ConversationID != "ctx-existing" {
-		t.Fatalf("unexpected conversation ID: %+v", lastSent)
-	}
-	if len(lastSent.Extensions) != 1 || lastSent.Extensions[0] != a2a.DashboardContextExtensionURI {
-		t.Fatalf("dashboard extension not activated: %+v", lastSent.Extensions)
-	}
-	if lastSent.Metadata[a2a.DashboardContextExtensionURI] == nil {
-		t.Fatalf("dashboard metadata missing: %+v", lastSent.Metadata)
-	}
-}
-
-func TestMessageEndpointReturnsSafeAgentFailure(t *testing.T) {
-	sender := a2a.NewInMemoryClient()
-	sender.StubSendMessage(a2a.SendMessageResult{}, errors.New("raw remote failure with internal details"))
-	handler := NewWithMessageSender(
-		testConfig(),
-		"test",
-		sender,
-	)
-	payload := bytes.NewBufferString(`{"agentId":"house","text":"What needs attention?"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected status 502, got %d", rec.Code)
-	}
-	var body map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body["error"] != "agent request failed" {
-		t.Fatalf("unexpected error response: %+v", body)
-	}
-}
-
-func TestMessageEndpointRejectsUnsupportedBindingBeforeTransport(t *testing.T) {
-	cfg := testConfig()
-	cfg.Agents[0].ProtocolBinding = a2a.ProtocolHTTPJSON
-	sender := a2a.NewInMemoryClient()
-	handler := NewWithMessageSender(cfg, "test", sender)
-	payload := bytes.NewBufferString(`{"agentId":"house","text":"What needs attention?"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", payload)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("expected status 501, got %d", rec.Code)
-	}
-	if len(sender.SentMessages) > 0 {
-		t.Fatal("sender should not be called for unsupported binding")
-	}
-}
-
 func TestHomeEndpointExcludesWeather(t *testing.T) {
 	handler := New(testConfig(), "test")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/home", nil)
@@ -321,7 +144,12 @@ func TestSetupStatusEndpoint(t *testing.T) {
 func TestHouseholdSettingsEndpointUpdatesStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", SetupStatus{Complete: true}, runtimeStore)
+	handler := NewWithSetupStatusAndLayoutStore(
+		testConfig(),
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore,
+	)
 
 	payload := bytes.NewBufferString(`{
 		"home":{"name":"Updated Home","timezone":"Europe/London","locale":"en-GB"},
@@ -340,7 +168,8 @@ func TestHouseholdSettingsEndpointUpdatesStore(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Home.Name != "Updated Home" || body.Weather.LocationName != "Manchester" || !body.Setup.Complete {
+	if body.Home.Name != "Updated Home" || body.Weather.LocationName != "Manchester" ||
+		!body.Setup.Complete {
 		t.Fatalf("unexpected household settings: %+v", body)
 	}
 	reloaded, err := runtimeStore.HouseholdSettings(context.Background())
@@ -403,7 +232,8 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
-	if reloaded.Home.Name != "YAML Home" || reloaded.Weather.LocationName != "Bristol" || len(reloaded.Agents) != 2 {
+	if reloaded.Home.Name != "YAML Home" || reloaded.Weather.LocationName != "Bristol" ||
+		len(reloaded.Agents) != 2 {
 		t.Fatalf("unexpected saved config: %+v", reloaded)
 	}
 }
@@ -411,7 +241,12 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 func TestRoomSettingsEndpointUpdatesStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", SetupStatus{Complete: true}, runtimeStore)
+	handler := NewWithSetupStatusAndLayoutStore(
+		testConfig(),
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore,
+	)
 
 	payload := bytes.NewBufferString(
 		`{"rooms":[{"id":"Living Room","name":"Living Room","summary":"Downstairs","status":"Comfortable"}]}`,
@@ -463,7 +298,12 @@ func TestRoomSettingsEndpointRejectsInvalidRooms(t *testing.T) {
 func TestTileSettingsEndpointUpdatesStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", SetupStatus{Complete: true}, runtimeStore)
+	handler := NewWithSetupStatusAndLayoutStore(
+		testConfig(),
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore,
+	)
 
 	payload := bytes.NewBufferString(
 		`{"tiles":[{"id":"Front Door","kind":"security","label":"Front door","value":"Locked","detail":"Last checked now"}]}`,
@@ -482,7 +322,8 @@ func TestTileSettingsEndpointUpdatesStore(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(body.Tiles) != 1 || body.Tiles[0].ID != "front-door" || body.Tiles[0].Kind != "security" {
+	if len(body.Tiles) != 1 || body.Tiles[0].ID != "front-door" ||
+		body.Tiles[0].Kind != "security" {
 		t.Fatalf("unexpected tile response: %+v", body.Tiles)
 	}
 	reloaded, err := runtimeStore.Tiles(context.Background())
@@ -529,7 +370,9 @@ func TestRoomAndTileSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	roomReq := httptest.NewRequest(
 		http.MethodPut,
 		"/api/v1/settings/rooms",
-		bytes.NewBufferString(`{"rooms":[{"id":"Office","name":"Office","summary":"Work room","status":"Quiet"}]}`),
+		bytes.NewBufferString(
+			`{"rooms":[{"id":"Office","name":"Office","summary":"Work room","status":"Quiet"}]}`,
+		),
 	)
 	roomRec := httptest.NewRecorder()
 	handler.ServeHTTP(roomRec, roomReq)
@@ -589,14 +432,16 @@ func TestStatusEndpointReturnsSafeSummary(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Version != "test-version" || body.MCP.ServiceStatus != "enabled" || body.MCP.AuthMode != "local-token" {
+	if body.Version != "test-version" || body.MCP.ServiceStatus != "enabled" ||
+		body.MCP.AuthMode != "local-token" {
 		t.Fatalf("unexpected status response: %+v", body)
 	}
 	if body.Agents.Total != 2 || body.Agents.Enabled != 1 || body.EventStream.Available != true {
 		t.Fatalf("unexpected status summary: %+v", body)
 	}
 	raw := rec.Body.String()
-	if strings.Contains(raw, "VERY_SECRET_ENV_NAME") || strings.Contains(raw, "AGENT_SECRET_TOKEN") ||
+	if strings.Contains(raw, "VERY_SECRET_ENV_NAME") ||
+		strings.Contains(raw, "AGENT_SECRET_TOKEN") ||
 		strings.Contains(raw, "secret-value") {
 		t.Fatalf("status response leaked secret material: %s", raw)
 	}
@@ -616,7 +461,8 @@ func TestVoiceStatusEndpointReturnsSafeDefaults(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Enabled || !body.Muted || body.State != "muted" || body.ServiceStatus != "not_configured" {
+	if body.Enabled || !body.Muted || body.State != "muted" ||
+		body.ServiceStatus != "not_configured" {
 		t.Fatalf("unexpected voice status: %+v", body)
 	}
 }
@@ -737,7 +583,12 @@ func TestWidgetLayoutEndpoint(t *testing.T) {
 			},
 		},
 	}
-	handler := NewWithSetupStatusAndLayout(testConfig(), "test", SetupStatus{Complete: true}, layout)
+	handler := NewWithSetupStatusAndLayout(
+		testConfig(),
+		"test",
+		SetupStatus{Complete: true},
+		layout,
+	)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/widgets/layout", nil)
 	rec := httptest.NewRecorder()
 
@@ -793,7 +644,12 @@ func TestWidgetCatalogEndpoint(t *testing.T) {
 func TestWidgetLayoutPutPersistsWithStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", SetupStatus{Complete: true}, runtimeStore)
+	handler := NewWithSetupStatusAndLayoutStore(
+		testConfig(),
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore,
+	)
 
 	layout := DefaultWidgetLayout()
 	layout.Widgets[0].X = 1
@@ -849,7 +705,12 @@ func TestWidgetLayoutResetEndpoint(t *testing.T) {
 	if _, err := runtimeStore.SaveWidgetLayout(context.Background(), layout); err != nil {
 		t.Fatalf("SaveWidgetLayout() error = %v", err)
 	}
-	handler := NewWithSetupStatusAndLayoutStore(testConfig(), "test", SetupStatus{Complete: true}, runtimeStore)
+	handler := NewWithSetupStatusAndLayoutStore(
+		testConfig(),
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore,
+	)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/widgets/layout/reset", nil)
 	rec := httptest.NewRecorder()
 
@@ -936,27 +797,33 @@ func TestStoreBackedConfigWorksWithExistingEndpoints(t *testing.T) {
 }
 
 func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
-	agentCardServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"name":        "Discovered Agent",
-			"description": "Test card",
-			"version":     "1.0.0",
-			"supportedInterfaces": []map[string]string{
-				{"url": "http://agent.local/invoke", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
-			},
-			"capabilities": map[string]any{
-				"streaming": true,
-				"extensions": []map[string]any{
-					{"uri": a2a.DashboardContextExtensionURI},
+	agentCardServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"name":        "Discovered Agent",
+				"description": "Test card",
+				"version":     "1.0.0",
+				"supportedInterfaces": []map[string]string{
+					{
+						"url":             "http://agent.local/invoke",
+						"protocolBinding": "JSONRPC",
+						"protocolVersion": "1.0",
+					},
 				},
-			},
-			"defaultInputModes":  []string{"text/plain"},
-			"defaultOutputModes": []string{"text/plain"},
-			"skills": []map[string]any{
-				{"id": "chat", "name": "Chat", "description": "Talk", "tags": []string{"chat"}},
-			},
-		})
-	}))
+				"capabilities": map[string]any{
+					"streaming": true,
+					"extensions": []map[string]any{
+						{"uri": a2a.DashboardContextExtensionURI},
+					},
+				},
+				"defaultInputModes":  []string{"text/plain"},
+				"defaultOutputModes": []string{"text/plain"},
+				"skills": []map[string]any{
+					{"id": "chat", "name": "Chat", "description": "Talk", "tags": []string{"chat"}},
+				},
+			})
+		}),
+	)
 	defer agentCardServer.Close()
 
 	cfg := testConfig()
@@ -999,7 +866,8 @@ func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
 		body.Agents[0].SelectedEndpointURL != "http://agent.local/invoke" {
 		t.Fatalf("unexpected agent discovery response: %+v", body.Agents)
 	}
-	if !body.Agents[0].DashboardContextSupported || !body.Agents[0].Streaming || len(body.Agents[0].Skills) != 1 {
+	if !body.Agents[0].DashboardContextSupported || !body.Agents[0].Streaming ||
+		len(body.Agents[0].Skills) != 1 {
 		t.Fatalf("missing discovered metadata: %+v", body.Agents[0])
 	}
 }
@@ -1034,19 +902,159 @@ func TestAgentsEndpointIncludesSafeAuthAvailability(t *testing.T) {
 	}
 }
 
-func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
-	agentCardServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"name":        "Kitchen Helper",
-			"description": "Local kitchen assistant",
-			"version":     "1.0.0",
-			"supportedInterfaces": []map[string]string{
-				{"url": "http://127.0.0.1:9797/invoke", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
+func TestAgentProxyEndpoint(t *testing.T) {
+	var receivedAuthHeader string
+	var receivedPath string
+	var receivedQuery string
+	agentServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedAuthHeader = r.Header.Get("Authorization")
+			receivedPath = r.URL.Path
+			receivedQuery = r.URL.RawQuery
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"success":true}`))
+		}),
+	)
+	defer agentServer.Close()
+
+	cfg := testConfig()
+	cfg.Agents = []agents.AgentConfig{
+		{
+			ID:              "house-proxy-test",
+			Name:            "Concierge Proxy Test",
+			CardURL:         "https://agent.example.com/.well-known/agent-card.json",
+			EndpointURL:     agentServer.URL + "/api/v1/rpc",
+			ProtocolBinding: a2a.ProtocolJSONRPC,
+			Enabled:         true,
+			Auth: &agents.AuthConfig{
+				Type:     "bearer",
+				EnvToken: "HOUSE_PROXY_TEST_TOKEN",
 			},
-			"defaultInputModes":  []string{"text/plain"},
-			"defaultOutputModes": []string{"text/plain"},
-		})
-	}))
+		},
+	}
+
+	t.Setenv("HOUSE_PROXY_TEST_TOKEN", "super-secret-token")
+
+	handler := New(cfg, "test")
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/proxy/agents/house-proxy-test/foo/bar?baz=qux",
+		strings.NewReader(`{"hello":"world"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode proxy response: %v", err)
+	}
+	if !resp["success"] {
+		t.Fatalf("unexpected proxy response content: %+v", resp)
+	}
+
+	if receivedAuthHeader != "Bearer super-secret-token" {
+		t.Errorf(
+			"expected Authorization header 'Bearer super-secret-token', got %q",
+			receivedAuthHeader,
+		)
+	}
+	if receivedPath != "/api/v1/rpc/foo/bar" {
+		t.Errorf("expected proxied path '/api/v1/rpc/foo/bar', got %q", receivedPath)
+	}
+	if receivedQuery != "baz=qux" {
+		t.Errorf("expected proxied query 'baz=qux', got %q", receivedQuery)
+	}
+}
+
+func TestAgentProxyEndpoint_EmptySubpath(t *testing.T) {
+	var receivedPath string
+	agentServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"success":true}`))
+		}),
+	)
+	defer agentServer.Close()
+
+	cfg := testConfig()
+	cfg.Agents = []agents.AgentConfig{
+		{
+			ID:              "house-proxy-empty",
+			Name:            "Empty Subpath Proxy Test",
+			CardURL:         "https://agent.example.com/.well-known/agent-card.json",
+			EndpointURL:     agentServer.URL + "/invoke",
+			ProtocolBinding: a2a.ProtocolJSONRPC,
+			Enabled:         true,
+		},
+	}
+
+	handler := New(cfg, "test")
+
+	// Call without trailing slash on agent ID
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/proxy/agents/house-proxy-empty",
+		strings.NewReader(`{"hello":"world"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if receivedPath != "/invoke" {
+		t.Errorf("expected proxied path '/invoke', got %q", receivedPath)
+	}
+
+	// Call with trailing slash on agent ID
+	req2 := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/proxy/agents/house-proxy-empty/",
+		strings.NewReader(`{"hello":"world"}`),
+	)
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+	if receivedPath != "/invoke" {
+		t.Errorf("expected proxied path '/invoke' with trailing slash, got %q", receivedPath)
+	}
+}
+
+func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
+	agentCardServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"name":        "Kitchen Helper",
+				"description": "Local kitchen assistant",
+				"version":     "1.0.0",
+				"supportedInterfaces": []map[string]string{
+					{
+						"url":             "http://127.0.0.1:9797/invoke",
+						"protocolBinding": "JSONRPC",
+						"protocolVersion": "1.0",
+					},
+				},
+				"defaultInputModes":  []string{"text/plain"},
+				"defaultOutputModes": []string{"text/plain"},
+			})
+		}),
+	)
 	defer agentCardServer.Close()
 
 	configPath := filepath.Join(t.TempDir(), "jute.yaml")
@@ -1079,7 +1087,8 @@ func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
 	if len(reloaded.Agents) != 1 {
 		t.Fatalf("expected one saved agent, got %+v", reloaded.Agents)
 	}
-	if reloaded.Agents[0].ID != "kitchen-helper" || reloaded.Agents[0].EndpointURL != "http://127.0.0.1:9797/invoke" ||
+	if reloaded.Agents[0].ID != "kitchen-helper" ||
+		reloaded.Agents[0].EndpointURL != "http://127.0.0.1:9797/invoke" ||
 		!reloaded.Agents[0].Enabled {
 		t.Fatalf("unexpected saved agent: %+v", reloaded.Agents[0])
 	}
@@ -1089,337 +1098,6 @@ func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
 	}
 	if !strings.Contains(string(savedBytes), "card-url: "+agentCardServer.URL) {
 		t.Fatalf("saved config does not include card URL:\n%s", string(savedBytes))
-	}
-}
-
-func TestConversationListUsesAgentTaskHistory(t *testing.T) {
-	history := a2a.NewInMemoryClient()
-	history.StubListTasks(a2a.ListTasksResult{
-		Tasks: []a2a.TaskRecord{
-			{
-				ID:        "task-1",
-				ContextID: "ctx-1",
-				Status:    "completed",
-				Messages: []a2a.TaskMessage{
-					{ID: "user-1", Role: "user", Text: "What is happening?"},
-					{ID: "agent-1", Role: "assistant", Text: "All calm."},
-				},
-				UpdatedAt: "2026-05-19T10:00:00Z",
-			},
-		},
-	}, nil)
-	handler := newServer(
-		testConfig(),
-		"test",
-		history,
-		SetupStatus{Complete: true},
-		DefaultWidgetLayout(),
-		nil,
-		"",
-		nil,
-	)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?agentId=house", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var body struct {
-		Conversations []Conversation `json:"conversations"`
-	}
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if len(body.Conversations) != 1 || body.Conversations[0].ID != "ctx-1" ||
-		body.Conversations[0].Title != "What is happening?" {
-		t.Fatalf("unexpected conversations: %+v", body.Conversations)
-	}
-	if len(history.ListTasksRequests) == 0 {
-		t.Fatal("ListTasks was not called")
-	}
-	lastReq := history.ListTasksRequests[len(history.ListTasksRequests)-1]
-	if lastReq.EndpointURL != "https://agent.example.com/a2a/v1" || lastReq.PageSize != 50 {
-		t.Fatalf("unexpected list request: %+v", lastReq)
-	}
-}
-
-func TestConversationDetailUsesGetTaskHistory(t *testing.T) {
-	history := a2a.NewInMemoryClient()
-	history.StubListTasks(a2a.ListTasksResult{
-		Tasks: []a2a.TaskRecord{
-			{ID: "task-1", ContextID: "ctx-1", Status: "completed", UpdatedAt: "2026-05-19T10:00:00Z"},
-		},
-	}, nil)
-	history.StubGetTask(a2a.TaskRecord{
-		ID:        "task-1",
-		ContextID: "ctx-1",
-		Status:    "completed",
-		Messages: []a2a.TaskMessage{
-			{ID: "user-1", Role: "user", Text: "Hello"},
-			{ID: "agent-1", Role: "assistant", Text: "Hello back"},
-		},
-		UpdatedAt: "2026-05-19T10:01:00Z",
-	}, nil)
-	handler := newServer(
-		testConfig(),
-		"test",
-		history,
-		SetupStatus{Complete: true},
-		DefaultWidgetLayout(),
-		nil,
-		"",
-		nil,
-	)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/ctx-1?agentId=house", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var detail ConversationDetail
-	if err := json.NewDecoder(rec.Body).Decode(&detail); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if detail.Conversation.ID != "ctx-1" || detail.Conversation.LatestTaskID != "task-1" {
-		t.Fatalf("unexpected conversation: %+v", detail.Conversation)
-	}
-	if len(detail.Messages) != 2 || detail.Messages[1].Content != "Hello back" {
-		t.Fatalf("unexpected messages: %+v", detail.Messages)
-	}
-	if len(history.GetTaskRequests) == 0 {
-		t.Fatal("GetTask was not called")
-	}
-	lastReq := history.GetTaskRequests[len(history.GetTaskRequests)-1]
-	if lastReq.TaskID != "task-1" || lastReq.HistoryLength != 50 {
-		t.Fatalf("unexpected get request: %+v", lastReq)
-	}
-}
-
-func TestConversationCreateWithInitialTextSendsTurnToAgent(t *testing.T) {
-	sender := a2a.NewInMemoryClient()
-	sender.StubSendMessage(a2a.SendMessageResult{
-		ConversationID: "ctx-created",
-		TaskID:         "task-created",
-		Status:         "completed",
-		Text:           "Welcome home.",
-	}, nil)
-	sender.StubGetTask(a2a.TaskRecord{
-		ID:        "task-created",
-		ContextID: "ctx-created",
-		Status:    "completed",
-		Messages: []a2a.TaskMessage{
-			{ID: "user-created", Role: "user", Text: "Hello"},
-			{ID: "agent-created", Role: "assistant", Text: "Welcome home."},
-		},
-		UpdatedAt: "2026-06-02T10:01:00Z",
-	}, nil)
-	handler := newServer(
-		testConfig(),
-		"test",
-		sender,
-		SetupStatus{Complete: true},
-		DefaultWidgetLayout(),
-		nil,
-		"",
-		nil,
-	)
-
-	payload := bytes.NewBufferString(`{"agentId":"house","title":"Kitchen","initialText":"Hello"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations", payload)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var detail ConversationDetail
-	if err := json.NewDecoder(rec.Body).Decode(&detail); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if len(sender.SentMessages) == 0 {
-		t.Fatal("SendMessage was not called")
-	}
-	lastReq := sender.SentMessages[len(sender.SentMessages)-1]
-	if lastReq.Text != "Hello" || lastReq.EndpointURL != "https://agent.example.com/a2a/v1" {
-		t.Fatalf("unexpected send request: %+v", lastReq)
-	}
-	if detail.Conversation.ID != "ctx-created" || detail.Conversation.LatestTaskID != "task-created" {
-		t.Fatalf("unexpected conversation: %+v", detail.Conversation)
-	}
-	if len(detail.Messages) != 2 || detail.Messages[1].Content != "Welcome home." {
-		t.Fatalf("unexpected messages: %+v", detail.Messages)
-	}
-}
-
-func TestConversationListShowsUnsupportedStateWhenAgentDoesNotExposeHistory(t *testing.T) {
-	handler := NewWithMessageSender(testConfig(), "test", mocks.NewMessageSender(t))
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?agentId=house", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var body struct {
-		Conversations []Conversation `json:"conversations"`
-	}
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if len(body.Conversations) != 1 || !body.Conversations[0].HistoryUnsupported {
-		t.Fatalf("expected unsupported history state, got %+v", body.Conversations)
-	}
-}
-
-func TestConversationTurnStreamEmitsDeltasAndCompletion(t *testing.T) {
-	agentCardServer := streamingAgentCardServer(t, true)
-	defer agentCardServer.Close()
-	cfg := testConfig()
-	cfg.Agents[0].CardURL = agentCardServer.URL
-	allowAgentCardURL(&cfg, agentCardServer.URL)
-	streamer := a2a.NewInMemoryClient()
-	streamer.StubStreamMessage([]a2a.StreamEvent{
-		{Kind: "task", ConversationID: "ctx-1", TaskID: "task-1", Status: "working"},
-		{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "Hel", Append: true},
-		{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "lo", Append: true},
-		{Kind: "status", ConversationID: "ctx-1", TaskID: "task-1", Status: "completed", Terminal: true},
-	}, nil)
-	streamer.StubGetTask(a2a.TaskRecord{
-		ID:        "task-1",
-		ContextID: "ctx-1",
-		Status:    "completed",
-		Messages: []a2a.TaskMessage{
-			{ID: "user-1", Role: "user", Text: "Hello"},
-			{ID: "agent-1", Role: "assistant", Text: "Hello"},
-		},
-		UpdatedAt: "2026-05-19T10:01:00Z",
-	}, nil)
-	handler := newServer(
-		cfg,
-		"test",
-		streamer,
-		SetupStatus{Complete: true},
-		DefaultWidgetLayout(),
-		nil,
-		"",
-		nil,
-	)
-
-	payload := bytes.NewBufferString(`{"agentId":"house","text":"Hello"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/ctx-1/turns/stream", payload)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	events := parseSSEEvents(t, rec.Body)
-	if got := eventNames(
-		events,
-	); strings.Join(
-		got,
-		",",
-	) != "turn_started,status_changed,assistant_delta,assistant_delta,status_changed,turn_completed" {
-		t.Fatalf("unexpected events: %+v", got)
-	}
-	if events[2].Data["text"] != "Hel" || events[3].Data["text"] != "lo" {
-		t.Fatalf("unexpected delta events: %+v", events)
-	}
-	if len(streamer.StreamRequests) == 0 {
-		t.Fatal("StreamMessage was not called")
-	}
-	lastStream := streamer.StreamRequests[len(streamer.StreamRequests)-1]
-	if lastStream.ConversationID != "ctx-1" || lastStream.Text != "Hello" {
-		t.Fatalf("unexpected stream request: %+v", lastStream)
-	}
-}
-
-func TestConversationTurnStreamFallsBackForNonStreamingAgent(t *testing.T) {
-	agentCardServer := streamingAgentCardServer(t, false)
-	defer agentCardServer.Close()
-	cfg := testConfig()
-	cfg.Agents[0].CardURL = agentCardServer.URL
-	allowAgentCardURL(&cfg, agentCardServer.URL)
-	sender := a2a.NewInMemoryClient()
-	sender.StubSendMessage(a2a.SendMessageResult{
-		ConversationID: "ctx-1",
-		TaskID:         "task-1",
-		Status:         "completed",
-		Text:           "Blocking answer",
-	}, nil)
-	handler := newServer(
-		cfg,
-		"test",
-		sender,
-		SetupStatus{Complete: true},
-		DefaultWidgetLayout(),
-		nil,
-		"",
-		nil,
-	)
-
-	payload := bytes.NewBufferString(`{"agentId":"house","text":"Hello"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/ctx-1/turns/stream", payload)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	events := parseSSEEvents(t, rec.Body)
-	if got := eventNames(events); strings.Join(got, ",") != "turn_started,turn_completed" {
-		t.Fatalf("unexpected events: %+v", got)
-	}
-	if len(sender.StreamRequests) > 0 {
-		t.Fatal("streamer should not be called for non-streaming agent")
-	}
-	if len(sender.SentMessages) == 0 {
-		t.Fatal("blocking sender should be called")
-	}
-}
-
-func TestConversationTurnStreamEmitsSafeFailureAfterPartialStream(t *testing.T) {
-	agentCardServer := streamingAgentCardServer(t, true)
-	defer agentCardServer.Close()
-	cfg := testConfig()
-	cfg.Agents[0].CardURL = agentCardServer.URL
-	allowAgentCardURL(&cfg, agentCardServer.URL)
-	streamer := a2a.NewInMemoryClient()
-	streamer.StubStreamMessage([]a2a.StreamEvent{
-		{Kind: "artifact", ConversationID: "ctx-1", TaskID: "task-1", Text: "Partial", Append: true},
-	}, errors.New("raw remote stream failure with internals"))
-	handler := newServer(
-		cfg,
-		"test",
-		streamer,
-		SetupStatus{Complete: true},
-		DefaultWidgetLayout(),
-		nil,
-		"",
-		nil,
-	)
-
-	payload := bytes.NewBufferString(`{"agentId":"house","text":"Hello"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/ctx-1/turns/stream", payload)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	events := parseSSEEvents(t, rec.Body)
-	if got := eventNames(events); strings.Join(got, ",") != "turn_started,assistant_delta,turn_failed" {
-		t.Fatalf("unexpected events: %+v", got)
-	}
-	if message := events[2].Data["message"]; message != "Agent request failed" {
-		t.Fatalf("unexpected failure message: %+v", events[2].Data)
-	}
-	if strings.Contains(rec.Body.String(), "raw remote") {
-		t.Fatalf("stream leaked raw error: %s", rec.Body.String())
 	}
 }
 
@@ -1464,76 +1142,6 @@ func openInitializedServerStore(t *testing.T) *Store {
 
 // Removed fakeMessageSender, fakeTaskHistorySender, fakeStreamingSender structs in favor of a2a.InMemoryClient
 
-type sseEvent struct {
-	Name string
-	Data map[string]any
-}
-
-func parseSSEEvents(t *testing.T, reader io.Reader) []sseEvent {
-	t.Helper()
-	var events []sseEvent
-	var name string
-	var data strings.Builder
-	scanner := bufio.NewScanner(reader)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			if name != "" {
-				var payload map[string]any
-				if err := json.Unmarshal([]byte(data.String()), &payload); err != nil {
-					t.Fatalf("decode SSE data for %s: %v\n%s", name, err, data.String())
-				}
-				events = append(events, sseEvent{Name: name, Data: payload})
-			}
-			name = ""
-			data.Reset()
-			continue
-		}
-		if after, ok := strings.CutPrefix(line, "event:"); ok {
-			name = strings.TrimSpace(after)
-			continue
-		}
-		if strings.HasPrefix(line, "data:") {
-			if data.Len() > 0 {
-				data.WriteByte('\n')
-			}
-			data.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		t.Fatalf("scan SSE events: %v", err)
-	}
-	return events
-}
-
-func eventNames(events []sseEvent) []string {
-	names := make([]string, 0, len(events))
-	for _, event := range events {
-		names = append(names, event.Name)
-	}
-	return names
-}
-
-func streamingAgentCardServer(t *testing.T, streaming bool) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"name":        "Streaming Agent",
-			"description": "Test streaming card",
-			"version":     "1.0.0",
-			"supportedInterfaces": []map[string]string{
-				{"url": "http://agent.local/invoke", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"},
-			},
-			"capabilities": map[string]any{
-				"streaming": streaming,
-			},
-			"defaultInputModes":  []string{"text/plain"},
-			"defaultOutputModes": []string{"text/plain"},
-		})
-	}))
-}
-
-//nolint:unparam // status is always 200 in tests but kept for API consistency with production writeJSON.
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

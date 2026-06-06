@@ -4,7 +4,6 @@ import {
   fallbackDashboard,
   getConversations,
   initialDashboard,
-  parseSSEEvent,
   sendConversationTurn,
   sendConversationTurnStream
 } from './api';
@@ -26,29 +25,44 @@ describe('api conversation history', () => {
   });
 
   it('loads agent-backed conversation history', async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
-      jsonResponse({
-        conversations: [
-          {
-            id: 'ctx-1',
-            agentId: 'house',
-            title: 'Hello',
-            status: 'completed',
-            a2aContextId: 'ctx-1',
-            latestTaskId: 'task-1',
-            createdAt: '2026-06-02T10:00:00Z',
-            updatedAt: '2026-06-02T10:01:00Z'
-          }
-        ]
-      })
-    );
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {
+              tasks: [
+                {
+                  id: 'task-1',
+                  contextId: 'ctx-1',
+                  text: 'Hello',
+                  updatedAt: '2026-06-02T10:01:00Z',
+                  status: { state: 'completed' },
+                  messages: [
+                    {
+                      id: 'msg-1',
+                      role: 'user',
+                      text: 'Hello'
+                    }
+                  ]
+                }
+              ]
+            }
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
 
     const conversations = await getConversations(fetcher, 'house');
 
     expect(conversations).toHaveLength(1);
     expect(conversations[0].id).toBe('ctx-1');
+    expect(conversations[0].title).toBe('Hello');
     expect(String(fetcher.mock.calls[0][0])).toContain(
-      '/api/v1/conversations?agentId=house'
+      '/api/v1/proxy/agents/house'
     );
   });
 
@@ -70,96 +84,173 @@ describe('api conversation history', () => {
     ]);
   });
 
-  it('creates a conversation and sends turns through the hub API', async () => {
-    const detail = {
-      conversation: {
-        id: 'ctx-1',
-        agentId: 'house',
-        title: 'House',
-        status: 'completed',
-        a2aContextId: 'ctx-1',
-        latestTaskId: 'task-1',
-        createdAt: '2026-06-02T10:00:00Z',
-        updatedAt: '2026-06-02T10:01:00Z'
-      },
-      messages: [
-        {
-          id: 'agent-1',
-          conversationId: 'ctx-1',
-          agentId: 'house',
-          role: 'assistant',
-          content: 'Hello',
-          status: 'sent'
-        }
-      ]
-    };
+  it('creates a conversation detail locally', async () => {
+    const fetcher = vi.fn<typeof fetch>();
+
+    const detail = await createConversation(fetcher, 'house', 'Kitchen');
+    expect(detail.conversation.agentId).toBe('house');
+    expect(detail.conversation.title).toBe('Kitchen');
+    expect(detail.conversation.id).toMatch(/^ctx-/);
+    expect(detail.messages).toEqual([]);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('sends turns through the hub proxy API using JSON-RPC', async () => {
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(jsonResponse(detail, { status: 201 }));
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        if (body.method === 'message/send') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {}
+          });
+        }
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {
+              tasks: [
+                {
+                  id: 'task-1',
+                  contextId: 'ctx-1',
+                  text: 'Hello',
+                  updatedAt: '2026-06-02T10:01:00Z',
+                  status: { state: 'completed' }
+                }
+              ]
+            }
+          });
+        }
+        if (body.method === 'tasks/get') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {
+              id: 'task-1',
+              contextId: 'ctx-1',
+              text: 'Hello',
+              updatedAt: '2026-06-02T10:01:00Z',
+              status: { state: 'completed' },
+              messages: [
+                {
+                  id: 'msg-1',
+                  role: 'user',
+                  text: 'Hello'
+                },
+                {
+                  id: 'msg-2',
+                  role: 'assistant',
+                  text: 'Hi'
+                }
+              ]
+            }
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
 
-    await expect(
-      createConversation(fetcher, 'house', 'Kitchen')
-    ).resolves.toEqual(detail);
+    const result = await sendConversationTurn(
+      fetcher,
+      'ctx-1',
+      'house',
+      'Hello'
+    );
+    expect(result.conversation.id).toBe('ctx-1');
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].role).toBe('user');
+    expect(result.messages[1].role).toBe('assistant');
 
     expect(fetcher).toHaveBeenCalledWith(
-      expect.stringContaining('/api/v1/conversations'),
+      expect.stringContaining('/api/v1/proxy/agents/house'),
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ agentId: 'house', title: 'Kitchen' })
-      })
-    );
-
-    fetcher.mockResolvedValueOnce(jsonResponse(detail));
-    await expect(
-      sendConversationTurn(fetcher, 'ctx-1', 'house', 'Hello')
-    ).resolves.toEqual(detail);
-    expect(fetcher).toHaveBeenLastCalledWith(
-      expect.stringContaining('/api/v1/conversations/ctx-1/turns'),
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ agentId: 'house', text: 'Hello' })
+        body: expect.stringContaining('"message/send"')
       })
     );
   });
 });
 
 describe('api conversation streaming', () => {
-  it('parses SSE conversation events', () => {
-    const event = parseSSEEvent(`event: assistant_delta
-data: {"conversationId":"ctx-1","text":"Hi","append":true}
-
-`);
-
-    expect(event).toEqual({
-      type: 'assistant_delta',
-      conversationId: 'ctx-1',
-      text: 'Hi',
-      append: true
-    });
-  });
-
   it('streams turn events across chunk boundaries', async () => {
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const encoder = new TextEncoder();
-        controller.enqueue(
-          encoder.encode(`event: assistant_delta
-data: {"conversationId":"ctx-1","text":"Hel","append":true}
-
-`)
-        );
-        controller.enqueue(
-          encoder.encode(`event: assistant_delta
-data: {"conversationId":"ctx-1","text":"lo","append":true}
-
-`)
-        );
-        controller.close();
-      }
-    });
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(new Response(stream, { status: 200 }));
+      .mockImplementation(async (url, options) => {
+        const accept = (
+          options?.headers as Record<string, string> | undefined
+        )?.['Accept'];
+        if (accept === 'text/event-stream') {
+          const body = JSON.parse(options?.body as string);
+          const requestId = body.id;
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(
+                encoder.encode(`data: {"jsonrpc":"2.0","id":${requestId},"result":{"kind":"message","role":"assistant","parts":[{"kind":"text","text":"Hel"}]}}
+
+`)
+              );
+              controller.enqueue(
+                encoder.encode(`data: {"jsonrpc":"2.0","id":${requestId},"result":{"kind":"message","role":"assistant","parts":[{"kind":"text","text":"lo"}]}}
+
+`)
+              );
+              controller.close();
+            }
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' }
+          });
+        }
+        const body = JSON.parse(options?.body as string);
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {
+              tasks: [
+                {
+                  id: 'task-1',
+                  contextId: 'ctx-1',
+                  text: 'Hello',
+                  updatedAt: '2026-06-02T10:01:00Z',
+                  status: { state: 'completed' }
+                }
+              ]
+            }
+          });
+        }
+        if (body.method === 'tasks/get') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {
+              id: 'task-1',
+              contextId: 'ctx-1',
+              text: 'Hello',
+              updatedAt: '2026-06-02T10:01:00Z',
+              status: { state: 'completed' },
+              messages: [
+                {
+                  id: 'msg-1',
+                  role: 'user',
+                  text: 'Hello'
+                },
+                {
+                  id: 'msg-2',
+                  role: 'assistant',
+                  text: 'Hello'
+                }
+              ]
+            }
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+
     const events: unknown[] = [];
 
     await sendConversationTurnStream(
@@ -170,20 +261,30 @@ data: {"conversationId":"ctx-1","text":"lo","append":true}
       (event) => events.push(event)
     );
 
-    expect(events).toEqual([
-      {
-        type: 'assistant_delta',
-        conversationId: 'ctx-1',
-        text: 'Hel',
-        append: true
-      },
-      {
-        type: 'assistant_delta',
-        conversationId: 'ctx-1',
-        text: 'lo',
-        append: true
-      }
-    ]);
+    expect(events[0]).toEqual({
+      type: 'turn_started',
+      conversationId: 'ctx-1',
+      agentId: 'house'
+    });
+    expect(events[1]).toEqual({
+      type: 'assistant_delta',
+      conversationId: 'ctx-1',
+      agentId: 'house',
+      text: 'Hel',
+      append: true
+    });
+    expect(events[2]).toEqual({
+      type: 'assistant_delta',
+      conversationId: 'ctx-1',
+      agentId: 'house',
+      text: 'lo',
+      append: true
+    });
+    expect(events[3]).toEqual(
+      expect.objectContaining({
+        type: 'turn_completed'
+      })
+    );
   });
 });
 

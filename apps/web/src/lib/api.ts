@@ -1,3 +1,5 @@
+import { JsonRpcTransport } from '@a2a-js/sdk/client';
+import type { Task as A2ATask } from '@a2a-js/sdk';
 import type {
   Agent,
   AppStatus,
@@ -8,7 +10,6 @@ import type {
   DashboardData,
   HouseholdSettings,
   HomeState,
-  MessageResponse,
   PublicConfig,
   Room,
   RoomsSettings,
@@ -21,7 +22,29 @@ import type {
   WidgetLayout
 } from '$lib/types';
 
+interface LegacyMessage {
+  id?: string;
+  messageId?: string;
+  role: string;
+  text?: string;
+  parts?: Array<{ kind: string; text?: string }>;
+}
+
+interface LegacyTask {
+  messages?: LegacyMessage[];
+  text?: string;
+  updatedAt?: string;
+}
+
 const API_BASE = import.meta.env.VITE_JUTE_API_URL ?? 'http://127.0.0.1:8787';
+
+async function getJSON<T>(fetcher: typeof fetch, path: string): Promise<T> {
+  const response = await fetcher(`${API_BASE}${path}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${path}: ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
 
 export async function getDashboard(
   fetcher: typeof fetch
@@ -59,30 +82,14 @@ export async function getDashboard(
   };
 }
 
-export async function sendMessage(
+function getTransport(
   fetcher: typeof fetch,
-  agentId: string,
-  text: string,
-  conversationId?: string
-): Promise<MessageResponse> {
-  const response = await fetcher(`${API_BASE}/api/v1/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ agentId, text, conversationId })
+  agentId: string
+): JsonRpcTransport {
+  return new JsonRpcTransport({
+    endpoint: `${API_BASE}/api/v1/proxy/agents/${encodeURIComponent(agentId)}`,
+    fetchImpl: fetcher
   });
-  if (!response.ok) {
-    const body = await response
-      .json()
-      .catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(
-      typeof body.error === 'string'
-        ? body.error
-        : `Jute API request failed: ${response.status}`
-    );
-  }
-  return response.json() as Promise<MessageResponse>;
 }
 
 export async function getHouseholdSettings(
@@ -188,10 +195,69 @@ export async function getConversations(
   if (!agentId) {
     return [];
   }
-  const response = await fetcher(
-    `${API_BASE}/api/v1/conversations?agentId=${encodeURIComponent(agentId)}`
-  );
-  if (response.status === 501) {
+  try {
+    const transport = getTransport(fetcher, agentId);
+    const result = (await transport.callExtensionMethod(
+      'ListTasks',
+      { pageSize: 50 },
+      Math.floor(Math.random() * 1000000)
+    )) as { result?: { tasks?: A2ATask[] } };
+    const tasks = result?.result?.tasks || [];
+
+    const byContext: Record<string, Conversation> = {};
+    for (const task of tasks) {
+      const contextId = task.contextId || task.id;
+      if (!contextId) continue;
+
+      let title = '';
+      const history = (task.history ||
+        (task as unknown as LegacyTask).messages) as
+        | Array<{
+            role: string;
+            parts?: Array<{ kind: string; text?: string }>;
+            text?: string;
+          }>
+        | undefined;
+      if (history && history.length > 0) {
+        const firstUser = history.find((m) => m.role === 'user');
+        if (firstUser && firstUser.parts && firstUser.parts.length > 0) {
+          title = firstUser.parts
+            .map((p) => (p.kind === 'text' ? p.text || '' : ''))
+            .join('');
+        } else if (firstUser && firstUser.text) {
+          title = firstUser.text;
+        }
+      }
+      if (!title) {
+        title = (task as unknown as LegacyTask).text || 'Conversation';
+      }
+
+      const updatedAt =
+        task.status?.timestamp ||
+        (task as unknown as LegacyTask).updatedAt ||
+        new Date().toISOString();
+      const conversation: Conversation = byContext[contextId] || {
+        id: contextId,
+        agentId,
+        title,
+        status: task.status?.state || 'completed',
+        a2aContextId: contextId,
+        latestTaskId: task.id || '',
+        createdAt: updatedAt,
+        updatedAt: updatedAt
+      };
+
+      if (updatedAt && updatedAt >= conversation.updatedAt) {
+        conversation.updatedAt = updatedAt;
+        conversation.latestTaskId = task.id || '';
+        conversation.status = task.status?.state || 'completed';
+      }
+      byContext[contextId] = conversation;
+    }
+
+    return Object.values(byContext);
+  } catch (err) {
+    console.error('Failed to list conversations from proxy:', err);
     return [
       {
         id: `history-unsupported-${agentId}`,
@@ -206,18 +272,6 @@ export async function getConversations(
       }
     ];
   }
-  if (!response.ok) {
-    const body = await response
-      .json()
-      .catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(
-      typeof body.error === 'string'
-        ? body.error
-        : `Jute API request failed: ${response.status}`
-    );
-  }
-  const body = (await response.json()) as { conversations: Conversation[] };
-  return body.conversations;
 }
 
 export async function createConversation(
@@ -225,24 +279,21 @@ export async function createConversation(
   agentId: string,
   title?: string
 ): Promise<ConversationDetail> {
-  const response = await fetcher(`${API_BASE}/api/v1/conversations`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
+  const contextId = 'ctx-' + Math.random().toString(36).substring(7);
+  const now = new Date().toISOString();
+  return {
+    conversation: {
+      id: contextId,
+      agentId,
+      title: title || 'New Conversation',
+      status: 'idle',
+      a2aContextId: contextId,
+      latestTaskId: '',
+      createdAt: now,
+      updatedAt: now
     },
-    body: JSON.stringify({ agentId, title })
-  });
-  if (!response.ok) {
-    const body = await response
-      .json()
-      .catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(
-      typeof body.error === 'string'
-        ? body.error
-        : `Jute API request failed: ${response.status}`
-    );
-  }
-  return response.json() as Promise<ConversationDetail>;
+    messages: []
+  };
 }
 
 export async function getConversation(
@@ -250,10 +301,102 @@ export async function getConversation(
   conversationId: string,
   agentId: string
 ): Promise<ConversationDetail> {
-  return getJSON<ConversationDetail>(
-    fetcher,
-    `/api/v1/conversations/${encodeURIComponent(conversationId)}?agentId=${encodeURIComponent(agentId)}`
-  );
+  const transport = getTransport(fetcher, agentId);
+  const result = (await transport.callExtensionMethod(
+    'ListTasks',
+    {
+      contextId: conversationId,
+      pageSize: 50
+    },
+    Math.floor(Math.random() * 1000000)
+  )) as { result?: { tasks?: A2ATask[] } };
+  const tasks = result?.result?.tasks || [];
+
+  const detail: ConversationDetail = {
+    conversation: {
+      id: conversationId,
+      agentId,
+      title: 'Conversation',
+      status: 'idle',
+      a2aContextId: conversationId,
+      latestTaskId: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    messages: []
+  };
+
+  tasks.sort((a, b) => {
+    const timeA =
+      a.status?.timestamp || (a as unknown as LegacyTask).updatedAt || '';
+    const timeB =
+      b.status?.timestamp || (b as unknown as LegacyTask).updatedAt || '';
+    return timeA.localeCompare(timeB);
+  });
+
+  for (const task of tasks) {
+    let record = task;
+    if (task.id) {
+      try {
+        const fullTask = await transport.getTask({
+          id: task.id,
+          historyLength: 50
+        });
+        if (fullTask) {
+          record = fullTask;
+        }
+      } catch (e) {
+        console.warn('Failed to get full task details for', task.id, e);
+      }
+    }
+
+    const recordUpdatedAt =
+      record.status?.timestamp ||
+      (record as unknown as LegacyTask).updatedAt ||
+      detail.conversation.updatedAt;
+    detail.conversation.latestTaskId = record.id || '';
+    detail.conversation.status = record.status?.state || 'completed';
+    detail.conversation.updatedAt = recordUpdatedAt;
+
+    const history = (record.history ||
+      (record as unknown as LegacyTask).messages) as
+      | Array<{
+          id?: string;
+          messageId?: string;
+          role: string;
+          parts?: Array<{ kind: string; text?: string }>;
+          text?: string;
+        }>
+      | undefined;
+    if (history) {
+      for (const msg of history) {
+        const content = msg.parts
+          ? msg.parts
+              .map((p) => (p.kind === 'text' ? p.text || '' : ''))
+              .join('')
+          : msg.text || '';
+        detail.messages.push({
+          id: msg.id || msg.messageId || Math.random().toString(),
+          conversationId,
+          agentId,
+          role: msg.role === 'user' ? 'user' : 'assistant',
+          content,
+          status: 'sent',
+          a2aMessageId: msg.id || msg.messageId || '',
+          a2aTaskId: record.id || '',
+          createdAt: recordUpdatedAt,
+          updatedAt: recordUpdatedAt
+        });
+      }
+    }
+  }
+
+  const firstUser = detail.messages.find((m) => m.role === 'user');
+  if (firstUser && firstUser.content) {
+    detail.conversation.title = firstUser.content;
+  }
+
+  return detail;
 }
 
 export async function sendConversationTurn(
@@ -262,27 +405,23 @@ export async function sendConversationTurn(
   agentId: string,
   text: string
 ): Promise<ConversationDetail> {
-  const response = await fetcher(
-    `${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}/turns`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ agentId, text })
+  const transport = getTransport(fetcher, agentId);
+  await transport.sendMessage({
+    message: {
+      kind: 'message',
+      messageId: crypto.randomUUID(),
+      role: 'user',
+      contextId: conversationId,
+      parts: [
+        {
+          kind: 'text',
+          text
+        }
+      ]
     }
-  );
-  if (!response.ok) {
-    const body = await response
-      .json()
-      .catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(
-      typeof body.error === 'string'
-        ? body.error
-        : `Jute API request failed: ${response.status}`
-    );
-  }
-  return response.json() as Promise<ConversationDetail>;
+  });
+
+  return getConversation(fetcher, conversationId, agentId);
 }
 
 export async function sendConversationTurnStream(
@@ -292,52 +431,122 @@ export async function sendConversationTurnStream(
   text: string,
   onEvent: (event: ConversationStreamEvent) => void
 ): Promise<void> {
-  const response = await fetcher(
-    `${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}/turns/stream`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ agentId, text })
-    }
-  );
-  if (!response.ok) {
-    const body = await response
-      .json()
-      .catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(
-      typeof body.error === 'string'
-        ? body.error
-        : `Jute API request failed: ${response.status}`
-    );
-  }
-  if (!response.body) {
-    throw new Error('Jute streaming response was empty');
-  }
+  onEvent({
+    type: 'turn_started',
+    conversationId,
+    agentId
+  });
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split(/\n\n/);
-    buffer = parts.pop() ?? '';
-    for (const part of parts) {
-      const event = parseSSEEvent(part);
-      if (event) {
-        onEvent(event);
+  try {
+    const transport = getTransport(fetcher, agentId);
+
+    for await (const event of transport.sendMessageStream({
+      message: {
+        kind: 'message',
+        messageId: crypto.randomUUID(),
+        role: 'user',
+        contextId: conversationId,
+        parts: [
+          {
+            kind: 'text',
+            text
+          }
+        ]
+      }
+    })) {
+      if (event.kind === 'message') {
+        const content = event.parts
+          ? event.parts
+              .map((p) =>
+                p.kind === 'text' ? (p as { text?: string }).text || '' : ''
+              )
+              .join('')
+          : (event as unknown as { text?: string }).text || '';
+        if (content) {
+          onEvent({
+            type: 'assistant_delta',
+            conversationId,
+            agentId,
+            text: content,
+            append: true
+          });
+        }
+      } else if (event.kind === 'status-update') {
+        let statusText = '';
+        if (event.status?.message?.parts) {
+          statusText = event.status.message.parts
+            .map((p) =>
+              p.kind === 'text' ? (p as { text?: string }).text || '' : ''
+            )
+            .join('');
+        } else if (
+          (event.status?.message as unknown as { text?: string })?.text
+        ) {
+          statusText =
+            (event.status.message as unknown as { text?: string }).text || '';
+        }
+
+        onEvent({
+          type: 'status_changed',
+          conversationId,
+          agentId,
+          taskId: event.taskId,
+          status: event.status?.state || 'working',
+          text: statusText,
+          terminal: event.final || false
+        });
+      } else if (event.kind === 'artifact-update') {
+        const content = event.artifact?.parts
+          ? event.artifact.parts
+              .map((p) =>
+                p.kind === 'text' ? (p as { text?: string }).text || '' : ''
+              )
+              .join('')
+          : '';
+        if (content) {
+          onEvent({
+            type: 'assistant_delta',
+            conversationId,
+            agentId,
+            text: content,
+            append: event.append || false
+          });
+        }
+      } else if (event.kind === 'task') {
+        let statusText = '';
+        if (event.status?.message?.parts) {
+          statusText = event.status.message.parts
+            .map((p) =>
+              p.kind === 'text' ? (p as { text?: string }).text || '' : ''
+            )
+            .join('');
+        }
+
+        onEvent({
+          type: 'status_changed',
+          conversationId,
+          agentId,
+          taskId: event.id,
+          status: event.status?.state || 'working',
+          text: statusText,
+          terminal: false
+        });
       }
     }
-  }
-  buffer += decoder.decode();
-  const event = parseSSEEvent(buffer);
-  if (event) {
-    onEvent(event);
+
+    const detail = await getConversation(fetcher, conversationId, agentId);
+    onEvent({
+      type: 'turn_completed',
+      ...detail
+    });
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : 'Unknown error';
+    onEvent({
+      type: 'turn_failed',
+      conversationId,
+      agentId,
+      message: errMsg || 'Failed to complete stream turn'
+    });
   }
 }
 
@@ -790,32 +999,4 @@ async function postVoiceControl(
     );
   }
   return response.json() as Promise<VoiceStatus>;
-}
-
-async function getJSON<T>(fetcher: typeof fetch, path: string): Promise<T> {
-  const response = await fetcher(`${API_BASE}${path}`);
-  if (!response.ok) {
-    throw new Error(`Jute API request failed: ${response.status}`);
-  }
-  return response.json() as Promise<T>;
-}
-
-export function parseSSEEvent(
-  raw: string
-): ConversationStreamEvent | undefined {
-  const lines = raw.split(/\r?\n/);
-  let type = '';
-  const data: string[] = [];
-  for (const line of lines) {
-    if (line.startsWith('event:')) {
-      type = line.slice('event:'.length).trim();
-    } else if (line.startsWith('data:')) {
-      data.push(line.slice('data:'.length).trim());
-    }
-  }
-  if (!type || data.length === 0) {
-    return undefined;
-  }
-  const payload = JSON.parse(data.join('\n')) as Record<string, unknown>;
-  return { type, ...payload } as ConversationStreamEvent;
 }

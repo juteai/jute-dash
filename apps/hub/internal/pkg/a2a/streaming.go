@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+var errStreamComplete = errors.New("a2a stream complete")
+
 type streamResponse struct {
 	Message        *message            `json:"message,omitempty"`
 	Task           *task               `json:"task,omitempty"`
@@ -76,6 +78,9 @@ func (c *JSONRPCClient) StreamMessage(ctx context.Context, req SendMessageReques
 		line := scanner.Text()
 		if line == "" {
 			if err := handleSSEData(data.String(), handler); err != nil {
+				if errors.Is(err, errStreamComplete) {
+					return nil
+				}
 				return err
 			}
 			data.Reset()
@@ -92,7 +97,12 @@ func (c *JSONRPCClient) StreamMessage(ctx context.Context, req SendMessageReques
 		return fmt.Errorf("read a2a stream: %w", err)
 	}
 	if strings.TrimSpace(data.String()) != "" {
-		return handleSSEData(data.String(), handler)
+		if err := handleSSEData(data.String(), handler); err != nil {
+			if errors.Is(err, errStreamComplete) {
+				return nil
+			}
+			return err
+		}
 	}
 	return nil
 }
@@ -119,7 +129,13 @@ func handleSSEData(data string, handler StreamHandler) error {
 	if !ok {
 		return nil
 	}
-	return handler(event)
+	if err := handler(event); err != nil {
+		return err
+	}
+	if event.Terminal {
+		return errStreamComplete
+	}
+	return nil
 }
 
 func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
@@ -167,7 +183,7 @@ func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
 			Status:         "working",
 			Text:           displayTextFromParts(update.Artifact.Parts),
 			Append:         update.Append,
-			Terminal:       update.LastChunk,
+			Terminal:       false,
 		}, true, nil
 	default:
 		return StreamEvent{}, false, nil

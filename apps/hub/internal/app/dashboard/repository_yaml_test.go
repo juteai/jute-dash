@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/mock"
 	"jute-dash/apps/hub/internal/app/dashboard"
 	"jute-dash/apps/hub/mocks"
+
+	"github.com/stretchr/testify/mock"
 )
 
 func TestYAMLRepositoryMigratesLegacyFourColumnConfig(t *testing.T) {

@@ -17,9 +17,9 @@ import (
 
 const (
 	jsonRPCVersion             = "2.0"
-	methodSendMessage          = "SendMessage"
-	methodSendStreamingMessage = "SendStreamingMessage"
-	methodGetTask              = "GetTask"
+	methodSendMessage          = "message/send"
+	methodSendStreamingMessage = "message/stream"
+	methodGetTask              = "tasks/get"
 	methodListTasks            = "ListTasks"
 	methodNotFoundCode         = -32601
 )
@@ -175,7 +175,7 @@ func newSendRequest(req SendMessageRequest, method string) jsonRPCRequest {
 				TaskID:    strings.TrimSpace(req.TaskID),
 				Role:      "ROLE_USER",
 				Parts: []part{
-					{Text: req.Text},
+					{Kind: "text", Text: req.Text},
 				},
 				Metadata: cleanMetadata(req.Metadata),
 			},
