@@ -43,6 +43,30 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
+func TestAgentProxyCORSPreflightAllowsA2AVersionHeader(t *testing.T) {
+	handler := New(testConfig(), "test")
+	req := httptest.NewRequest(http.MethodOptions, "/api/v1/proxy/agents/house", nil)
+	req.Header.Set("Origin", "http://localhost:5173")
+	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
+	req.Header.Set("Access-Control-Request-Headers", "a2a-version,content-type")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:5173" {
+		t.Fatalf("expected local origin to be allowed, got %q", got)
+	}
+	allowedHeaders := strings.ToLower(rec.Header().Get("Access-Control-Allow-Headers"))
+	for _, required := range []string{"content-type", "a2a-version"} {
+		if !strings.Contains(allowedHeaders, required) {
+			t.Fatalf("expected allowed headers to contain %q, got %q", required, allowedHeaders)
+		}
+	}
+}
+
 func TestEventsStreamDisplayActions(t *testing.T) {
 	dispatcher := displayactions.NewDispatcher()
 	handler := newServer(
@@ -1369,6 +1393,242 @@ func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
 	}
 	if !strings.Contains(string(savedBytes), "card-url: "+agentCardServer.URL) {
 		t.Fatalf("saved config does not include card URL:\n%s", string(savedBytes))
+	}
+}
+
+func TestAgentEndpointPatchesEnabledStateInYAMLConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "jute.yaml")
+	cfg := testConfig()
+	if err := SaveYAML(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
+		cfg,
+		"test",
+		SetupStatus{Complete: true},
+		nil,
+		configPath,
+	)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/agents/house",
+		bytes.NewBufferString(`{"enabled":false}`),
+	)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		ID      string `json:"id"`
+		Enabled bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.ID != "house" || body.Enabled {
+		t.Fatalf("unexpected patched agent: %+v", body)
+	}
+
+	reloaded, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if len(reloaded.Agents) != 2 || reloaded.Agents[0].Enabled {
+		t.Fatalf("patched state was not persisted: %+v", reloaded.Agents)
+	}
+}
+
+func TestAgentEndpointDeletesAgentFromYAMLConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "jute.yaml")
+	cfg := testConfig()
+	if err := SaveYAML(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
+		cfg,
+		"test",
+		SetupStatus{Complete: true},
+		nil,
+		configPath,
+	)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agents/house", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Deleted bool `json:"deleted"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.Deleted {
+		t.Fatalf("unexpected delete response: %+v", body)
+	}
+
+	reloaded, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if len(reloaded.Agents) != 1 || reloaded.Agents[0].ID != "energy" {
+		t.Fatalf("agent deletion was not persisted: %+v", reloaded.Agents)
+	}
+}
+
+func TestAgentEndpointRefreshesCardMetadata(t *testing.T) {
+	agentCardServer := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, map[string]any{
+				"name":        "House Concierge",
+				"description": "Refreshed card",
+				"version":     "1.0.0",
+				"supportedInterfaces": []map[string]string{
+					{
+						"url":             "http://127.0.0.1:9797/refreshed",
+						"protocolBinding": "JSONRPC",
+						"protocolVersion": "1.0",
+					},
+				},
+				"defaultInputModes":  []string{"text/plain"},
+				"defaultOutputModes": []string{"text/plain"},
+			})
+		}),
+	)
+	defer agentCardServer.Close()
+
+	cfg := testConfig()
+	cfg.Agents = cfg.Agents[:1]
+	cfg.Agents[0].CardURL = agentCardServer.URL
+	allowAgentCardURL(&cfg, agentCardServer.URL)
+	handler := New(cfg, "test")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/house/refresh-card", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		ID                      string `json:"id"`
+		CardStatus              string `json:"cardStatus"`
+		SelectedEndpointURL     string `json:"selectedEndpointUrl"`
+		SelectedProtocolVersion string `json:"selectedProtocolVersion"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.ID != "house" ||
+		body.CardStatus != "available" ||
+		body.SelectedEndpointURL != "http://127.0.0.1:9797/refreshed" ||
+		body.SelectedProtocolVersion != "1.0" {
+		t.Fatalf("unexpected refreshed agent: %+v", body)
+	}
+}
+
+func TestAgentSubroutesValidateRequests(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "jute.yaml")
+	cfg := testConfig()
+	if err := SaveYAML(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
+		cfg,
+		"test",
+		SetupStatus{Complete: true},
+		nil,
+		configPath,
+	)
+	tests := []struct {
+		name      string
+		method    string
+		path      string
+		body      string
+		wantCode  int
+		wantAllow string
+		wantError string
+	}{
+		{
+			name:      "unsupported agent method",
+			method:    http.MethodGet,
+			path:      "/api/v1/agents/house",
+			wantCode:  http.StatusMethodNotAllowed,
+			wantAllow: "PATCH, DELETE",
+			wantError: "method not allowed",
+		},
+		{
+			name:      "invalid patch JSON",
+			method:    http.MethodPatch,
+			path:      "/api/v1/agents/house",
+			body:      "{",
+			wantCode:  http.StatusBadRequest,
+			wantError: "invalid JSON request body",
+		},
+		{
+			name:      "missing enabled value",
+			method:    http.MethodPatch,
+			path:      "/api/v1/agents/house",
+			body:      "{}",
+			wantCode:  http.StatusBadRequest,
+			wantError: "enabled is required",
+		},
+		{
+			name:      "delete unknown agent",
+			method:    http.MethodDelete,
+			path:      "/api/v1/agents/missing",
+			wantCode:  http.StatusNotFound,
+			wantError: "agent not found",
+		},
+		{
+			name:      "unknown agent",
+			method:    http.MethodPost,
+			path:      "/api/v1/agents/missing/refresh-card",
+			wantCode:  http.StatusNotFound,
+			wantError: "agent not found",
+		},
+		{
+			name:      "unsupported refresh method",
+			method:    http.MethodGet,
+			path:      "/api/v1/agents/house/refresh-card",
+			wantCode:  http.StatusMethodNotAllowed,
+			wantAllow: http.MethodPost,
+			wantError: "method not allowed",
+		},
+		{
+			name:      "unknown agent route",
+			method:    http.MethodPost,
+			path:      "/api/v1/agents/house/unknown",
+			wantCode:  http.StatusNotFound,
+			wantError: "agent route not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantCode {
+				t.Fatalf("expected status %d, got %d: %s", tt.wantCode, rec.Code, rec.Body.String())
+			}
+			if got := rec.Header().Get("Allow"); got != tt.wantAllow {
+				t.Fatalf("expected Allow %q, got %q", tt.wantAllow, got)
+			}
+			var body map[string]string
+			if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if body["error"] != tt.wantError {
+				t.Fatalf("expected error %q, got %+v", tt.wantError, body)
+			}
+		})
 	}
 }
 
