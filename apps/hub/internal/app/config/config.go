@@ -22,6 +22,7 @@ import (
 type Config struct {
 	Home      homestate.HomeConfig      `json:"home"      yaml:"home"`
 	Server    ServerConfig              `json:"server"    yaml:"server"`
+	Log       LogConfig                 `json:"log"       yaml:"log"`
 	MCP       mcp.Config                `json:"mcp"       yaml:"mcp"`
 	A2A       a2a.AgentCardURLPolicy    `json:"a2a"       yaml:"a2a"`
 	Display   dashboard.DisplayConfig   `json:"display"   yaml:"display"`
@@ -35,6 +36,15 @@ type Config struct {
 
 type ServerConfig struct {
 	ListenAddress string `json:"listenAddress" yaml:"listen-address"`
+}
+
+type LogConfig struct {
+	Level      string `json:"level"      yaml:"level"`
+	FilePath   string `json:"filePath"   yaml:"file-path"`
+	MaxSize    int    `json:"maxSize"    yaml:"max-size"`
+	MaxBackups int    `json:"maxBackups" yaml:"max-backups"`
+	MaxAge     int    `json:"maxAge"     yaml:"max-age"`
+	Compress   bool   `json:"compress"   yaml:"compress"`
 }
 
 type PublicConfig struct {
@@ -51,6 +61,14 @@ func DefaultConfig() Config {
 		Home: homestate.DefaultHomeConfig(),
 		Server: ServerConfig{
 			ListenAddress: "127.0.0.1:8787",
+		},
+		Log: LogConfig{
+			Level:      "info",
+			FilePath:   "",
+			MaxSize:    10,
+			MaxBackups: 5,
+			MaxAge:     3,
+			Compress:   true,
 		},
 		MCP:     mcp.DefaultConfig(),
 		A2A:     a2a.DefaultAgentCardURLPolicy(),
@@ -133,10 +151,16 @@ func ValidateConfig(cfg Config) error {
 			problems = append(problems, location+".endpointUrl "+err.Error())
 		}
 		if !a2a.IsSupportedProtocolBinding(agent.ProtocolBinding) {
-			problems = append(problems, location+".protocolBinding must be JSONRPC, HTTP+JSON, or GRPC")
+			problems = append(
+				problems,
+				location+".protocolBinding must be JSONRPC, HTTP+JSON, or GRPC",
+			)
 		}
 		if agent.Auth != nil && strings.TrimSpace(agent.Auth.EnvToken) == "" {
-			problems = append(problems, location+".auth.envToken is required when auth is configured")
+			problems = append(
+				problems,
+				location+".auth.envToken is required when auth is configured",
+			)
 		}
 		seenScopes := map[string]struct{}{}
 		for j, scope := range agent.MCPScopes {
@@ -155,8 +179,18 @@ func ValidateConfig(cfg Config) error {
 		}
 	}
 
-	validateUniqueIDs("rooms", cfg.Rooms, func(room homestate.RoomConfig) string { return room.ID }, &problems)
-	validateUniqueIDs("tiles", cfg.Tiles, func(tile homestate.TileConfig) string { return tile.ID }, &problems)
+	validateUniqueIDs(
+		"rooms",
+		cfg.Rooms,
+		func(room homestate.RoomConfig) string { return room.ID },
+		&problems,
+	)
+	validateUniqueIDs(
+		"tiles",
+		cfg.Tiles,
+		func(tile homestate.TileConfig) string { return tile.ID },
+		&problems,
+	)
 
 	if len(problems) > 0 {
 		return errors.New(strings.Join(problems, "; "))
@@ -196,6 +230,18 @@ func ApplyDefaults(cfg *Config) {
 	if strings.TrimSpace(cfg.Server.ListenAddress) == "" {
 		cfg.Server.ListenAddress = "127.0.0.1:8787"
 	}
+	if strings.TrimSpace(cfg.Log.Level) == "" {
+		cfg.Log.Level = "info"
+	}
+	if cfg.Log.MaxSize <= 0 {
+		cfg.Log.MaxSize = 10
+	}
+	if cfg.Log.MaxBackups <= 0 {
+		cfg.Log.MaxBackups = 5
+	}
+	if cfg.Log.MaxAge <= 0 {
+		cfg.Log.MaxAge = 3
+	}
 	mcp.ApplyDefaults(&cfg.MCP)
 	if cfg.A2A.Loopback == nil {
 		allowLoopback := true
@@ -207,9 +253,45 @@ func ApplyDefaults(cfg *Config) {
 
 	if len(cfg.Dashboard.Widgets) == 0 {
 		cfg.Dashboard.Widgets = []dashboard.DashboardWidgetConfig{
-			{ID: "date-time", Type: "date-time", Title: "Date & Time", X: 0, Y: 0, W: 2, H: 1, Visible: true},
-			{ID: "weather", Type: "weather", Title: "Weather", X: 2, Y: 0, W: 2, H: 1, Visible: true},
-			{ID: "chat-history", Type: "chat-history", Title: "Chat History", X: 0, Y: 1, W: 2, H: 2, Visible: true},
+			{
+				ID:      "date-time",
+				Type:    "date-time",
+				Title:   "Date & Time",
+				X:       0,
+				Y:       0,
+				W:       6,
+				H:       1,
+				MinW:    3,
+				MinH:    1,
+				Size:    "wide",
+				Visible: true,
+			},
+			{
+				ID:      "weather",
+				Type:    "weather",
+				Title:   "Weather",
+				X:       6,
+				Y:       0,
+				W:       6,
+				H:       1,
+				MinW:    3,
+				MinH:    1,
+				Size:    "wide",
+				Visible: true,
+			},
+			{
+				ID:      "chat-history",
+				Type:    "chat-history",
+				Title:   "Chat History",
+				X:       0,
+				Y:       1,
+				W:       6,
+				H:       2,
+				MinW:    3,
+				MinH:    1,
+				Size:    "medium",
+				Visible: true,
+			},
 		}
 	}
 	for i := range cfg.Agents {
@@ -254,7 +336,10 @@ func validateUniqueIDs[T any](name string, values []T, getID func(T) string, pro
 			continue
 		}
 		if _, exists := seen[id]; exists {
-			*problems = append(*problems, location+".id duplicates another "+strings.TrimSuffix(name, "s"))
+			*problems = append(
+				*problems,
+				location+".id duplicates another "+strings.TrimSuffix(name, "s"),
+			)
 			continue
 		}
 		seen[id] = struct{}{}

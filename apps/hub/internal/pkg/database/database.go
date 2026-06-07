@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type Database struct {
@@ -17,7 +19,7 @@ type Database struct {
 	path string
 }
 
-func Open(dbPath string) (*Database, error) {
+func Open(dbPath string, log *slog.Logger) (*Database, error) {
 	if strings.TrimSpace(dbPath) == "" {
 		return nil, errors.New("database path is required")
 	}
@@ -25,7 +27,18 @@ func Open(dbPath string) (*Database, error) {
 		return nil, fmt.Errorf("create data directory: %w", err)
 	}
 
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	gormConfig := &gorm.Config{}
+	if log != nil {
+		gormLevel := logger.Warn
+		if log.Enabled(context.Background(), slog.LevelDebug) {
+			gormLevel = logger.Info
+		}
+		gormLogger := NewSlogLogger(log)
+		gormLogger.LogLevel = gormLevel
+		gormConfig.Logger = gormLogger
+	}
+
+	db, err := gorm.Open(sqlite.Open(dbPath), gormConfig)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite via gorm: %w", err)
 	}

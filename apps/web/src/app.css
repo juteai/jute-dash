@@ -10,6 +10,15 @@
   background: #ffffff;
   color: #000000;
   letter-spacing: 0;
+  --dashboard-grid-gap: 12px;
+  /* Widget content scales with its cell via container queries (cqmin = the
+     cell's short side). These :root values are the fallback before a widget
+     frame establishes its container context. */
+  --widget-title-size: clamp(0.6rem, 4.5cqmin, 0.95rem);
+  --widget-body-size: clamp(0.66rem, 5.5cqmin, 1.05rem);
+  --widget-label-size: clamp(0.62rem, 5cqmin, 1rem);
+  --widget-value-size: clamp(0.8rem, 9cqmin, 1.6rem);
+  --widget-display-size: clamp(1.4rem, 22cqmin, 5rem);
 }
 
 * {
@@ -468,25 +477,50 @@ button {
   position: relative;
   grid-row: -2 / -1;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-auto-flow: dense;
-  gap: 12px;
+  /* grid-template-rows/columns are set inline: both axes are proportional (1fr)
+     so the configured layout fills the viewport and scales to fit. */
+  gap: var(--dashboard-grid-gap);
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 2px 2px 24px;
-  scrollbar-gutter: stable;
+  height: 100%;
+  overflow: hidden;
+  padding: 2px;
 }
 
-.dashboard-grid-edit {
-  background-image:
-    linear-gradient(var(--border) 1px, transparent 1px),
-    linear-gradient(90deg, var(--border) 1px, transparent 1px);
-  background-size: 48px 48px;
+.dashboard-grid-background-grid {
+  position: absolute;
+  inset: 2px;
+  display: grid;
+  gap: var(--dashboard-grid-gap);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.dashboard-grid-cell-guide {
+  /* Fills its proportional 1fr track so guides overlay the real cells. */
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--border) 6%, transparent);
+}
+
+.dashboard-widget-placeholder {
+  border: 2px dashed var(--active, #3b82f6);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--active, #3b82f6) 8%, transparent);
+  pointer-events: none;
+  z-index: 10;
 }
 
 .dashboard-widget-slot {
   min-width: 0;
+  z-index: 20;
+}
+
+.dashboard-widget-slot--dragging {
+  z-index: 100 !important;
+  opacity: 0.9;
+  cursor: grabbing !important;
+  pointer-events: none;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
 }
 
 .widget-frame {
@@ -494,11 +528,17 @@ button {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 132px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
+  /* Each frame is a size query container so widget content scales to its cell.
+     Requires a definite size, which the proportional grid cell provides. The
+     --widget-* clamp() vars (defined in :root) resolve cqmin against this box.
+     The small/wide/medium/large classes no longer override font sizes — cqmin
+     handles scaling — they remain only for content/visibility variants below. */
+  container-type: size;
+  container-name: widget;
 }
 
 .widget-frame--chrome-clear {
@@ -544,14 +584,14 @@ select:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 42px;
-  padding: 10px 12px 0;
+  min-height: clamp(20px, 12cqmin, 40px);
+  padding: clamp(4px, 3cqmin, 10px) clamp(6px, 4cqmin, 14px) 0;
 }
 
 .widget-frame-title {
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--widget-title-size);
   font-weight: 760;
   text-overflow: ellipsis;
   text-transform: uppercase;
@@ -569,15 +609,7 @@ select:focus-visible {
 .widget-frame-body {
   flex: 1;
   min-height: 0;
-  padding: 12px;
-}
-
-.widget-frame--small .widget-frame-body {
-  padding: 10px;
-}
-
-.widget-frame--large .widget-frame-body {
-  padding: 16px;
+  padding: clamp(4px, 4cqmin, 16px);
 }
 
 .widget-frame--overflow-scroll .widget-frame-body {
@@ -585,8 +617,7 @@ select:focus-visible {
   scrollbar-gutter: stable;
 }
 
-.widget-frame-handle,
-.widget-resize-handle {
+.widget-frame-handle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -602,10 +633,85 @@ select:focus-visible {
   color: var(--danger);
 }
 
-.widget-resize-handle {
+/* Edit Mode Widget Frame highlight & grab cursor */
+.widget-frame--edit-mode {
+  border: 2px solid var(--focus, #3b82f6) !important;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+  cursor: grab;
+  user-select: none;
+}
+
+.widget-frame--edit-mode:active {
+  cursor: grabbing;
+}
+
+/* Android-style resize dot handles */
+.widget-resize-dot {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
+  width: 14px;
+  height: 14px;
+  background-color: var(--focus, #3b82f6);
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  padding: 0;
+  z-index: 50;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transition:
+    transform 0.15s ease,
+    background-color 0.15s ease;
+}
+
+[data-theme='dark'] .widget-resize-dot {
+  border-color: #121212;
+}
+
+.widget-resize-dot:hover {
+  transform: scale(1.3);
+  background-color: #2563eb;
+}
+
+.widget-resize-dot:active {
+  transform: scale(1.1);
+  background-color: #1d4ed8;
+}
+
+/* Right Edge Handle */
+.widget-resize-dot--right {
+  top: 50%;
+  right: -7px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.widget-resize-dot--right:hover {
+  transform: translateY(-50%) scale(1.3);
+}
+
+.widget-resize-dot--right:active {
+  transform: translateY(-50%) scale(1.1);
+}
+
+/* Bottom Edge Handle */
+.widget-resize-dot--bottom {
+  left: 50%;
+  bottom: -7px;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.widget-resize-dot--bottom:hover {
+  transform: translateX(-50%) scale(1.3);
+}
+
+.widget-resize-dot--bottom:active {
+  transform: translateX(-50%) scale(1.1);
+}
+
+/* Bottom Right Corner Handle */
+.widget-resize-dot--bottom-right {
+  right: -7px;
+  bottom: -7px;
+  cursor: nwse-resize;
 }
 
 .widget-empty-state {
@@ -621,16 +727,23 @@ select:focus-visible {
   flex-direction: column;
   justify-content: flex-end;
   min-height: 100%;
-  gap: 12px;
+  gap: 8px;
 }
 
 .date-time-clock {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: clamp(3rem, 8vw, 5.5rem);
+  font-size: var(--widget-display-size);
   font-weight: 780;
   line-height: 1;
+}
+
+/* Lucide icons render fixed-px SVGs (numeric size prop); override in container
+   units so they scale with the cell. The numeric prop is the no-CQ fallback. */
+.date-time-clock :is(svg) {
+  width: clamp(14px, 8cqmin, 40px);
+  height: auto;
 }
 
 .date-time-date {
@@ -638,14 +751,23 @@ select:focus-visible {
   align-items: center;
   gap: 8px;
   color: var(--muted-strong);
-  font-size: 1.04rem;
+  font-size: var(--widget-value-size);
   font-weight: 680;
 }
 
 .date-time-zone {
   color: var(--muted);
-  font-size: 0.84rem;
+  font-size: var(--widget-label-size);
   font-weight: 650;
+}
+
+.widget-frame--wide .date-time-widget {
+  justify-content: center;
+}
+
+.widget-frame--wide .date-time-date,
+.widget-frame--wide .date-time-zone {
+  display: none;
 }
 
 .widget-stale {
@@ -666,7 +788,7 @@ select:focus-visible {
 }
 
 .weather-widget {
-  gap: 12px;
+  gap: 10px;
 }
 
 .weather-primary,
@@ -678,22 +800,32 @@ select:focus-visible {
 
 .weather-location {
   color: var(--foreground);
-  font-size: 1.1rem;
+  font-size: var(--widget-value-size);
   font-weight: 760;
 }
 
 .weather-condition {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: var(--widget-body-size);
 }
 
 .weather-icon {
   flex: 0 0 auto;
 }
 
+.weather-icon :is(svg) {
+  width: clamp(20px, 16cqmin, 64px);
+  height: auto;
+}
+
+.weather-meta :is(svg) {
+  width: clamp(10px, 4cqmin, 20px);
+  height: auto;
+}
+
 .weather-temp {
-  font-size: 3.2rem;
+  font-size: var(--widget-display-size);
   font-weight: 780;
   line-height: 1;
 }
@@ -704,7 +836,7 @@ select:focus-visible {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: var(--widget-label-size);
   font-weight: 640;
 }
 
@@ -718,7 +850,21 @@ select:focus-visible {
 .weather-footer {
   margin-top: auto;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--widget-label-size);
+}
+
+.widget-frame--wide .weather-widget {
+  justify-content: center;
+}
+
+.widget-frame--wide .weather-primary {
+  min-height: 54px;
+}
+
+.widget-frame--wide .weather-temp,
+.widget-frame--wide .weather-meta,
+.widget-frame--wide .weather-footer {
+  display: none;
 }
 
 .weather-widget--unavailable,
@@ -727,7 +873,8 @@ select:focus-visible {
 }
 
 .chat-history-widget {
-  gap: 14px;
+  gap: 10px;
+  font-size: var(--widget-body-size);
 }
 
 .chat-history-summary {
@@ -740,7 +887,7 @@ select:focus-visible {
   gap: 8px;
   min-width: 0;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--widget-label-size);
   font-weight: 680;
 }
 
@@ -751,7 +898,7 @@ select:focus-visible {
 }
 
 .chat-history-count {
-  font-size: 2.2rem;
+  font-size: calc(var(--widget-display-size) * 0.68);
   font-weight: 780;
   line-height: 1;
 }
@@ -760,7 +907,7 @@ select:focus-visible {
 .chat-history-footer,
 .chat-history-list p {
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: var(--widget-body-size);
 }
 
 .chat-history-list {
@@ -771,7 +918,7 @@ select:focus-visible {
 
 .chat-history-item {
   min-width: 0;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-muted);
@@ -779,7 +926,7 @@ select:focus-visible {
 
 .chat-history-item span {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 760;
   text-transform: uppercase;
 }
@@ -790,6 +937,22 @@ select:focus-visible {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.widget-frame--medium .rss-widget,
+.widget-frame--medium .markets-widget {
+  font-size: var(--widget-body-size);
+}
+
+.widget-frame--medium .rss-widget h4,
+.widget-frame--medium .markets-widget .text-xs {
+  font-size: 0.72rem;
+}
+
+.widget-frame--medium .rss-widget a,
+.widget-frame--medium .markets-widget .text-sm {
+  font-size: 0.84rem;
+  line-height: 1.25;
 }
 
 .chat-layer {
@@ -1665,16 +1828,10 @@ select {
 }
 
 @media (max-width: 920px) {
-  .dashboard-canvas {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
+  /* The dashboard grid intentionally keeps its full 12-column layout here and
+     scales to fit; only the <=640px phone fallback collapses to one column. */
   .widget-catalog-grid {
     grid-template-columns: 1fr;
-  }
-
-  .dashboard-widget-slot {
-    grid-column: span 2 !important;
   }
 
   .chat-view {
@@ -1721,17 +1878,52 @@ select {
     width: 92px;
   }
 
+  /* Phone fallback: single scrolling column of content-height tiles. The
+     proportional row template is an inline style, so these need !important. */
   .dashboard-canvas {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: none !important;
+    grid-auto-rows: minmax(120px, auto);
+    height: auto;
     overflow: visible;
   }
 
   .dashboard-widget-slot {
     grid-column: span 1 !important;
+    grid-row: auto !important;
   }
 
-  .date-time-clock {
-    font-size: 3.2rem;
+  /* Cells are content-sized here, so the frame sizes to its content vertically.
+     An inline-size container has no block axis, so cqmin would resolve to 0 and
+     collapse every clamp to its minimum — fall back to fixed sizes on phone. */
+  .widget-frame {
+    container-type: inline-size;
+    --widget-title-size: 0.74rem;
+    --widget-body-size: 0.86rem;
+    --widget-label-size: 0.78rem;
+    --widget-value-size: 1.05rem;
+    --widget-display-size: 3.2rem;
+  }
+
+  .widget-frame-header {
+    min-height: 32px;
+    padding: 8px 12px 0;
+  }
+
+  .widget-frame-body {
+    padding: 10px 12px 12px;
+  }
+
+  .date-time-clock :is(svg) {
+    width: 28px;
+  }
+
+  .weather-icon :is(svg) {
+    width: 42px;
+  }
+
+  .weather-meta :is(svg) {
+    width: 15px;
   }
 
   .weather-meta {

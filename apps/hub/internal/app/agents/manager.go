@@ -19,30 +19,39 @@ var (
 	errYAMLConfigRequired = errors.New("YAML config file is required")
 )
 
+// Syncer defines the interface needed for agents config persistence.
+type Syncer interface {
+	SyncAgents(ctx context.Context, configs []AgentConfig) error
+	AgentsConfig(ctx context.Context) ([]AgentConfig, error)
+}
+
 type AgentManager struct {
 	mu         sync.RWMutex
 	cards      *CardService
 	configPath string
-	getConfig  func() []AgentConfig
-	saveConfig func([]AgentConfig) error
+	syncer     Syncer
 	registry   registry.Registry
+	agents     []AgentConfig
 }
 
 func NewAgentManager(
-	getConfig func() []AgentConfig,
-	saveConfig func([]AgentConfig) error,
+	syncer Syncer,
 	cards *CardService,
 	configPath string,
 ) *AgentManager {
-	initialConfigs := getConfig()
+	initialConfigs, _ := syncer.AgentsConfig(context.Background())
 	m := &AgentManager{
 		cards:      cards,
 		configPath: configPath,
-		getConfig:  getConfig,
-		saveConfig: saveConfig,
+		syncer:     syncer,
 		registry:   registry.New(mapToRegistryAgentConfigs(initialConfigs)),
+		agents:     initialConfigs,
 	}
 	return m
+}
+
+func (m *AgentManager) getAgents() []AgentConfig {
+	return m.agents
 }
 
 func (m *AgentManager) ActiveRegistry() registry.Registry {
@@ -59,7 +68,13 @@ func (m *AgentManager) List(ctx context.Context, triggerDiscovery bool) []regist
 	out := make([]registry.Agent, len(agentsList))
 	for i, agent := range agentsList {
 		cache, ok := m.cards.Load(agent.ID)
-		if !ok && triggerDiscovery && agent.Enabled {
+		expired := false
+		if ok {
+			if exprTime, err := time.Parse(time.RFC3339Nano, cache.ExpiresAt); err == nil {
+				expired = time.Now().UTC().After(exprTime)
+			}
+		}
+		if (!ok || (expired && triggerDiscovery)) && agent.Enabled {
 			// Trigger a discovery refresh synchronously
 			configured, _ := m.ConfiguredAgent(agent.ID)
 			cache = m.cards.Refresh(ctx, agent, configured)
@@ -87,7 +102,7 @@ func (m *AgentManager) Find(id string) (registry.Agent, bool) {
 func (m *AgentManager) ConfiguredAgent(id string) (AgentConfig, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	configs := m.getConfig()
+	configs := m.getAgents()
 	for _, cfg := range configs {
 		if cfg.ID == id {
 			return cfg, true
@@ -121,8 +136,8 @@ func (m *AgentManager) Add(ctx context.Context, cardURL string) (registry.Agent,
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	agents := m.getConfig()
-	for _, existing := range agents {
+	agentsList := m.getAgents()
+	for _, existing := range agentsList {
 		if existing.CardURL == cardURL {
 			regAgent := registry.New([]registry.AgentConfig{mapToRegistryAgentConfig(existing)}).List()[0]
 			cache := cardCacheFromCard(existing.ID, result, selected)
@@ -131,7 +146,7 @@ func (m *AgentManager) Add(ctx context.Context, cardURL string) (registry.Agent,
 		}
 	}
 
-	id := uniqueAgentID(agents, slug(result.Card.Name))
+	id := uniqueAgentID(agentsList, slug(result.Card.Name))
 	agent := AgentConfig{
 		ID:              id,
 		Name:            result.Card.Name,
@@ -144,12 +159,13 @@ func (m *AgentManager) Add(ctx context.Context, cardURL string) (registry.Agent,
 		MCPScopes:       DefaultMCPReadScopes(),
 	}
 
-	nextAgents := append(append([]AgentConfig(nil), agents...), agent)
-	if err := m.saveConfig(nextAgents); err != nil {
+	nextAgents := append(append([]AgentConfig(nil), agentsList...), agent)
+	if err := m.syncer.SyncAgents(ctx, nextAgents); err != nil {
 		return registry.Agent{}, err
 	}
 
 	m.registry = registry.New(mapToRegistryAgentConfigs(nextAgents))
+	m.agents = nextAgents
 
 	cache := cardCacheFromCard(agent.ID, result, selected)
 	m.cards.Save(cache)
@@ -158,7 +174,7 @@ func (m *AgentManager) Add(ctx context.Context, cardURL string) (registry.Agent,
 	return m.enrichAgentLocked(regAgent, cache), nil
 }
 
-func (m *AgentManager) Patch(id string, enabled *bool) (registry.Agent, error) {
+func (m *AgentManager) Patch(ctx context.Context, id string, enabled *bool) (registry.Agent, error) {
 	if err := m.requireWritableYAMLConfig(); err != nil {
 		return registry.Agent{}, err
 	}
@@ -169,18 +185,19 @@ func (m *AgentManager) Patch(id string, enabled *bool) (registry.Agent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	agents := m.getConfig()
-	nextAgents := append([]AgentConfig(nil), agents...)
+	agentsList := m.getAgents()
+	nextAgents := append([]AgentConfig(nil), agentsList...)
 	for i := range nextAgents {
 		if nextAgents[i].ID != id {
 			continue
 		}
 		nextAgents[i].Enabled = *enabled
-		if err := m.saveConfig(nextAgents); err != nil {
+		if err := m.syncer.SyncAgents(ctx, nextAgents); err != nil {
 			return registry.Agent{}, err
 		}
 
 		m.registry = registry.New(mapToRegistryAgentConfigs(nextAgents))
+		m.agents = nextAgents
 
 		agent := registry.New([]registry.AgentConfig{mapToRegistryAgentConfig(nextAgents[i])}).List()[0]
 		var cache AgentCardCacheEntry
@@ -192,7 +209,7 @@ func (m *AgentManager) Patch(id string, enabled *bool) (registry.Agent, error) {
 	return registry.Agent{}, errors.New("agent not found")
 }
 
-func (m *AgentManager) Delete(id string) error {
+func (m *AgentManager) Delete(ctx context.Context, id string) error {
 	if err := m.requireWritableYAMLConfig(); err != nil {
 		return err
 	}
@@ -200,10 +217,10 @@ func (m *AgentManager) Delete(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	agents := m.getConfig()
-	nextAgents := make([]AgentConfig, 0, len(agents))
+	agentsList := m.getAgents()
+	nextAgents := make([]AgentConfig, 0, len(agentsList))
 	found := false
-	for _, agent := range agents {
+	for _, agent := range agentsList {
 		if agent.ID == id {
 			found = true
 			continue
@@ -213,11 +230,12 @@ func (m *AgentManager) Delete(id string) error {
 	if !found {
 		return errors.New("agent not found")
 	}
-	if err := m.saveConfig(nextAgents); err != nil {
+	if err := m.syncer.SyncAgents(ctx, nextAgents); err != nil {
 		return err
 	}
 
 	m.registry = registry.New(mapToRegistryAgentConfigs(nextAgents))
+	m.agents = nextAgents
 	m.cards.Remove(id)
 	return nil
 }
@@ -352,7 +370,7 @@ func (m *AgentManager) enrichAgent(agent registry.Agent, cache AgentCardCacheEnt
 }
 
 func (m *AgentManager) configuredAgentLocked(id string) (AgentConfig, bool) {
-	configs := m.getConfig()
+	configs := m.getAgents()
 	for _, cfg := range configs {
 		if cfg.ID == id {
 			return cfg, true

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,10 +15,12 @@ import (
 	"jute-dash/apps/hub/internal/app/config"
 	"jute-dash/apps/hub/internal/app/dashboard"
 	"jute-dash/apps/hub/internal/app/events"
+	"jute-dash/apps/hub/internal/app/filesync"
 	"jute-dash/apps/hub/internal/app/homestate"
 	"jute-dash/apps/hub/internal/app/voice"
 	a2aclient "jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
+	"jute-dash/apps/hub/internal/pkg/httphelper"
 	"jute-dash/apps/hub/internal/pkg/registry"
 )
 
@@ -32,6 +35,7 @@ type Server struct {
 	voice         voice.Config
 	voiceStore    voice.Store
 	configPath    string
+	syncer        filesync.Syncer
 	display       *displayactions.Dispatcher
 	turnRunner    *agents.Runner
 	mu            sync.Mutex
@@ -84,7 +88,7 @@ type VoiceStatusSummary struct {
 
 func New(cfg config.Config, version string) http.Handler {
 	layout := dashboard.DefaultWidgetLayout()
-	return newServer(cfg, version, nil, homestate.SetupStatus{Complete: true}, layout, nil, "", nil)
+	return newServer(cfg, version, nil, homestate.SetupStatus{Complete: true}, layout, nil, nil, nil, "", nil)
 }
 
 func NewWithSetupStatus(
@@ -101,7 +105,7 @@ func NewWithSetupStatusAndLayout(
 	setup homestate.SetupStatus,
 	layout dashboard.WidgetLayout,
 ) http.Handler {
-	return newServer(cfg, version, nil, setup, layout, nil, "", nil)
+	return newServer(cfg, version, nil, setup, layout, nil, nil, nil, "", nil)
 }
 
 func NewWithMessageSender(
@@ -115,6 +119,8 @@ func NewWithMessageSender(
 		messageSender,
 		homestate.SetupStatus{Complete: true},
 		dashboard.DefaultWidgetLayout(),
+		nil,
+		nil,
 		nil,
 		"",
 		nil,
@@ -155,39 +161,36 @@ func NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(
 	configPath string,
 	display *displayactions.Dispatcher,
 ) http.Handler {
-	layout := dashboard.DefaultWidgetLayout()
-	if configPath != "" {
-		yamlStore := makeYAMLStore(configPath)
-		if loaded, err := yamlStore.WidgetLayout(context.Background(), ""); err == nil {
-			layout = loaded
+	var voiceStore voice.Store
+	var settingsStore homestate.SettingsStore
+	if layoutStore != nil {
+		if candidate, ok := layoutStore.(voice.Store); ok {
+			voiceStore = candidate
 		}
-	} else if layoutStore != nil {
+		if candidate, ok := layoutStore.(homestate.SettingsStore); ok {
+			settingsStore = candidate
+		}
+	}
+	return NewServer(cfg, version, setup, layoutStore, settingsStore, voiceStore, configPath, display)
+}
+
+func NewServer(
+	cfg config.Config,
+	version string,
+	setup homestate.SetupStatus,
+	layoutStore dashboard.LayoutStore,
+	settingsStore homestate.SettingsStore,
+	voiceStore voice.Store,
+	configPath string,
+	display *displayactions.Dispatcher,
+) http.Handler {
+	layout := dashboard.DefaultWidgetLayout()
+	if layoutStore != nil {
 		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
 			layout = loaded
 		}
 	}
-	return newServer(cfg, version, nil, setup, layout, layoutStore, configPath, display)
-}
-
-func makeYAMLStore(configPath string) *dashboard.YAMLRepository {
-	return dashboard.NewYAMLRepository(
-		configPath,
-		func(path string) (dashboard.DashboardConfig, error) {
-			cfg, err := config.LoadConfig(path)
-			if err != nil {
-				return dashboard.DashboardConfig{}, err
-			}
-			return cfg.Dashboard, nil
-		},
-		func(path string, dCfg dashboard.DashboardConfig) error {
-			cfg, err := config.LoadConfig(path)
-			if err != nil {
-				return err
-			}
-			cfg.Dashboard = dCfg
-			return config.SaveYAML(path, cfg)
-		},
-	)
+	return newServer(cfg, version, nil, setup, layout, layoutStore, settingsStore, voiceStore, configPath, display)
 }
 
 func newServer(
@@ -197,6 +200,8 @@ func newServer(
 	setup homestate.SetupStatus,
 	layout dashboard.WidgetLayout,
 	layoutStore dashboard.LayoutStore,
+	settingsStore homestate.SettingsStore,
+	voiceStore voice.Store,
 	configPath string,
 	display *displayactions.Dispatcher,
 ) http.Handler {
@@ -204,120 +209,63 @@ func newServer(
 		messageSender = a2aclient.NewJSONRPCClient()
 	}
 
-	var activeLayoutStore dashboard.LayoutStore
-	var activeVoiceStore voice.Store
-	var activeSettingsStore homestate.SettingsStore
-
-	if configPath != "" {
-		activeLayoutStore = makeYAMLStore(configPath)
-		activeVoiceStore = voice.NewYAMLRepository(
-			configPath,
-			func(path string) (voice.Config, error) {
-				c, err := config.LoadConfig(path)
-				if err != nil {
-					return voice.Config{}, err
-				}
-				return c.Voice, nil
-			},
-			func(path string, vCfg voice.Config) error {
-				c, err := config.LoadConfig(path)
-				if err != nil {
-					return err
-				}
-				c.Voice = vCfg
-				return config.SaveYAML(path, c)
-			},
-		)
-		activeSettingsStore = homestate.NewYAMLRepository(
-			configPath,
-			func(path string) (homestate.HomeConfig, any, homestate.WeatherConfig, []homestate.RoomConfig, []homestate.TileConfig, error) {
-				c, err := config.LoadConfig(path)
-				if err != nil {
-					return homestate.HomeConfig{}, nil, homestate.WeatherConfig{}, nil, nil, err
-				}
-				return c.Home, c.Display, c.Weather, c.Rooms, c.Tiles, nil
-			},
-			func(path string, home homestate.HomeConfig, display any, weather homestate.WeatherConfig, rooms []homestate.RoomConfig, tiles []homestate.TileConfig) error {
-				c, err := config.LoadConfig(path)
-				if err != nil {
-					return err
-				}
-				c.Home = home
-				if display != nil {
-					var disp dashboard.DisplayConfig
-					dispBytes, err := json.Marshal(display)
-					if err == nil {
-						_ = json.Unmarshal(dispBytes, &disp)
-						c.Display = disp
-					}
-				}
-				c.Weather = weather
-				c.Rooms = rooms
-				c.Tiles = tiles
-				return config.SaveYAML(path, c)
-			},
-		)
-	} else if layoutStore != nil {
-		activeLayoutStore = layoutStore
-		if candidate, ok := layoutStore.(voice.Store); ok {
-			activeVoiceStore = candidate
-		}
-		if candidate, ok := layoutStore.(homestate.SettingsStore); ok {
-			activeSettingsStore = candidate
-		}
-	}
-
-	// Fallbacks
+	activeLayoutStore := layoutStore
 	if activeLayoutStore == nil {
 		activeLayoutStore = dashboard.NewMemoryRepositoryWithLayout(layout)
 	}
+
+	activeVoiceStore := voiceStore
 	if activeVoiceStore == nil {
 		activeVoiceStore = voice.NewMemoryRepositoryFromConfig(cfg.Voice)
 	}
+
+	activeSettingsStore := settingsStore
 	if activeSettingsStore == nil {
 		activeSettingsStore = homestate.NewMemoryRepository(setup)
+	}
+
+	var dbStore filesync.ConfigStore
+	if candidate, ok := activeLayoutStore.(filesync.ConfigStore); ok {
+		dbStore = candidate
+	}
+
+	var syncer filesync.Syncer
+	if configPath != "" {
+		syncer = filesync.NewFileSyncer(configPath, dbStore)
+	} else {
+		syncer = filesync.NewInMemorySyncer(cfg)
+	}
+
+	// Sync on Load synchronously from YAML to SQLite
+	if configPath != "" {
+		_ = syncOnLoad(context.Background(), syncer, activeLayoutStore, activeSettingsStore, activeVoiceStore)
+	}
+
+	// Reload layout and setup status from active database stores
+	if activeLayoutStore != nil {
+		if loaded, err := activeLayoutStore.WidgetLayout(context.Background(), ""); err == nil {
+			layout = loaded
+		}
+	}
+	if activeSettingsStore != nil {
+		if status, err := activeSettingsStore.SetupStatus(context.Background()); err == nil {
+			setup = status
+		}
+	}
+
+	// Start River background queue if activeLayoutStore implements it
+	if qs, ok := activeLayoutStore.(interface {
+		StartQueue(syncer filesync.Syncer) error
+	}); ok {
+		_ = qs.StartQueue(syncer)
 	}
 
 	if display == nil {
 		display = displayactions.NewDispatcher()
 	}
 
-	var getAgentsConfig func() []agents.AgentConfig
-	var saveAgentsConfig func([]agents.AgentConfig) error
-	if configPath != "" {
-		getAgentsConfig = func() []agents.AgentConfig {
-			c, err := config.LoadConfig(configPath)
-			if err != nil {
-				return nil
-			}
-			return c.Agents
-		}
-		saveAgentsConfig = func(next []agents.AgentConfig) error {
-			c, err := config.LoadConfig(configPath)
-			if err != nil {
-				return err
-			}
-			c.Agents = next
-			return config.SaveYAML(configPath, c)
-		}
-	} else {
-		var memAgentsMu sync.Mutex
-		memAgents := cfg.Agents
-		getAgentsConfig = func() []agents.AgentConfig {
-			memAgentsMu.Lock()
-			defer memAgentsMu.Unlock()
-			return memAgents
-		}
-		saveAgentsConfig = func(next []agents.AgentConfig) error {
-			memAgentsMu.Lock()
-			memAgents = next
-			memAgentsMu.Unlock()
-			return nil
-		}
-	}
-
 	agentCards := agents.NewCardService(cfg.A2A)
-	agentsManager := agents.NewAgentManager(getAgentsConfig, saveAgentsConfig, agentCards, configPath)
+	agentsManager := agents.NewAgentManager(syncer, agentCards, configPath)
 
 	server := &Server{
 		cfg:           cfg,
@@ -330,6 +278,7 @@ func newServer(
 		voice:         cfg.Voice,
 		voiceStore:    activeVoiceStore,
 		configPath:    configPath,
+		syncer:        syncer,
 		display:       display,
 		started:       time.Now().UTC(),
 		version:       version,
@@ -361,7 +310,7 @@ func newServer(
 	if st, ok := activeLayoutStore.(interface {
 		SetCatalog([]dashboard.WidgetCatalogItem)
 	}); ok {
-		st.SetCatalog(dashboard.WidgetCatalog())
+		st.SetCatalog(dashboard.RegisteredCatalog())
 	}
 
 	mux := http.NewServeMux()
@@ -390,6 +339,8 @@ func newServer(
 		},
 	).RegisterRoutes(mux)
 
+	dashboard.NewBackgroundsController(backgroundsDir).RegisterRoutes(mux)
+
 	voice.NewController(
 		server.voiceStore,
 		server.display,
@@ -406,14 +357,15 @@ func newServer(
 	broker := events.NewBroker(server.display)
 	mux.Handle("/api/v1/events", broker)
 
-	return withCommonHeaders(withCORS(mux))
+	handler := withCommonHeaders(withCORS(mux))
+	return RequestLogger(slog.Default() /*nolint:sloglint // use default global logger */)(handler)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) {
+	if !httphelper.RequireMethod(w, r, http.MethodGet) {
 		return
 	}
-	writeJSON(w, http.StatusOK, HealthResponse{
+	httphelper.WriteJSON(w, http.StatusOK, HealthResponse{
 		Status:    "ok",
 		Version:   s.version,
 		StartedAt: s.started,
@@ -421,7 +373,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) {
+	if !httphelper.RequireMethod(w, r, http.MethodGet) {
 		return
 	}
 	voiceStatus, err := s.currentVoiceStatus(r.Context())
@@ -443,14 +395,102 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			State:         voiceStatus.State,
 		},
 	}
-	writeJSON(w, http.StatusOK, status)
+	httphelper.WriteJSON(w, http.StatusOK, status)
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) {
+	if !httphelper.RequireMethod(w, r, http.MethodGet) {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.cfg.Public())
+
+	ctx := r.Context()
+
+	// 1. Get Home and Display from settings store
+	serverSettings, err := s.settings.HouseholdSettings(ctx)
+	var home homestate.HomeConfig
+	var display any
+	if err == nil {
+		home = serverSettings.Home
+		display = serverSettings.Display
+	} else {
+		home = s.cfg.Home
+		display = s.cfg.Display
+	}
+
+	// 2. Get Rooms and Tiles from settings store
+	rooms, err := s.settings.Rooms(ctx)
+	if err != nil {
+		rooms = s.cfg.Rooms
+	}
+	tiles, err := s.settings.Tiles(ctx)
+	if err != nil {
+		tiles = s.cfg.Tiles
+	}
+
+	// Convert display to dashboard.DisplayConfig safely
+	var disp dashboard.DisplayConfig
+	if display != nil {
+		dispBytes, err := json.Marshal(display)
+		if err == nil {
+			_ = json.Unmarshal(dispBytes, &disp)
+		}
+	} else {
+		disp = s.cfg.Display
+	}
+	// 3. Get Dashboard widgets from layout store
+	var dbConfig dashboard.DashboardConfig
+	layout, err := s.layoutStore.WidgetLayout(ctx, "")
+	if err == nil {
+		widgets := make([]dashboard.DashboardWidgetConfig, 0, len(layout.Widgets))
+		for _, w := range layout.Widgets {
+			widgets = append(widgets, dashboard.DashboardWidgetConfig{
+				ID:       w.ID,
+				Type:     w.Kind,
+				Title:    w.Title,
+				X:        w.X,
+				Y:        w.Y,
+				W:        w.W,
+				H:        w.H,
+				MinW:     w.MinW,
+				MinH:     w.MinH,
+				Size:     w.Size,
+				Visible:  w.Visible,
+				Mode:     w.Mode,
+				Settings: w.Settings,
+			})
+		}
+		dbConfig.Widgets = widgets
+	} else {
+		dbConfig = s.cfg.Dashboard
+	}
+
+	// 4. Get active agents list and map to agents.PublicAgentConfig
+	regAgents := s.agentsManager.List(ctx, false)
+	publicAgents := make([]agents.PublicAgentConfig, 0, len(regAgents))
+	for _, a := range regAgents {
+		publicAgents = append(publicAgents, agents.PublicAgentConfig{
+			ID:              a.ID,
+			Name:            a.Name,
+			Description:     a.Description,
+			CardURL:         a.CardURL,
+			EndpointURL:     a.EndpointURL,
+			ProtocolBinding: a.ProtocolBinding,
+			Enabled:         a.Enabled,
+			Capabilities:    append([]string(nil), a.Capabilities...),
+			MCPScopes:       append([]string(nil), a.MCPScopes...),
+			AuthConfigured:  a.AuthConfigured,
+			AuthAvailable:   a.AuthAvailable,
+		})
+	}
+
+	httphelper.WriteJSON(w, http.StatusOK, config.PublicConfig{
+		Home:      home,
+		Display:   disp,
+		Dashboard: dbConfig,
+		Agents:    publicAgents,
+		Rooms:     rooms,
+		Tiles:     tiles,
+	})
 }
 
 func (s *Server) overallStatus(ctx context.Context) string {
@@ -551,25 +591,6 @@ func (s *Server) dashboardContext(ctx context.Context) map[string]any {
 
 // Helpers
 
-func requireMethod(w http.ResponseWriter, r *http.Request, method string) bool {
-	if r.Method != method {
-		w.Header().Set("Allow", method)
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return false
-	}
-	return true
-}
-
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
-}
-
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, map[string]string{"error": message})
-}
-
 func withCommonHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Server", "jute-dash-hub")
@@ -586,7 +607,7 @@ func withCORS(next http.Handler) http.Handler {
 		if isLocalOrigin(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, A2A-Version")
 			w.Header().Add("Vary", "Origin")
 		}
 		if r.Method == http.MethodOptions {
@@ -602,4 +623,51 @@ func isLocalOrigin(origin string) bool {
 		strings.HasPrefix(origin, "http://127.0.0.1") ||
 		strings.HasPrefix(origin, "https://localhost") ||
 		strings.HasPrefix(origin, "https://127.0.0.1")
+}
+
+func syncOnLoad(
+	ctx context.Context,
+	syncer filesync.Syncer,
+	layoutStore dashboard.LayoutStore,
+	settingsStore homestate.SettingsStore,
+	_ voice.Store,
+) error {
+	cfg, err := syncer.Load(ctx)
+	if err != nil {
+		return err
+	}
+
+	// 1. Sync Household Settings
+	if _, err := settingsStore.SaveHouseholdSettings(ctx, homestate.HouseholdSettings{
+		Home:    cfg.Home,
+		Display: cfg.Display,
+		Weather: cfg.Weather,
+	}); err != nil {
+		return err
+	}
+
+	// 2. Sync Rooms
+	if _, err := settingsStore.SaveRooms(ctx, cfg.Rooms); err != nil {
+		return err
+	}
+
+	// 3. Sync Tiles
+	if _, err := settingsStore.SaveTiles(ctx, cfg.Tiles); err != nil {
+		return err
+	}
+
+	// 4. Sync Widget Layout
+	catalog := dashboard.RegisteredCatalog()
+	catalogMap := make(map[string]dashboard.WidgetCatalogItem, len(catalog))
+	for _, item := range catalog {
+		catalogMap[item.Kind] = item
+	}
+	layout, err := dashboard.WidgetLayoutFromDashboardConfig(cfg.Dashboard, catalogMap)
+	if err == nil {
+		if _, err := layoutStore.SaveWidgetLayout(ctx, layout); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

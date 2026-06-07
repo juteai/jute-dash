@@ -23,7 +23,6 @@
   export let data: DashboardData;
   export let editMode = false;
   export let messages: ChatMessage[] = [];
-  export let theme: 'light' | 'dark' = 'light';
   export let stale = false;
   export let selectedAgent: Agent | undefined;
   export let selectedAvailability: AgentAvailability = 'unknown';
@@ -39,7 +38,10 @@
   export let onSaveEdit: () => void = () => {};
   export let onCancelEdit: () => void = () => {};
   export let onResetLayout: () => void = () => {};
-  export let onAddWidget: (kind: string) => void = () => {};
+  export let onAddWidget: (
+    kind: string,
+    mode?: 'ui' | 'headless'
+  ) => void = () => {};
   export let onMoveWidget: (
     widgetId: string,
     x: number,
@@ -51,8 +53,19 @@
     h: number
   ) => void = () => {};
   export let onRemoveWidget: (widgetId: string) => void = () => {};
+  export let onConfigureWidget: (widgetId: string) => void = () => {};
+  export let onSetHeadless: (widgetId: string) => void = () => {};
+  export let onRestoreWidget: (widgetId: string) => void = () => {};
+  export let onReorderWidget: (
+    widgetId: string,
+    direction: -1 | 1
+  ) => void = () => {};
 
   let showCatalog = false;
+
+  $: headlessWidgets = data.layout.widgets.filter(
+    (widget) => widget.visible && widget.mode === 'headless'
+  );
 
   $: saveDisabled = savingLayout || stale;
   $: voiceReady = voice?.serviceStatus === 'ready';
@@ -71,28 +84,14 @@
     );
   }
 
-  function addWidget(kind: string) {
-    onAddWidget(kind);
+  function addWidget(kind: string, mode: 'ui' | 'headless' = 'ui') {
+    onAddWidget(kind, mode);
     showCatalog = false;
   }
 </script>
 
 <section class="dashboard-view" aria-label="Jute dashboard">
-  <header class="dashboard-header">
-    <div class="brand-lockup">
-      <img
-        src={theme === 'dark'
-          ? '/brand/logo_light.svg'
-          : '/brand/logo_dark.svg'}
-        alt="Jute"
-        class="brand-logo"
-      />
-      <div>
-        <div class="home-name">{data.config.home.name}</div>
-        <div class="layout-name">{data.layout.profileId}</div>
-      </div>
-    </div>
-
+  <header class="dashboard-header dashboard-header--minimal">
     <div class="dashboard-actions">
       {#if editMode}
         <Button variant="outline" disabled={saveDisabled} on:click={onSaveEdit}>
@@ -191,18 +190,63 @@
                 <span>{item.defaultW}x{item.defaultH} · {item.defaultSize}</span
                 >
               </div>
-              <Button
-                size="sm"
-                disabled={!canAddWidget(item)}
-                on:click={() => addWidget(item.kind)}
-              >
-                {canAddWidget(item) ? 'Add' : 'Added'}
-              </Button>
+              <div class="widget-catalog-actions">
+                <Button
+                  size="sm"
+                  disabled={!canAddWidget(item)}
+                  on:click={() => addWidget(item.kind)}
+                >
+                  {canAddWidget(item) ? 'Add' : 'Added'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!canAddWidget(item)}
+                  on:click={() => addWidget(item.kind, 'headless')}
+                >
+                  Headless
+                </Button>
+              </div>
             </article>
           {/each}
           {#if widgetCatalog.length === 0}
             <p class="widget-catalog-empty">Widget catalog is unavailable.</p>
           {/if}
+        </div>
+      </div>
+    {/if}
+
+    {#if headlessWidgets.length > 0}
+      <div class="headless-tray" aria-label="Headless widgets">
+        <span class="headless-tray-label">Headless (context-only)</span>
+        <div class="headless-tray-chips">
+          {#each headlessWidgets as widget (widget.id)}
+            <div class="headless-chip">
+              <span class="headless-chip-title">{widget.title}</span>
+              <button
+                type="button"
+                class="headless-chip-action"
+                on:click={() => onConfigureWidget(widget.id)}
+              >
+                Configure
+              </button>
+              <button
+                type="button"
+                class="headless-chip-action"
+                on:click={() => onRestoreWidget(widget.id)}
+              >
+                Show
+              </button>
+              <button
+                type="button"
+                class="headless-chip-action headless-chip-danger"
+                on:click={() => onRemoveWidget(widget.id)}
+                aria-label={`Remove ${widget.title}`}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          {/each}
         </div>
       </div>
     {/if}
@@ -220,5 +264,69 @@
     {onMoveWidget}
     {onResizeWidget}
     {onRemoveWidget}
+    {onConfigureWidget}
+    {onSetHeadless}
+    {onReorderWidget}
   />
 </section>
+
+<style>
+  .widget-catalog-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .headless-tray {
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border: 1px dashed var(--border, rgba(255, 255, 255, 0.2));
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .headless-tray-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.6;
+  }
+  .headless-tray-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .headless-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--surface-strong, rgba(255, 255, 255, 0.08));
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  }
+  .headless-chip-title {
+    font-size: 0.84rem;
+    font-weight: 600;
+  }
+  .headless-chip-action {
+    border: none;
+    background: transparent;
+    color: var(--foreground, inherit);
+    font-size: 0.78rem;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .headless-chip-action:hover {
+    background: var(--surface, rgba(255, 255, 255, 0.06));
+  }
+  .headless-chip-danger {
+    color: var(--danger, #ef4444);
+  }
+  .dashboard-header--minimal {
+    justify-content: flex-end;
+  }
+</style>

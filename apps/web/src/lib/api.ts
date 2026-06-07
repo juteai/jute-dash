@@ -1,13 +1,27 @@
+import {
+  Client,
+  JsonRpcTransportFactory,
+  type Transport
+} from '@a2a-js/sdk/client';
+import {
+  Role,
+  TaskState,
+  taskStateToJSON,
+  type AgentCard,
+  type Message as A2AMessage,
+  type Part as A2APart,
+  type Task as A2ATask
+} from '@a2a-js/sdk';
 import type {
   Agent,
   AppStatus,
+  BackgroundImage,
   Conversation,
   ConversationDetail,
   ConversationStreamEvent,
   DashboardData,
   HouseholdSettings,
   HomeState,
-  MessageResponse,
   PublicConfig,
   Room,
   RoomsSettings,
@@ -20,7 +34,36 @@ import type {
   WidgetLayout
 } from '$lib/types';
 
+interface LegacyMessage {
+  id?: string;
+  messageId?: string;
+  role: string;
+  text?: string;
+  parts?: Array<{ kind: string; text?: string }>;
+}
+
+interface LegacyTask {
+  messages?: LegacyMessage[];
+  text?: string;
+  updatedAt?: string;
+}
+
+type TurnRequestOptions = {
+  signal?: AbortSignal;
+};
+
 const API_BASE = import.meta.env.VITE_JUTE_API_URL ?? 'http://127.0.0.1:8787';
+const proxyAgentCard = {
+  capabilities: { streaming: true }
+} as AgentCard;
+
+async function getJSON<T>(fetcher: typeof fetch, path: string): Promise<T> {
+  const response = await fetcher(`${API_BASE}${path}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${path}: ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
 
 export async function getDashboard(
   fetcher: typeof fetch
@@ -58,30 +101,144 @@ export async function getDashboard(
   };
 }
 
-export async function sendMessage(
+async function getTransport(
   fetcher: typeof fetch,
-  agentId: string,
-  text: string,
-  conversationId?: string
-): Promise<MessageResponse> {
-  const response = await fetcher(`${API_BASE}/api/v1/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ agentId, text, conversationId })
-  });
-  if (!response.ok) {
-    const body = await response
-      .json()
-      .catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(
-      typeof body.error === 'string'
-        ? body.error
-        : `Jute API request failed: ${response.status}`
-    );
+  agentId: string
+): Promise<Transport> {
+  return new JsonRpcTransportFactory({ fetchImpl: fetcher }).create(
+    `${API_BASE}/api/v1/proxy/agents/${encodeURIComponent(agentId)}`,
+    proxyAgentCard
+  );
+}
+
+async function getClient(fetcher: typeof fetch, agentId: string) {
+  const transport = await getTransport(fetcher, agentId);
+  return new Client(transport, proxyAgentCard);
+}
+
+function textFromParts(parts: A2APart[] | undefined): string {
+  return (parts ?? [])
+    .map((part) => (part.content?.$case === 'text' ? part.content.value : ''))
+    .join('');
+}
+
+function statusFromTask(task: A2ATask): string {
+  return task.status
+    ? taskStateToJSON(task.status.state)
+        .replace(/^TASK_STATE_/, '')
+        .toLowerCase()
+    : 'completed';
+}
+
+function isTerminalTaskState(state: TaskState): boolean {
+  return [
+    TaskState.TASK_STATE_COMPLETED,
+    TaskState.TASK_STATE_FAILED,
+    TaskState.TASK_STATE_CANCELED,
+    TaskState.TASK_STATE_REJECTED
+  ].includes(state);
+}
+
+function terminalTaskFailureMessage(status: string): string | undefined {
+  switch (status) {
+    case 'failed':
+      return 'Agent task failed';
+    case 'rejected':
+      return 'Agent rejected the request';
+    case 'canceled':
+      return 'Agent canceled the request';
+    default:
+      return undefined;
   }
-  return response.json() as Promise<MessageResponse>;
+}
+
+function isHistoryUnsupportedError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('status: 501') ||
+    message.includes('code: -32601') ||
+    message.includes('method not found')
+  );
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  );
+}
+
+function newUserMessage(conversationId: string, text: string): A2AMessage {
+  return {
+    messageId: crypto.randomUUID(),
+    contextId: conversationId,
+    taskId: '',
+    role: Role.ROLE_USER,
+    parts: [
+      {
+        content: { $case: 'text', value: text },
+        metadata: undefined,
+        filename: '',
+        mediaType: 'text/plain'
+      }
+    ],
+    metadata: undefined,
+    extensions: [],
+    referenceTaskIds: []
+  };
+}
+
+function localConversationDetail(
+  conversationId: string,
+  agentId: string,
+  userText: string,
+  assistantText: string,
+  taskId: string,
+  status: string
+): ConversationDetail {
+  const now = new Date().toISOString();
+  return {
+    conversation: {
+      id: conversationId,
+      agentId,
+      title: userText,
+      status,
+      a2aContextId: conversationId,
+      latestTaskId: taskId,
+      createdAt: now,
+      updatedAt: now,
+      historyUnsupported: true
+    },
+    messages: [
+      {
+        id: crypto.randomUUID(),
+        conversationId,
+        agentId,
+        role: 'user',
+        content: userText,
+        status: 'sent',
+        a2aMessageId: '',
+        a2aTaskId: taskId,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: crypto.randomUUID(),
+        conversationId,
+        agentId,
+        role: 'assistant',
+        content: assistantText,
+        status: 'sent',
+        a2aMessageId: '',
+        a2aTaskId: taskId,
+        createdAt: now,
+        updatedAt: now
+      }
+    ]
+  };
 }
 
 export async function getHouseholdSettings(
@@ -187,10 +344,71 @@ export async function getConversations(
   if (!agentId) {
     return [];
   }
-  const response = await fetcher(
-    `${API_BASE}/api/v1/conversations?agentId=${encodeURIComponent(agentId)}`
-  );
-  if (response.status === 501) {
+  try {
+    const client = await getClient(fetcher, agentId);
+    const result = await client.listTasks({
+      tenant: '',
+      contextId: '',
+      status: TaskState.TASK_STATE_UNSPECIFIED,
+      pageSize: 50,
+      pageToken: '',
+      statusTimestampAfter: undefined
+    });
+    const tasks = result.tasks;
+
+    const byContext: Record<string, Conversation> = {};
+    for (const task of tasks) {
+      const contextId = task.contextId || task.id;
+      if (!contextId) continue;
+
+      let title = '';
+      const history = (task.history ||
+        (task as unknown as LegacyTask).messages) as
+        | Array<A2AMessage | LegacyMessage>
+        | undefined;
+      if (history && history.length > 0) {
+        const firstUser = history.find(
+          (message) =>
+            message.role === Role.ROLE_USER || message.role === 'user'
+        );
+        if (firstUser && typeof firstUser.role === 'number') {
+          title = textFromParts((firstUser as A2AMessage).parts);
+        } else if (firstUser) {
+          title = firstUser.text ?? '';
+        }
+      }
+      if (!title) {
+        title = (task as unknown as LegacyTask).text || 'Conversation';
+      }
+
+      const updatedAt =
+        task.status?.timestamp ||
+        (task as unknown as LegacyTask).updatedAt ||
+        new Date().toISOString();
+      const conversation: Conversation = byContext[contextId] || {
+        id: contextId,
+        agentId,
+        title,
+        status: statusFromTask(task),
+        a2aContextId: contextId,
+        latestTaskId: task.id || '',
+        createdAt: updatedAt,
+        updatedAt: updatedAt
+      };
+
+      if (updatedAt && updatedAt >= conversation.updatedAt) {
+        conversation.updatedAt = updatedAt;
+        conversation.latestTaskId = task.id || '';
+        conversation.status = statusFromTask(task);
+      }
+      byContext[contextId] = conversation;
+    }
+
+    return Object.values(byContext);
+  } catch (err) {
+    if (!isHistoryUnsupportedError(err)) {
+      throw err;
+    }
     return [
       {
         id: `history-unsupported-${agentId}`,
@@ -205,18 +423,6 @@ export async function getConversations(
       }
     ];
   }
-  if (!response.ok) {
-    const body = await response
-      .json()
-      .catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(
-      typeof body.error === 'string'
-        ? body.error
-        : `Jute API request failed: ${response.status}`
-    );
-  }
-  const body = (await response.json()) as { conversations: Conversation[] };
-  return body.conversations;
 }
 
 export async function createConversation(
@@ -224,64 +430,190 @@ export async function createConversation(
   agentId: string,
   title?: string
 ): Promise<ConversationDetail> {
-  const response = await fetcher(`${API_BASE}/api/v1/conversations`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
+  const contextId = 'ctx-' + Math.random().toString(36).substring(7);
+  const now = new Date().toISOString();
+  return {
+    conversation: {
+      id: contextId,
+      agentId,
+      title: title || 'New Conversation',
+      status: 'idle',
+      a2aContextId: contextId,
+      latestTaskId: '',
+      createdAt: now,
+      updatedAt: now
     },
-    body: JSON.stringify({ agentId, title })
-  });
-  if (!response.ok) {
-    const body = await response
-      .json()
-      .catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(
-      typeof body.error === 'string'
-        ? body.error
-        : `Jute API request failed: ${response.status}`
-    );
-  }
-  return response.json() as Promise<ConversationDetail>;
+    messages: []
+  };
 }
 
 export async function getConversation(
   fetcher: typeof fetch,
   conversationId: string,
-  agentId: string
+  agentId: string,
+  options: TurnRequestOptions = {}
 ): Promise<ConversationDetail> {
-  return getJSON<ConversationDetail>(
-    fetcher,
-    `/api/v1/conversations/${encodeURIComponent(conversationId)}?agentId=${encodeURIComponent(agentId)}`
+  const client = await getClient(fetcher, agentId);
+  const result = await client.listTasks(
+    {
+      tenant: '',
+      contextId: conversationId,
+      status: TaskState.TASK_STATE_UNSPECIFIED,
+      pageSize: 50,
+      pageToken: '',
+      statusTimestampAfter: undefined
+    },
+    { signal: options.signal }
   );
+  const tasks = result.tasks;
+
+  const detail: ConversationDetail = {
+    conversation: {
+      id: conversationId,
+      agentId,
+      title: 'Conversation',
+      status: 'idle',
+      a2aContextId: conversationId,
+      latestTaskId: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    messages: []
+  };
+
+  tasks.sort((a, b) => {
+    const timeA =
+      a.status?.timestamp || (a as unknown as LegacyTask).updatedAt || '';
+    const timeB =
+      b.status?.timestamp || (b as unknown as LegacyTask).updatedAt || '';
+    return timeA.localeCompare(timeB);
+  });
+
+  for (const task of tasks) {
+    let record = task;
+    if (task.id) {
+      try {
+        const fullTask = await client.getTask(
+          {
+            tenant: '',
+            id: task.id,
+            historyLength: 50
+          },
+          { signal: options.signal }
+        );
+        if (fullTask) {
+          record = fullTask;
+        }
+      } catch (e) {
+        if (isAbortError(e)) {
+          throw e;
+        }
+        console.warn('Failed to get full task details for', task.id, e);
+      }
+    }
+
+    const recordUpdatedAt =
+      record.status?.timestamp ||
+      (record as unknown as LegacyTask).updatedAt ||
+      detail.conversation.updatedAt;
+    detail.conversation.latestTaskId = record.id || '';
+    detail.conversation.status = statusFromTask(record);
+    detail.conversation.updatedAt = recordUpdatedAt;
+
+    const history = (record.history ||
+      (record as unknown as LegacyTask).messages) as
+      | Array<A2AMessage | LegacyMessage>
+      | undefined;
+    if (history) {
+      for (const msg of history) {
+        const isA2AMessage = 'messageId' in msg && typeof msg.role === 'number';
+        const legacyMessage = msg as LegacyMessage;
+        const content = isA2AMessage
+          ? textFromParts(msg.parts as A2APart[])
+          : legacyMessage.text || '';
+        detail.messages.push({
+          id: legacyMessage.id || msg.messageId || Math.random().toString(),
+          conversationId,
+          agentId,
+          role:
+            msg.role === Role.ROLE_USER || msg.role === 'user'
+              ? 'user'
+              : 'assistant',
+          content,
+          status: 'sent',
+          a2aMessageId: legacyMessage.id || msg.messageId || '',
+          a2aTaskId: record.id || '',
+          createdAt: recordUpdatedAt,
+          updatedAt: recordUpdatedAt
+        });
+      }
+    }
+    for (const [index, artifact] of (record.artifacts ?? []).entries()) {
+      const content = textFromParts(artifact.parts);
+      if (!content) {
+        continue;
+      }
+      const artifactID = artifact.artifactId || String(index);
+      detail.messages.push({
+        id: `${record.id}:artifact:${artifactID}`,
+        conversationId,
+        agentId,
+        role: 'assistant',
+        content,
+        status: 'sent',
+        a2aMessageId: artifact.artifactId,
+        a2aTaskId: record.id || '',
+        createdAt: recordUpdatedAt,
+        updatedAt: recordUpdatedAt
+      });
+    }
+  }
+
+  const firstUser = detail.messages.find((m) => m.role === 'user');
+  if (firstUser && firstUser.content) {
+    detail.conversation.title = firstUser.content;
+  }
+
+  return detail;
 }
 
 export async function sendConversationTurn(
   fetcher: typeof fetch,
   conversationId: string,
   agentId: string,
-  text: string
+  text: string,
+  options: TurnRequestOptions = {}
 ): Promise<ConversationDetail> {
-  const response = await fetcher(
-    `${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}/turns`,
+  const client = await getClient(fetcher, agentId);
+  const result = await client.sendMessage(
     {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ agentId, text })
-    }
+      tenant: '',
+      message: newUserMessage(conversationId, text),
+      configuration: undefined,
+      metadata: undefined
+    },
+    { signal: options.signal }
   );
-  if (!response.ok) {
-    const body = await response
-      .json()
-      .catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(
-      typeof body.error === 'string'
-        ? body.error
-        : `Jute API request failed: ${response.status}`
+  if ('messageId' in result) {
+    const assistantText = textFromParts(result.parts);
+    if (!assistantText.trim()) {
+      throw new Error('Agent response contained no displayable text');
+    }
+    return localConversationDetail(
+      result.contextId || conversationId,
+      agentId,
+      text,
+      assistantText,
+      result.taskId,
+      'completed'
     );
   }
-  return response.json() as Promise<ConversationDetail>;
+  const failureMessage = terminalTaskFailureMessage(statusFromTask(result));
+  if (failureMessage) {
+    throw new Error(failureMessage);
+  }
+
+  return getConversation(fetcher, conversationId, agentId, options);
 }
 
 export async function sendConversationTurnStream(
@@ -289,54 +621,159 @@ export async function sendConversationTurnStream(
   conversationId: string,
   agentId: string,
   text: string,
-  onEvent: (event: ConversationStreamEvent) => void
+  onEvent: (event: ConversationStreamEvent) => void,
+  options: TurnRequestOptions = {}
 ): Promise<void> {
-  const response = await fetcher(
-    `${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}/turns/stream`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ agentId, text })
-    }
-  );
-  if (!response.ok) {
-    const body = await response
-      .json()
-      .catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(
-      typeof body.error === 'string'
-        ? body.error
-        : `Jute API request failed: ${response.status}`
-    );
-  }
-  if (!response.body) {
-    throw new Error('Jute streaming response was empty');
-  }
+  let assistantText = '';
+  let latestTaskId = '';
+  let latestStatus = 'completed';
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split(/\n\n/);
-    buffer = parts.pop() ?? '';
-    for (const part of parts) {
-      const event = parseSSEEvent(part);
-      if (event) {
-        onEvent(event);
+  onEvent({
+    type: 'turn_started',
+    conversationId,
+    agentId
+  });
+
+  try {
+    const client = await getClient(fetcher, agentId);
+
+    for await (const event of client.sendMessageStream(
+      {
+        tenant: '',
+        message: newUserMessage(conversationId, text),
+        configuration: undefined,
+        metadata: undefined
+      },
+      { signal: options.signal }
+    )) {
+      const payload = event.payload;
+      if (payload?.$case === 'message') {
+        const content = textFromParts(payload.value.parts);
+        if (content) {
+          assistantText += content;
+          onEvent({
+            type: 'assistant_delta',
+            conversationId,
+            agentId,
+            text: content,
+            append: true
+          });
+        }
+      } else if (payload?.$case === 'statusUpdate') {
+        const statusText = textFromParts(payload.value.status?.message?.parts);
+        const status = payload.value.status
+          ? taskStateToJSON(payload.value.status.state)
+              .replace(/^TASK_STATE_/, '')
+              .toLowerCase()
+          : 'working';
+        latestTaskId = payload.value.taskId;
+        latestStatus = status;
+        onEvent({
+          type: 'status_changed',
+          conversationId,
+          agentId,
+          taskId: payload.value.taskId,
+          status,
+          text: statusText,
+          terminal: payload.value.status
+            ? isTerminalTaskState(payload.value.status.state)
+            : false
+        });
+        const failureMessage = terminalTaskFailureMessage(status);
+        if (failureMessage) {
+          onEvent({
+            type: 'turn_failed',
+            conversationId,
+            agentId,
+            message: failureMessage
+          });
+          return;
+        }
+      } else if (payload?.$case === 'artifactUpdate') {
+        const content = textFromParts(payload.value.artifact?.parts);
+        if (content) {
+          assistantText = payload.value.append
+            ? assistantText + content
+            : content;
+          latestTaskId = payload.value.taskId;
+          onEvent({
+            type: 'assistant_delta',
+            conversationId,
+            agentId,
+            text: content,
+            append: payload.value.append
+          });
+        }
+      } else if (payload?.$case === 'task') {
+        const statusText = textFromParts(payload.value.status?.message?.parts);
+        const status = statusFromTask(payload.value);
+        latestTaskId = payload.value.id;
+        latestStatus = status;
+        onEvent({
+          type: 'status_changed',
+          conversationId,
+          agentId,
+          taskId: payload.value.id,
+          status,
+          text: statusText,
+          terminal: payload.value.status
+            ? isTerminalTaskState(payload.value.status.state)
+            : false
+        });
+        const failureMessage = terminalTaskFailureMessage(status);
+        if (failureMessage) {
+          onEvent({
+            type: 'turn_failed',
+            conversationId,
+            agentId,
+            message: failureMessage
+          });
+          return;
+        }
       }
     }
-  }
-  buffer += decoder.decode();
-  const event = parseSSEEvent(buffer);
-  if (event) {
-    onEvent(event);
+
+    let detail: ConversationDetail;
+    try {
+      detail = await getConversation(fetcher, conversationId, agentId, options);
+    } catch (err) {
+      if (!isHistoryUnsupportedError(err)) {
+        throw err;
+      }
+      if (!assistantText.trim()) {
+        throw new Error('Agent response contained no displayable text', {
+          cause: err
+        });
+      }
+      detail = localConversationDetail(
+        conversationId,
+        agentId,
+        text,
+        assistantText,
+        latestTaskId,
+        latestStatus
+      );
+    }
+    onEvent({
+      type: 'turn_completed',
+      ...detail
+    });
+  } catch (err: unknown) {
+    if (isAbortError(err)) {
+      onEvent({
+        type: 'turn_canceled',
+        conversationId,
+        agentId
+      });
+      return;
+    }
+    const errMsg = err instanceof Error ? err.message : 'Unknown error';
+    onEvent({
+      type: 'turn_failed',
+      conversationId,
+      agentId,
+      message: errMsg || 'Failed to complete stream turn'
+    });
   }
 }
 
@@ -469,6 +906,65 @@ export async function saveWidgetLayout(
     );
   }
   return response.json() as Promise<WidgetLayout>;
+}
+
+const BACKGROUNDS_BASE = '/api/v1/backgrounds';
+
+export async function getBackgroundImages(
+  fetcher: typeof fetch
+): Promise<BackgroundImage[]> {
+  const response = await getJSON<{ images: BackgroundImage[] }>(
+    fetcher,
+    BACKGROUNDS_BASE
+  );
+  return response.images ?? [];
+}
+
+export async function uploadBackgroundImage(
+  fetcher: typeof fetch,
+  file: File
+): Promise<BackgroundImage> {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await fetcher(`${API_BASE}${BACKGROUNDS_BASE}`, {
+    method: 'POST',
+    body: form
+  });
+  if (!response.ok) {
+    const body = await response
+      .json()
+      .catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : `Background upload failed: ${response.status}`
+    );
+  }
+  return response.json() as Promise<BackgroundImage>;
+}
+
+export async function deleteBackgroundImage(
+  fetcher: typeof fetch,
+  name: string
+): Promise<void> {
+  const response = await fetcher(
+    `${API_BASE}${BACKGROUNDS_BASE}?name=${encodeURIComponent(name)}`,
+    { method: 'DELETE' }
+  );
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Background delete failed: ${response.status}`);
+  }
+}
+
+/** Resolves a stored background image file name to an absolute hub URL. */
+export function backgroundImageURL(name: string): string {
+  if (!name) {
+    return '';
+  }
+  if (/^https?:\/\//i.test(name) || name.startsWith('/api/')) {
+    return name.startsWith('/api/') ? `${API_BASE}${name}` : name;
+  }
+  return `${API_BASE}${BACKGROUNDS_BASE}/files/${encodeURIComponent(name)}`;
 }
 
 export async function resetWidgetLayout(
@@ -730,32 +1226,4 @@ async function postVoiceControl(
     );
   }
   return response.json() as Promise<VoiceStatus>;
-}
-
-async function getJSON<T>(fetcher: typeof fetch, path: string): Promise<T> {
-  const response = await fetcher(`${API_BASE}${path}`);
-  if (!response.ok) {
-    throw new Error(`Jute API request failed: ${response.status}`);
-  }
-  return response.json() as Promise<T>;
-}
-
-export function parseSSEEvent(
-  raw: string
-): ConversationStreamEvent | undefined {
-  const lines = raw.split(/\r?\n/);
-  let type = '';
-  const data: string[] = [];
-  for (const line of lines) {
-    if (line.startsWith('event:')) {
-      type = line.slice('event:'.length).trim();
-    } else if (line.startsWith('data:')) {
-      data.push(line.slice('data:'.length).trim());
-    }
-  }
-  if (!type || data.length === 0) {
-    return undefined;
-  }
-  const payload = JSON.parse(data.join('\n')) as Record<string, unknown>;
-  return { type, ...payload } as ConversationStreamEvent;
 }

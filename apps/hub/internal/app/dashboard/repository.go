@@ -64,6 +64,7 @@ func (r *Repository) WidgetLayout(ctx context.Context, profileID string) (Widget
 			MinW:    w.MinW,
 			MinH:    w.MinH,
 			Size:    w.Size,
+			Mode:    normalizeMode(w.Mode),
 			Visible: w.Visible == 1,
 		}
 		widget.Settings = map[string]any{}
@@ -124,6 +125,7 @@ func (r *Repository) SaveWidgetLayout(ctx context.Context, layout WidgetLayout) 
 				MinW:            widget.MinW,
 				MinH:            widget.MinH,
 				Size:            widget.Size,
+				Mode:            normalizeMode(widget.Mode),
 				SettingsJSON:    settingsJSON,
 				Visible:         boolToInt(widget.Visible),
 				SortOrder:       i,
@@ -171,6 +173,10 @@ func NormalizeWidgetLayout(layout WidgetLayout, catalog map[string]WidgetCatalog
 		widget.Kind = strings.TrimSpace(widget.Kind)
 		widget.Title = strings.TrimSpace(widget.Title)
 		widget.Size = strings.TrimSpace(widget.Size)
+		widget.Mode = strings.TrimSpace(widget.Mode)
+		if widget.Mode == "" {
+			widget.Mode = WidgetModeUI
+		}
 
 		item, ok := catalog[widget.Kind]
 		if catalog != nil && !ok {
@@ -221,6 +227,74 @@ func NormalizeWidgetLayout(layout WidgetLayout, catalog map[string]WidgetCatalog
 	return layout, nil
 }
 
+func WidgetLayoutFromDashboardConfig(
+	cfg DashboardConfig,
+	catalog map[string]WidgetCatalogItem,
+) (WidgetLayout, error) {
+	layout := WidgetLayout{
+		ProfileID: DefaultLayoutProfileID,
+		Widgets:   make([]WidgetInstance, 0, len(cfg.Widgets)),
+	}
+	legacyColumns := usesLegacyColumns(cfg, catalog)
+	for _, w := range cfg.Widgets {
+		x := w.X
+		width := w.W
+		minW := w.MinW
+		if legacyColumns {
+			x *= LegacyColumnScale
+			width *= LegacyColumnScale
+			if minW > 0 {
+				minW *= LegacyColumnScale
+			}
+		}
+		if item, ok := catalog[w.Type]; ok {
+			if width == 0 {
+				width = item.DefaultW
+			}
+			if w.H == 0 {
+				w.H = item.DefaultH
+			}
+		}
+		layout.Widgets = append(layout.Widgets, WidgetInstance{
+			ID:       w.ID,
+			Kind:     w.Type,
+			Title:    w.Title,
+			X:        x,
+			Y:        w.Y,
+			W:        width,
+			H:        w.H,
+			MinW:     minW,
+			MinH:     w.MinH,
+			Size:     w.Size,
+			Mode:     normalizeMode(w.Mode),
+			Settings: w.Settings,
+			Visible:  w.Visible,
+		})
+	}
+	return NormalizeWidgetLayout(layout, catalog)
+}
+
+func usesLegacyColumns(cfg DashboardConfig, catalog map[string]WidgetCatalogItem) bool {
+	maxRight := 0
+	hasTile := false
+	for _, widget := range cfg.Widgets {
+		if normalizeMode(widget.Mode) == WidgetModeHeadless || !widget.Visible {
+			continue
+		}
+		hasTile = true
+		if right := widget.X + widget.W; right > maxRight {
+			maxRight = right
+		}
+		if widget.MinW > 0 || widget.MinH > 0 || strings.TrimSpace(widget.Size) != "" {
+			return false
+		}
+		if item, ok := catalog[widget.Type]; ok && widget.W > item.DefaultW {
+			return false
+		}
+	}
+	return hasTile && maxRight > 0 && maxRight <= 4
+}
+
 func DefaultWidgetLayout() WidgetLayout {
 	widgets := defaultWidgetInstances()
 	layout := WidgetLayout{
@@ -240,6 +314,7 @@ func DefaultWidgetLayout() WidgetLayout {
 			MinH:     widget.minH,
 			Size:     widget.size,
 			Overflow: widget.overflow,
+			Mode:     WidgetModeUI,
 			Settings: map[string]any{},
 			Visible:  widget.visible,
 		})
@@ -254,9 +329,9 @@ func WidgetCatalog() []WidgetCatalogItem {
 			Name:          "Date & Time",
 			Description:   "Clock, date, timezone, and local display timing.",
 			DefaultTitle:  "Date & Time",
-			DefaultW:      2,
+			DefaultW:      6,
 			DefaultH:      1,
-			MinW:          1,
+			MinW:          3,
 			MinH:          1,
 			DefaultSize:   "wide",
 			Overflow:      "clip",
@@ -267,9 +342,9 @@ func WidgetCatalog() []WidgetCatalogItem {
 			Name:          "Weather",
 			Description:   "Current weather from the configured hub weather provider.",
 			DefaultTitle:  "Weather",
-			DefaultW:      2,
+			DefaultW:      6,
 			DefaultH:      1,
-			MinW:          1,
+			MinW:          3,
 			MinH:          1,
 			DefaultSize:   "wide",
 			Overflow:      "clip",
@@ -280,9 +355,9 @@ func WidgetCatalog() []WidgetCatalogItem {
 			Name:          "Chat History",
 			Description:   "Recent in-memory chat turns and active agent status.",
 			DefaultTitle:  "Chat History",
-			DefaultW:      2,
+			DefaultW:      6,
 			DefaultH:      2,
-			MinW:          1,
+			MinW:          3,
 			MinH:          1,
 			DefaultSize:   "medium",
 			Overflow:      "scroll",
@@ -310,11 +385,16 @@ func validateWidgetInstance(widget WidgetInstance) error {
 	if widget.W < widget.MinW || widget.H < widget.MinH {
 		return fmt.Errorf("%w: widget %s is smaller than its minimum size", ErrInvalidLayout, widget.ID)
 	}
-	if widget.W > 4 || widget.MinW > 4 || widget.X+widget.W > 4 {
+	if widget.W > BaseColumns || widget.MinW > BaseColumns || widget.X+widget.W > BaseColumns {
 		return fmt.Errorf("%w: widget %s exceeds dashboard column bounds", ErrInvalidLayout, widget.ID)
 	}
-	if widget.H > 6 || widget.MinH > 6 || widget.Y > 99 {
+	if widget.H > 12 || widget.MinH > 12 || widget.Y > 99 {
 		return fmt.Errorf("%w: widget %s exceeds dashboard row bounds", ErrInvalidLayout, widget.ID)
+	}
+	switch widget.Mode {
+	case "", WidgetModeUI, WidgetModeHeadless:
+	default:
+		return fmt.Errorf("%w: widget %s has unsupported mode %q", ErrInvalidLayout, widget.ID, widget.Mode)
 	}
 	switch widget.Size {
 	case "small", "medium", "wide", "large":
@@ -347,9 +427,9 @@ func defaultWidgetInstances() []defaultWidgetInstance {
 			title:    "Date & Time",
 			x:        0,
 			y:        0,
-			w:        2,
+			w:        6,
 			h:        1,
-			minW:     1,
+			minW:     3,
 			minH:     1,
 			size:     "wide",
 			overflow: "clip",
@@ -359,11 +439,11 @@ func defaultWidgetInstances() []defaultWidgetInstance {
 			id:       "weather",
 			kind:     "weather",
 			title:    "Weather",
-			x:        2,
+			x:        6,
 			y:        0,
-			w:        2,
+			w:        6,
 			h:        1,
-			minW:     1,
+			minW:     3,
 			minH:     1,
 			size:     "wide",
 			overflow: "clip",
@@ -375,9 +455,9 @@ func defaultWidgetInstances() []defaultWidgetInstance {
 			title:    "Chat History",
 			x:        0,
 			y:        1,
-			w:        2,
+			w:        6,
 			h:        2,
-			minW:     1,
+			minW:     3,
 			minH:     1,
 			size:     "medium",
 			overflow: "scroll",
@@ -398,6 +478,13 @@ func jsonString(value any) (string, error) {
 		return "", err
 	}
 	return string(bytes), nil
+}
+
+func normalizeMode(mode string) string {
+	if strings.TrimSpace(mode) == WidgetModeHeadless {
+		return WidgetModeHeadless
+	}
+	return WidgetModeUI
 }
 
 func boolToInt(value bool) int {

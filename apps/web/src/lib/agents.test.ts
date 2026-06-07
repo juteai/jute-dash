@@ -62,6 +62,12 @@ describe('agent availability', () => {
     expect(getAgentAvailability(discovered)).toBe('available');
   });
 
+  it('rejects an explicitly discovered non-1.0 protocol version', () => {
+    expect(
+      getAgentAvailability(agent({ selectedProtocolVersion: '0.3' }))
+    ).toBe('unsupported_binding');
+  });
+
   it('returns the first available agent from a mixed list', () => {
     const disabled = agent({ id: 'disabled', enabled: false });
     const available = agent({ id: 'available' });

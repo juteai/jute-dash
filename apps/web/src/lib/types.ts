@@ -17,11 +17,19 @@ export type DisplayConfig = {
 };
 
 export type DisplayBackground = {
-  kind: 'theme' | 'color' | 'asset' | 'file' | string;
+  kind: 'theme' | 'color' | 'asset' | 'file' | 'slideshow' | string;
   value: string;
   fit: 'cover' | 'contain' | 'tile' | string;
   position: string;
   overlay: 'none' | 'dim' | 'smoked' | 'frosted' | string;
+  images?: string[];
+  intervalSeconds?: number;
+  transition?: 'none' | 'crossfade' | string;
+};
+
+export type BackgroundImage = {
+  name: string;
+  url: string;
 };
 
 export type DisplayWidgetChrome = {
@@ -313,7 +321,28 @@ export type WidgetCatalogItem = {
   defaultSize: 'small' | 'medium' | 'wide' | 'large' | string;
   overflow: 'clip' | 'scroll' | 'expand' | string;
   allowMultiple: boolean;
+  settingsSchema?: SettingField[];
 };
+
+export type SettingFieldType =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'enum'
+  | 'string-list'
+  | 'object-list';
+
+export type SettingField = {
+  id: string;
+  type: SettingFieldType;
+  label: string;
+  help?: string;
+  default?: unknown;
+  options?: string[];
+  fields?: SettingField[];
+};
+
+export type WidgetMode = 'ui' | 'headless';
 
 export type WidgetInstance = {
   id: string;
@@ -327,6 +356,7 @@ export type WidgetInstance = {
   minH: number;
   size: 'small' | 'medium' | 'wide' | 'large' | string;
   overflow?: 'clip' | 'scroll' | 'expand' | string;
+  mode?: WidgetMode | string;
   settings: Record<string, unknown>;
   visible: boolean;
   data?: unknown;
@@ -404,6 +434,7 @@ export type ConversationStreamEvent =
       agentId: string;
       taskId?: string;
       status: string;
+      text?: string;
       terminal?: boolean;
     }
   | ({
@@ -414,6 +445,11 @@ export type ConversationStreamEvent =
       conversationId?: string;
       agentId?: string;
       message: string;
+    }
+  | {
+      type: 'turn_canceled';
+      conversationId: string;
+      agentId: string;
     };
 
 export type MessageResponse = {

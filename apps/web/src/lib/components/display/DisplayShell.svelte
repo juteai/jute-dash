@@ -11,6 +11,7 @@
   import StatusRibbon from '$lib/components/display/StatusRibbon.svelte';
   import {
     addAgent,
+    backgroundImageURL,
     createConversation,
     deleteAgent,
     eventsURL,
@@ -34,6 +35,7 @@
     cancelVoice,
     unmuteVoice
   } from '$lib/api';
+  import { logger } from '$lib/logger';
   import {
     firstAvailableAgent,
     getAgentAvailability,
@@ -62,12 +64,15 @@
   import { cn } from '$lib/utils';
   import {
     cloneLayout,
-    packLayout,
     addWidget as editorAddWidget,
     moveWidget as editorMoveWidget,
     resizeWidget as editorResizeWidget,
-    removeWidget as editorRemoveWidget
+    removeWidget as editorRemoveWidget,
+    setWidgetMode as editorSetWidgetMode,
+    reorderWidget as editorReorderWidget,
+    updateWidget as editorUpdateWidget
   } from '$lib/layout-editor';
+  import WidgetSettingsSheet from '$lib/components/display/WidgetSettingsSheet.svelte';
 
   export let data: DashboardData;
 
@@ -83,11 +88,14 @@
   let dashboard: DashboardData = data;
   let dashboardForView: DashboardData = data;
   let draftLayout: WidgetLayout | undefined;
+  let configuringWidgetId = '';
   let widgetCatalog: WidgetCatalogItem[] = [];
   let editIssue = '';
   let savingLayout = false;
   let mode: DisplayMode = 'dashboard';
   let chatState: ChatState = 'idle';
+  let assistantStatusText = '';
+  let activeChatTurn: AbortController | undefined;
   let messages: ChatMessage[] = [];
   let conversations: Conversation[] = [];
   let selectedConversationId = '';
@@ -118,7 +126,10 @@
   let hasConnected = data.connectionState === 'connected';
   let retrying = false;
   let longPressTimer: number | undefined;
+  let slideshowIndex = 0;
+  let slideshowTimer: number | undefined;
   let eventSource: EventSource | undefined;
+  let pollingTimer: number | undefined;
   let displayNotifications: DisplayNotification[] = [];
   let notificationTimers: number[] = [];
   let focusedWidgetId = '';
@@ -157,11 +168,78 @@
   $: showStartupLoading =
     !hasConnected && dashboard.connectionState === 'starting';
   $: activeTheme = resolveColorMode(dashboard.config.display, prefersDark);
-  $: displayStyle = displayThemeStyle(dashboard.config.display, activeTheme);
+  $: backgroundConfig = dashboard.config.display.background;
+  $: slideshowImages =
+    backgroundConfig?.kind === 'slideshow'
+      ? (backgroundConfig.images ?? [])
+      : [];
+  $: currentBackgroundImage = resolveBackgroundImage(
+    backgroundConfig,
+    slideshowIndex
+  );
+  $: displayStyle = displayThemeStyle(
+    dashboard.config.display,
+    activeTheme,
+    currentBackgroundImage
+  );
+  $: manageSlideshow(
+    slideshowImages,
+    backgroundConfig?.intervalSeconds,
+    dashboard.config.display.motion
+  );
+
+  function resolveBackgroundImage(
+    bg: typeof backgroundConfig,
+    index: number
+  ): string {
+    if (!bg) {
+      return '';
+    }
+    if (bg.kind === 'file' && bg.value) {
+      return backgroundImageURL(bg.value);
+    }
+    if (bg.kind === 'asset' && bg.value) {
+      return bg.value;
+    }
+    if (bg.kind === 'slideshow') {
+      const images = bg.images ?? [];
+      if (images.length > 0) {
+        return backgroundImageURL(images[index % images.length]);
+      }
+    }
+    return '';
+  }
+
+  function manageSlideshow(
+    images: string[],
+    intervalSeconds: number | undefined,
+    motion: string
+  ) {
+    if (!browser) {
+      return;
+    }
+    if (slideshowTimer) {
+      window.clearInterval(slideshowTimer);
+      slideshowTimer = undefined;
+    }
+    if (images.length > 1 && motion !== 'none') {
+      const delay = Math.max(3, intervalSeconds || 30) * 1000;
+      slideshowTimer = window.setInterval(() => {
+        slideshowIndex = (slideshowIndex + 1) % images.length;
+      }, delay);
+    }
+  }
   $: dashboardForView = {
     ...dashboard,
     layout: mode === 'edit' && draftLayout ? draftLayout : dashboard.layout
   };
+  $: configuringWidget =
+    configuringWidgetId && draftLayout
+      ? draftLayout.widgets.find((widget) => widget.id === configuringWidgetId)
+      : undefined;
+  $: configuringCatalogItem = configuringWidget
+    ? widgetCatalog.find((item) => item.kind === configuringWidget?.kind)
+    : undefined;
   $: if (
     mounted &&
     selectedAgent &&
@@ -181,13 +259,18 @@
     updateTheme();
     query.addEventListener('change', updateTheme);
     void retryDashboard();
+    startPolling();
 
     return () => {
       mounted = false;
       query.removeEventListener('change', updateTheme);
       clearLongPress();
       disconnectDisplayEvents();
+      stopPolling();
       clearFocusTimer();
+      if (slideshowTimer) {
+        window.clearInterval(slideshowTimer);
+      }
     };
   });
 
@@ -560,7 +643,7 @@
     savingLayout = true;
     editIssue = '';
     try {
-      const saved = await saveWidgetLayout(fetch, packLayout(draftLayout));
+      const saved = await saveWidgetLayout(fetch, draftLayout);
       dashboard = {
         ...dashboard,
         layout: saved,
@@ -570,6 +653,7 @@
         loadedAt: new Date().toISOString()
       };
       draftLayout = undefined;
+      configuringWidgetId = '';
       mode = 'dashboard';
     } catch {
       editIssue =
@@ -587,6 +671,7 @@
 
   function cancelEdit() {
     draftLayout = undefined;
+    configuringWidgetId = '';
     editIssue = '';
     mode = 'dashboard';
   }
@@ -624,7 +709,7 @@
     }
   }
 
-  function addWidget(kind: string) {
+  function addWidget(kind: string, mode: 'ui' | 'headless' = 'ui') {
     if (!draftLayout) {
       return;
     }
@@ -633,9 +718,51 @@
       editIssue = 'That widget is not available in this display build.';
       return;
     }
-    const res = editorAddWidget(draftLayout, item);
+    const res = editorAddWidget(draftLayout, item, mode);
     draftLayout = res.layout;
     editIssue = res.error || '';
+  }
+
+  function setWidgetHeadless(widgetId: string) {
+    if (!draftLayout) {
+      return;
+    }
+    draftLayout = editorSetWidgetMode(draftLayout, widgetId, 'headless');
+  }
+
+  function restoreWidget(widgetId: string) {
+    if (!draftLayout) {
+      return;
+    }
+    draftLayout = editorSetWidgetMode(draftLayout, widgetId, 'ui');
+  }
+
+  function reorderWidget(widgetId: string, direction: -1 | 1) {
+    if (!draftLayout) {
+      return;
+    }
+    draftLayout = editorReorderWidget(draftLayout, widgetId, direction);
+  }
+
+  function openWidgetConfig(widgetId: string) {
+    configuringWidgetId = widgetId;
+  }
+
+  function saveWidgetConfig(patch: {
+    title: string;
+    settings: Record<string, unknown>;
+    mode: 'ui' | 'headless';
+  }) {
+    if (!draftLayout || !configuringWidgetId) {
+      return;
+    }
+    let next = editorUpdateWidget(draftLayout, configuringWidgetId, {
+      title: patch.title,
+      settings: patch.settings
+    });
+    next = editorSetWidgetMode(next, configuringWidgetId, patch.mode);
+    draftLayout = next;
+    configuringWidgetId = '';
   }
 
   function moveWidget(widgetId: string, x: number, y: number) {
@@ -680,34 +807,122 @@
     }
   }
 
+  function startPolling() {
+    if (!browser || pollingTimer) {
+      return;
+    }
+    pollingTimer = window.setInterval(async () => {
+      await pollStatus();
+    }, 10000);
+  }
+
+  function stopPolling() {
+    if (pollingTimer) {
+      window.clearInterval(pollingTimer);
+      pollingTimer = undefined;
+    }
+  }
+
+  async function pollStatus() {
+    try {
+      const fresh = await getDashboard(fetch);
+      if (
+        dashboard.connectionState === 'offline' ||
+        dashboard.connectionState === 'reconnecting'
+      ) {
+        dashboard = fresh;
+        markConnected();
+      } else {
+        dashboard = {
+          ...fresh,
+          connectionState: dashboard.connectionState,
+          issue: dashboard.issue
+        };
+      }
+    } catch {
+      if (hasConnected) {
+        markIssue('reconnecting', {
+          code: 'hub_unreachable',
+          severity: 'error',
+          title: 'Hub not reachable',
+          message: `Jute Dash cannot connect to the local hub at ${dashboard.hubUrl}.`,
+          action: {
+            label: 'Retry',
+            target: 'retry'
+          }
+        });
+      } else {
+        markIssue('offline', {
+          code: 'hub_unreachable',
+          severity: 'error',
+          title: 'Hub not reachable',
+          message: `Jute Dash cannot connect to the local hub at ${dashboard.hubUrl}.`,
+          action: {
+            label: 'Retry',
+            target: 'retry'
+          }
+        });
+      }
+    }
+  }
+
   function connectDisplayEvents() {
     if (!browser || eventSource) {
       return;
     }
     eventSource = new EventSource(eventsURL());
-    eventSource.addEventListener('open', () => {
+    eventSource.addEventListener('open', async () => {
+      logger.sse('Connected');
       if (hasConnected) {
+        try {
+          const fresh = await getDashboard(fetch);
+          dashboard = fresh;
+        } catch {
+          // ignore
+        }
         markConnected();
       }
     });
-    eventSource.addEventListener('error', () => {
+    eventSource.addEventListener('error', async () => {
+      logger.sseError('Event stream connection lost or failed');
       if (mounted && hasConnected) {
-        markIssue('reconnecting', {
-          code: 'event_stream_disconnected',
-          severity: 'warning',
-          title: 'Reconnecting',
-          message:
-            'Jute lost the live display event stream. Dashboard data may be stale.'
-        });
+        try {
+          const fresh = await getDashboard(fetch);
+          dashboard = {
+            ...fresh,
+            connectionState: 'degraded',
+            stale: false,
+            issue: {
+              code: 'event_stream_disconnected',
+              severity: 'warning',
+              title: 'Event stream disconnected',
+              message:
+                'Jute lost the live display event stream. Dashboard data may be stale.'
+            }
+          };
+        } catch {
+          markIssue('reconnecting', {
+            code: 'hub_unreachable',
+            severity: 'error',
+            title: 'Hub not reachable',
+            message: `Jute Dash cannot connect to the local hub at ${dashboard.hubUrl}.`,
+            action: {
+              label: 'Retry',
+              target: 'retry'
+            }
+          });
+        }
       }
     });
     eventSource.addEventListener('display.notification', (event) => {
+      logger.sse(event.type);
       const notification = parseDisplayEvent<DisplayNotification>(event);
       if (notification) {
         addDisplayNotification(notification);
       }
     });
     eventSource.addEventListener('display.focus_widget', (event) => {
+      logger.sse(event.type);
       const focus = parseDisplayEvent<DisplayFocusWidget>(event);
       if (focus) {
         focusWidget(focus);
@@ -715,6 +930,10 @@
     });
     eventSource.addEventListener('voice.state_changed', (event) => {
       const e = parseDisplayEvent<VoiceDisplayEvent>(event);
+      logger.sse(
+        event.type,
+        e?.payload ? `state=${e.payload.state}` : undefined
+      );
       if (e?.payload) {
         const payload = e.payload;
         dashboard = {
@@ -735,7 +954,8 @@
         };
       }
     });
-    eventSource.addEventListener('voice.wake_detected', () => {
+    eventSource.addEventListener('voice.wake_detected', (event) => {
+      logger.sse(event.type);
       if (voiceEndedTimeout) {
         window.clearTimeout(voiceEndedTimeout);
         voiceEndedTimeout = undefined;
@@ -748,6 +968,7 @@
     eventSource.addEventListener('voice.transcript.partial', (event) => {
       const e = parseDisplayEvent<VoiceDisplayEvent>(event);
       const text = e?.payload?.text;
+      logger.sse(event.type, text ? `text="${text}"` : undefined);
       if (typeof text === 'string') {
         voiceTranscript = text;
       }
@@ -756,18 +977,21 @@
     eventSource.addEventListener('voice.transcript.final', (event) => {
       const e = parseDisplayEvent<VoiceDisplayEvent>(event);
       const text = e?.payload?.text;
+      logger.sse(event.type, text ? `text="${text}"` : undefined);
       if (typeof text === 'string') {
         voiceTranscript = text;
       }
       voiceOrbState = 'listening';
     });
-    eventSource.addEventListener('conversation.turn_started', () => {
+    eventSource.addEventListener('conversation.turn_started', (event) => {
+      logger.sse(event.type);
       voiceOrbState = 'thinking';
     });
     eventSource.addEventListener('conversation.turn_completed', (event) => {
       const e = parseDisplayEvent<VoiceDisplayEvent>(event);
       const speech = e?.payload?.speech;
       const text = e?.payload?.text;
+      logger.sse(event.type, text ? `text="${text}"` : undefined);
       if (typeof speech === 'string') {
         assistantSpeech = speech;
       } else if (typeof text === 'string') {
@@ -775,11 +999,13 @@
       }
       voiceOrbState = 'speaking';
     });
-    eventSource.addEventListener('conversation.followup_started', () => {
+    eventSource.addEventListener('conversation.followup_started', (event) => {
+      logger.sse(event.type);
       voiceOrbState = 'followup';
       voiceTranscript = '';
     });
-    eventSource.addEventListener('conversation.ended', () => {
+    eventSource.addEventListener('conversation.ended', (event) => {
+      logger.sse(event.type);
       voiceOrbState = 'idle';
       if (voiceEndedTimeout) {
         window.clearTimeout(voiceEndedTimeout);
@@ -792,7 +1018,8 @@
         }
       }, 4000);
     });
-    eventSource.addEventListener('hub.connected', () => {
+    eventSource.addEventListener('hub.connected', (event) => {
+      logger.sse(event.type);
       if (hasConnected) {
         markConnected();
       }
@@ -885,10 +1112,14 @@
 
     const temporaryMessageId = retryMessageId ?? makeID();
     chatState = 'thinking';
-    let streamedOutput = false;
+    assistantStatusText = '';
     let completed = false;
-    let failedFromStream = false;
+    let canceled = false;
+    let streamFailure: Error | undefined;
     const assistantMessageId = makeID();
+    activeChatTurn?.abort();
+    const turnController = new AbortController();
+    activeChatTurn = turnController;
 
     try {
       const conversationId = await ensureConversation(agent);
@@ -902,70 +1133,85 @@
           agentId: agent.id
         })
       ];
-      await sendConversationTurnStream(
-        fetch,
-        conversationId,
-        agent.id,
-        text,
-        (event) => {
-          if (event.type === 'turn_started') {
-            chatState = 'thinking';
-            return;
-          }
-          if (event.type === 'assistant_delta') {
-            streamedOutput = true;
-            chatState = 'streaming';
-            upsertAssistantDelta(assistantMessageId, event);
-            return;
-          }
-          if (event.type === 'status_changed') {
-            chatState = event.status === 'completed' ? 'streaming' : 'thinking';
-            return;
-          }
-          if (event.type === 'turn_completed') {
-            completed = true;
-            applyConversationDetail({
-              conversation: event.conversation,
-              messages: event.messages
-            });
-            return;
-          }
-          if (event.type === 'turn_failed') {
-            failedFromStream = true;
-            throw new Error(event.message);
-          }
-        }
-      );
+      if (agent.streaming) {
+        await sendConversationTurnStream(
+          fetch,
+          conversationId,
+          agent.id,
+          text,
+          (event) => {
+            if (
+              turnController.signal.aborted &&
+              event.type !== 'turn_canceled'
+            ) {
+              return;
+            }
+            if (event.type === 'turn_started') {
+              chatState = 'thinking';
+              return;
+            }
+            if (event.type === 'assistant_delta') {
+              chatState = 'streaming';
+              upsertAssistantDelta(assistantMessageId, event);
+              return;
+            }
+            if (event.type === 'status_changed') {
+              chatState =
+                event.status === 'completed' ? 'streaming' : 'thinking';
+              assistantStatusText = event.text || '';
+              return;
+            }
+            if (event.type === 'turn_completed') {
+              completed = true;
+              applyConversationDetail({
+                conversation: event.conversation,
+                messages: event.messages
+              });
+              return;
+            }
+            if (event.type === 'turn_failed') {
+              streamFailure = new Error(event.message);
+              return;
+            }
+            if (event.type === 'turn_canceled') {
+              canceled = true;
+              chatState = 'idle';
+              assistantStatusText = '';
+            }
+          },
+          { signal: turnController.signal }
+        );
+      } else {
+        const detail = await sendConversationTurn(
+          fetch,
+          conversationId,
+          agent.id,
+          text,
+          { signal: turnController.signal }
+        );
+        completed = true;
+        applyConversationDetail(detail);
+      }
+      if (canceled || turnController.signal.aborted) {
+        return;
+      }
+      if (streamFailure) {
+        throw streamFailure;
+      }
       if (!completed) {
         throw new Error('stream ended before completion');
       }
       markConnected();
     } catch (err) {
-      let failure = err;
-      if (!streamedOutput && !failedFromStream) {
-        try {
-          const conversationId =
-            selectedConversationId || (await ensureConversation(agent));
-          const detail = await sendConversationTurn(
-            fetch,
-            conversationId,
-            agent.id,
-            text
-          );
-          applyConversationDetail(detail);
-          markConnected();
-          return;
-        } catch (fallbackErr) {
-          failure = fallbackErr;
-          // Fall through to the standard retryable failure state.
-        }
+      if (canceled || turnController.signal.aborted) {
+        return;
       }
       messages = messages.map((message) =>
         message.id === temporaryMessageId
           ? { ...message, status: 'failed', retryText: text }
           : message
       );
-      messages = [...messages, systemMessage(chatFailureMessage(failure))];
+      messages = [...messages, systemMessage(chatFailureMessage(err))];
       markIssue('degraded', {
         code: 'message_failed',
         severity: 'warning',
@@ -973,6 +1219,10 @@
         message: chatFailureIssueMessage(err)
       });
       chatState = 'error';
+    } finally {
+      if (activeChatTurn === turnController) {
+        activeChatTurn = undefined;
+      }
     }
   }
 
@@ -1016,6 +1266,8 @@
   }
 
   function cancelChatTurn() {
+    activeChatTurn?.abort();
+    assistantStatusText = '';
     chatState = 'idle';
   }
 
@@ -1233,7 +1485,6 @@
       data={dashboardForView}
       editMode={mode === 'edit'}
       {messages}
-      theme={activeTheme}
       stale={dashboard.stale}
       {selectedAgent}
       {selectedAvailability}
@@ -1252,8 +1503,21 @@
       onMoveWidget={moveWidget}
       onResizeWidget={resizeWidget}
       onRemoveWidget={removeWidget}
+      onConfigureWidget={openWidgetConfig}
+      onSetHeadless={setWidgetHeadless}
+      onRestoreWidget={restoreWidget}
+      onReorderWidget={reorderWidget}
       onManageAgents={() => openSettings('household')}
     />
+
+    {#if configuringWidget}
+      <WidgetSettingsSheet
+        widget={configuringWidget}
+        catalogItem={configuringCatalogItem}
+        onClose={() => (configuringWidgetId = '')}
+        onSave={saveWidgetConfig}
+      />
+    {/if}
 
     {#if showAgentManager}
       <SettingsPanel
@@ -1291,6 +1555,7 @@
           {messages}
           {conversations}
           state={chatState}
+          statusText={assistantStatusText}
           voice={dashboard.voice}
           {voiceIssue}
           {selectedAgentId}
@@ -1302,6 +1567,7 @@
             selectedConversationId = '';
             messages = [];
             chatState = 'idle';
+            assistantStatusText = '';
             void loadConversationHistory('');
           }}
           onConversationSelect={(conversationId) =>

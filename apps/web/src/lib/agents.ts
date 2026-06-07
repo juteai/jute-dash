@@ -10,7 +10,8 @@ export function getAgentAvailability(
     return 'disabled';
   }
   const binding = agent.selectedProtocolBinding || agent.protocolBinding;
-  if (binding !== 'JSONRPC') {
+  const version = agent.selectedProtocolVersion;
+  if (binding !== 'JSONRPC' || (version && version !== '1.0')) {
     return 'unsupported_binding';
   }
   if (agent.authConfigured && agent.authAvailable === false) {

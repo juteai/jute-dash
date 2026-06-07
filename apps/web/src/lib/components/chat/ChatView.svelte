@@ -33,6 +33,7 @@
   export let messages: ChatMessage[] = [];
   export let conversations: Conversation[] = [];
   export let state: ChatState = 'idle';
+  export let statusText = '';
   export let voice: VoiceStatus;
   export let voiceIssue = '';
   export let selectedAgentId = '';
@@ -206,7 +207,7 @@
       {:else if agentAvailability !== 'available'}
         {availabilityDescription(agentAvailability)}
       {:else if state === 'thinking'}
-        Waiting for the agent
+        {statusText || 'Waiting for the agent'}
       {:else if state === 'streaming'}
         Response in progress
       {:else if state === 'error'}

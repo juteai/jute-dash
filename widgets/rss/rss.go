@@ -104,13 +104,20 @@ func (w *RSSWidget) CatalogInfo() widgets.WidgetCatalogItem {
 		Name:          "RSS Feed",
 		Description:   "Aggregates and displays headlines from custom RSS feeds.",
 		DefaultTitle:  "Tech News",
-		DefaultW:      2,
+		DefaultW:      6,
 		DefaultH:      2,
-		MinW:          1,
+		MinW:          3,
 		MinH:          1,
 		DefaultSize:   "medium",
 		Overflow:      "scroll",
 		AllowMultiple: true,
+		SettingsSchema: []widgets.SettingField{
+			{ID: "limit", Type: widgets.SettingNumber, Label: "Max headlines", Default: 5},
+			{ID: "feeds", Type: widgets.SettingObjectList, Label: "Feeds", Fields: []widgets.SettingField{
+				{ID: "name", Type: widgets.SettingString, Label: "Name"},
+				{ID: "url", Type: widgets.SettingString, Label: "Feed URL"},
+			}},
+		},
 	}
 }
 

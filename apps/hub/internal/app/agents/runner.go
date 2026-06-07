@@ -173,6 +173,7 @@ func (runner *Runner) Run(
 							AgentID:        turn.agent.ID,
 							TaskID:         taskID,
 							Status:         status,
+							Text:           event.Text,
 							Terminal:       event.Terminal,
 						})
 					}

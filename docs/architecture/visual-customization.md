@@ -100,9 +100,29 @@ Supported sources:
 - `theme`: use the Theme Pack default background;
 - `color`: use a configured solid color token or literal color value after validation;
 - `asset`: use a packaged display asset, such as `/backgrounds/kitchen-mono.jpg`;
-- `file`: use a file under a hub-managed backgrounds directory.
+- `file`: use a single file under the hub-managed backgrounds directory;
+- `slideshow`: cycle through a list of files under the hub-managed backgrounds directory.
 
 Remote image URLs are out of scope for v1. They create privacy, availability, CSP, and mixed-content risks that need a separate remote media policy.
+
+### Image library and upload
+
+Background images are managed locally by the hub:
+
+- the hub exposes endpoints to upload an image into the managed backgrounds directory, list the library, and delete an image;
+- uploads are validated for image type and size and are stored as local media assets under the hub data directory — never in YAML/JSON config or public API responses;
+- the `Appearance` settings section lets the user upload images, browse the library, and choose a single image or build a slideshow set;
+- only a reference (file id/path) is stored in durable display settings; the binary stays a local media asset.
+
+### Slideshow
+
+When `kind` is `slideshow`, the background config additionally carries:
+
+- an ordered list of image references to cycle;
+- `intervalSeconds`: dwell time per image;
+- a transition (crossfade) that respects the display `motion` setting (no animation under reduced motion).
+
+The slideshow is cycled client-side by the display; the hub stores only the references and timing.
 
 Background rendering options:
 

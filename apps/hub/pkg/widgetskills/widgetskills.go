@@ -71,9 +71,16 @@ type WidgetInstance struct {
 	W        int            `json:"w"`
 	H        int            `json:"h"`
 	Visible  bool           `json:"visible"`
+	Mode     string         `json:"mode,omitempty"`
 	Size     string         `json:"size"`
 	Settings map[string]any `json:"settings"`
 	Data     any            `json:"data,omitempty"`
+}
+
+// rendersTile reports whether a present widget instance draws a visible tile.
+// Headless instances feed agent context but are not on screen.
+func (w WidgetInstance) rendersTile() bool {
+	return w.Visible && w.Mode != "headless"
 }
 
 type WidgetLayout struct {
@@ -256,7 +263,7 @@ func DashboardSnapshot(snapshot Snapshot) DashboardContext {
 	results := make([]SkillResult, 0, len(skills))
 	visibleWidgetIDs := make([]string, 0, len(snapshot.Layout.Widgets))
 	for _, widget := range snapshot.Layout.Widgets {
-		if widget.Visible {
+		if widget.rendersTile() {
 			visibleWidgetIDs = append(visibleWidgetIDs, widget.ID)
 		}
 	}
@@ -308,7 +315,7 @@ func VisibleWidgetsSnapshot(snapshot Snapshot) VisibleWidgets {
 	}
 	widgets := make([]WidgetSummary, 0, len(snapshot.Layout.Widgets))
 	for _, widget := range snapshot.Layout.Widgets {
-		if !widget.Visible {
+		if !widget.rendersTile() {
 			continue
 		}
 		summary := WidgetSummary{

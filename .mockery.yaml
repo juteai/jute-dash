@@ -1,0 +1,7 @@
+with-expecter: true
+dir: "apps/hub"
+recursive: true
+all: true
+output: "apps/hub/mocks"
+case: "underscore"
+outpkg: "mocks"

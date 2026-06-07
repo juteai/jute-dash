@@ -2,34 +2,96 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
 	"jute-dash/apps/hub/internal/app/config"
 	"jute-dash/apps/hub/internal/app/dashboard"
+	"jute-dash/apps/hub/internal/app/filesync"
 	"jute-dash/apps/hub/internal/app/homestate"
 	"jute-dash/apps/hub/internal/app/voice"
 	"jute-dash/apps/hub/internal/pkg/database"
 
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riversqlite"
+	"github.com/riverqueue/river/rivermigrate"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type Store struct {
-	db *database.Database
+	db            *database.Database
+	riverClient   *river.Client[*sql.Tx]
+	logger        *slog.Logger
+	syncer        filesync.Syncer
+	dashboardRepo *dashboard.Repository
+	homestateRepo *homestate.Repository
+	voiceRepo     *voice.Repository
 }
 
-func Open(dbPath string) (*Store, error) {
-	db, err := database.Open(dbPath)
+func Open(dbPath string, log *slog.Logger) (*Store, error) {
+	db, err := database.Open(dbPath, log)
 	if err != nil {
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	s := &Store{db: db, logger: log}
+	s.dashboardRepo = dashboard.NewRepository(s.DB())
+	s.dashboardRepo.SetCatalog(dashboard.RegisteredCatalog())
+	s.homestateRepo = homestate.NewRepository(s.DB())
+	s.voiceRepo = voice.NewRepository(s.DB())
+	return s, nil
+}
+
+func (s *Store) SetCatalog(items []dashboard.WidgetCatalogItem) {
+	if s == nil || s.dashboardRepo == nil {
+		return
+	}
+	s.dashboardRepo.SetCatalog(items)
+}
+
+func (s *Store) triggerSync(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	if s.riverClient != nil {
+		_ = s.EnqueueSync(ctx)
+	} else if s.syncer != nil {
+		_ = s.syncer.Sync(ctx)
+	}
+}
+
+func (s *Store) SetLogger(log *slog.Logger) {
+	if s == nil {
+		return
+	}
+	s.logger = log
+	if s.db != nil && s.db.DB() != nil {
+		gormLevel := logger.Warn
+		if log.Enabled(context.Background(), slog.LevelDebug) {
+			gormLevel = logger.Info
+		}
+		gormLogger := database.NewSlogLogger(log)
+		gormLogger.LogLevel = gormLevel
+		s.db.DB().Config.Logger = gormLogger
+	}
 }
 
 func (s *Store) Close() error {
-	if s == nil || s.db == nil {
+	if s == nil {
+		return nil
+	}
+	if s.riverClient != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.riverClient.Stop(ctx)
+	}
+	if s.db == nil {
 		return nil
 	}
 	return s.db.Close()
@@ -87,8 +149,18 @@ func (s *Store) Initialize(
 	return result, nil
 }
 
-func (s *Store) Migrate(_ context.Context) error {
-	return s.db.Migrate(
+// appMetaDB is a tiny key/value table for schema/data migration markers.
+type appMetaDB struct {
+	Key   string `gorm:"primaryKey;column:key"`
+	Value string `gorm:"column:value"`
+}
+
+func (appMetaDB) TableName() string { return "app_meta" }
+
+const gridBaseColumnsMetaKey = "grid_base_columns"
+
+func (s *Store) Migrate(ctx context.Context) error {
+	if err := s.db.Migrate(
 		&homestate.HouseholdSettingsDB{},
 		&homestate.WeatherSettingsDB{},
 		&homestate.DeviceProfileDB{},
@@ -102,7 +174,67 @@ func (s *Store) Migrate(_ context.Context) error {
 		&voice.SettingsDB{},
 		&homestate.AdapterConnectionDB{},
 		&homestate.SettingAuditLogDB{},
-	)
+		&appMetaDB{},
+	); err != nil {
+		return err
+	}
+	if err := s.migrateRiver(ctx); err != nil {
+		return err
+	}
+	return s.migrateGridToBaseColumns()
+}
+
+func (s *Store) migrateRiver(ctx context.Context) error {
+	sqlDB, err := s.DB().DB()
+	if err != nil {
+		return fmt.Errorf("get sql.DB for river migrate: %w", err)
+	}
+	driver := riversqlite.New(sqlDB)
+	migrator, err := rivermigrate.New(driver, nil)
+	if err != nil {
+		return fmt.Errorf("create river migrator: %w", err)
+	}
+	_, err = migrator.Migrate(ctx, rivermigrate.DirectionUp, nil)
+	if err != nil {
+		return fmt.Errorf("run river migrations: %w", err)
+	}
+	return nil
+}
+
+// migrateGridToBaseColumns scales legacy 4-column widget coordinates onto the
+// 12-column base grid. It is idempotent: a marker row records that the grid is
+// at the base resolution. It runs before seeding, so fresh installs (which seed
+// 12-column defaults) scale zero rows and simply record the marker.
+func (s *Store) migrateGridToBaseColumns() error {
+	db := s.db.DB()
+	var meta appMetaDB
+	err := db.Where("key = ?", gridBaseColumnsMetaKey).First(&meta).Error
+	if err == nil && meta.Value == strconv.Itoa(dashboard.BaseColumns) {
+		return nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("check grid migration marker: %w", err)
+	}
+
+	scale := dashboard.LegacyColumnScale
+	if updErr := db.Model(&dashboard.WidgetInstanceDB{}).
+		Where("1 = 1").
+		Updates(map[string]any{
+			"x":     gorm.Expr("x * ?", scale),
+			"w":     gorm.Expr("w * ?", scale),
+			"min_w": gorm.Expr("min_w * ?", scale),
+		}).Error; updErr != nil {
+		return fmt.Errorf("scale legacy widget columns: %w", updErr)
+	}
+
+	marker := appMetaDB{
+		Key:   gridBaseColumnsMetaKey,
+		Value: strconv.Itoa(dashboard.BaseColumns),
+	}
+	if saveErr := db.Save(&marker).Error; saveErr != nil {
+		return fmt.Errorf("save grid migration marker: %w", saveErr)
+	}
+	return nil
 }
 
 func (s *Store) IsSeeded(ctx context.Context) (bool, error) {
@@ -218,27 +350,36 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 			}
 		}
 
-		for i, widget := range defaultWidgetInstances() {
+		layout, err := dashboard.WidgetLayoutFromDashboardConfig(
+			cfg.Dashboard,
+			widgetCatalogForSeed(),
+		)
+		if err != nil {
+			return fmt.Errorf("seed dashboard widgets: %w", err)
+		}
+
+		for i, widget := range layout.Widgets {
 			wDB := dashboard.WidgetInstanceDB{
-				ID:              widget.id,
-				Kind:            widget.kind,
-				Title:           widget.title,
+				ID:              widget.ID,
+				Kind:            widget.Kind,
+				Title:           widget.Title,
 				LayoutProfileID: homestate.DefaultLayoutProfileID,
-				X:               widget.x,
-				Y:               widget.y,
-				W:               widget.w,
-				H:               widget.h,
-				MinW:            widget.minW,
-				MinH:            widget.minH,
-				Size:            widget.size,
-				SettingsJSON:    "{}",
-				Visible:         boolToInt(widget.visible),
+				X:               widget.X,
+				Y:               widget.Y,
+				W:               widget.W,
+				H:               widget.H,
+				MinW:            widget.MinW,
+				MinH:            widget.MinH,
+				Size:            widget.Size,
+				Mode:            widget.Mode,
+				SettingsJSON:    mustJSONString(widget.Settings),
+				Visible:         boolToInt(widget.Visible),
 				SortOrder:       i,
 				CreatedAt:       now,
 				UpdatedAt:       now,
 			}
 			if err := tx.Create(&wDB).Error; err != nil {
-				return fmt.Errorf("seed widget %s: %w", widget.id, err)
+				return fmt.Errorf("seed widget %s: %w", widget.ID, err)
 			}
 		}
 
@@ -394,6 +535,29 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 		}
 	}
 
+	layout, err := s.dashboardRepo.WidgetLayout(ctx, "")
+	if err == nil {
+		widgets := make([]dashboard.DashboardWidgetConfig, 0, len(layout.Widgets))
+		for _, w := range layout.Widgets {
+			widgets = append(widgets, dashboard.DashboardWidgetConfig{
+				ID:       w.ID,
+				Type:     w.Kind,
+				Title:    w.Title,
+				X:        w.X,
+				Y:        w.Y,
+				W:        w.W,
+				H:        w.H,
+				MinW:     w.MinW,
+				MinH:     w.MinH,
+				Size:     w.Size,
+				Visible:  w.Visible,
+				Mode:     w.Mode,
+				Settings: w.Settings,
+			})
+		}
+		cfg.Dashboard.Widgets = widgets
+	}
+
 	cfg.Agents = nil
 	cfg.Rooms = rooms
 	cfg.Tiles = tiles
@@ -426,62 +590,16 @@ func (s *Store) SetupStatus(ctx context.Context) (homestate.SetupStatus, error) 
 
 // Helpers
 
-type defaultWidgetInstance struct {
-	id      string
-	kind    string
-	title   string
-	x       int
-	y       int
-	w       int
-	h       int
-	minW    int
-	minH    int
-	size    string
-	visible bool
-}
-
-func defaultWidgetInstances() []defaultWidgetInstance {
-	return []defaultWidgetInstance{
-		{
-			id:      "date-time",
-			kind:    "date-time",
-			title:   "Date & Time",
-			x:       0,
-			y:       0,
-			w:       2,
-			h:       1,
-			minW:    1,
-			minH:    1,
-			size:    "wide",
-			visible: true,
-		},
-		{
-			id:      "weather",
-			kind:    "weather",
-			title:   "Weather",
-			x:       2,
-			y:       0,
-			w:       2,
-			h:       1,
-			minW:    1,
-			minH:    1,
-			size:    "wide",
-			visible: true,
-		},
-		{
-			id:      "chat-history",
-			kind:    "chat-history",
-			title:   "Chat History",
-			x:       0,
-			y:       1,
-			w:       2,
-			h:       2,
-			minW:    1,
-			minH:    1,
-			size:    "medium",
-			visible: true,
-		},
+func widgetCatalogForSeed() map[string]dashboard.WidgetCatalogItem {
+	items := dashboard.RegisteredCatalog()
+	if len(items) == 0 {
+		items = dashboard.WidgetCatalog()
 	}
+	catalog := make(map[string]dashboard.WidgetCatalogItem, len(items))
+	for _, item := range items {
+		catalog[item.Kind] = item
+	}
+	return catalog
 }
 
 func setupStatusForSeed(cfg config.Config, bootstrapProvided bool) homestate.SetupStatus {
@@ -547,56 +665,114 @@ func nowUTC() string {
 }
 
 func (s *Store) HouseholdSettings(ctx context.Context) (homestate.HouseholdSettings, error) {
-	return homestate.NewRepository(s.DB()).HouseholdSettings(ctx)
+	return s.homestateRepo.HouseholdSettings(ctx)
 }
 
 func (s *Store) SaveHouseholdSettings(
 	ctx context.Context,
 	settings homestate.HouseholdSettings,
 ) (homestate.HouseholdSettings, error) {
-	return homestate.NewRepository(s.DB()).SaveHouseholdSettings(ctx, settings)
+	res, err := s.homestateRepo.SaveHouseholdSettings(ctx, settings)
+	if err == nil {
+		s.triggerSync(ctx)
+	}
+	return res, err
 }
 
 func (s *Store) Rooms(ctx context.Context) ([]homestate.RoomConfig, error) {
-	return homestate.NewRepository(s.DB()).Rooms(ctx)
+	return s.homestateRepo.Rooms(ctx)
 }
 
 func (s *Store) SaveRooms(ctx context.Context, rooms []homestate.RoomConfig) ([]homestate.RoomConfig, error) {
-	return homestate.NewRepository(s.DB()).SaveRooms(ctx, rooms)
+	res, err := s.homestateRepo.SaveRooms(ctx, rooms)
+	if err == nil {
+		s.triggerSync(ctx)
+	}
+	return res, err
 }
 
 func (s *Store) Tiles(ctx context.Context) ([]homestate.TileConfig, error) {
-	return homestate.NewRepository(s.DB()).Tiles(ctx)
+	return s.homestateRepo.Tiles(ctx)
 }
 
 func (s *Store) SaveTiles(ctx context.Context, tiles []homestate.TileConfig) ([]homestate.TileConfig, error) {
-	return homestate.NewRepository(s.DB()).SaveTiles(ctx, tiles)
+	res, err := s.homestateRepo.SaveTiles(ctx, tiles)
+	if err == nil {
+		s.triggerSync(ctx)
+	}
+	return res, err
 }
 
 func (s *Store) WidgetLayout(ctx context.Context, profileID string) (dashboard.WidgetLayout, error) {
-	return dashboard.NewRepository(s.DB()).WidgetLayout(ctx, profileID)
+	return s.dashboardRepo.WidgetLayout(ctx, profileID)
 }
 
 func (s *Store) SaveWidgetLayout(ctx context.Context, layout dashboard.WidgetLayout) (dashboard.WidgetLayout, error) {
-	return dashboard.NewRepository(s.DB()).SaveWidgetLayout(ctx, layout)
+	res, err := s.dashboardRepo.SaveWidgetLayout(ctx, layout)
+	if err == nil {
+		s.triggerSync(ctx)
+	}
+	return res, err
 }
 
 func (s *Store) ResetWidgetLayout(ctx context.Context, profileID string) (dashboard.WidgetLayout, error) {
-	return dashboard.NewRepository(s.DB()).ResetWidgetLayout(ctx, profileID)
+	res, err := s.dashboardRepo.ResetWidgetLayout(ctx, profileID)
+	if err == nil {
+		s.triggerSync(ctx)
+	}
+	return res, err
 }
 
 func (s *Store) VoiceSettings(ctx context.Context, deviceProfileID string) (voice.Settings, error) {
-	return voice.NewRepository(s.DB()).VoiceSettings(ctx, deviceProfileID)
+	return s.voiceRepo.VoiceSettings(ctx, deviceProfileID)
 }
 
 func (s *Store) SetVoiceMuted(ctx context.Context, deviceProfileID string, muted bool) (voice.Settings, error) {
-	return voice.NewRepository(s.DB()).SetVoiceMuted(ctx, deviceProfileID, muted)
+	return s.voiceRepo.SetVoiceMuted(ctx, deviceProfileID, muted)
 }
 
 func (s *Store) CancelVoice(ctx context.Context, deviceProfileID string) (voice.Settings, error) {
-	return voice.NewRepository(s.DB()).CancelVoice(ctx, deviceProfileID)
+	return s.voiceRepo.CancelVoice(ctx, deviceProfileID)
 }
 
 func (s *Store) VoiceProviders(ctx context.Context) ([]voice.ProviderPack, error) {
-	return voice.NewRepository(s.DB()).VoiceProviders(ctx)
+	return s.voiceRepo.VoiceProviders(ctx)
+}
+
+func (s *Store) StartQueue(syncer filesync.Syncer) error {
+	s.syncer = syncer
+	sqlDB, err := s.DB().DB()
+	if err != nil {
+		return err
+	}
+
+	var riverLogger *slog.Logger
+	if s.logger != nil {
+		riverLogger = slog.New(&filesync.RiverLevelFilterHandler{Handler: s.logger.Handler()})
+	}
+
+	workers := river.NewWorkers()
+	river.AddWorker(workers, filesync.NewConfigSyncWorker(syncer))
+
+	client, err := river.NewClient(riversqlite.New(sqlDB), &river.Config{
+		Queues: map[string]river.QueueConfig{
+			river.QueueDefault: {MaxWorkers: 1},
+		},
+		Workers: workers,
+		Logger:  riverLogger,
+	})
+	if err != nil {
+		return err
+	}
+
+	s.riverClient = client
+	return s.riverClient.Start(context.Background())
+}
+
+func (s *Store) EnqueueSync(ctx context.Context) error {
+	if s == nil || s.riverClient == nil {
+		return nil
+	}
+	_, err := s.riverClient.Insert(ctx, filesync.ConfigSyncArgs{}, nil)
+	return err
 }

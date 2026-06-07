@@ -30,6 +30,7 @@ type VoiceStatusResponse = voice.StatusResponse
 type VoiceProviderPack = voice.ProviderPack
 type WidgetInstance = dashboard.WidgetInstance
 type WidgetCatalogItem = dashboard.WidgetCatalogItem
+type DashboardWidgetConfig = dashboard.DashboardWidgetConfig
 type DisplayBackground = dashboard.DisplayBackground
 type DisplayWidgetChrome = dashboard.DisplayWidgetChrome
 

@@ -21,13 +21,71 @@ NPM="${NPM:-npm}"
 HUB_PID=""
 AGENT_PID=""
 WEB_PID=""
+STOPPING=0
+INTERRUPTED=0
 
 cleanup() {
-	if [[ -n "${WEB_PID}" ]]; then kill "${WEB_PID}" 2>/dev/null || true; fi
-	if [[ -n "${AGENT_PID}" ]]; then kill "${AGENT_PID}" 2>/dev/null || true; fi
-	if [[ -n "${HUB_PID}" ]]; then kill "${HUB_PID}" 2>/dev/null || true; fi
+	if (( STOPPING == 1 )); then
+		return
+	fi
+	STOPPING=1
+
+	# Give the background processes a brief moment to exit gracefully
+	# since they all received the SIGINT signal from the Ctrl-C press in the terminal.
+	local grace=6
+	local elapsed=0
+	while (( elapsed < grace )); do
+		local active=0
+		if [[ -n "${WEB_PID}" ]] && kill -0 "${WEB_PID}" 2>/dev/null; then active=1; fi
+		if [[ -n "${AGENT_PID}" ]] && kill -0 "${AGENT_PID}" 2>/dev/null; then active=1; fi
+		if [[ -n "${HUB_PID}" ]] && kill -0 "${HUB_PID}" 2>/dev/null; then active=1; fi
+		if (( active == 0 )); then
+			break
+		fi
+		sleep 1
+		elapsed=$((elapsed + 1))
+	done
+
+	# Clean up any remaining process trees. The harness starts some services
+	# through wrappers such as `go run`, `npm`, and nested `make`; killing only
+	# the wrapper can leave the actual listener behind.
+	terminate_tree "$WEB_PID"
+	terminate_tree "$AGENT_PID"
+	terminate_tree "$HUB_PID"
+	sleep 0.2
 }
-trap cleanup INT TERM EXIT
+
+children_of() {
+	local pid="$1"
+	pgrep -P "$pid" 2>/dev/null || true
+}
+
+terminate_tree() {
+	local pid="${1:-}"
+	if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then
+		return
+	fi
+
+	local child
+	for child in $(children_of "$pid"); do
+		terminate_tree "$child"
+	done
+
+	kill "$pid" 2>/dev/null || true
+	sleep 0.2
+	if kill -0 "$pid" 2>/dev/null; then
+		kill -KILL "$pid" 2>/dev/null || true
+	fi
+}
+
+stop_and_exit() {
+	INTERRUPTED=1
+	cleanup || true
+	exit 0
+}
+
+trap stop_and_exit INT TERM
+trap 'cleanup || true' EXIT
 
 need_command() {
 	if ! command -v "$1" >/dev/null 2>&1; then
@@ -63,14 +121,13 @@ import sys
 host = sys.argv[1]
 port = int(sys.argv[2])
 probe_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.settimeout(0.5)
 try:
-    sock.bind((probe_host, port))
+    with socket.create_connection((probe_host, port), timeout=0.5):
+        pass
 except OSError:
+    raise SystemExit(0)
+else:
     raise SystemExit(1)
-finally:
-    sock.close()
 PY
 	then
 		echo "$label port appears to be in use: $host:$port" >&2
@@ -179,4 +236,18 @@ echo "Starting web UI."
 wait_http_get "Jute web" "$WEB_URL" "$WEB_PID" 120
 
 echo "Full stack is ready. Press Ctrl-C to stop."
+set +e
 wait "$HUB_PID" "$AGENT_PID" "$WEB_PID"
+status=$?
+set -e
+
+if (( INTERRUPTED == 1 )) || (( status == 130 )) || (( status == 143 )); then
+	cleanup || true
+	exit 0
+fi
+
+cleanup || true
+if (( status != 0 )); then
+	exit 0
+fi
+exit "$status"
