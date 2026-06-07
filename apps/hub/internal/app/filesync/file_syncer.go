@@ -101,10 +101,33 @@ func (s *fileSyncer) SyncDashboard(
 	ctx context.Context,
 	dCfg dashboard.DashboardConfig,
 ) error {
-	return s.SyncWith(ctx, func(cfg *config.Config) error {
+	err := s.SyncWith(ctx, func(cfg *config.Config) error {
 		cfg.Dashboard = dCfg
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	if db, ok := s.dbStore.(interface {
+		SaveWidgetLayout(ctx context.Context, layout dashboard.WidgetLayout) (dashboard.WidgetLayout, error)
+	}); ok {
+		catalog := dashboard.RegisteredCatalog()
+		catalogMap := make(map[string]dashboard.WidgetCatalogItem, len(catalog))
+		for _, item := range catalog {
+			catalogMap[item.Kind] = item
+		}
+		layout, err := dashboard.WidgetLayoutFromDashboardConfig(dCfg, catalogMap)
+		if err != nil {
+			return err
+		}
+		_, err = db.SaveWidgetLayout(ctx, layout)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // HomeConfig returns the current home configuration components from the YAML file.
@@ -130,7 +153,7 @@ func (s *fileSyncer) SyncHome(
 	rooms []homestate.RoomConfig,
 	tiles []homestate.TileConfig,
 ) error {
-	return s.SyncWith(ctx, func(cfg *config.Config) error {
+	err := s.SyncWith(ctx, func(cfg *config.Config) error {
 		cfg.Home = home
 		if display != nil {
 			var disp dashboard.DisplayConfig
@@ -145,6 +168,34 @@ func (s *fileSyncer) SyncHome(
 		cfg.Tiles = tiles
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	if db, ok := s.dbStore.(interface {
+		SaveHouseholdSettings(ctx context.Context, settings homestate.HouseholdSettings) (homestate.HouseholdSettings, error)
+		SaveRooms(ctx context.Context, rooms []homestate.RoomConfig) ([]homestate.RoomConfig, error)
+		SaveTiles(ctx context.Context, tiles []homestate.TileConfig) ([]homestate.TileConfig, error)
+	}); ok {
+		_, err = db.SaveHouseholdSettings(ctx, homestate.HouseholdSettings{
+			Home:    home,
+			Display: display,
+			Weather: weather,
+		})
+		if err != nil {
+			return err
+		}
+		_, err = db.SaveRooms(ctx, rooms)
+		if err != nil {
+			return err
+		}
+		_, err = db.SaveTiles(ctx, tiles)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // VoiceConfig returns the current voice configuration from the YAML file.
