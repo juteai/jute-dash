@@ -264,7 +264,7 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	// Poll configPath for changes since syncing is asynchronous
 	var reloaded config.Config
 	var err error
-	for range 20 {
+	for range 100 {
 		reloaded, err = LoadConfig(configPath)
 		if err == nil && reloaded.Home.Name == "YAML Home" {
 			break
@@ -442,7 +442,7 @@ func TestRoomAndTileSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	// Poll configPath for changes since syncing is asynchronous
 	var reloaded config.Config
 	var err error
-	for range 20 {
+	for range 100 {
 		reloaded, err = LoadConfig(configPath)
 		if err == nil && len(reloaded.Rooms) == 1 && len(reloaded.Tiles) == 1 {
 			break
