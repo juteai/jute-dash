@@ -4,6 +4,13 @@ home:
     locale: en-GB
 server:
     listen-address: 127.0.0.1:8787
+log:
+    level: info
+    file-path: ""
+    max-size: 10
+    max-backups: 5
+    max-age: 3
+    compress: true
 mcp:
     enabled: true
     transport: streamable-http
@@ -105,7 +112,7 @@ dashboard:
           type: rss
           title: Tech News
           x: 6
-          "y": 1
+          "y": 3
           w: 6
           h: 2
           min-w: 3

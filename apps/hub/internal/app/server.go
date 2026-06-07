@@ -88,7 +88,7 @@ type VoiceStatusSummary struct {
 
 func New(cfg config.Config, version string) http.Handler {
 	layout := dashboard.DefaultWidgetLayout()
-	return newServer(cfg, version, nil, homestate.SetupStatus{Complete: true}, layout, nil, "", nil)
+	return newServer(cfg, version, nil, homestate.SetupStatus{Complete: true}, layout, nil, nil, nil, "", nil)
 }
 
 func NewWithSetupStatus(
@@ -105,7 +105,7 @@ func NewWithSetupStatusAndLayout(
 	setup homestate.SetupStatus,
 	layout dashboard.WidgetLayout,
 ) http.Handler {
-	return newServer(cfg, version, nil, setup, layout, nil, "", nil)
+	return newServer(cfg, version, nil, setup, layout, nil, nil, nil, "", nil)
 }
 
 func NewWithMessageSender(
@@ -119,6 +119,8 @@ func NewWithMessageSender(
 		messageSender,
 		homestate.SetupStatus{Complete: true},
 		dashboard.DefaultWidgetLayout(),
+		nil,
+		nil,
 		nil,
 		"",
 		nil,
@@ -159,13 +161,36 @@ func NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(
 	configPath string,
 	display *displayactions.Dispatcher,
 ) http.Handler {
+	var voiceStore voice.Store
+	var settingsStore homestate.SettingsStore
+	if layoutStore != nil {
+		if candidate, ok := layoutStore.(voice.Store); ok {
+			voiceStore = candidate
+		}
+		if candidate, ok := layoutStore.(homestate.SettingsStore); ok {
+			settingsStore = candidate
+		}
+	}
+	return NewServer(cfg, version, setup, layoutStore, settingsStore, voiceStore, configPath, display)
+}
+
+func NewServer(
+	cfg config.Config,
+	version string,
+	setup homestate.SetupStatus,
+	layoutStore dashboard.LayoutStore,
+	settingsStore homestate.SettingsStore,
+	voiceStore voice.Store,
+	configPath string,
+	display *displayactions.Dispatcher,
+) http.Handler {
 	layout := dashboard.DefaultWidgetLayout()
 	if layoutStore != nil {
 		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
 			layout = loaded
 		}
 	}
-	return newServer(cfg, version, nil, setup, layout, layoutStore, configPath, display)
+	return newServer(cfg, version, nil, setup, layout, layoutStore, settingsStore, voiceStore, configPath, display)
 }
 
 func newServer(
@@ -175,6 +200,8 @@ func newServer(
 	setup homestate.SetupStatus,
 	layout dashboard.WidgetLayout,
 	layoutStore dashboard.LayoutStore,
+	settingsStore homestate.SettingsStore,
+	voiceStore voice.Store,
 	configPath string,
 	display *displayactions.Dispatcher,
 ) http.Handler {
@@ -182,27 +209,17 @@ func newServer(
 		messageSender = a2aclient.NewJSONRPCClient()
 	}
 
-	var activeLayoutStore dashboard.LayoutStore
-	var activeVoiceStore voice.Store
-	var activeSettingsStore homestate.SettingsStore
-
-	if layoutStore != nil {
-		activeLayoutStore = layoutStore
-		if candidate, ok := layoutStore.(voice.Store); ok {
-			activeVoiceStore = candidate
-		}
-		if candidate, ok := layoutStore.(homestate.SettingsStore); ok {
-			activeSettingsStore = candidate
-		}
-	}
-
-	// Fallbacks
+	activeLayoutStore := layoutStore
 	if activeLayoutStore == nil {
 		activeLayoutStore = dashboard.NewMemoryRepositoryWithLayout(layout)
 	}
+
+	activeVoiceStore := voiceStore
 	if activeVoiceStore == nil {
 		activeVoiceStore = voice.NewMemoryRepositoryFromConfig(cfg.Voice)
 	}
+
+	activeSettingsStore := settingsStore
 	if activeSettingsStore == nil {
 		activeSettingsStore = homestate.NewMemoryRepository(setup)
 	}
@@ -308,32 +325,9 @@ func newServer(
 			server.mu.Lock()
 			server.setup = saved.Setup
 			server.mu.Unlock()
-			if eq, ok := server.settings.(interface {
-				EnqueueSync(ctx context.Context) error
-			}); ok {
-				_ = eq.EnqueueSync(context.Background())
-			} else {
-				_ = syncer.Sync(context.Background())
-			}
 		},
-		func(_ []homestate.RoomConfig) {
-			if eq, ok := server.settings.(interface {
-				EnqueueSync(ctx context.Context) error
-			}); ok {
-				_ = eq.EnqueueSync(context.Background())
-			} else {
-				_ = syncer.Sync(context.Background())
-			}
-		},
-		func(_ []homestate.TileConfig) {
-			if eq, ok := server.settings.(interface {
-				EnqueueSync(ctx context.Context) error
-			}); ok {
-				_ = eq.EnqueueSync(context.Background())
-			} else {
-				_ = syncer.Sync(context.Background())
-			}
-		},
+		nil,
+		nil,
 	).RegisterRoutes(mux)
 
 	dashboard.NewController(
@@ -342,13 +336,6 @@ func newServer(
 			server.mu.Lock()
 			server.layout = saved
 			server.mu.Unlock()
-			if eq, ok := server.layoutStore.(interface {
-				EnqueueSync(ctx context.Context) error
-			}); ok {
-				_ = eq.EnqueueSync(context.Background())
-			} else {
-				_ = syncer.Sync(context.Background())
-			}
 		},
 	).RegisterRoutes(mux)
 

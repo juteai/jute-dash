@@ -78,6 +78,8 @@ func TestEventsStreamDisplayActions(t *testing.T) {
 		SetupStatus{Complete: true},
 		DefaultWidgetLayout(),
 		nil,
+		nil,
+		nil,
 		"",
 		dispatcher,
 	)
@@ -746,7 +748,7 @@ func TestWidgetLayoutPutRejectsInvalidLayout(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body["error"] != "invalid widget layout" {
+	if !strings.HasPrefix(body["error"], "invalid widget layout") {
 		t.Fatalf("unexpected error response: %+v", body)
 	}
 }

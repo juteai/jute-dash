@@ -26,9 +26,13 @@ import (
 )
 
 type Store struct {
-	db          *database.Database
-	riverClient *river.Client[*sql.Tx]
-	logger      *slog.Logger
+	db            *database.Database
+	riverClient   *river.Client[*sql.Tx]
+	logger        *slog.Logger
+	syncer        filesync.Syncer
+	dashboardRepo *dashboard.Repository
+	homestateRepo *homestate.Repository
+	voiceRepo     *voice.Repository
 }
 
 func Open(dbPath string, log *slog.Logger) (*Store, error) {
@@ -36,7 +40,30 @@ func Open(dbPath string, log *slog.Logger) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{db: db, logger: log}, nil
+	s := &Store{db: db, logger: log}
+	s.dashboardRepo = dashboard.NewRepository(s.DB())
+	s.dashboardRepo.SetCatalog(dashboard.RegisteredCatalog())
+	s.homestateRepo = homestate.NewRepository(s.DB())
+	s.voiceRepo = voice.NewRepository(s.DB())
+	return s, nil
+}
+
+func (s *Store) SetCatalog(items []dashboard.WidgetCatalogItem) {
+	if s == nil || s.dashboardRepo == nil {
+		return
+	}
+	s.dashboardRepo.SetCatalog(items)
+}
+
+func (s *Store) triggerSync(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	if s.riverClient != nil {
+		_ = s.EnqueueSync(ctx)
+	} else if s.syncer != nil {
+		_ = s.syncer.Sync(ctx)
+	}
 }
 
 func (s *Store) SetLogger(log *slog.Logger) {
@@ -508,8 +535,7 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 		}
 	}
 
-	layoutRepo := dashboard.NewRepository(s.DB())
-	layout, err := layoutRepo.WidgetLayout(ctx, "")
+	layout, err := s.dashboardRepo.WidgetLayout(ctx, "")
 	if err == nil {
 		widgets := make([]dashboard.DashboardWidgetConfig, 0, len(layout.Widgets))
 		for _, w := range layout.Widgets {
@@ -639,61 +665,82 @@ func nowUTC() string {
 }
 
 func (s *Store) HouseholdSettings(ctx context.Context) (homestate.HouseholdSettings, error) {
-	return homestate.NewRepository(s.DB()).HouseholdSettings(ctx)
+	return s.homestateRepo.HouseholdSettings(ctx)
 }
 
 func (s *Store) SaveHouseholdSettings(
 	ctx context.Context,
 	settings homestate.HouseholdSettings,
 ) (homestate.HouseholdSettings, error) {
-	return homestate.NewRepository(s.DB()).SaveHouseholdSettings(ctx, settings)
+	res, err := s.homestateRepo.SaveHouseholdSettings(ctx, settings)
+	if err == nil {
+		s.triggerSync(ctx)
+	}
+	return res, err
 }
 
 func (s *Store) Rooms(ctx context.Context) ([]homestate.RoomConfig, error) {
-	return homestate.NewRepository(s.DB()).Rooms(ctx)
+	return s.homestateRepo.Rooms(ctx)
 }
 
 func (s *Store) SaveRooms(ctx context.Context, rooms []homestate.RoomConfig) ([]homestate.RoomConfig, error) {
-	return homestate.NewRepository(s.DB()).SaveRooms(ctx, rooms)
+	res, err := s.homestateRepo.SaveRooms(ctx, rooms)
+	if err == nil {
+		s.triggerSync(ctx)
+	}
+	return res, err
 }
 
 func (s *Store) Tiles(ctx context.Context) ([]homestate.TileConfig, error) {
-	return homestate.NewRepository(s.DB()).Tiles(ctx)
+	return s.homestateRepo.Tiles(ctx)
 }
 
 func (s *Store) SaveTiles(ctx context.Context, tiles []homestate.TileConfig) ([]homestate.TileConfig, error) {
-	return homestate.NewRepository(s.DB()).SaveTiles(ctx, tiles)
+	res, err := s.homestateRepo.SaveTiles(ctx, tiles)
+	if err == nil {
+		s.triggerSync(ctx)
+	}
+	return res, err
 }
 
 func (s *Store) WidgetLayout(ctx context.Context, profileID string) (dashboard.WidgetLayout, error) {
-	return dashboard.NewRepository(s.DB()).WidgetLayout(ctx, profileID)
+	return s.dashboardRepo.WidgetLayout(ctx, profileID)
 }
 
 func (s *Store) SaveWidgetLayout(ctx context.Context, layout dashboard.WidgetLayout) (dashboard.WidgetLayout, error) {
-	return dashboard.NewRepository(s.DB()).SaveWidgetLayout(ctx, layout)
+	res, err := s.dashboardRepo.SaveWidgetLayout(ctx, layout)
+	if err == nil {
+		s.triggerSync(ctx)
+	}
+	return res, err
 }
 
 func (s *Store) ResetWidgetLayout(ctx context.Context, profileID string) (dashboard.WidgetLayout, error) {
-	return dashboard.NewRepository(s.DB()).ResetWidgetLayout(ctx, profileID)
+	res, err := s.dashboardRepo.ResetWidgetLayout(ctx, profileID)
+	if err == nil {
+		s.triggerSync(ctx)
+	}
+	return res, err
 }
 
 func (s *Store) VoiceSettings(ctx context.Context, deviceProfileID string) (voice.Settings, error) {
-	return voice.NewRepository(s.DB()).VoiceSettings(ctx, deviceProfileID)
+	return s.voiceRepo.VoiceSettings(ctx, deviceProfileID)
 }
 
 func (s *Store) SetVoiceMuted(ctx context.Context, deviceProfileID string, muted bool) (voice.Settings, error) {
-	return voice.NewRepository(s.DB()).SetVoiceMuted(ctx, deviceProfileID, muted)
+	return s.voiceRepo.SetVoiceMuted(ctx, deviceProfileID, muted)
 }
 
 func (s *Store) CancelVoice(ctx context.Context, deviceProfileID string) (voice.Settings, error) {
-	return voice.NewRepository(s.DB()).CancelVoice(ctx, deviceProfileID)
+	return s.voiceRepo.CancelVoice(ctx, deviceProfileID)
 }
 
 func (s *Store) VoiceProviders(ctx context.Context) ([]voice.ProviderPack, error) {
-	return voice.NewRepository(s.DB()).VoiceProviders(ctx)
+	return s.voiceRepo.VoiceProviders(ctx)
 }
 
 func (s *Store) StartQueue(syncer filesync.Syncer) error {
+	s.syncer = syncer
 	sqlDB, err := s.DB().DB()
 	if err != nil {
 		return err

@@ -96,7 +96,7 @@ func (c *Controller) handleWidgetLayout(w http.ResponseWriter, r *http.Request) 
 		saved, err := c.layoutStore.SaveWidgetLayout(r.Context(), layout)
 		if err != nil {
 			if errors.Is(err, ErrInvalidLayout) {
-				httphelper.WriteError(w, http.StatusBadRequest, "invalid widget layout")
+				httphelper.WriteError(w, http.StatusBadRequest, err.Error())
 				return
 			}
 			httphelper.WriteError(w, http.StatusInternalServerError, "widget layout could not be saved")
@@ -124,7 +124,7 @@ func (c *Controller) handleWidgetLayoutReset(w http.ResponseWriter, r *http.Requ
 	saved, err := c.layoutStore.ResetWidgetLayout(r.Context(), profileID)
 	if err != nil {
 		if errors.Is(err, ErrInvalidLayout) {
-			httphelper.WriteError(w, http.StatusBadRequest, "invalid widget layout")
+			httphelper.WriteError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		httphelper.WriteError(w, http.StatusInternalServerError, "widget layout could not be reset")

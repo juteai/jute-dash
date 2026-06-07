@@ -114,10 +114,12 @@ func run() error {
 	log.SetOutput(slog.NewLogLogger(logHandler, slog.LevelInfo).Writer())
 
 	displayActions := displayactions.NewDispatcher()
-	handler := app.NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(
+	handler := app.NewServer(
 		cfg,
 		version,
 		result.Setup,
+		runtimeStore,
+		runtimeStore,
 		runtimeStore,
 		*configPath,
 		displayActions,

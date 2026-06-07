@@ -48,13 +48,17 @@ if (typeof window !== 'undefined') {
         if (response.ok) {
           logger.api(method, url, response.status, duration);
         } else {
-          logger.apiError(
-            method,
-            url,
-            response.status,
-            duration,
-            `Response status ${response.statusText || response.status}`
-          );
+          let errMsg = `Response status ${response.statusText || response.status}`;
+          try {
+            const clone = response.clone();
+            const body = await clone.json();
+            if (body && typeof body.error === 'string') {
+              errMsg = body.error;
+            }
+          } catch {
+            // ignore JSON parse failures
+          }
+          logger.apiError(method, url, response.status, duration, errMsg);
         }
       }
       return response;

@@ -31,6 +31,7 @@ type AgentManager struct {
 	configPath string
 	syncer     Syncer
 	registry   registry.Registry
+	agents     []AgentConfig
 }
 
 func NewAgentManager(
@@ -44,13 +45,13 @@ func NewAgentManager(
 		configPath: configPath,
 		syncer:     syncer,
 		registry:   registry.New(mapToRegistryAgentConfigs(initialConfigs)),
+		agents:     initialConfigs,
 	}
 	return m
 }
 
 func (m *AgentManager) getAgents() []AgentConfig {
-	cfgs, _ := m.syncer.AgentsConfig(context.Background())
-	return cfgs
+	return m.agents
 }
 
 func (m *AgentManager) ActiveRegistry() registry.Registry {
@@ -164,6 +165,7 @@ func (m *AgentManager) Add(ctx context.Context, cardURL string) (registry.Agent,
 	}
 
 	m.registry = registry.New(mapToRegistryAgentConfigs(nextAgents))
+	m.agents = nextAgents
 
 	cache := cardCacheFromCard(agent.ID, result, selected)
 	m.cards.Save(cache)
@@ -195,6 +197,7 @@ func (m *AgentManager) Patch(ctx context.Context, id string, enabled *bool) (reg
 		}
 
 		m.registry = registry.New(mapToRegistryAgentConfigs(nextAgents))
+		m.agents = nextAgents
 
 		agent := registry.New([]registry.AgentConfig{mapToRegistryAgentConfig(nextAgents[i])}).List()[0]
 		var cache AgentCardCacheEntry
@@ -232,6 +235,7 @@ func (m *AgentManager) Delete(ctx context.Context, id string) error {
 	}
 
 	m.registry = registry.New(mapToRegistryAgentConfigs(nextAgents))
+	m.agents = nextAgents
 	m.cards.Remove(id)
 	return nil
 }
