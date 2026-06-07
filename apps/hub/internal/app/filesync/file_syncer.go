@@ -2,16 +2,12 @@ package filesync
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
 
 	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/app/config"
-	"jute-dash/apps/hub/internal/app/dashboard"
-	"jute-dash/apps/hub/internal/app/homestate"
-	"jute-dash/apps/hub/internal/app/voice"
 )
 
 type fileSyncer struct {
@@ -84,141 +80,11 @@ func (s *fileSyncer) SyncWith(
 	return config.SaveYAML(s.configPath, cfg)
 }
 
-// DashboardConfig returns the current dashboard configuration from the YAML file.
-func (s *fileSyncer) DashboardConfig(
-	_ context.Context,
-) (dashboard.DashboardConfig, error) {
+// Load returns the full configuration loaded from the YAML/JSON file.
+func (s *fileSyncer) Load(_ context.Context) (config.Config, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	cfg, err := config.LoadConfig(s.configPath)
-	if err != nil {
-		return dashboard.DashboardConfig{}, err
-	}
-	return cfg.Dashboard, nil
-}
-
-func (s *fileSyncer) SyncDashboard(
-	ctx context.Context,
-	dCfg dashboard.DashboardConfig,
-) error {
-	err := s.SyncWith(ctx, func(cfg *config.Config) error {
-		cfg.Dashboard = dCfg
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-
-	if db, ok := s.dbStore.(interface {
-		SaveWidgetLayout(ctx context.Context, layout dashboard.WidgetLayout) (dashboard.WidgetLayout, error)
-	}); ok {
-		catalog := dashboard.RegisteredCatalog()
-		catalogMap := make(map[string]dashboard.WidgetCatalogItem, len(catalog))
-		for _, item := range catalog {
-			catalogMap[item.Kind] = item
-		}
-		layout, err := dashboard.WidgetLayoutFromDashboardConfig(dCfg, catalogMap)
-		if err != nil {
-			return err
-		}
-		_, err = db.SaveWidgetLayout(ctx, layout)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// HomeConfig returns the current home configuration components from the YAML file.
-func (s *fileSyncer) HomeConfig(
-	_ context.Context,
-) (homestate.HomeConfig, any, homestate.WeatherConfig,
-	[]homestate.RoomConfig, []homestate.TileConfig, error,
-) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	cfg, err := config.LoadConfig(s.configPath)
-	if err != nil {
-		return homestate.HomeConfig{}, nil, homestate.WeatherConfig{}, nil, nil, err
-	}
-	return cfg.Home, cfg.Display, cfg.Weather, cfg.Rooms, cfg.Tiles, nil
-}
-
-func (s *fileSyncer) SyncHome(
-	ctx context.Context,
-	home homestate.HomeConfig,
-	display any,
-	weather homestate.WeatherConfig,
-	rooms []homestate.RoomConfig,
-	tiles []homestate.TileConfig,
-) error {
-	err := s.SyncWith(ctx, func(cfg *config.Config) error {
-		cfg.Home = home
-		if display != nil {
-			var disp dashboard.DisplayConfig
-			dispBytes, err := json.Marshal(display)
-			if err == nil {
-				_ = json.Unmarshal(dispBytes, &disp)
-				cfg.Display = disp
-			}
-		}
-		cfg.Weather = weather
-		cfg.Rooms = rooms
-		cfg.Tiles = tiles
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-
-	if db, ok := s.dbStore.(interface {
-		SaveHouseholdSettings(ctx context.Context, settings homestate.HouseholdSettings) (homestate.HouseholdSettings, error)
-		SaveRooms(ctx context.Context, rooms []homestate.RoomConfig) ([]homestate.RoomConfig, error)
-		SaveTiles(ctx context.Context, tiles []homestate.TileConfig) ([]homestate.TileConfig, error)
-	}); ok {
-		_, err = db.SaveHouseholdSettings(ctx, homestate.HouseholdSettings{
-			Home:    home,
-			Display: display,
-			Weather: weather,
-		})
-		if err != nil {
-			return err
-		}
-		_, err = db.SaveRooms(ctx, rooms)
-		if err != nil {
-			return err
-		}
-		_, err = db.SaveTiles(ctx, tiles)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// VoiceConfig returns the current voice configuration from the YAML file.
-func (s *fileSyncer) VoiceConfig(
-	_ context.Context,
-) (voice.Config, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	cfg, err := config.LoadConfig(s.configPath)
-	if err != nil {
-		return voice.Config{}, err
-	}
-	return cfg.Voice, nil
-}
-
-func (s *fileSyncer) SyncVoice(
-	ctx context.Context,
-	vCfg voice.Config,
-) error {
-	return s.SyncWith(ctx, func(cfg *config.Config) error {
-		cfg.Voice = vCfg
-		return nil
-	})
+	return config.LoadConfig(s.configPath)
 }
 
 // AgentsConfig returns the current agent configurations from the YAML file.

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -32,7 +33,8 @@ var version = "dev"
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatal(err)
+		slog.Error("fatal error", "error", err) //nolint:sloglint // global slog permitted for startup exit
+		os.Exit(1)
 	}
 }
 
@@ -44,18 +46,21 @@ func run() error {
 
 	ctx := context.Background()
 
+	// Initial fallback logger before config is loaded
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
 	dataDir, err := app.ResolveDataDir(*dataDirOverride)
 	if err != nil {
 		return fmt.Errorf("resolve data directory: %w", err)
 	}
 	app.SetBackgroundsDir(app.BackgroundsDir(dataDir))
-	runtimeStore, err := app.Open(app.DatabasePath(dataDir))
+	runtimeStore, err := app.Open(app.DatabasePath(dataDir), logger)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
 	defer func() {
 		if err := runtimeStore.Close(); err != nil {
-			log.Printf("close store: %v", err)
+			logger.Error("close store failed", "error", err)
 		}
 	}()
 
@@ -95,6 +100,19 @@ func run() error {
 		cfg.Server.ListenAddress = *listenOverride
 	}
 
+	// Setup structured logging using config settings
+	logHandler, err := app.SetupLogger(cfg.Log, dataDir)
+	if err != nil {
+		return fmt.Errorf("setup logger: %w", err)
+	}
+	logger = slog.New(logHandler)
+	slog.SetDefault(logger)
+	runtimeStore.SetLogger(logger)
+
+	// Redirect standard library log package output to slog
+	log.SetFlags(0)
+	log.SetOutput(slog.NewLogLogger(logHandler, slog.LevelInfo).Writer())
+
 	displayActions := displayactions.NewDispatcher()
 	handler := app.NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(
 		cfg,
@@ -104,7 +122,7 @@ func run() error {
 		*configPath,
 		displayActions,
 	)
-	log.Printf("jute data directory: %q", dataDir) //nolint:gosec // Quoted local path is useful startup diagnostics.
+	logger.Info("jute data directory", "path", dataDir)
 
 	baseCtx, cancelBase := context.WithCancel(context.Background())
 	defer cancelBase()
@@ -130,14 +148,18 @@ func run() error {
 			},
 		}
 		go func() {
-			log.Printf("jute MCP bridge listening on http://%s%s", cfg.MCP.ListenAddress, cfg.MCP.Path)
+			logger.Info(
+				"jute MCP bridge listening",
+				"url",
+				fmt.Sprintf("http://%s%s", cfg.MCP.ListenAddress, cfg.MCP.Path),
+			)
 			if err := mcpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Printf("serve MCP bridge: %v", err)
+				logger.Error("serve MCP bridge failed", "error", err)
 			}
 		}()
 	}
 
-	log.Printf("jute hub listening on http://%s", cfg.Server.ListenAddress)
+	logger.Info("jute hub listening", "url", fmt.Sprintf("http://%s", cfg.Server.ListenAddress))
 	hubServer := &http.Server{
 		Addr:              cfg.Server.ListenAddress,
 		Handler:           handler,
@@ -162,7 +184,7 @@ func run() error {
 
 	select {
 	case sig := <-stop:
-		log.Printf("received signal %v, shutting down gracefully...", sig)
+		logger.Info("received signal, shutting down gracefully", "signal", sig.String())
 	case err := <-errChan:
 		return err
 	}
@@ -178,7 +200,7 @@ func run() error {
 		go func() {
 			defer wg.Done()
 			if err := mcpServer.Shutdown(shutdownCtx); err != nil {
-				log.Printf("shutdown MCP bridge: %v", err)
+				logger.Error("shutdown MCP bridge failed", "error", err)
 			}
 		}()
 	}
@@ -187,7 +209,7 @@ func run() error {
 	go func() {
 		defer wg.Done()
 		if err := hubServer.Shutdown(shutdownCtx); err != nil {
-			log.Printf("shutdown hub server: %v", err)
+			logger.Error("shutdown hub server failed", "error", err)
 		}
 	}()
 

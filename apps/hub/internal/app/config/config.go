@@ -22,6 +22,7 @@ import (
 type Config struct {
 	Home      homestate.HomeConfig      `json:"home"      yaml:"home"`
 	Server    ServerConfig              `json:"server"    yaml:"server"`
+	Log       LogConfig                 `json:"log"       yaml:"log"`
 	MCP       mcp.Config                `json:"mcp"       yaml:"mcp"`
 	A2A       a2a.AgentCardURLPolicy    `json:"a2a"       yaml:"a2a"`
 	Display   dashboard.DisplayConfig   `json:"display"   yaml:"display"`
@@ -35,6 +36,15 @@ type Config struct {
 
 type ServerConfig struct {
 	ListenAddress string `json:"listenAddress" yaml:"listen-address"`
+}
+
+type LogConfig struct {
+	Level      string `json:"level"      yaml:"level"`
+	FilePath   string `json:"filePath"   yaml:"file-path"`
+	MaxSize    int    `json:"maxSize"    yaml:"max-size"`
+	MaxBackups int    `json:"maxBackups" yaml:"max-backups"`
+	MaxAge     int    `json:"maxAge"     yaml:"max-age"`
+	Compress   bool   `json:"compress"   yaml:"compress"`
 }
 
 type PublicConfig struct {
@@ -51,6 +61,14 @@ func DefaultConfig() Config {
 		Home: homestate.DefaultHomeConfig(),
 		Server: ServerConfig{
 			ListenAddress: "127.0.0.1:8787",
+		},
+		Log: LogConfig{
+			Level:      "info",
+			FilePath:   "",
+			MaxSize:    10,
+			MaxBackups: 5,
+			MaxAge:     3,
+			Compress:   true,
 		},
 		MCP:     mcp.DefaultConfig(),
 		A2A:     a2a.DefaultAgentCardURLPolicy(),
@@ -211,6 +229,18 @@ func ApplyDefaults(cfg *Config) {
 	homestate.ApplyHomeDefaults(&cfg.Home)
 	if strings.TrimSpace(cfg.Server.ListenAddress) == "" {
 		cfg.Server.ListenAddress = "127.0.0.1:8787"
+	}
+	if strings.TrimSpace(cfg.Log.Level) == "" {
+		cfg.Log.Level = "info"
+	}
+	if cfg.Log.MaxSize <= 0 {
+		cfg.Log.MaxSize = 10
+	}
+	if cfg.Log.MaxBackups <= 0 {
+		cfg.Log.MaxBackups = 5
+	}
+	if cfg.Log.MaxAge <= 0 {
+		cfg.Log.MaxAge = 3
 	}
 	mcp.ApplyDefaults(&cfg.MCP)
 	if cfg.A2A.Loopback == nil {

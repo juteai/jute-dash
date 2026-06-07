@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -159,20 +160,7 @@ func NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(
 	display *displayactions.Dispatcher,
 ) http.Handler {
 	layout := dashboard.DefaultWidgetLayout()
-	if configPath != "" {
-		var dbStore filesync.ConfigStore
-		if candidate, ok := layoutStore.(filesync.ConfigStore); ok {
-			dbStore = candidate
-		}
-		syncer := filesync.NewFileSyncer(configPath, dbStore)
-		yamlStore := dashboard.NewYAMLRepository(syncer)
-		if catalog := dashboard.RegisteredCatalog(); len(catalog) > 0 {
-			yamlStore.SetCatalog(catalog)
-		}
-		if loaded, err := yamlStore.WidgetLayout(context.Background(), ""); err == nil {
-			layout = loaded
-		}
-	} else if layoutStore != nil {
+	if layoutStore != nil {
 		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
 			layout = loaded
 		}
@@ -198,23 +186,7 @@ func newServer(
 	var activeVoiceStore voice.Store
 	var activeSettingsStore homestate.SettingsStore
 
-	var dbStore filesync.ConfigStore
-	if candidate, ok := layoutStore.(filesync.ConfigStore); ok {
-		dbStore = candidate
-	}
-
-	var syncer filesync.Syncer
-	if configPath != "" {
-		syncer = filesync.NewFileSyncer(configPath, dbStore)
-	} else {
-		syncer = filesync.NewInMemorySyncer(cfg)
-	}
-
-	if configPath != "" {
-		activeLayoutStore = dashboard.NewYAMLRepository(syncer)
-		activeVoiceStore = voice.NewYAMLRepository(syncer)
-		activeSettingsStore = homestate.NewYAMLRepository(syncer)
-	} else if layoutStore != nil {
+	if layoutStore != nil {
 		activeLayoutStore = layoutStore
 		if candidate, ok := layoutStore.(voice.Store); ok {
 			activeVoiceStore = candidate
@@ -233,6 +205,42 @@ func newServer(
 	}
 	if activeSettingsStore == nil {
 		activeSettingsStore = homestate.NewMemoryRepository(setup)
+	}
+
+	var dbStore filesync.ConfigStore
+	if candidate, ok := activeLayoutStore.(filesync.ConfigStore); ok {
+		dbStore = candidate
+	}
+
+	var syncer filesync.Syncer
+	if configPath != "" {
+		syncer = filesync.NewFileSyncer(configPath, dbStore)
+	} else {
+		syncer = filesync.NewInMemorySyncer(cfg)
+	}
+
+	// Sync on Load synchronously from YAML to SQLite
+	if configPath != "" {
+		_ = syncOnLoad(context.Background(), syncer, activeLayoutStore, activeSettingsStore, activeVoiceStore)
+	}
+
+	// Reload layout and setup status from active database stores
+	if activeLayoutStore != nil {
+		if loaded, err := activeLayoutStore.WidgetLayout(context.Background(), ""); err == nil {
+			layout = loaded
+		}
+	}
+	if activeSettingsStore != nil {
+		if status, err := activeSettingsStore.SetupStatus(context.Background()); err == nil {
+			setup = status
+		}
+	}
+
+	// Start River background queue if activeLayoutStore implements it
+	if qs, ok := activeLayoutStore.(interface {
+		StartQueue(syncer filesync.Syncer) error
+	}); ok {
+		_ = qs.StartQueue(syncer)
 	}
 
 	if display == nil {
@@ -300,10 +308,32 @@ func newServer(
 			server.mu.Lock()
 			server.setup = saved.Setup
 			server.mu.Unlock()
-			_ = syncer.Sync(context.Background())
+			if eq, ok := server.settings.(interface {
+				EnqueueSync(ctx context.Context) error
+			}); ok {
+				_ = eq.EnqueueSync(context.Background())
+			} else {
+				_ = syncer.Sync(context.Background())
+			}
 		},
-		nil,
-		nil,
+		func(_ []homestate.RoomConfig) {
+			if eq, ok := server.settings.(interface {
+				EnqueueSync(ctx context.Context) error
+			}); ok {
+				_ = eq.EnqueueSync(context.Background())
+			} else {
+				_ = syncer.Sync(context.Background())
+			}
+		},
+		func(_ []homestate.TileConfig) {
+			if eq, ok := server.settings.(interface {
+				EnqueueSync(ctx context.Context) error
+			}); ok {
+				_ = eq.EnqueueSync(context.Background())
+			} else {
+				_ = syncer.Sync(context.Background())
+			}
+		},
 	).RegisterRoutes(mux)
 
 	dashboard.NewController(
@@ -312,7 +342,13 @@ func newServer(
 			server.mu.Lock()
 			server.layout = saved
 			server.mu.Unlock()
-			_ = syncer.Sync(context.Background())
+			if eq, ok := server.layoutStore.(interface {
+				EnqueueSync(ctx context.Context) error
+			}); ok {
+				_ = eq.EnqueueSync(context.Background())
+			} else {
+				_ = syncer.Sync(context.Background())
+			}
 		},
 	).RegisterRoutes(mux)
 
@@ -334,7 +370,8 @@ func newServer(
 	broker := events.NewBroker(server.display)
 	mux.Handle("/api/v1/events", broker)
 
-	return withCommonHeaders(withCORS(mux))
+	handler := withCommonHeaders(withCORS(mux))
+	return RequestLogger(slog.Default() /*nolint:sloglint // use default global logger */)(handler)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -599,4 +636,51 @@ func isLocalOrigin(origin string) bool {
 		strings.HasPrefix(origin, "http://127.0.0.1") ||
 		strings.HasPrefix(origin, "https://localhost") ||
 		strings.HasPrefix(origin, "https://127.0.0.1")
+}
+
+func syncOnLoad(
+	ctx context.Context,
+	syncer filesync.Syncer,
+	layoutStore dashboard.LayoutStore,
+	settingsStore homestate.SettingsStore,
+	_ voice.Store,
+) error {
+	cfg, err := syncer.Load(ctx)
+	if err != nil {
+		return err
+	}
+
+	// 1. Sync Household Settings
+	if _, err := settingsStore.SaveHouseholdSettings(ctx, homestate.HouseholdSettings{
+		Home:    cfg.Home,
+		Display: cfg.Display,
+		Weather: cfg.Weather,
+	}); err != nil {
+		return err
+	}
+
+	// 2. Sync Rooms
+	if _, err := settingsStore.SaveRooms(ctx, cfg.Rooms); err != nil {
+		return err
+	}
+
+	// 3. Sync Tiles
+	if _, err := settingsStore.SaveTiles(ctx, cfg.Tiles); err != nil {
+		return err
+	}
+
+	// 4. Sync Widget Layout
+	catalog := dashboard.RegisteredCatalog()
+	catalogMap := make(map[string]dashboard.WidgetCatalogItem, len(catalog))
+	for _, item := range catalog {
+		catalogMap[item.Kind] = item
+	}
+	layout, err := dashboard.WidgetLayoutFromDashboardConfig(cfg.Dashboard, catalogMap)
+	if err == nil {
+		if _, err := layoutStore.SaveWidgetLayout(ctx, layout); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

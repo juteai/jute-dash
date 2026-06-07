@@ -298,13 +298,17 @@
     // Rows are proportional (1fr) so the rendered row step must be measured from
     // the DOM rather than assumed from a fixed pixel height.
     const rows =
-      styles.gridTemplateRows.split(' ').filter(Boolean).length || rowCount || 1;
-    const rowGap = Number.parseFloat(styles.rowGap || `${GRID_GAP}`) || GRID_GAP;
+      styles.gridTemplateRows.split(' ').filter(Boolean).length ||
+      rowCount ||
+      1;
+    const rowGap =
+      Number.parseFloat(styles.rowGap || `${GRID_GAP}`) || GRID_GAP;
 
     return {
       cellWidth: Math.max(
         1,
-        (rect.width - columnGap * Math.max(0, columns - 1)) / columns + columnGap
+        (rect.width - columnGap * Math.max(0, columns - 1)) / columns +
+          columnGap
       ),
       rowHeight: Math.max(
         1,

@@ -35,6 +35,7 @@
     cancelVoice,
     unmuteVoice
   } from '$lib/api';
+  import { logger } from '$lib/logger';
   import {
     firstAvailableAgent,
     getAgentAvailability,
@@ -871,6 +872,7 @@
     }
     eventSource = new EventSource(eventsURL());
     eventSource.addEventListener('open', async () => {
+      logger.sse('Connected');
       if (hasConnected) {
         try {
           const fresh = await getDashboard(fetch);
@@ -882,6 +884,7 @@
       }
     });
     eventSource.addEventListener('error', async () => {
+      logger.sseError('Event stream connection lost or failed');
       if (mounted && hasConnected) {
         try {
           const fresh = await getDashboard(fetch);
@@ -912,12 +915,14 @@
       }
     });
     eventSource.addEventListener('display.notification', (event) => {
+      logger.sse(event.type);
       const notification = parseDisplayEvent<DisplayNotification>(event);
       if (notification) {
         addDisplayNotification(notification);
       }
     });
     eventSource.addEventListener('display.focus_widget', (event) => {
+      logger.sse(event.type);
       const focus = parseDisplayEvent<DisplayFocusWidget>(event);
       if (focus) {
         focusWidget(focus);
@@ -925,6 +930,10 @@
     });
     eventSource.addEventListener('voice.state_changed', (event) => {
       const e = parseDisplayEvent<VoiceDisplayEvent>(event);
+      logger.sse(
+        event.type,
+        e?.payload ? `state=${e.payload.state}` : undefined
+      );
       if (e?.payload) {
         const payload = e.payload;
         dashboard = {
@@ -945,7 +954,8 @@
         };
       }
     });
-    eventSource.addEventListener('voice.wake_detected', () => {
+    eventSource.addEventListener('voice.wake_detected', (event) => {
+      logger.sse(event.type);
       if (voiceEndedTimeout) {
         window.clearTimeout(voiceEndedTimeout);
         voiceEndedTimeout = undefined;
@@ -958,6 +968,7 @@
     eventSource.addEventListener('voice.transcript.partial', (event) => {
       const e = parseDisplayEvent<VoiceDisplayEvent>(event);
       const text = e?.payload?.text;
+      logger.sse(event.type, text ? `text="${text}"` : undefined);
       if (typeof text === 'string') {
         voiceTranscript = text;
       }
@@ -966,18 +977,21 @@
     eventSource.addEventListener('voice.transcript.final', (event) => {
       const e = parseDisplayEvent<VoiceDisplayEvent>(event);
       const text = e?.payload?.text;
+      logger.sse(event.type, text ? `text="${text}"` : undefined);
       if (typeof text === 'string') {
         voiceTranscript = text;
       }
       voiceOrbState = 'listening';
     });
-    eventSource.addEventListener('conversation.turn_started', () => {
+    eventSource.addEventListener('conversation.turn_started', (event) => {
+      logger.sse(event.type);
       voiceOrbState = 'thinking';
     });
     eventSource.addEventListener('conversation.turn_completed', (event) => {
       const e = parseDisplayEvent<VoiceDisplayEvent>(event);
       const speech = e?.payload?.speech;
       const text = e?.payload?.text;
+      logger.sse(event.type, text ? `text="${text}"` : undefined);
       if (typeof speech === 'string') {
         assistantSpeech = speech;
       } else if (typeof text === 'string') {
@@ -985,11 +999,13 @@
       }
       voiceOrbState = 'speaking';
     });
-    eventSource.addEventListener('conversation.followup_started', () => {
+    eventSource.addEventListener('conversation.followup_started', (event) => {
+      logger.sse(event.type);
       voiceOrbState = 'followup';
       voiceTranscript = '';
     });
-    eventSource.addEventListener('conversation.ended', () => {
+    eventSource.addEventListener('conversation.ended', (event) => {
+      logger.sse(event.type);
       voiceOrbState = 'idle';
       if (voiceEndedTimeout) {
         window.clearTimeout(voiceEndedTimeout);
@@ -1002,7 +1018,8 @@
         }
       }, 4000);
     });
-    eventSource.addEventListener('hub.connected', () => {
+    eventSource.addEventListener('hub.connected', (event) => {
+      logger.sse(event.type);
       if (hasConnected) {
         markConnected();
       }

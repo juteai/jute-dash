@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -568,7 +569,8 @@ func TestResetWidgetLayoutRestoresDefaults(t *testing.T) {
 
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
-	st, err := Open(filepath.Join(t.TempDir(), "jute.db"))
+	logger := slog.New(slog.DiscardHandler)
+	st, err := Open(filepath.Join(t.TempDir(), "jute.db"), logger)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}

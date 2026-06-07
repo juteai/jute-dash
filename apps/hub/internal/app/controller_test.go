@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/app/config"
@@ -232,11 +234,14 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	if err := SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+
 	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
 		cfg,
 		"test",
 		SetupStatus{Complete: true},
-		nil,
+		runtimeStore,
 		configPath,
 	)
 
@@ -253,7 +258,18 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	reloaded, err := LoadConfig(configPath)
+
+	// Poll configPath for changes since syncing is asynchronous
+	var reloaded config.Config
+	var err error
+	for range 20 {
+		reloaded, err = LoadConfig(configPath)
+		if err == nil && reloaded.Home.Name == "YAML Home" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
@@ -384,11 +400,14 @@ func TestRoomAndTileSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	if err := SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+
 	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
 		cfg,
 		"test",
 		SetupStatus{Complete: true},
-		nil,
+		runtimeStore,
 		configPath,
 	)
 
@@ -418,7 +437,17 @@ func TestRoomAndTileSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 		t.Fatalf("expected tile status 200, got %d: %s", tileRec.Code, tileRec.Body.String())
 	}
 
-	reloaded, err := LoadConfig(configPath)
+	// Poll configPath for changes since syncing is asynchronous
+	var reloaded config.Config
+	var err error
+	for range 20 {
+		reloaded, err = LoadConfig(configPath)
+		if err == nil && len(reloaded.Rooms) == 1 && len(reloaded.Tiles) == 1 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
@@ -788,7 +817,8 @@ func TestWidgetLayoutPutReturnsSafeStoreFailure(t *testing.T) {
 }
 
 func TestStoreBackedConfigWorksWithExistingEndpoints(t *testing.T) {
-	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"))
+	logger := slog.New(slog.DiscardHandler)
+	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"), logger)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -855,7 +885,8 @@ func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
 	cfg.Agents = cfg.Agents[:1]
 	cfg.Agents[0].CardURL = agentCardServer.URL
 	allowAgentCardURL(&cfg, agentCardServer.URL)
-	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"))
+	logger := slog.New(slog.DiscardHandler)
+	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"), logger)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -1661,7 +1692,8 @@ func allowAgentCardURL(cfg *config.Config, cardURL string) {
 
 func openInitializedServerStore(t *testing.T) *Store {
 	t.Helper()
-	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"))
+	logger := slog.New(slog.DiscardHandler)
+	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"), logger)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

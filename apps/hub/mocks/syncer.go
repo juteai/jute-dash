@@ -3,8 +3,10 @@
 package mocks
 
 import (
+	agents "jute-dash/apps/hub/internal/app/agents"
+	config "jute-dash/apps/hub/internal/app/config"
+
 	context "context"
-	dashboard "jute-dash/apps/hub/internal/app/dashboard"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -22,23 +24,25 @@ func (_m *Syncer) EXPECT() *Syncer_Expecter {
 	return &Syncer_Expecter{mock: &_m.Mock}
 }
 
-// DashboardConfig provides a mock function with given fields: ctx
-func (_m *Syncer) DashboardConfig(ctx context.Context) (dashboard.DashboardConfig, error) {
+// AgentsConfig provides a mock function with given fields: ctx
+func (_m *Syncer) AgentsConfig(ctx context.Context) ([]agents.AgentConfig, error) {
 	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
-		panic("no return value specified for DashboardConfig")
+		panic("no return value specified for AgentsConfig")
 	}
 
-	var r0 dashboard.DashboardConfig
+	var r0 []agents.AgentConfig
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context) (dashboard.DashboardConfig, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context) ([]agents.AgentConfig, error)); ok {
 		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context) dashboard.DashboardConfig); ok {
+	if rf, ok := ret.Get(0).(func(context.Context) []agents.AgentConfig); ok {
 		r0 = rf(ctx)
 	} else {
-		r0 = ret.Get(0).(dashboard.DashboardConfig)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]agents.AgentConfig)
+		}
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
@@ -50,45 +54,101 @@ func (_m *Syncer) DashboardConfig(ctx context.Context) (dashboard.DashboardConfi
 	return r0, r1
 }
 
-// Syncer_DashboardConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DashboardConfig'
-type Syncer_DashboardConfig_Call struct {
+// Syncer_AgentsConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AgentsConfig'
+type Syncer_AgentsConfig_Call struct {
 	*mock.Call
 }
 
-// DashboardConfig is a helper method to define mock.On call
+// AgentsConfig is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *Syncer_Expecter) DashboardConfig(ctx interface{}) *Syncer_DashboardConfig_Call {
-	return &Syncer_DashboardConfig_Call{Call: _e.mock.On("DashboardConfig", ctx)}
+func (_e *Syncer_Expecter) AgentsConfig(ctx interface{}) *Syncer_AgentsConfig_Call {
+	return &Syncer_AgentsConfig_Call{Call: _e.mock.On("AgentsConfig", ctx)}
 }
 
-func (_c *Syncer_DashboardConfig_Call) Run(run func(ctx context.Context)) *Syncer_DashboardConfig_Call {
+func (_c *Syncer_AgentsConfig_Call) Run(run func(ctx context.Context)) *Syncer_AgentsConfig_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context))
 	})
 	return _c
 }
 
-func (_c *Syncer_DashboardConfig_Call) Return(_a0 dashboard.DashboardConfig, _a1 error) *Syncer_DashboardConfig_Call {
+func (_c *Syncer_AgentsConfig_Call) Return(_a0 []agents.AgentConfig, _a1 error) *Syncer_AgentsConfig_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *Syncer_DashboardConfig_Call) RunAndReturn(run func(context.Context) (dashboard.DashboardConfig, error)) *Syncer_DashboardConfig_Call {
+func (_c *Syncer_AgentsConfig_Call) RunAndReturn(run func(context.Context) ([]agents.AgentConfig, error)) *Syncer_AgentsConfig_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// SyncDashboard provides a mock function with given fields: ctx, cfg
-func (_m *Syncer) SyncDashboard(ctx context.Context, cfg dashboard.DashboardConfig) error {
-	ret := _m.Called(ctx, cfg)
+// Load provides a mock function with given fields: ctx
+func (_m *Syncer) Load(ctx context.Context) (config.Config, error) {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
-		panic("no return value specified for SyncDashboard")
+		panic("no return value specified for Load")
+	}
+
+	var r0 config.Config
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (config.Config, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) config.Config); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(config.Config)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Syncer_Load_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Load'
+type Syncer_Load_Call struct {
+	*mock.Call
+}
+
+// Load is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *Syncer_Expecter) Load(ctx interface{}) *Syncer_Load_Call {
+	return &Syncer_Load_Call{Call: _e.mock.On("Load", ctx)}
+}
+
+func (_c *Syncer_Load_Call) Run(run func(ctx context.Context)) *Syncer_Load_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *Syncer_Load_Call) Return(_a0 config.Config, _a1 error) *Syncer_Load_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Syncer_Load_Call) RunAndReturn(run func(context.Context) (config.Config, error)) *Syncer_Load_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Sync provides a mock function with given fields: ctx
+func (_m *Syncer) Sync(ctx context.Context) error {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Sync")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, dashboard.DashboardConfig) error); ok {
-		r0 = rf(ctx, cfg)
+	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = rf(ctx)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -96,31 +156,124 @@ func (_m *Syncer) SyncDashboard(ctx context.Context, cfg dashboard.DashboardConf
 	return r0
 }
 
-// Syncer_SyncDashboard_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SyncDashboard'
-type Syncer_SyncDashboard_Call struct {
+// Syncer_Sync_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Sync'
+type Syncer_Sync_Call struct {
 	*mock.Call
 }
 
-// SyncDashboard is a helper method to define mock.On call
+// Sync is a helper method to define mock.On call
 //   - ctx context.Context
-//   - cfg dashboard.DashboardConfig
-func (_e *Syncer_Expecter) SyncDashboard(ctx interface{}, cfg interface{}) *Syncer_SyncDashboard_Call {
-	return &Syncer_SyncDashboard_Call{Call: _e.mock.On("SyncDashboard", ctx, cfg)}
+func (_e *Syncer_Expecter) Sync(ctx interface{}) *Syncer_Sync_Call {
+	return &Syncer_Sync_Call{Call: _e.mock.On("Sync", ctx)}
 }
 
-func (_c *Syncer_SyncDashboard_Call) Run(run func(ctx context.Context, cfg dashboard.DashboardConfig)) *Syncer_SyncDashboard_Call {
+func (_c *Syncer_Sync_Call) Run(run func(ctx context.Context)) *Syncer_Sync_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(dashboard.DashboardConfig))
+		run(args[0].(context.Context))
 	})
 	return _c
 }
 
-func (_c *Syncer_SyncDashboard_Call) Return(_a0 error) *Syncer_SyncDashboard_Call {
+func (_c *Syncer_Sync_Call) Return(_a0 error) *Syncer_Sync_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *Syncer_SyncDashboard_Call) RunAndReturn(run func(context.Context, dashboard.DashboardConfig) error) *Syncer_SyncDashboard_Call {
+func (_c *Syncer_Sync_Call) RunAndReturn(run func(context.Context) error) *Syncer_Sync_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SyncAgents provides a mock function with given fields: ctx, configs
+func (_m *Syncer) SyncAgents(ctx context.Context, configs []agents.AgentConfig) error {
+	ret := _m.Called(ctx, configs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SyncAgents")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, []agents.AgentConfig) error); ok {
+		r0 = rf(ctx, configs)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// Syncer_SyncAgents_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SyncAgents'
+type Syncer_SyncAgents_Call struct {
+	*mock.Call
+}
+
+// SyncAgents is a helper method to define mock.On call
+//   - ctx context.Context
+//   - configs []agents.AgentConfig
+func (_e *Syncer_Expecter) SyncAgents(ctx interface{}, configs interface{}) *Syncer_SyncAgents_Call {
+	return &Syncer_SyncAgents_Call{Call: _e.mock.On("SyncAgents", ctx, configs)}
+}
+
+func (_c *Syncer_SyncAgents_Call) Run(run func(ctx context.Context, configs []agents.AgentConfig)) *Syncer_SyncAgents_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].([]agents.AgentConfig))
+	})
+	return _c
+}
+
+func (_c *Syncer_SyncAgents_Call) Return(_a0 error) *Syncer_SyncAgents_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *Syncer_SyncAgents_Call) RunAndReturn(run func(context.Context, []agents.AgentConfig) error) *Syncer_SyncAgents_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SyncWith provides a mock function with given fields: ctx, fn
+func (_m *Syncer) SyncWith(ctx context.Context, fn func(*config.Config) error) error {
+	ret := _m.Called(ctx, fn)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SyncWith")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, func(*config.Config) error) error); ok {
+		r0 = rf(ctx, fn)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// Syncer_SyncWith_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SyncWith'
+type Syncer_SyncWith_Call struct {
+	*mock.Call
+}
+
+// SyncWith is a helper method to define mock.On call
+//   - ctx context.Context
+//   - fn func(*config.Config) error
+func (_e *Syncer_Expecter) SyncWith(ctx interface{}, fn interface{}) *Syncer_SyncWith_Call {
+	return &Syncer_SyncWith_Call{Call: _e.mock.On("SyncWith", ctx, fn)}
+}
+
+func (_c *Syncer_SyncWith_Call) Run(run func(ctx context.Context, fn func(*config.Config) error)) *Syncer_SyncWith_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(func(*config.Config) error))
+	})
+	return _c
+}
+
+func (_c *Syncer_SyncWith_Call) Return(_a0 error) *Syncer_SyncWith_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *Syncer_SyncWith_Call) RunAndReturn(run func(context.Context, func(*config.Config) error) error) *Syncer_SyncWith_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -84,11 +85,13 @@ type Client interface {
 
 type JSONRPCClient struct {
 	HTTPClient *http.Client
+	Logger     *slog.Logger
 }
 
 func NewJSONRPCClient() *JSONRPCClient {
 	return &JSONRPCClient{
 		HTTPClient: &http.Client{Timeout: 45 * time.Second},
+		Logger:     slog.Default(), // fallback default global logger
 	}
 }
 
@@ -135,31 +138,62 @@ func (c *JSONRPCClient) send(ctx context.Context, req SendMessageRequest) (SendM
 		httpClient = NewJSONRPCClient().HTTPClient
 	}
 
+	logger := c.Logger
+	if logger == nil {
+		logger = slog.Default() // fallback default logger
+	}
+
+	start := time.Now()
 	resp, err := httpClient.Do(httpReq)
+	duration := time.Since(start)
+
+	attrs := []any{
+		slog.String("url", req.EndpointURL),
+		slog.String("method", methodSendMessage),
+		slog.String("conversation_id", req.ConversationID),
+		slog.Float64("duration_ms", float64(duration.Microseconds())/1000.0),
+	}
+
 	if err != nil {
+		attrs = append(attrs, slog.Any("error", err))
+		logger.ErrorContext(ctx, "a2a client request failed", attrs...)
 		return SendMessageResult{}, fmt.Errorf("%w", ErrAgentTransport)
 	}
 	defer resp.Body.Close()
 
+	attrs = append(attrs, slog.Int("status", resp.StatusCode))
+
 	responseBytes, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
+		attrs = append(attrs, slog.Any("error", err))
+		logger.ErrorContext(ctx, "a2a client read response failed", attrs...)
 		return SendMessageResult{}, fmt.Errorf("read a2a response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		logger.ErrorContext(ctx, "a2a client returned non-2xx status", attrs...)
 		return SendMessageResult{}, fmt.Errorf("%w: status %d", ErrAgentTransport, resp.StatusCode)
 	}
 
 	var rpcResp jsonRPCResponse
 	if err := json.Unmarshal(responseBytes, &rpcResp); err != nil {
+		attrs = append(attrs, slog.Any("error", err))
+		logger.ErrorContext(ctx, "a2a client decode JSON-RPC failed", attrs...)
 		return SendMessageResult{}, fmt.Errorf("decode a2a response: %w", err)
 	}
 	if rpcResp.Error != nil {
+		logger.ErrorContext(
+			ctx,
+			"a2a client returned JSON-RPC error",
+			append(attrs, slog.Int("code", rpcResp.Error.Code))...,
+		)
 		return SendMessageResult{}, &RPCError{Code: rpcResp.Error.Code}
 	}
 	if len(rpcResp.Result) == 0 {
+		logger.ErrorContext(ctx, "a2a client returned empty result", attrs...)
 		return SendMessageResult{}, errors.New("a2a response did not include a result")
 	}
 
+	logger.InfoContext(ctx, "a2a client request succeeded", attrs...)
 	return extractResult(rpcResp.Result)
 }
 

@@ -2,36 +2,69 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"jute-dash/apps/hub/internal/app/config"
 	"jute-dash/apps/hub/internal/app/dashboard"
+	"jute-dash/apps/hub/internal/app/filesync"
 	"jute-dash/apps/hub/internal/app/homestate"
 	"jute-dash/apps/hub/internal/app/voice"
 	"jute-dash/apps/hub/internal/pkg/database"
 
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riversqlite"
+	"github.com/riverqueue/river/rivermigrate"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type Store struct {
-	db *database.Database
+	db          *database.Database
+	riverClient *river.Client[*sql.Tx]
+	logger      *slog.Logger
 }
 
-func Open(dbPath string) (*Store, error) {
-	db, err := database.Open(dbPath)
+func Open(dbPath string, log *slog.Logger) (*Store, error) {
+	db, err := database.Open(dbPath, log)
 	if err != nil {
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	return &Store{db: db, logger: log}, nil
+}
+
+func (s *Store) SetLogger(log *slog.Logger) {
+	if s == nil {
+		return
+	}
+	s.logger = log
+	if s.db != nil && s.db.DB() != nil {
+		gormLevel := logger.Warn
+		if log.Enabled(context.Background(), slog.LevelDebug) {
+			gormLevel = logger.Info
+		}
+		gormLogger := database.NewSlogLogger(log)
+		gormLogger.LogLevel = gormLevel
+		s.db.DB().Config.Logger = gormLogger
+	}
 }
 
 func (s *Store) Close() error {
-	if s == nil || s.db == nil {
+	if s == nil {
+		return nil
+	}
+	if s.riverClient != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.riverClient.Stop(ctx)
+	}
+	if s.db == nil {
 		return nil
 	}
 	return s.db.Close()
@@ -99,7 +132,7 @@ func (appMetaDB) TableName() string { return "app_meta" }
 
 const gridBaseColumnsMetaKey = "grid_base_columns"
 
-func (s *Store) Migrate(_ context.Context) error {
+func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.db.Migrate(
 		&homestate.HouseholdSettingsDB{},
 		&homestate.WeatherSettingsDB{},
@@ -118,7 +151,27 @@ func (s *Store) Migrate(_ context.Context) error {
 	); err != nil {
 		return err
 	}
+	if err := s.migrateRiver(ctx); err != nil {
+		return err
+	}
 	return s.migrateGridToBaseColumns()
+}
+
+func (s *Store) migrateRiver(ctx context.Context) error {
+	sqlDB, err := s.DB().DB()
+	if err != nil {
+		return fmt.Errorf("get sql.DB for river migrate: %w", err)
+	}
+	driver := riversqlite.New(sqlDB)
+	migrator, err := rivermigrate.New(driver, nil)
+	if err != nil {
+		return fmt.Errorf("create river migrator: %w", err)
+	}
+	_, err = migrator.Migrate(ctx, rivermigrate.DirectionUp, nil)
+	if err != nil {
+		return fmt.Errorf("run river migrations: %w", err)
+	}
+	return nil
 }
 
 // migrateGridToBaseColumns scales legacy 4-column widget coordinates onto the
@@ -638,4 +691,41 @@ func (s *Store) CancelVoice(ctx context.Context, deviceProfileID string) (voice.
 
 func (s *Store) VoiceProviders(ctx context.Context) ([]voice.ProviderPack, error) {
 	return voice.NewRepository(s.DB()).VoiceProviders(ctx)
+}
+
+func (s *Store) StartQueue(syncer filesync.Syncer) error {
+	sqlDB, err := s.DB().DB()
+	if err != nil {
+		return err
+	}
+
+	var riverLogger *slog.Logger
+	if s.logger != nil {
+		riverLogger = slog.New(&filesync.RiverLevelFilterHandler{Handler: s.logger.Handler()})
+	}
+
+	workers := river.NewWorkers()
+	river.AddWorker(workers, filesync.NewConfigSyncWorker(syncer))
+
+	client, err := river.NewClient(riversqlite.New(sqlDB), &river.Config{
+		Queues: map[string]river.QueueConfig{
+			river.QueueDefault: {MaxWorkers: 1},
+		},
+		Workers: workers,
+		Logger:  riverLogger,
+	})
+	if err != nil {
+		return err
+	}
+
+	s.riverClient = client
+	return s.riverClient.Start(context.Background())
+}
+
+func (s *Store) EnqueueSync(ctx context.Context) error {
+	if s == nil || s.riverClient == nil {
+		return nil
+	}
+	_, err := s.riverClient.Insert(ctx, filesync.ConfigSyncArgs{}, nil)
+	return err
 }
