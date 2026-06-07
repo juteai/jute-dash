@@ -18,15 +18,18 @@ flowchart TB
 
   subgraph Local Daemon Boundary
     hub["Jute Hub\n(Go Daemon)"]
-    sqlite["SQLite Store\n(Runtime Truth)"]
+    sqlite["SQLite Store\n(GORM / WAL mode)"]
     config["Bootstrap Config\n(YAML/JSON)"]
     mcp["MCP Bridge\n(Streamable HTTP)"]
     voice["Voice Service\n(VAD / STT / TTS)"]
+    filesync["FileSync Sync Worker\n(River Queue)"]
 
     hub --> sqlite
     hub --> config
     hub --> mcp
     hub --> voice
+    sqlite -- Sync job -- > filesync
+    filesync -- Save YAML -- > config
   end
 
   subgraph Bring-Your-Own-Agents
@@ -45,6 +48,7 @@ flowchart TB
 * **Jute Display (SvelteKit):** Touch-first client that renders the dashboard grid, voice conversation sheet, ambient states, and settings UI. It consumes the Hub API and event stream.
 * **Jute MCP Bridge:** An optional HTTP-based bridge that securely surfaces dashboard context, widget skills, and hub-mediated display actions to trusted local agents without exposing databases or raw credentials.
 * **Jute Voice Service:** Local voice boundaries managing microphone capture, Voice Activity Detection (VAD), wake-word detection, utterance buffering, and voice provider packs (STT/TTS).
+* **FileSync Sync Worker:** A background task processor using **River** (`riverdriver/riversqlite`) that runs a single-threaded queue. When settings are written to SQLite, the worker is enqueued to write changes back to the bootstrap YAML config file atomically.
 
 ---
 
@@ -62,6 +66,7 @@ Jute Dash's interface, branding, and interaction models are inspired by modern m
 
 ### Component Architecture: shadcn-svelte & Alexa Guidelines
 * **shadcn-svelte Conventions:** The front-end uses [shadcn-svelte conventions](https://www.shadcn-svelte.com/llms.txt) for all complex layout controls (buttons, sheets, drawers, dialogs, dropdowns, inputs, scroll areas, and tabs). Raw HTML form controls are disallowed.
+* **Widget Settings Panel:** Per-widget configuration is rendered inside a slide-in sheet (`WidgetSettingsSheet.svelte`) supporting title edits, appearance chrome options, and list editors.
 * **Alexa Design Guidelines:** Jute adopts Amazon's voice-plus-screen principles:
   * **Situational UX:** Voice is voice-forward, and the screen behaves as a visual companion.
   * **Echo Show Model:** When the display is "awoken" (via wake word or push-to-talk), a dedicated conversation view (voice sheet) slides in.
@@ -71,7 +76,19 @@ Jute Dash's interface, branding, and interaction models are inspired by modern m
 
 ## 3. UI Shape & Visual Identity
 
-The interface acts as a spatial widget board. All dashboard widgets are native Svelte components hosted inside a 4-column responsive grid (`grid-template-columns: repeat(4, minmax(0, 1fr))`) and visual `WidgetFrame` chrome.
+The interface acts as a spatial widget board. All visible dashboard widgets are native Svelte components hosted inside a responsive grid layout.
+
+### Authored Base Grid & Responsive Scaling
+* **12-Column Base Grid:** Layouts are authored and stored at a `BASE_COLUMNS = 12` grid resolution.
+* **Proportional 1fr Columns:** The dashboard canvas uses CSS grid with `1fr` columns and rows, scaling widgets proportionally to fill the viewport width.
+* **Responsive Column Remapping:** When displaying on narrow viewports, the display re-flows the base layout:
+  * **Desktop / Wall Displays (>= 1024px):** 12 columns
+  * **Tablets (>= 768px):** 6 columns
+  * **Large Phones / Small Tablets (>= 480px):** 4 columns
+  * **Phones (< 480px):** 2 columns
+* **Widget Execution Modes:**
+  * `ui`: The widget is rendered on the dashboard grid.
+  * `headless`: The widget executes, gathers data, and feeds A2A/MCP assistant context, but its visual tile is hidden from the dashboard.
 
 ### Liquid Glass Spatial UX
 Jute Dash implements a "Liquid Glass" spatial container model for widgets:
@@ -122,7 +139,7 @@ Semantic colors are reserved purely for state indication:
 
 ## 5. Configuration & CLI Definition
 
-The Hub operates on a merged configuration model where compiled defaults are overridden by CLI environment parameters, bootstrap files, and runtime SQLite databases.
+The Hub operates on a merged configuration model where compiled defaults are overridden by CLI environment parameters, bootstrap files, and SQLite.
 
 ### Command-Line Interface
 The daemon `juted` uses the following parameters for bootstrapping and configuration:
@@ -160,9 +177,10 @@ dashboard:
       title: "Date & Time"
       x: 0
       y: 0
-      w: 2
-      h: 1
+      w: 6
+      h: 2
       visible: true
+      mode: "ui"
 ```
 
 ---
