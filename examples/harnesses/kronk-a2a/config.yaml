@@ -1,144 +1,166 @@
 home:
-  name: Jute Kronk A2A Dev
-  timezone: Europe/London
-  locale: en-GB
-
+    name: Jute Kronk A2A Dev
+    timezone: Europe/London
+    locale: en-GB
 server:
-  listen-address: 127.0.0.1:8787
-
+    listen-address: 127.0.0.1:8787
+log:
+    level: info
+    file-path: ""
+    max-size: 10
+    max-backups: 5
+    max-age: 3
+    compress: true
 mcp:
-  enabled: true
-  transport: streamable-http
-  listen-address: 127.0.0.1:8790
-  path: /mcp
-  allow-lan: false
-  auth:
-    mode: none
-    env-token: JUTE_MCP_TOKEN
-
-display:
-  theme: system
-  color-mode: system
-  theme-id: jute-mono
-  density: comfortable
-  motion: full
-  background:
-    kind: theme
-    value: ""
-    fit: cover
-    position: center
-    overlay: none
-  widget-chrome:
-    default: solid
-  accent-color: neutral
-  idle-mode: ambient
-
-weather:
-  enabled: true
-  provider: open-meteo
-  location-name: London
-  latitude: 51.5072
-  longitude: -0.1276
-  temperature-unit: celsius
-  wind-speed-unit: kmh
-
-voice:
-  enabled: false
-  muted-by-default: true
-  wake-word-model-id: ""
-  stt-provider-id: ""
-  tts-provider-id: ""
-  stt-model-id: ""
-  tts-model-id: ""
-  tts-voice-id: ""
-  preferred-agent-id: kronk-local
-  cloud-opt-in: false
-  command-providers-enabled: false
-  sensitive-output-policy: visual_only_sensitive
-  followup-window-seconds: 8
-  microphone-profile: ""
-
-agents:
-  - id: kronk-local
-    name: Kronk Local
-    description: Local Kronk-backed A2A assistant.
-    card-url: http://127.0.0.1:9797/.well-known/agent-card.json
-    endpoint-url: http://127.0.0.1:9797/invoke
-    protocol-binding: JSONRPC
     enabled: true
-    capabilities:
-      - conversation
-      - local-a2a
-      - kronk
-      - dashboard-context
-    mcp-scopes:
-      - dashboard:read
-      - widgets:read
-      - skills:read
-      - skills:context_read
-      - skills:prompt_read
-      - skills:action_invoke
-
+    transport: streamable-http
+    listen-address: 127.0.0.1:8790
+    path: /mcp
+    allow-lan: false
+    auth:
+        mode: none
+        env-token: JUTE_MCP_TOKEN
+a2a:
+    allowed-agent-card-urls: []
+    allow-loopback: true
+display:
+    theme: system
+    color-mode: system
+    theme-id: jute-mono
+    density: comfortable
+    motion: full
+    background:
+        kind: theme
+        value: ""
+        fit: cover
+        position: center
+        overlay: none
+    widget-chrome:
+        default: solid
+    accent-color: neutral
+    idle-mode: ambient
+weather:
+    enabled: true
+    provider: open-meteo
+    location-name: Dundee
+    latitude: 56.462
+    longitude: -2.9707
+    temperature-unit: celsius
+    wind-speed-unit: kmh
+voice:
+    enabled: false
+    muted-by-default: true
+    wake-word-model-id: ""
+    stt-provider-id: ""
+    tts-provider-id: ""
+    stt-model-id: ""
+    tts-model-id: ""
+    tts-voice-id: ""
+    preferred-agent-id: kronk-local
+    cloud-opt-in: false
+    command-providers-enabled: false
+    sensitive-output-policy: visual_only_sensitive
+    followup-window-seconds: 8
+    microphone-profile: ""
+dashboard:
+    widgets:
+        - id: date-time-widget
+          type: date-time
+          title: Clock
+          x: 0
+          "y": 0
+          w: 3
+          h: 2
+          min-w: 3
+          min-h: 1
+          size: small
+          visible: true
+          mode: ui
+          settings:
+            chrome: clear
+        - id: weather-widget
+          type: weather
+          title: Local Weather
+          x: 3
+          "y": 0
+          w: 3
+          h: 2
+          min-w: 3
+          min-h: 1
+          size: small
+          visible: true
+          mode: ui
+          settings:
+            latitude: 56.462
+            location: Dundee
+            longitude: -2.9707
+            temperature-unit: celsius
+            wind-speed-unit: kmh
+        - id: assistant-chat
+          type: chat-history
+          title: Concierge Chat
+          x: 0
+          "y": 2
+          w: 6
+          h: 3
+          min-w: 3
+          min-h: 1
+          size: large
+          visible: true
+          mode: ui
+        - id: hacker-news
+          type: rss
+          title: Tech News
+          x: 6
+          "y": 2
+          w: 6
+          h: 3
+          min-w: 3
+          min-h: 1
+          size: large
+          visible: true
+          mode: ui
+          settings:
+            feeds:
+                - name: Hacker News
+                  url: https://news.ycombinator.com/rss
+            limit: 5
+        - id: stocks-watchlist
+          type: markets
+          title: Markets
+          x: 6
+          "y": 0
+          w: 6
+          h: 2
+          min-w: 3
+          min-h: 1
+          size: medium
+          visible: true
+          mode: ui
+          settings:
+            tickers:
+                - AAPL
+                - GOOG
+                - symbol: BTC-USD
+agents:
+    - id: kronk-local
+      name: Kronk Local
+      description: Local Kronk-backed A2A assistant.
+      card-url: http://127.0.0.1:9797/.well-known/agent-card.json
+      endpoint-url: http://127.0.0.1:9797/invoke
+      protocol-binding: JSONRPC
+      enabled: true
+      capabilities:
+        - conversation
+        - local-a2a
+        - kronk
+        - dashboard-context
+      mcp-scopes:
+        - dashboard:read
+        - widgets:read
+        - skills:read
+        - skills:context_read
+        - skills:prompt_read
+        - skills:action_invoke
 rooms: []
 tiles: []
-
-dashboard:
-  widgets:
-    - id: "date-time-widget"
-      type: "date-time"
-      title: "Clock"
-      x: 0
-      y: 0
-      w: 2
-      h: 1
-      visible: true
-      settings:
-        chrome: clear
-    - id: "weather-widget"
-      type: "weather"
-      title: "Local Weather"
-      x: 2
-      y: 0
-      w: 2
-      h: 1
-      visible: true
-      settings:
-        location: "London"
-        latitude: 51.5072
-        longitude: -0.1276
-        temperature-unit: "celsius"
-        wind-speed-unit: "kmh"
-    - id: "assistant-chat"
-      type: "chat-history"
-      title: "Concierge Chat"
-      x: 0
-      y: 1
-      w: 2
-      h: 2
-      visible: true
-    - id: "hacker-news"
-      type: "rss"
-      title: "Tech News"
-      x: 2
-      y: 1
-      w: 2
-      h: 2
-      visible: true
-      settings:
-        limit: 5
-        feeds:
-          - url: "https://news.ycombinator.com/rss"
-            name: "Hacker News"
-    - id: "stocks-watchlist"
-      type: "markets"
-      title: "Markets"
-      x: 0
-      y: 3
-      w: 2
-      h: 2
-      visible: true
-      settings:
-        tickers:
-          - "AAPL"
-          - "GOOG"
-          - symbol: "BTC-USD"

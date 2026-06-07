@@ -1,7 +1,5 @@
 <script lang="ts">
   import {
-    Grip,
-    Maximize2,
     Loader2,
     AlertCircle,
     EyeOff,
@@ -25,7 +23,10 @@
     | 'permission_required'
     | 'stale' = 'ok';
   export let onMoveStart: (event: PointerEvent) => void = () => {};
-  export let onResizeStart: (event: PointerEvent) => void = () => {};
+  export let onResizeStart: (
+    event: PointerEvent,
+    resizeMode: 'both' | 'w' | 'h'
+  ) => void = () => {};
   let className = '';
   export { className as class };
 
@@ -61,11 +62,13 @@
     `widget-frame--${widget.size}`,
     `widget-frame--chrome-${chrome}`,
     `widget-frame--overflow-${overflow}`,
+    editMode && 'widget-frame--edit-mode',
     className
   )}
   class:widget-frame--focused={focused}
   class:widget-frame--stale={state === 'stale'}
   aria-label={widget.title}
+  on:pointerdown={editMode ? onMoveStart : undefined}
 >
   <header class="widget-frame-header">
     <div class="widget-frame-title">
@@ -74,22 +77,20 @@
         <span class="widget-stale-badge">· Stale</span>
       {/if}
     </div>
-    <div class="widget-frame-actions">
+    <div
+      class="widget-frame-actions"
+      role="none"
+      on:pointerdown|stopPropagation
+    >
       <slot name="actions" />
-      {#if editMode}
-        <button
-          type="button"
-          class="widget-frame-handle"
-          aria-label={`Move ${widget.title}`}
-          on:pointerdown|preventDefault={onMoveStart}
-        >
-          <Grip size={17} />
-        </button>
-      {/if}
     </div>
   </header>
 
-  <div class="widget-frame-body" class:widget-body-stale={state === 'stale'}>
+  <div
+    class="widget-frame-body"
+    class:widget-body-stale={state === 'stale'}
+    style={editMode ? 'pointer-events: none; user-select: none;' : ''}
+  >
     {#if stateDetails}
       <div class="widget-state-overlay">
         {#if state === 'loading'}
@@ -114,12 +115,25 @@
   {#if editMode}
     <button
       type="button"
-      class="widget-resize-handle"
-      aria-label={`Resize ${widget.title}`}
-      on:pointerdown|preventDefault={onResizeStart}
-    >
-      <Maximize2 size={16} />
-    </button>
+      class="widget-resize-dot widget-resize-dot--right"
+      aria-label={`Resize width of ${widget.title}`}
+      on:pointerdown|preventDefault|stopPropagation={(e) =>
+        onResizeStart(e, 'w')}
+    ></button>
+    <button
+      type="button"
+      class="widget-resize-dot widget-resize-dot--bottom"
+      aria-label={`Resize height of ${widget.title}`}
+      on:pointerdown|preventDefault|stopPropagation={(e) =>
+        onResizeStart(e, 'h')}
+    ></button>
+    <button
+      type="button"
+      class="widget-resize-dot widget-resize-dot--bottom-right"
+      aria-label={`Resize both of ${widget.title}`}
+      on:pointerdown|preventDefault|stopPropagation={(e) =>
+        onResizeStart(e, 'both')}
+    ></button>
   {/if}
 </section>
 
@@ -143,9 +157,8 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    min-height: 90px;
     gap: 8px;
-    padding: 12px;
+    padding: 8px;
     text-align: center;
   }
   .widget-state-icon {

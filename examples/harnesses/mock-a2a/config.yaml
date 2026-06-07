@@ -36,9 +36,9 @@ display:
 weather:
   enabled: true
   provider: open-meteo
-  location-name: London
-  latitude: 51.5072
-  longitude: -0.1276
+  location-name: Dundee
+  latitude: 56.462
+  longitude: -2.9707
   temperature-unit: celsius
   wind-speed-unit: kmh
 
@@ -88,23 +88,31 @@ dashboard:
       title: "Clock"
       x: 0
       y: 0
-      w: 2
+      w: 6
       h: 1
+      min-w: 3
+      min-h: 1
+      size: wide
       visible: true
+      mode: ui
       settings:
         chrome: clear
     - id: "weather-widget"
       type: "weather"
       title: "Local Weather"
-      x: 2
+      x: 6
       y: 0
-      w: 2
+      w: 6
       h: 1
+      min-w: 3
+      min-h: 1
+      size: wide
       visible: true
+      mode: ui
       settings:
-        location: "London"
-        latitude: 51.5072
-        longitude: -0.1276
+        location: "Dundee"
+        latitude: 56.462
+        longitude: -2.9707
         temperature-unit: "celsius"
         wind-speed-unit: "kmh"
     - id: "assistant-chat"
@@ -112,17 +120,25 @@ dashboard:
       title: "Concierge Chat"
       x: 0
       y: 1
-      w: 2
+      w: 6
       h: 2
+      min-w: 3
+      min-h: 1
+      size: medium
       visible: true
+      mode: ui
     - id: "hacker-news"
       type: "rss"
       title: "Tech News"
-      x: 2
+      x: 6
       y: 1
-      w: 2
+      w: 6
       h: 2
+      min-w: 3
+      min-h: 1
+      size: medium
       visible: true
+      mode: ui
       settings:
         limit: 5
         feeds:
@@ -133,9 +149,13 @@ dashboard:
       title: "Markets"
       x: 0
       y: 3
-      w: 2
+      w: 6
       h: 2
+      min-w: 3
+      min-h: 1
+      size: medium
       visible: true
+      mode: ui
       settings:
         tickers:
           - "AAPL"

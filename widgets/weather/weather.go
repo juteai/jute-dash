@@ -76,13 +76,37 @@ func (w *WeatherWidget) CatalogInfo() widgets.WidgetCatalogItem {
 		Name:          "Weather",
 		Description:   "Current temperature, apparent temperature, and condition from Open-Meteo.",
 		DefaultTitle:  "Weather",
-		DefaultW:      2,
+		DefaultW:      6,
 		DefaultH:      1,
-		MinW:          1,
+		MinW:          3,
 		MinH:          1,
 		DefaultSize:   "wide",
 		Overflow:      "clip",
 		AllowMultiple: false,
+		SettingsSchema: []widgets.SettingField{
+			{
+				ID:    "location",
+				Type:  widgets.SettingString,
+				Label: "Location name",
+				Help:  "Display label for the location.",
+			},
+			{ID: "latitude", Type: widgets.SettingNumber, Label: "Latitude"},
+			{ID: "longitude", Type: widgets.SettingNumber, Label: "Longitude"},
+			{
+				ID:      "temperature-unit",
+				Type:    widgets.SettingEnum,
+				Label:   "Temperature unit",
+				Default: "celsius",
+				Options: []string{"celsius", "fahrenheit"},
+			},
+			{
+				ID:      "wind-speed-unit",
+				Type:    widgets.SettingEnum,
+				Label:   "Wind speed unit",
+				Default: "kmh",
+				Options: []string{"kmh", "mph", "ms"},
+			},
+		},
 	}
 }
 

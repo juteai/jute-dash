@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"jute-dash/apps/hub/internal/pkg/httphelper"
 	"jute-dash/widgets"
 )
 
@@ -34,9 +35,35 @@ func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/widgets/layout/reset", c.handleWidgetLayoutReset)
 }
 
+// RegisteredCatalog returns catalog metadata for every registered widget,
+// converted into the dashboard package's catalog item shape. This is the single
+// source the layout store uses for normalization, so all registered kinds
+// (including rss and markets) are known and share their authored defaults.
+func RegisteredCatalog() []WidgetCatalogItem {
+	items := widgets.List()
+	catalog := make([]WidgetCatalogItem, 0, len(items))
+	for _, it := range items {
+		info := it.CatalogInfo()
+		catalog = append(catalog, WidgetCatalogItem{
+			Kind:          info.Kind,
+			Name:          info.Name,
+			Description:   info.Description,
+			DefaultTitle:  info.DefaultTitle,
+			DefaultW:      info.DefaultW,
+			DefaultH:      info.DefaultH,
+			MinW:          info.MinW,
+			MinH:          info.MinH,
+			DefaultSize:   info.DefaultSize,
+			Overflow:      info.Overflow,
+			AllowMultiple: info.AllowMultiple,
+		})
+	}
+	return catalog
+}
+
 func (c *Controller) handleWidgetCatalog(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		c.writeMethodNotAllowed(w, http.MethodGet)
+		httphelper.WriteMethodNotAllowed(w, http.MethodGet)
 		return
 	}
 	items := widgets.List()
@@ -44,7 +71,7 @@ func (c *Controller) handleWidgetCatalog(w http.ResponseWriter, r *http.Request)
 	for _, it := range items {
 		catalog = append(catalog, it.CatalogInfo())
 	}
-	c.writeJSON(w, http.StatusOK, map[string]any{
+	httphelper.WriteJSON(w, http.StatusOK, map[string]any{
 		"widgets": catalog,
 	})
 }
@@ -55,38 +82,38 @@ func (c *Controller) handleWidgetLayout(w http.ResponseWriter, r *http.Request) 
 		profileID := r.URL.Query().Get("profileId")
 		layout, err := c.layoutStore.WidgetLayout(r.Context(), profileID)
 		if err != nil {
-			c.writeError(w, http.StatusInternalServerError, "widget layout is unavailable")
+			httphelper.WriteError(w, http.StatusInternalServerError, "widget layout is unavailable")
 			return
 		}
 		hydrated := HydrateWidgetLayout(r.Context(), layout)
-		c.writeJSON(w, http.StatusOK, hydrated)
+		httphelper.WriteJSON(w, http.StatusOK, hydrated)
 	case http.MethodPut:
 		var layout WidgetLayout
 		if err := json.NewDecoder(r.Body).Decode(&layout); err != nil {
-			c.writeError(w, http.StatusBadRequest, "invalid JSON request body")
+			httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
 			return
 		}
 		saved, err := c.layoutStore.SaveWidgetLayout(r.Context(), layout)
 		if err != nil {
 			if errors.Is(err, ErrInvalidLayout) {
-				c.writeError(w, http.StatusBadRequest, "invalid widget layout")
+				httphelper.WriteError(w, http.StatusBadRequest, err.Error())
 				return
 			}
-			c.writeError(w, http.StatusInternalServerError, "widget layout could not be saved")
+			httphelper.WriteError(w, http.StatusInternalServerError, "widget layout could not be saved")
 			return
 		}
 		if c.onUpdate != nil {
 			c.onUpdate(saved)
 		}
-		c.writeJSON(w, http.StatusOK, saved)
+		httphelper.WriteJSON(w, http.StatusOK, saved)
 	default:
-		c.writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut)
+		httphelper.WriteMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut)
 	}
 }
 
 func (c *Controller) handleWidgetLayoutReset(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		c.writeMethodNotAllowed(w, http.MethodPost)
+		httphelper.WriteMethodNotAllowed(w, http.MethodPost)
 		return
 	}
 	profileID := strings.TrimSpace(r.URL.Query().Get("profileId"))
@@ -97,16 +124,16 @@ func (c *Controller) handleWidgetLayoutReset(w http.ResponseWriter, r *http.Requ
 	saved, err := c.layoutStore.ResetWidgetLayout(r.Context(), profileID)
 	if err != nil {
 		if errors.Is(err, ErrInvalidLayout) {
-			c.writeError(w, http.StatusBadRequest, "invalid widget layout")
+			httphelper.WriteError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		c.writeError(w, http.StatusInternalServerError, "widget layout could not be reset")
+		httphelper.WriteError(w, http.StatusInternalServerError, "widget layout could not be reset")
 		return
 	}
 	if c.onUpdate != nil {
 		c.onUpdate(saved)
 	}
-	c.writeJSON(w, http.StatusOK, saved)
+	httphelper.WriteJSON(w, http.StatusOK, saved)
 }
 
 // HydrateWidgetLayout fills in widget data and overflow properties dynamically.
@@ -129,21 +156,4 @@ func HydrateWidgetLayout(ctx context.Context, layout WidgetLayout) WidgetLayout 
 		}
 	}
 	return layout
-}
-
-// Helpers
-
-func (c *Controller) writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
-}
-
-func (c *Controller) writeError(w http.ResponseWriter, status int, message string) {
-	c.writeJSON(w, status, map[string]string{"error": message})
-}
-
-func (c *Controller) writeMethodNotAllowed(w http.ResponseWriter, allow string) {
-	w.Header().Set("Allow", allow)
-	c.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 }

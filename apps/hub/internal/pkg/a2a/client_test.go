@@ -1,11 +1,13 @@
 package a2a
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestJSONRPCClientSendsA2A10SendMessageRequest(t *testing.T) {
@@ -62,8 +64,8 @@ func TestJSONRPCClientSendsA2A10SendMessageRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendMessage() error = %v", err)
 	}
-	if got.Method != "SendMessage" {
-		t.Fatalf("method = %q, want SendMessage", got.Method)
+	if got.Method != "message/send" {
+		t.Fatalf("method = %q, want message/send", got.Method)
 	}
 	if got.Params.Configuration.ReturnImmediately == nil || *got.Params.Configuration.ReturnImmediately {
 		t.Fatal("expected blocking request with returnImmediately=false")
@@ -105,8 +107,8 @@ func TestJSONRPCClientDoesNotRetryLegacyMethodNames(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected method-not-found error")
 	}
-	if method != "SendMessage" {
-		t.Fatalf("method = %q, want SendMessage", method)
+	if method != "message/send" {
+		t.Fatalf("method = %q, want message/send", method)
 	}
 }
 
@@ -468,7 +470,7 @@ func TestJSONRPCClientGetTaskSendsExpectedRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if got.Method != "GetTask" || got.Params.ID != "task-2" || got.Params.HistoryLength != 25 {
+	if got.Method != "tasks/get" || got.Params.ID != "task-2" || got.Params.HistoryLength != 25 {
 		t.Fatalf("unexpected request: %+v", got)
 	}
 	if task.ID != "task-2" || task.ContextID != "ctx-2" || len(task.Messages) != 1 || task.Messages[0].Text != "Done" {
@@ -487,27 +489,43 @@ func TestJSONRPCClientStreamsA2AEvents(t *testing.T) {
 		}
 		method = req.Method
 		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatalf("ResponseWriter is not a Flusher")
+		}
 		writeRPCSSE(t, w, `{"task":{"id":"task-1","contextId":"ctx-1","status":{"state":"working"}}}`)
+		flusher.Flush()
 		writeRPCSSE(
 			t,
 			w,
 			`{"artifactUpdate":{"taskId":"task-1","contextId":"ctx-1","artifact":{"parts":[{"text":"Hel"}]},"append":true}}`,
 		)
+		flusher.Flush()
 		writeRPCSSE(
 			t,
 			w,
 			`{"artifactUpdate":{"taskId":"task-1","contextId":"ctx-1","artifact":{"parts":[{"text":"lo"}]},"append":true,"lastChunk":true}}`,
 		)
+		flusher.Flush()
 		writeRPCSSE(
 			t,
 			w,
 			`{"statusUpdate":{"taskId":"task-1","contextId":"ctx-1","status":{"state":"completed"},"final":true}}`,
 		)
+		flusher.Flush()
+		// Block the handler. Once the client terminates scanning, it closes the response
+		// body, which cancels the request context and lets this handler exit.
+		select {
+		case <-r.Context().Done():
+		}
 	}))
 	defer server.Close()
 
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+
 	var events []StreamEvent
-	err := NewJSONRPCClient().StreamMessage(t.Context(), SendMessageRequest{
+	err := NewJSONRPCClient().StreamMessage(ctx, SendMessageRequest{
 		EndpointURL:     server.URL,
 		ProtocolBinding: ProtocolJSONRPC,
 		Text:            "Hello",
@@ -518,8 +536,8 @@ func TestJSONRPCClientStreamsA2AEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StreamMessage() error = %v", err)
 	}
-	if method != "SendStreamingMessage" {
-		t.Fatalf("method = %q, want SendStreamingMessage", method)
+	if method != "message/stream" {
+		t.Fatalf("method = %q, want message/stream", method)
 	}
 	if len(events) != 4 {
 		t.Fatalf("expected 4 events, got %+v", events)
@@ -528,7 +546,7 @@ func TestJSONRPCClientStreamsA2AEvents(t *testing.T) {
 		events[3].Kind != "status" {
 		t.Fatalf("unexpected stream event kinds: %+v", events)
 	}
-	if events[1].Text != "Hel" || !events[1].Append || events[2].Text != "lo" || !events[2].Terminal ||
+	if events[1].Text != "Hel" || !events[1].Append || events[2].Text != "lo" || events[2].Terminal ||
 		!events[3].Terminal {
 		t.Fatalf("unexpected stream events: %+v", events)
 	}

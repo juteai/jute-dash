@@ -9,6 +9,21 @@ import (
 
 var ErrInvalidLayout = errors.New("invalid widget layout")
 
+// BaseColumns is the number of columns in the authored base grid. Layouts are
+// stored at this resolution and proportionally remapped to fewer columns on
+// smaller screens by the display.
+const BaseColumns = 12
+
+// LegacyColumnScale migrates layouts authored on the original 4-column grid to
+// the 12-column base grid by scaling x/w by this factor.
+const LegacyColumnScale = 3
+
+// Widget modes.
+const (
+	WidgetModeUI       = "ui"
+	WidgetModeHeadless = "headless"
+)
+
 // DisplayConfig represents settings for the dashboard display shell.
 type DisplayConfig struct {
 	Theme        string              `json:"theme"        yaml:"theme"`
@@ -29,6 +44,10 @@ type DisplayBackground struct {
 	Fit      string `json:"fit"      yaml:"fit"`
 	Position string `json:"position" yaml:"position"`
 	Overlay  string `json:"overlay"  yaml:"overlay"`
+	// Slideshow configuration. Used when Kind is "slideshow".
+	Images          []string `json:"images,omitempty"          yaml:"images,omitempty"`
+	IntervalSeconds int      `json:"intervalSeconds,omitempty" yaml:"interval-seconds,omitempty"`
+	Transition      string   `json:"transition,omitempty"      yaml:"transition,omitempty"`
 }
 
 // DisplayWidgetChrome defines default visual framing rules.
@@ -50,7 +69,11 @@ type DashboardWidgetConfig struct {
 	Y        int            `json:"y"                  yaml:"y"`
 	W        int            `json:"w"                  yaml:"w"`
 	H        int            `json:"h"                  yaml:"h"`
+	MinW     int            `json:"minW,omitempty"     yaml:"min-w,omitempty"`
+	MinH     int            `json:"minH,omitempty"     yaml:"min-h,omitempty"`
+	Size     string         `json:"size,omitempty"     yaml:"size,omitempty"`
 	Visible  bool           `json:"visible"            yaml:"visible"`
+	Mode     string         `json:"mode,omitempty"     yaml:"mode,omitempty"`
 	Settings map[string]any `json:"settings,omitempty" yaml:"settings,omitempty"`
 }
 
@@ -90,6 +113,7 @@ type WidgetInstance struct {
 	MinH     int            `json:"minH"`
 	Size     string         `json:"size"`
 	Overflow string         `json:"overflow"`
+	Mode     string         `json:"mode"`
 	Settings map[string]any `json:"settings"`
 	Visible  bool           `json:"visible"`
 	Data     any            `json:"data,omitempty"`
@@ -122,6 +146,7 @@ type WidgetInstanceDB struct {
 	MinW            int    `gorm:"column:min_w"`
 	MinH            int    `gorm:"column:min_h"`
 	Size            string `gorm:"column:size"`
+	Mode            string `gorm:"column:mode;default:'ui'"`
 	SettingsJSON    string `gorm:"column:settings_json"`
 	Visible         int    `gorm:"column:visible"`
 	SortOrder       int    `gorm:"column:sort_order"`
@@ -249,8 +274,31 @@ func validateDisplayBackground(background DisplayBackground, problems *[]string)
 		if containsRemoteReference(value) || filepath.IsAbs(value) || strings.Contains(value, "..") {
 			*problems = append(*problems, "display.background.value must be a relative safe file reference")
 		}
+	case "slideshow":
+		if len(background.Images) == 0 {
+			*problems = append(
+				*problems,
+				"display.background.images must contain at least one image when kind is slideshow",
+			)
+		}
+		for _, image := range background.Images {
+			value := strings.TrimSpace(image)
+			if value == "" {
+				*problems = append(*problems, "display.background.images must not contain empty entries")
+				continue
+			}
+			if containsRemoteReference(value) || filepath.IsAbs(value) || strings.Contains(value, "..") {
+				*problems = append(*problems, "display.background.images must be relative safe file references")
+			}
+		}
+		if background.IntervalSeconds < 0 {
+			*problems = append(*problems, "display.background.intervalSeconds must not be negative")
+		}
+		if t := strings.TrimSpace(background.Transition); t != "" && t != "none" && t != "crossfade" {
+			*problems = append(*problems, "display.background.transition must be none or crossfade")
+		}
 	default:
-		*problems = append(*problems, "display.background.kind must be theme, color, asset, or file")
+		*problems = append(*problems, "display.background.kind must be theme, color, asset, file, or slideshow")
 	}
 	switch strings.TrimSpace(background.Fit) {
 	case "cover", "contain", "tile":
@@ -348,6 +396,14 @@ func ApplyDisplayDefaults(cfg *DisplayConfig) {
 	}
 	if strings.TrimSpace(cfg.Background.Overlay) == "" {
 		cfg.Background.Overlay = defaults.Background.Overlay
+	}
+	if strings.TrimSpace(cfg.Background.Kind) == "slideshow" {
+		if cfg.Background.IntervalSeconds <= 0 {
+			cfg.Background.IntervalSeconds = 30
+		}
+		if strings.TrimSpace(cfg.Background.Transition) == "" {
+			cfg.Background.Transition = "crossfade"
+		}
 	}
 	if strings.TrimSpace(cfg.WidgetChrome.Default) == "" {
 		cfg.WidgetChrome.Default = defaults.WidgetChrome.Default

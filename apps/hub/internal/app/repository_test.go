@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -109,6 +110,47 @@ func TestBootstrapConfigAppliesOnlyOnce(t *testing.T) {
 	}
 	if len(cfg2.Agents) != 0 {
 		t.Fatalf("store runtime config should not own agents, got %+v", cfg2.Agents)
+	}
+}
+
+func TestBootstrapDashboardWidgetsSeedRuntimeStore(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+
+	bootstrap := DefaultConfig()
+	bootstrap.Home.Name = "Bootstrap House"
+	bootstrap.Home.Timezone = "Europe/London"
+	bootstrap.Home.Locale = "en-GB"
+	bootstrap.Dashboard.Widgets = []DashboardWidgetConfig{
+		{
+			ID:      "custom-clock",
+			Type:    "date-time",
+			Title:   "Kitchen Clock",
+			X:       0,
+			Y:       0,
+			W:       9,
+			H:       2,
+			MinW:    3,
+			MinH:    1,
+			Size:    "large",
+			Visible: true,
+		},
+	}
+
+	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	layout, err := st.WidgetLayout(context.Background(), "")
+	if err != nil {
+		t.Fatalf("WidgetLayout() error = %v", err)
+	}
+	if len(layout.Widgets) != 1 {
+		t.Fatalf("expected one bootstrapped widget, got %+v", layout.Widgets)
+	}
+	widget := layout.Widgets[0]
+	if widget.ID != "custom-clock" || widget.W != 9 || widget.H != 2 || widget.Size != "large" {
+		t.Fatalf("bootstrap dashboard widget was not seeded: %+v", widget)
 	}
 }
 
@@ -527,7 +569,8 @@ func TestResetWidgetLayoutRestoresDefaults(t *testing.T) {
 
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
-	st, err := Open(filepath.Join(t.TempDir(), "jute.db"))
+	logger := slog.New(slog.DiscardHandler)
+	st, err := Open(filepath.Join(t.TempDir(), "jute.db"), logger)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}

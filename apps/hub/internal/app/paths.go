@@ -27,6 +27,23 @@ func DatabasePath(dataDir string) string {
 	return filepath.Join(dataDir, dbFileName)
 }
 
+// BackgroundsDir returns the hub-managed directory for local background images.
+func BackgroundsDir(dataDir string) string {
+	return filepath.Join(dataDir, "backgrounds")
+}
+
+// backgroundsDir is the resolved local background image directory, set once at
+// startup from the resolved data directory. Empty in tests / library use.
+//
+//nolint:gochecknoglobals // Startup-set runtime path; mirrors data-dir resolution.
+var backgroundsDir string
+
+// SetBackgroundsDir records the hub-managed background image directory. It is
+// called once during startup before the HTTP handler is constructed.
+func SetBackgroundsDir(dir string) {
+	backgroundsDir = strings.TrimSpace(dir)
+}
+
 func defaultDataDir() (string, error) {
 	switch runtime.GOOS {
 	case "darwin":

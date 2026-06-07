@@ -71,7 +71,7 @@ $JUTE_HOME/jute.db
 
 Default bootstrap config:
 
-- development: `examples/config/jute.example.yaml`;
+- development: `examples/harnesses/mock-a2a/config.yaml` or `examples/harnesses/kronk-a2a/config.yaml`;
 - Docker: `/config/config.yaml`;
 - systemd: `/etc/jute/config.yaml`;
 - ordinary local install: optional.
@@ -160,6 +160,14 @@ Before adding a new setting, classify it as one of:
 - `cache`: refreshable data such as Agent Cards, health checks, provider status, and weather snapshots.
 - `secret reference`: environment variable name, keyring key, or OAuth credential reference.
 - `transient UI state`: open menus, drag state, local focus state, and unsaved form edits.
+- `local media asset`: hub-managed binary media such as uploaded background images, stored under the hub data directory and referenced by id/path, never inlined into config or public API responses.
+
+Classification of the new display/widget settings:
+
+- widget instance `mode` (`ui`/`headless`), widget settings values, and the 12-column layout are `household durable` (SQLite truth, YAML bootstrap/export);
+- a widget's settings schema is part of its `install record` / built-in widget metadata (surfaced via the catalog), not a per-home setting;
+- the background reference and slideshow configuration (image references, interval, fit, overlay) are `household durable`;
+- uploaded background image binaries are `local media assets`.
 
 Do not store durable settings only in browser local storage.
 
@@ -177,7 +185,7 @@ Rules:
 
 Jute intentionally does not copy Glance's live config reload model in v1. Most runtime edits happen through the hub and persist to SQLite. The exception in the current pre-v1 implementation is A2A agent registration: adding, enabling/disabling, and removing agents through the UI writes the active YAML config file when the hub was started with a writable `.yaml` or `.yml` config path. Editing YAML by hand is still not watched or automatically reloaded; restart or use future import flows for broader changes.
 
-Conversation transcripts are not stored in YAML, JSON, or SQLite in the current implementation. Jute reads history from the selected A2A agent through `ListTasks` and `GetTask`; agents that do not expose those methods produce a history-unavailable state in the UI.
+Conversation transcripts are not stored in YAML, JSON, or SQLite in the current implementation. The display reads history from the selected A2A agent through standard `ListTasks` and `GetTask` requests sent via the hub's authenticated agent proxy.
 
 ## Secrets
 
@@ -308,7 +316,7 @@ Recovery flow:
 
 ## Development Defaults
 
-Development keeps using `examples/config/jute.example.yaml` for a rich demo.
+Development keeps using the runnable harness configs under `examples/harnesses/`.
 
 Production defaults should be quieter:
 

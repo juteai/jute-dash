@@ -73,6 +73,7 @@ func (svc *CardService) Refresh(
 	configuredAgent AgentConfig,
 ) AgentCardCacheEntry {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	failExpiresAt := time.Now().UTC().Add(15 * time.Second).Format(time.RFC3339Nano)
 	c := AgentCardCacheEntry{
 		AgentID:                 agent.ID,
 		CardStatus:              "unavailable",
@@ -81,7 +82,7 @@ func (svc *CardService) Refresh(
 		SelectedProtocolBinding: agent.ProtocolBinding,
 		SelectedProtocolVersion: a2aclient.ProtocolVersion10,
 		FetchedAt:               now,
-		ExpiresAt:               now,
+		ExpiresAt:               failExpiresAt,
 	}
 	cardURL, err := svc.cardPolicy.Authorize(agent.CardURL)
 	if err != nil {

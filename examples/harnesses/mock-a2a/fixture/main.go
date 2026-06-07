@@ -160,11 +160,11 @@ func handleInvoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch req.Method {
-	case "SendMessage", "SendStreamingMessage":
+	case "SendMessage", "SendStreamingMessage", "message/send", "message/stream":
 		handleSend(w, r, req)
 	case "ListTasks":
 		handleListTasks(w, req)
-	case "GetTask":
+	case "GetTask", "tasks/get":
 		handleGetTask(w, req)
 	default:
 		writeRPCError(w, req.ID, -32601, "method not found")
@@ -218,7 +218,7 @@ func handleSend(w http.ResponseWriter, r *http.Request, req rpcRequest) {
 		Artifacts: []artifact{{Parts: []part{{Text: answer}}}},
 	}
 	history.save(record)
-	if req.Method == "SendStreamingMessage" {
+	if req.Method == "SendStreamingMessage" || req.Method == "message/stream" {
 		writeStream(w, req.ID, record)
 		return
 	}

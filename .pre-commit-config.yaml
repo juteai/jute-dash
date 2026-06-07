@@ -45,3 +45,10 @@ repos:
         entry: gitleaks git . --staged --redact
         language: system
         pass_filenames: false
+      - id: generate-mocks
+        name: mockery (generated mocks)
+        entry: make generate-mocks
+        language: system
+        pass_filenames: false
+        files: '^(apps/hub|widgets|\.mockery\.yaml|go\.(mod|sum))'
+        stages: [pre-commit]

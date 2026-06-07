@@ -1,13 +1,21 @@
 <script lang="ts">
-  import { RefreshCw, X } from 'lucide-svelte';
+  import { onMount } from 'svelte';
+  import { RefreshCw, X, Trash2, Upload } from 'lucide-svelte';
   import { availabilityLabel, getAgentAvailability } from '$lib/agents';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import { themeOptions } from '$lib/themes';
+  import {
+    backgroundImageURL,
+    deleteBackgroundImage,
+    getBackgroundImages,
+    uploadBackgroundImage
+  } from '$lib/api';
   import type {
     Agent,
     AppStatus,
+    BackgroundImage,
     HouseholdSettings,
     Room,
     Tile,
@@ -33,6 +41,7 @@
     | 'agents'
     | 'mcp'
     | 'voice'
+    | 'appearance'
     | 'about' = 'household';
   export let onClose: () => void = () => {};
   export let onSaveHousehold: (
@@ -62,6 +71,15 @@
     const next = JSON.stringify(settings);
     if (next !== lastJSON.settings) {
       draft = structuredClone(settings);
+      if (!draft.display.background) {
+        draft.display.background = {
+          kind: 'theme',
+          value: '',
+          fit: 'cover',
+          position: 'center',
+          overlay: 'none'
+        };
+      }
       lastJSON.settings = next;
     }
   }
@@ -83,6 +101,7 @@
 
   const sections = [
     ['household', 'Household'],
+    ['appearance', 'Appearance'],
     ['rooms', 'Rooms'],
     ['tiles', 'Tiles'],
     ['agents', 'Agents'],
@@ -90,6 +109,94 @@
     ['voice', 'Voice'],
     ['about', 'About']
   ] as const;
+
+  let backgroundLibrary: BackgroundImage[] = [];
+  let uploadingBackground = false;
+  let backgroundError = '';
+
+  const BACKGROUND_KINDS = ['theme', 'color', 'file', 'slideshow'];
+
+  onMount(() => {
+    void loadBackgroundLibrary();
+  });
+
+  async function loadBackgroundLibrary() {
+    try {
+      backgroundLibrary = await getBackgroundImages(fetch);
+    } catch {
+      backgroundError = 'Background library is unavailable.';
+    }
+  }
+
+  function ensureBackground() {
+    if (!draft) {
+      return;
+    }
+    if (!draft.display.background) {
+      draft.display.background = {
+        kind: 'theme',
+        value: '',
+        fit: 'cover',
+        position: 'center',
+        overlay: 'none'
+      };
+    }
+  }
+
+  async function handleBackgroundUpload(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+    uploadingBackground = true;
+    backgroundError = '';
+    try {
+      const image = await uploadBackgroundImage(fetch, file);
+      backgroundLibrary = [...backgroundLibrary, image].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      );
+    } catch (err) {
+      backgroundError = err instanceof Error ? err.message : 'Upload failed.';
+    } finally {
+      uploadingBackground = false;
+      input.value = '';
+    }
+  }
+
+  async function removeBackgroundImage(name: string) {
+    try {
+      await deleteBackgroundImage(fetch, name);
+      backgroundLibrary = backgroundLibrary.filter(
+        (image) => image.name !== name
+      );
+    } catch {
+      backgroundError = 'Could not delete image.';
+    }
+  }
+
+  function selectSingleBackground(name: string) {
+    if (!draft) {
+      return;
+    }
+    ensureBackground();
+    draft.display.background.kind = 'file';
+    draft.display.background.value = name;
+    draft = draft;
+  }
+
+  function toggleSlideshowImage(name: string) {
+    if (!draft) {
+      return;
+    }
+    ensureBackground();
+    draft.display.background.kind = 'slideshow';
+    const images = draft.display.background.images ?? [];
+    draft.display.background.images = images.includes(name)
+      ? images.filter((image) => image !== name)
+      : [...images, name];
+    draft = draft;
+  }
 
   function numeric(value: string) {
     const parsed = Number.parseFloat(value);
@@ -510,8 +617,136 @@
           Voice provider selection is planned next. This panel currently shows
           the safe hub status only.
         </p>
+      {:else if activeSection === 'appearance'}
+        {#if draft && draft.display.background}
+          {@const bg = draft.display.background}
+          {#if backgroundError}
+            <p class="settings-issue">{backgroundError}</p>
+          {/if}
+          <div class="settings-form-grid">
+            <label>
+              <span>Background</span>
+              <select bind:value={draft.display.background.kind}>
+                {#each BACKGROUND_KINDS as kind (kind)}
+                  <option value={kind}>{kind}</option>
+                {/each}
+              </select>
+            </label>
+            {#if bg.kind === 'color'}
+              <label>
+                <span>Color value</span>
+                <input
+                  bind:value={draft.display.background.value}
+                  placeholder="#101010"
+                />
+              </label>
+            {/if}
+            <label>
+              <span>Fit</span>
+              <select bind:value={draft.display.background.fit}>
+                <option value="cover">Cover</option>
+                <option value="contain">Contain</option>
+                <option value="tile">Tile</option>
+              </select>
+            </label>
+            <label>
+              <span>Overlay</span>
+              <select bind:value={draft.display.background.overlay}>
+                <option value="none">None</option>
+                <option value="dim">Dim</option>
+                <option value="smoked">Smoked</option>
+                <option value="frosted">Frosted</option>
+              </select>
+            </label>
+            {#if bg.kind === 'slideshow'}
+              <label>
+                <span>Interval (seconds)</span>
+                <input
+                  type="number"
+                  min="3"
+                  value={bg.intervalSeconds ?? 30}
+                  on:input={(event) =>
+                    draft &&
+                    (draft.display.background.intervalSeconds = numeric(
+                      event.currentTarget.value
+                    ))}
+                />
+              </label>
+            {/if}
+          </div>
+
+          {#if bg.kind === 'file' || bg.kind === 'slideshow'}
+            <div class="settings-actions">
+              <label class="background-upload">
+                <Upload size={15} />
+                <span
+                  >{uploadingBackground ? 'Uploading…' : 'Upload image'}</span
+                >
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  on:change={handleBackgroundUpload}
+                />
+              </label>
+            </div>
+            {#if backgroundLibrary.length === 0}
+              <p class="settings-empty">No background images uploaded yet.</p>
+            {:else}
+              <div class="background-grid">
+                {#each backgroundLibrary as image (image.name)}
+                  {@const selected =
+                    bg.kind === 'slideshow'
+                      ? (bg.images ?? []).includes(image.name)
+                      : bg.value === image.name}
+                  <div
+                    class="background-thumb"
+                    class:background-thumb--selected={selected}
+                  >
+                    <button
+                      type="button"
+                      class="background-thumb-pick"
+                      style={`background-image: url("${backgroundImageURL(
+                        image.name
+                      )}")`}
+                      aria-label={`Use ${image.name}`}
+                      on:click={() =>
+                        bg.kind === 'slideshow'
+                          ? toggleSlideshowImage(image.name)
+                          : selectSingleBackground(image.name)}
+                    >
+                      {#if selected}<span class="background-thumb-check">✓</span
+                        >{/if}
+                    </button>
+                    <button
+                      type="button"
+                      class="background-thumb-delete"
+                      aria-label={`Delete ${image.name}`}
+                      on:click={() => removeBackgroundImage(image.name)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          {/if}
+
+          <div class="settings-actions">
+            <Button on:click={saveHousehold} disabled={saving}
+              >{saving ? 'Saving' : 'Save appearance'}</Button
+            >
+          </div>
+        {:else}
+          <p class="settings-empty">Appearance settings are loading.</p>
+        {/if}
       {:else}
         <div class="settings-status-grid">
+          <div>
+            <span>Home</span><strong
+              >{settings?.home.name || 'Jute Dash'}</strong
+            >
+          </div>
           <div>
             <span>Hub version</span><strong>{status?.version || 'dev'}</strong>
           </div>
@@ -538,3 +773,71 @@
     </div>
   </section>
 </div>
+
+<style>
+  .background-upload {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    border-radius: 9px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.18));
+    cursor: pointer;
+    font-size: 0.86rem;
+    min-height: 44px;
+  }
+  .background-upload:hover {
+    background: var(--surface-strong, rgba(255, 255, 255, 0.06));
+  }
+  .background-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .background-thumb {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 2px solid transparent;
+  }
+  .background-thumb--selected {
+    border-color: var(--accent, #6366f1);
+  }
+  .background-thumb-pick {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    background-size: cover;
+    background-position: center;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+  }
+  .background-thumb-check {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    background: var(--accent, #6366f1);
+    color: #fff;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+  }
+  .background-thumb-delete {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    border: none;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    border-radius: 6px;
+    padding: 4px;
+    cursor: pointer;
+    display: inline-flex;
+  }
+</style>

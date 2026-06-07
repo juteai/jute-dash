@@ -84,7 +84,7 @@ Initial API families:
 - `/api/v1/home`: current normalized home state.
 - `/api/v1/widgets`: widget catalog, layouts, widget state, and widget permissions. The current v1 surface includes `GET /api/v1/widgets/catalog`, `GET /api/v1/widgets/layout`, `PUT /api/v1/widgets/layout`, and `POST /api/v1/widgets/layout/reset`.
 - `/api/v1/agents`: configured agents, cached cards, skills, health, and selected bindings.
-- `/api/v1/messages`: compatibility endpoint for simple blocking user turns that become A2A tasks.
+- `/api/v1/proxy/agents/{agentId}`: authenticated pass-through for standard A2A requests from the display. The hub selects the discovered endpoint and injects configured credentials.
 - `/api/v1/setup/status`: first-run setup completeness.
 - `/api/v1/status`: setup, event stream, agent, MCP, voice, and degraded health summary for safe display diagnostics.
 - `/api/v1/devices`: future device profile and per-device settings.
@@ -92,7 +92,7 @@ Initial API families:
 - `/api/v1/voice/mute`, `/api/v1/voice/unmute`, `/api/v1/voice/cancel`: current voice state controls.
 - `/api/v1/voice/providers`: current provider-list response shape and future STT/TTS provider pack discovery, details, and health tests.
 - `/api/v1/tts`: future voice listing, preview, speak, and stop controls.
-- `/api/v1/conversations`: current multi-turn conversation APIs for typed turns. These are hub projections over the selected A2A agent's task history, with voice and wake-word turns planned to use the same pipeline.
+- Conversation history and typed turns currently use the A2A JavaScript SDK through the agent proxy rather than Jute-specific conversation routes.
 - `/api/v1/events`: currently a minimal SSE endpoint. Future releases will use it for replayable home, widget, agent, voice, and task updates.
 - `/api/v1/settings/household`: current home, display, and weather settings.
 - `/api/v1/settings/rooms`: current editable room list.

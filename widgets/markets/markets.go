@@ -3,8 +3,10 @@ package markets
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -25,20 +27,23 @@ type marketCacheEntry struct {
 	fetchedAt time.Time
 }
 
-type yfResponse struct {
-	QuoteResponse struct {
-		Result []yfQuote `json:"result"`
-	} `json:"quoteResponse"`
-}
-
-type yfQuote struct {
-	Symbol                     string  `json:"symbol"`
-	ShortName                  string  `json:"shortName"`
-	LongName                   string  `json:"longName"`
-	RegularMarketPrice         float64 `json:"regularMarketPrice"`
-	RegularMarketChange        float64 `json:"regularMarketChange"`
-	RegularMarketChangePercent float64 `json:"regularMarketChangePercent"`
-	Currency                   string  `json:"currency"`
+type yfChartResponse struct {
+	Chart struct {
+		Result []struct {
+			Meta struct {
+				Symbol             string  `json:"symbol"`
+				ShortName          string  `json:"shortName"`
+				LongName           string  `json:"longName"`
+				RegularMarketPrice float64 `json:"regularMarketPrice"`
+				PreviousClose      float64 `json:"previousClose"`
+				Currency           string  `json:"currency"`
+			} `json:"meta"`
+		} `json:"result"`
+		Error *struct {
+			Code        string `json:"code"`
+			Description string `json:"description"`
+		} `json:"error"`
+	} `json:"chart"`
 }
 
 type MarketItemResult struct {
@@ -60,13 +65,21 @@ func (w *MarketsWidget) CatalogInfo() widgets.WidgetCatalogItem {
 		Name:          "Markets (Stocks)",
 		Description:   "Displays stock, commodity, or crypto market prices.",
 		DefaultTitle:  "Markets",
-		DefaultW:      2,
+		DefaultW:      6,
 		DefaultH:      2,
-		MinW:          1,
+		MinW:          3,
 		MinH:          1,
 		DefaultSize:   "medium",
 		Overflow:      "clip",
 		AllowMultiple: true,
+		SettingsSchema: []widgets.SettingField{
+			{
+				ID:    "tickers",
+				Type:  widgets.SettingStringList,
+				Label: "Tickers",
+				Help:  "Symbols such as AAPL, GOOG, BTC-USD.",
+			},
+		},
 	}
 }
 
@@ -89,6 +102,66 @@ func parseSettings(raw map[string]any) Settings {
 		}
 	}
 	return s
+}
+
+func (w *MarketsWidget) fetchTicker(ctx context.Context, ticker string) (MarketItemResult, error) {
+	apiURL := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s", url.PathEscape(ticker))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return MarketItemResult{}, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+
+	resp, err := w.client.Do(req)
+	if err != nil {
+		return MarketItemResult{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return MarketItemResult{}, fmt.Errorf("YF API error: %d", resp.StatusCode)
+	}
+
+	var payload yfChartResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return MarketItemResult{}, err
+	}
+
+	if payload.Chart.Error != nil {
+		return MarketItemResult{}, fmt.Errorf(
+			"YF API error: %s - %s",
+			payload.Chart.Error.Code,
+			payload.Chart.Error.Description,
+		)
+	}
+
+	if len(payload.Chart.Result) == 0 {
+		return MarketItemResult{}, fmt.Errorf("no data returned for ticker %s", ticker)
+	}
+
+	meta := payload.Chart.Result[0].Meta
+	name := meta.ShortName
+	if name == "" {
+		name = meta.LongName
+	}
+	if name == "" {
+		name = meta.Symbol
+	}
+
+	change := meta.RegularMarketPrice - meta.PreviousClose
+	changePercent := 0.0
+	if meta.PreviousClose != 0 {
+		changePercent = (change / meta.PreviousClose) * 100
+	}
+
+	return MarketItemResult{
+		Symbol:        meta.Symbol,
+		Name:          name,
+		Price:         meta.RegularMarketPrice,
+		Change:        change,
+		ChangePercent: changePercent,
+		Currency:      meta.Currency,
+	}, nil
 }
 
 func (w *MarketsWidget) FetchData(ctx context.Context, raw map[string]any) (any, error) {
@@ -116,55 +189,43 @@ func (w *MarketsWidget) FetchData(ctx context.Context, raw map[string]any) (any,
 	}
 	w.cacheMu.Unlock()
 
-	apiURL := fmt.Sprintf("https://query1.finance.yahoo.com/v7/finance/quote?symbols=%s", strings.Join(tickers, ","))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return []MarketItemResult{}, err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+	results := make([]MarketItemResult, len(tickers))
+	successFlags := make([]bool, len(tickers))
+	var wg sync.WaitGroup
 
-	resp, err := w.client.Do(req)
-	if err != nil {
-		return []MarketItemResult{}, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return []MarketItemResult{}, fmt.Errorf("YF API error: %d", resp.StatusCode)
-	}
-
-	var payload yfResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return []MarketItemResult{}, err
+	for i, t := range tickers {
+		wg.Add(1)
+		go func(idx int, ticker string) {
+			defer wg.Done()
+			res, err := w.fetchTicker(ctx, ticker)
+			if err == nil {
+				results[idx] = res
+				successFlags[idx] = true
+			}
+		}(i, t)
 	}
 
-	results := make([]MarketItemResult, 0, len(payload.QuoteResponse.Result))
-	for _, q := range payload.QuoteResponse.Result {
-		name := q.ShortName
-		if name == "" {
-			name = q.LongName
+	wg.Wait()
+
+	finalResults := make([]MarketItemResult, 0, len(tickers))
+	for i, success := range successFlags {
+		if success {
+			finalResults = append(finalResults, results[i])
 		}
-		if name == "" {
-			name = q.Symbol
-		}
-		results = append(results, MarketItemResult{
-			Symbol:        q.Symbol,
-			Name:          name,
-			Price:         q.RegularMarketPrice,
-			Change:        q.RegularMarketChange,
-			ChangePercent: q.RegularMarketChangePercent,
-			Currency:      q.Currency,
-		})
+	}
+
+	if len(finalResults) == 0 && len(tickers) > 0 {
+		return []MarketItemResult{}, errors.New("all tickers failed to fetch")
 	}
 
 	w.cacheMu.Lock()
 	w.cache[cacheKey] = marketCacheEntry{
-		data:      results,
+		data:      finalResults,
 		fetchedAt: time.Now(),
 	}
 	w.cacheMu.Unlock()
 
-	return results, nil
+	return finalResults, nil
 }
 
 func (w *MarketsWidget) Skill() *widgetskills.Definition {

@@ -46,7 +46,7 @@ jobs:
 
       - name: Web tests
         working-directory: apps/web
-        run: npm run test
+        run: npm run test:coverage
 
       - name: Web build
         working-directory: apps/web

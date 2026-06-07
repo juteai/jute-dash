@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -8,7 +9,28 @@ import (
 	"testing"
 
 	a2aclient "jute-dash/apps/hub/internal/pkg/a2a"
+
+	"github.com/stretchr/testify/mock"
 )
+
+func newAgentSyncer(t *testing.T, configs *[]AgentConfig) *AgentSyncer {
+	t.Helper()
+	syncer := NewAgentSyncer(t)
+	syncer.EXPECT().
+		AgentsConfig(mock.Anything).
+		RunAndReturn(func(context.Context) ([]AgentConfig, error) {
+			return append([]AgentConfig(nil), (*configs)...), nil
+		}).
+		Maybe()
+	syncer.EXPECT().
+		SyncAgents(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, next []AgentConfig) {
+			*configs = append([]AgentConfig(nil), next...)
+		}).
+		Return(nil).
+		Maybe()
+	return syncer
+}
 
 func TestAgentManager_New_InitializesRegistry(t *testing.T) {
 	configs := []AgentConfig{
@@ -23,11 +45,10 @@ func TestAgentManager_New_InitializesRegistry(t *testing.T) {
 		},
 	}
 
-	getConfig := func() []AgentConfig { return configs }
-	saveConfig := func(c []AgentConfig) error { return nil }
+	syncer := newAgentSyncer(t, &configs)
 	cards := NewCardService()
 
-	mgr := NewAgentManager(getConfig, saveConfig, cards, "config.yaml")
+	mgr := NewAgentManager(syncer, cards, "config.yaml")
 	reg := mgr.ActiveRegistry()
 
 	agent, ok := reg.Find("agent-1")
@@ -71,11 +92,10 @@ func TestAgentManager_List_EnrichesAndTriggersDiscovery(t *testing.T) {
 
 	configs[0].CardURL = server.URL + "/card.json"
 
-	getConfig := func() []AgentConfig { return configs }
-	saveConfig := func(c []AgentConfig) error { return nil }
+	syncer := newAgentSyncer(t, &configs)
 	cards := NewCardService(a2aclient.AgentCardURLPolicy{URLs: []string{configs[0].CardURL}})
 
-	mgr := NewAgentManager(getConfig, saveConfig, cards, "config.yaml")
+	mgr := NewAgentManager(syncer, cards, "config.yaml")
 
 	// Verify list with triggerDiscovery=true fetching card from server
 	agentsList := mgr.List(t.Context(), true)
@@ -107,11 +127,10 @@ func TestAgentManager_Find(t *testing.T) {
 		},
 	}
 
-	getConfig := func() []AgentConfig { return configs }
-	saveConfig := func(c []AgentConfig) error { return nil }
+	syncer := newAgentSyncer(t, &configs)
 	cards := NewCardService(a2aclient.AgentCardURLPolicy{URLs: []string{configs[0].CardURL}})
 
-	mgr := NewAgentManager(getConfig, saveConfig, cards, "config.yaml")
+	mgr := NewAgentManager(syncer, cards, "config.yaml")
 
 	agent, ok := mgr.Find("agent-1")
 	if !ok {
@@ -128,12 +147,8 @@ func TestAgentManager_Find(t *testing.T) {
 }
 
 func TestAgentManager_Add(t *testing.T) {
-	var savedConfigs []AgentConfig
-	getConfig := func() []AgentConfig { return savedConfigs }
-	saveConfig := func(c []AgentConfig) error {
-		savedConfigs = c
-		return nil
-	}
+	configs := []AgentConfig{}
+	syncer := newAgentSyncer(t, &configs)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		card := a2aclient.AgentCard{
 			Name:        "New Agent",
@@ -151,7 +166,7 @@ func TestAgentManager_Add(t *testing.T) {
 	defer server.Close()
 
 	cards := NewCardService(a2aclient.AgentCardURLPolicy{URLs: []string{server.URL}})
-	mgr := NewAgentManager(getConfig, saveConfig, cards, "config.yaml")
+	mgr := NewAgentManager(syncer, cards, "config.yaml")
 
 	// Try adding with empty url
 	_, err := mgr.Add(t.Context(), "")
@@ -160,7 +175,7 @@ func TestAgentManager_Add(t *testing.T) {
 	}
 
 	// Try adding with invalid config path (not yaml)
-	badMgr := NewAgentManager(getConfig, saveConfig, cards, "config.json")
+	badMgr := NewAgentManager(syncer, cards, "config.json")
 	_, err = badMgr.Add(t.Context(), server.URL)
 	if !errors.Is(err, errYAMLConfigRequired) {
 		t.Errorf("expected errYAMLConfigRequired, got %v", err)
@@ -178,11 +193,11 @@ func TestAgentManager_Add(t *testing.T) {
 	if agent.Name != "New Agent" {
 		t.Errorf("expected name 'New Agent', got %q", agent.Name)
 	}
-	if len(savedConfigs) != 1 {
-		t.Fatalf("expected 1 saved config, got %d", len(savedConfigs))
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 saved config, got %d", len(configs))
 	}
-	if savedConfigs[0].CardURL != server.URL {
-		t.Errorf("expected saved CardURL to match server URL, got %q", savedConfigs[0].CardURL)
+	if configs[0].CardURL != server.URL {
+		t.Errorf("expected saved CardURL to match server URL, got %q", configs[0].CardURL)
 	}
 
 	// Add same agent again - should update cache but not append duplicates
@@ -193,16 +208,17 @@ func TestAgentManager_Add(t *testing.T) {
 	if agent2.ID != "new-agent" {
 		t.Errorf("expected agent ID to remain 'new-agent', got %q", agent2.ID)
 	}
-	if len(savedConfigs) != 1 {
-		t.Errorf("expected config count to remain 1, got %d", len(savedConfigs))
+	if len(configs) != 1 {
+		t.Errorf("expected config count to remain 1, got %d", len(configs))
 	}
 }
 
 func TestAgentManager_AddRejectsUnallowedRemoteCardURL(t *testing.T) {
 	cards := NewCardService()
+	configs := []AgentConfig{}
+	syncer := newAgentSyncer(t, &configs)
 	mgr := NewAgentManager(
-		func() []AgentConfig { return nil },
-		func([]AgentConfig) error { return nil },
+		syncer,
 		cards,
 		"config.yaml",
 	)
@@ -225,21 +241,14 @@ func TestAgentManager_Patch_And_Delete(t *testing.T) {
 		},
 	}
 
-	savedConfigs := append([]AgentConfig(nil), configs...)
-	getConfig := func() []AgentConfig {
-		return savedConfigs
-	}
-	saveConfig := func(c []AgentConfig) error {
-		savedConfigs = c
-		return nil
-	}
+	syncer := newAgentSyncer(t, &configs)
 	cards := NewCardService(a2aclient.AgentCardURLPolicy{URLs: []string{configs[0].CardURL}})
 
-	mgr := NewAgentManager(getConfig, saveConfig, cards, "config.yaml")
+	mgr := NewAgentManager(syncer, cards, "config.yaml")
 
 	// Patch enabled false
 	enabled := false
-	agent, err := mgr.Patch("agent-1", &enabled)
+	agent, err := mgr.Patch(t.Context(), "agent-1", &enabled)
 	if err != nil {
 		t.Fatalf("unexpected error patching: %v", err)
 	}
@@ -248,19 +257,19 @@ func TestAgentManager_Patch_And_Delete(t *testing.T) {
 	}
 
 	// Try patch non-existent
-	_, err = mgr.Patch("non-existent", &enabled)
+	_, err = mgr.Patch(t.Context(), "non-existent", &enabled)
 	if err == nil {
 		t.Error("expected error patching non-existent agent")
 	}
 
 	// Delete agent-1
-	err = mgr.Delete("agent-1")
+	err = mgr.Delete(t.Context(), "agent-1")
 	if err != nil {
 		t.Fatalf("unexpected error deleting agent: %v", err)
 	}
 
-	if len(savedConfigs) != 0 {
-		t.Errorf("expected saved configs to be empty, got %d", len(savedConfigs))
+	if len(configs) != 0 {
+		t.Errorf("expected saved configs to be empty, got %d", len(configs))
 	}
 
 	// Verify not found in registry
@@ -270,7 +279,7 @@ func TestAgentManager_Patch_And_Delete(t *testing.T) {
 	}
 
 	// Try delete non-existent
-	err = mgr.Delete("agent-1")
+	err = mgr.Delete(t.Context(), "agent-1")
 	if err == nil {
 		t.Error("expected error deleting non-existent agent")
 	}
@@ -297,8 +306,7 @@ func TestAgentManager_StatusSummary(t *testing.T) {
 		},
 	}
 
-	getConfig := func() []AgentConfig { return configs }
-	saveConfig := func(c []AgentConfig) error { return nil }
+	syncer := newAgentSyncer(t, &configs)
 	cards := NewCardService()
 
 	// Pretend agent-1 has an available card in the cache
@@ -308,7 +316,7 @@ func TestAgentManager_StatusSummary(t *testing.T) {
 		DashboardContextSupported: true,
 	})
 
-	mgr := NewAgentManager(getConfig, saveConfig, cards, "config.yaml")
+	mgr := NewAgentManager(syncer, cards, "config.yaml")
 
 	summary := mgr.StatusSummary(t.Context())
 
@@ -362,11 +370,10 @@ func TestAgentManager_RefreshCard(t *testing.T) {
 
 	configs[0].CardURL = server.URL + "/card.json"
 
-	getConfig := func() []AgentConfig { return configs }
-	saveConfig := func(c []AgentConfig) error { return nil }
+	syncer := newAgentSyncer(t, &configs)
 	cards := NewCardService(a2aclient.AgentCardURLPolicy{URLs: []string{configs[0].CardURL}})
 
-	mgr := NewAgentManager(getConfig, saveConfig, cards, "config.yaml")
+	mgr := NewAgentManager(syncer, cards, "config.yaml")
 
 	agent, err := mgr.RefreshCard(t.Context(), "agent-1")
 	if err != nil {
