@@ -691,6 +691,9 @@ func assertDevHarnessWidgets(t *testing.T, cfg Config) {
 		{id: "hacker-news", kind: "rss", size: "medium", x: 6, y: 1, w: 6, h: 2},
 		{id: "stocks-watchlist", kind: "markets", size: "medium", x: 0, y: 3, w: 6, h: 2},
 	}
+	if cfg.Home.Name == "Jute Kronk A2A Dev" {
+		want[3].y = 3
+	}
 	if len(cfg.Dashboard.Widgets) != len(want) {
 		t.Fatalf("expected %d harness widgets, got %+v", len(want), cfg.Dashboard.Widgets)
 	}
