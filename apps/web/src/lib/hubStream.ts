@@ -248,7 +248,7 @@ function createHubStreamStore() {
       const escaped =
         typeof CSS !== 'undefined' && CSS.escape
           ? CSS.escape(focus.widgetInstanceId)
-          : focus.widgetInstanceId.replace(/"/g, '\\"');
+          : focus.widgetInstanceId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       document.querySelector(`[data-widget-id="${escaped}"]`)?.scrollIntoView({
         block: 'center',
         behavior: 'smooth'
