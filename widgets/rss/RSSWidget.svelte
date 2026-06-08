@@ -7,36 +7,34 @@
   $: feeds = Array.isArray(data) ? data : [];
 </script>
 
-<div class="rss-widget flex flex-col h-full w-full" class:stale>
+<div class="rss-widget" class:stale>
   {#if feeds.length === 0}
-    <div class="flex-1 flex flex-col items-center justify-center text-muted-foreground p-4">
-      <Rss class="w-8 h-8 mb-2 opacity-30" />
-      <span class="text-sm">No feeds configured</span>
+    <div class="rss-empty">
+      <Rss class="empty-icon" size={32} />
+      <span>No feeds configured</span>
     </div>
   {:else}
-    <div class="flex-1 overflow-y-auto space-y-4 pr-1 select-none">
+    <div class="feeds-list">
       {#each feeds as feed}
-        <div class="feed-section space-y-2">
-          <div class="flex items-center space-x-2 border-b border-neutral-200 dark:border-neutral-800 pb-1">
-            <Rss class="w-3.5 h-3.5 text-neutral-400" />
-            <h4 class="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-              {feed.feedName}
-            </h4>
+        <div class="feed-section">
+          <div class="feed-header">
+            <Rss class="feed-icon" size={14} />
+            <h4 class="feed-title">{feed.feedName}</h4>
           </div>
-          <ul class="space-y-2">
+          <ul class="feed-articles">
             {#each feed.items || [] as item}
-              <li class="group">
+              <li class="article-item">
                 <a
                   href={item.link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="block text-sm font-medium leading-snug text-neutral-800 dark:text-neutral-200 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors"
+                  class="article-link"
                 >
                   {item.title}
                 </a>
               </li>
             {:else}
-              <li class="text-xs text-muted-foreground italic">No articles found</li>
+              <li class="rss-no-data">No articles found</li>
             {/each}
           </ul>
         </div>
@@ -47,11 +45,105 @@
 
 <style>
   .rss-widget {
+    display: flex;
+    flex-direction: column;
     height: 100%;
+    width: 100%;
     overflow: hidden;
   }
+
   .stale {
     opacity: 0.6;
     pointer-events: none;
+  }
+
+  .rss-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    padding: clamp(8px, 4cqmin, 16px);
+  }
+
+  :global(.rss-widget .empty-icon) {
+    margin-bottom: 8px;
+    opacity: 0.3;
+  }
+
+  .rss-empty span {
+    font-size: var(--widget-body-size);
+  }
+
+  .feeds-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(12px, 4cqmin, 20px);
+    padding-right: 4px;
+    user-select: none;
+  }
+
+  .feed-section {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(6px, 2cqmin, 10px);
+  }
+
+  .feed-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+  }
+
+  :global(.rss-widget .feed-icon) {
+    color: var(--muted);
+    opacity: 0.8;
+  }
+
+  .feed-title {
+    margin: 0;
+    font-size: clamp(0.65rem, 4cqmin, 0.8rem);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+
+  .feed-articles {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(6px, 2.5cqmin, 12px);
+  }
+
+  .article-item {
+    display: block;
+  }
+
+  .article-link {
+    display: block;
+    font-size: var(--widget-body-size);
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--foreground);
+    text-decoration: none;
+    transition: color 0.2s ease;
+  }
+
+  .article-link:hover {
+    color: var(--active);
+  }
+
+  .rss-no-data {
+    font-size: clamp(0.6rem, 4cqmin, 0.75rem);
+    color: var(--muted);
+    font-style: italic;
   }
 </style>

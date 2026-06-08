@@ -1,0 +1,12 @@
+{
+  "id": "weather-ambient",
+  "name": "Weather Ambient",
+  "version": "1.0.0",
+  "author": "Antigravity",
+  "description": "Morphing backdrop colors and animations that adapt to local weather conditions.",
+  "kind": "dynamic",
+  "properties": {
+    "speed": 0.4,
+    "maxOpacity": 0.25
+  }
+}

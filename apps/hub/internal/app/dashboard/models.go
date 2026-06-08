@@ -48,6 +48,8 @@ type DisplayBackground struct {
 	Images          []string `json:"images,omitempty"          yaml:"images,omitempty"`
 	IntervalSeconds int      `json:"intervalSeconds,omitempty" yaml:"interval-seconds,omitempty"`
 	Transition      string   `json:"transition,omitempty"      yaml:"transition,omitempty"`
+	// Properties contains custom configuration parameters for dynamic backgrounds.
+	Properties map[string]any `json:"properties,omitempty" yaml:"properties,omitempty"`
 }
 
 // DisplayWidgetChrome defines default visual framing rules.
@@ -195,6 +197,15 @@ func IsSupportedThemeID(id string) bool {
 	return slices.Contains(SupportedThemeIDs(), id)
 }
 
+func SupportedBackgroundIDs() []string {
+	return []string{"stardust", "weather-ambient"}
+}
+
+func IsSupportedBackgroundID(id string) bool {
+	id = strings.TrimSpace(id)
+	return slices.Contains(SupportedBackgroundIDs(), id)
+}
+
 // Validation
 
 func isSupportedColorMode(value string) bool {
@@ -297,8 +308,22 @@ func validateDisplayBackground(background DisplayBackground, problems *[]string)
 		if t := strings.TrimSpace(background.Transition); t != "" && t != "none" && t != "crossfade" {
 			*problems = append(*problems, "display.background.transition must be none or crossfade")
 		}
+	case "dynamic":
+		value := strings.TrimSpace(background.Value)
+		if value == "" {
+			*problems = append(*problems, "display.background.value is required when kind is dynamic")
+		}
+		if !IsSupportedBackgroundID(value) {
+			*problems = append(
+				*problems,
+				"display.background.value must be a supported background ID when kind is dynamic",
+			)
+		}
 	default:
-		*problems = append(*problems, "display.background.kind must be theme, color, asset, file, or slideshow")
+		*problems = append(
+			*problems,
+			"display.background.kind must be theme, color, asset, file, slideshow, or dynamic",
+		)
 	}
 	switch strings.TrimSpace(background.Fit) {
 	case "cover", "contain", "tile":

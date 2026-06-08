@@ -17,6 +17,7 @@
   import type { Agent, DashboardData } from '$lib/types';
   import { cn } from '$lib/utils';
   import WidgetSettingsSheet from '$lib/components/display/WidgetSettingsSheet.svelte';
+  import BackgroundRenderer from '$lib/components/display/BackgroundRenderer.svelte';
   import { layoutStore } from '$lib/layoutStore';
   import { hubStream } from '$lib/hubStream';
   import { chatStore } from '$lib/chatStore';
@@ -83,6 +84,9 @@
     backgroundConfig?.intervalSeconds,
     $hubStream.dashboard.config.display.motion
   );
+  $: weatherData = $hubStream.dashboard.layout.widgets.find(
+    (w) => w.kind === 'weather'
+  )?.data;
 
   $: dashboardForView = {
     ...$hubStream.dashboard,
@@ -302,6 +306,12 @@
   on:pointercancel={clearLongPress}
   on:pointerleave={clearLongPress}
 >
+  <BackgroundRenderer
+    {backgroundConfig}
+    motion={$hubStream.dashboard.config.display.motion}
+    {weatherData}
+  />
+
   {#if $hubStream.dashboard.connectionState === 'starting'}
     <section class="startup-state" aria-label="Connecting to Jute hub">
       <div class="startup-mark">{$hubStream.dashboard.config.home.name}</div>

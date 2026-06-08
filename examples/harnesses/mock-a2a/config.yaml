@@ -26,8 +26,20 @@ display:
     fit: cover
     position: center
     overlay: none
+    # Example configuration for a dynamic background:
+    # background:
+    #   kind: dynamic
+    #   value: weather-ambient  # or 'stardust'
+    #   fit: cover
+    #   position: center
+    #   overlay: none
+    #   properties:
+    #     speed: 0.4
+    #     max-opacity: 0.25
+    #     # particle-count: 50   # stardust specific
+    #     # color: "--active"    # stardust specific
   widget-chrome:
-    default: solid
+    default: auto
   accent-color: neutral
   idle-mode: ambient
 voice:

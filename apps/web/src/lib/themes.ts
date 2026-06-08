@@ -671,7 +671,10 @@ export function resolveWidgetChrome(
     return requested;
   }
   const hasBackground =
-    display.background?.kind === 'asset' || display.background?.kind === 'file';
+    display.background?.kind === 'asset' ||
+    display.background?.kind === 'file' ||
+    display.background?.kind === 'slideshow' ||
+    display.background?.kind === 'dynamic';
   return hasBackground ? 'smoked' : 'solid';
 }
 

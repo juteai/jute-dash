@@ -28,13 +28,28 @@ display:
     density: comfortable
     motion: full
     background:
-        kind: theme
-        value: ""
+        kind: dynamic
+        value: weather-ambient
         fit: cover
         position: center
         overlay: none
+        properties:
+            speed: 0.4
+            max-opacity: 0.25
+        # Example configuration for the 'stardust' dynamic background:
+        # background:
+        #     kind: dynamic
+        #     value: stardust
+        #     fit: cover
+        #     position: center
+        #     overlay: none
+        #     properties:
+        #         particle-count: 50
+        #         speed: 0.6
+        #         max-opacity: 0.45
+        #         color: "--active"
     widget-chrome:
-        default: solid
+        default: auto
     accent-color: neutral
     idle-mode: ambient
 voice:

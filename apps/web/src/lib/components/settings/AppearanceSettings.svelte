@@ -28,7 +28,15 @@
     }
   }
 
-  const BACKGROUND_KINDS = ['theme', 'color', 'file', 'slideshow'];
+  const BACKGROUND_KINDS = ['theme', 'color', 'file', 'slideshow', 'dynamic'];
+
+  $: if (
+    draft &&
+    draft.display.background?.kind === 'dynamic' &&
+    !draft.display.background.value
+  ) {
+    draft.display.background.value = 'stardust';
+  }
 
   function ensureBackground() {
     if (!draft) {
@@ -151,6 +159,15 @@
           bind:value={draft.display.background.value}
           placeholder="#101010"
         />
+      </label>
+    {/if}
+    {#if bg.kind === 'dynamic'}
+      <label>
+        <span>Dynamic background</span>
+        <select bind:value={draft.display.background.value}>
+          <option value="stardust">Stardust</option>
+          <option value="weather-ambient">Weather Ambient</option>
+        </select>
       </label>
     {/if}
     <label>

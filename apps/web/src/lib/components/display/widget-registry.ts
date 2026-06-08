@@ -4,6 +4,8 @@ import DateTimeWidget from '$widgets/datetime/DateTimeWidget.svelte';
 import WeatherWidget from '$widgets/weather/WeatherWidget.svelte';
 import RSSWidget from '$widgets/rss/RSSWidget.svelte';
 import MarketsWidget from '$widgets/markets/MarketsWidget.svelte';
+import { chatStore } from '../../chatStore';
+import { navigationStore } from '../../navigationStore';
 import type {
   DashboardData,
   ChatMessage,
@@ -69,9 +71,18 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   },
   markets: {
     component: MarketsWidget,
-    props: ({ widget, stale }) => ({
+    props: ({ widget, stale, data }) => ({
       data: widget.data,
-      stale
+      stale,
+      onQueryAgent: (symbol: string) => {
+        navigationStore.openChat();
+        void chatStore.submit(
+          `Show me details and recent news for ${symbol}`,
+          data.agents,
+          undefined,
+          fetch
+        );
+      }
     })
   },
   'chat-history': {

@@ -1,0 +1,13 @@
+{
+  "id": "stardust",
+  "name": "Stardust",
+  "version": "1.0.0",
+  "author": "Antigravity",
+  "description": "Subtle floating particle drift that reacts to assistant states.",
+  "kind": "dynamic",
+  "properties": {
+    "particleCount": 30,
+    "speed": 0.35,
+    "maxOpacity": 0.2
+  }
+}
