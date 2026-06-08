@@ -91,6 +91,7 @@ func (d *Database) configure(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("get underlying sql.DB: %w", err)
 	}
+	db.SetMaxOpenConns(1)
 	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout = 5000;`); err != nil {
 		return fmt.Errorf("set sqlite busy timeout: %w", err)
 	}

@@ -1,7 +1,5 @@
 home:
     name: Jute Kronk A2A Dev
-    timezone: Europe/London
-    locale: en-GB
 server:
     listen-address: 127.0.0.1:8787
 log:
@@ -39,14 +37,6 @@ display:
         default: solid
     accent-color: neutral
     idle-mode: ambient
-weather:
-    enabled: true
-    provider: open-meteo
-    location-name: Dundee
-    latitude: 56.462
-    longitude: -2.9707
-    temperature-unit: celsius
-    wind-speed-unit: kmh
 voice:
     enabled: false
     muted-by-default: true
@@ -78,6 +68,8 @@ dashboard:
           mode: ui
           settings:
             chrome: clear
+            timezone: Europe/London
+            locale: en-GB
         - id: weather-widget
           type: weather
           title: Local Weather

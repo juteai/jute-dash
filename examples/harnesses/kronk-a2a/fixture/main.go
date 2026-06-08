@@ -36,7 +36,7 @@ import (
 )
 
 const (
-	defaultModelID       = "Qwen3-0.6B-Q8_0"
+	defaultModelID       = "Qwen/Qwen3-8B-Q8_0"
 	defaultListenAddress = "127.0.0.1:9797"
 	installPhaseTimeout  = 25 * time.Minute
 )
@@ -129,8 +129,8 @@ func startKronkAgentServer(ctx context.Context) (*kronkA2AServer, func(), error)
 	httpServer := &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
+		ReadTimeout:       5 * time.Minute,
+		WriteTimeout:      5 * time.Minute,
 		IdleTimeout:       60 * time.Second,
 	}
 
@@ -273,8 +273,8 @@ func kronkInstruction(mcpEnabled bool) string {
 			"For questions about the current dashboard, visible widgets, weather, date, time, conversation history, or what Jute can do, inspect Jute MCP before answering.",
 			"Start by listing available Widget Skills with jute_skill_list when you need to know what dashboard abilities exist.",
 			"For weather questions, read the jute.weather.current skill context with jute_skill_read_context; if an action is needed, invoke only the declared refresh action through jute_skill_invoke_action.",
-			"For date or time questions, read the jute.date_time.current skill context.",
-			"For chat history or agent status questions, read the jute.chat_history.current skill context.",
+			"For date or time questions, read the jute.date_time.current skill context with jute_skill_read_context.",
+			"For chat history or agent status questions, read the jute.chat_history.current skill context with jute_skill_read_context.",
 			"Prefer specific Widget Skill context over broad dashboard context when the user asks about one widget.",
 			"Never answer that you lack weather, time, dashboard, or widget data until you have checked the relevant Jute MCP tool and it is unavailable, unauthorized, or missing.",
 			"If MCP context is unavailable or unauthorized, say that Jute dashboard context is unavailable and ask the user to check the local MCP connection.",

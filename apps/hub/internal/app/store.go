@@ -30,9 +30,9 @@ type Store struct {
 	riverClient   *river.Client[*sql.Tx]
 	logger        *slog.Logger
 	syncer        filesync.Syncer
-	dashboardRepo *dashboard.Repository
-	homestateRepo *homestate.Repository
-	voiceRepo     *voice.Repository
+	DashboardRepo *dashboard.Repository
+	HomestateRepo *homestate.Repository
+	VoiceRepo     *voice.Repository
 }
 
 func Open(dbPath string, log *slog.Logger) (*Store, error) {
@@ -41,18 +41,21 @@ func Open(dbPath string, log *slog.Logger) (*Store, error) {
 		return nil, err
 	}
 	s := &Store{db: db, logger: log}
-	s.dashboardRepo = dashboard.NewRepository(s.DB())
-	s.dashboardRepo.SetCatalog(dashboard.RegisteredCatalog())
-	s.homestateRepo = homestate.NewRepository(s.DB())
-	s.voiceRepo = voice.NewRepository(s.DB())
+	s.DashboardRepo = dashboard.NewRepository(s.DB())
+	s.DashboardRepo.SetCatalog(dashboard.RegisteredCatalog())
+	s.DashboardRepo.SetOnSave(s.triggerSync)
+	s.DashboardRepo.SetConfigStore(s)
+	s.HomestateRepo = homestate.NewRepository(s.DB())
+	s.HomestateRepo.SetOnSave(s.triggerSync)
+	s.VoiceRepo = voice.NewRepository(s.DB())
 	return s, nil
 }
 
 func (s *Store) SetCatalog(items []dashboard.WidgetCatalogItem) {
-	if s == nil || s.dashboardRepo == nil {
+	if s == nil || s.DashboardRepo == nil {
 		return
 	}
-	s.dashboardRepo.SetCatalog(items)
+	s.DashboardRepo.SetCatalog(items)
 }
 
 func (s *Store) triggerSync(ctx context.Context) {
@@ -162,7 +165,6 @@ const gridBaseColumnsMetaKey = "grid_base_columns"
 func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.db.Migrate(
 		&homestate.HouseholdSettingsDB{},
-		&homestate.WeatherSettingsDB{},
 		&homestate.DeviceProfileDB{},
 		&homestate.LayoutProfileDB{},
 		&homestate.RoomDB{},
@@ -260,8 +262,6 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 		hs := homestate.HouseholdSettingsDB{
 			ID:                      homestate.DefaultHouseholdID,
 			Name:                    cfg.Home.Name,
-			Timezone:                cfg.Home.Timezone,
-			Locale:                  cfg.Home.Locale,
 			DisplayTheme:            cfg.Display.Theme,
 			DisplayAccentColor:      cfg.Display.AccentColor,
 			DisplayIdleMode:         cfg.Display.IdleMode,
@@ -277,21 +277,6 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 		}
 		if err := tx.Create(&hs).Error; err != nil {
 			return fmt.Errorf("seed household settings: %w", err)
-		}
-
-		ws := homestate.WeatherSettingsDB{
-			ID:              homestate.DefaultHouseholdID,
-			Enabled:         boolToInt(cfg.Weather.Enabled),
-			Provider:        cfg.Weather.Provider,
-			LocationName:    cfg.Weather.LocationName,
-			Latitude:        cfg.Weather.Latitude,
-			Longitude:       cfg.Weather.Longitude,
-			TemperatureUnit: cfg.Weather.TemperatureUnit,
-			WindSpeedUnit:   cfg.Weather.WindSpeedUnit,
-			UpdatedAt:       now,
-		}
-		if err := tx.Create(&ws).Error; err != nil {
-			return fmt.Errorf("seed weather settings: %w", err)
 		}
 
 		dp := homestate.DeviceProfileDB{
@@ -453,8 +438,6 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 		return config.Config{}, fmt.Errorf("load household settings: %w", err)
 	}
 	cfg.Home.Name = hs.Name
-	cfg.Home.Timezone = hs.Timezone
-	cfg.Home.Locale = hs.Locale
 	cfg.Display.Theme = hs.DisplayTheme
 	cfg.Display.ColorMode = hs.DisplayColorMode
 	cfg.Display.ThemeID = hs.DisplayThemeID
@@ -469,18 +452,6 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 	if err := decodeJSONSetting(hs.DisplayWidgetChromeJSON, &cfg.Display.WidgetChrome); err != nil {
 		return config.Config{}, fmt.Errorf("decode display widget chrome: %w", err)
 	}
-
-	var ws homestate.WeatherSettingsDB
-	if err := s.db.DB().WithContext(ctx).First(&ws, "id = ?", homestate.DefaultHouseholdID).Error; err != nil {
-		return config.Config{}, fmt.Errorf("load weather settings: %w", err)
-	}
-	cfg.Weather.Enabled = ws.Enabled == 1
-	cfg.Weather.Provider = ws.Provider
-	cfg.Weather.LocationName = ws.LocationName
-	cfg.Weather.Latitude = ws.Latitude
-	cfg.Weather.Longitude = ws.Longitude
-	cfg.Weather.TemperatureUnit = ws.TemperatureUnit
-	cfg.Weather.WindSpeedUnit = ws.WindSpeedUnit
 
 	var vs voice.SettingsDB
 	if err := s.db.DB().
@@ -535,7 +506,7 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 		}
 	}
 
-	layout, err := s.dashboardRepo.WidgetLayout(ctx, "")
+	layout, err := s.DashboardRepo.WidgetLayout(ctx, "")
 	if err == nil {
 		widgets := make([]dashboard.DashboardWidgetConfig, 0, len(layout.Widgets))
 		for _, w := range layout.Widgets {
@@ -615,25 +586,12 @@ func setupStatusForSeed(cfg config.Config, bootstrapProvided bool) homestate.Set
 
 func missingSetupFields(cfg config.Config, confirmed bool) []string {
 	if !confirmed {
-		missing := []string{"home.name", "home.timezone", "home.locale"}
-		if cfg.Weather.Enabled {
-			missing = append(missing, "weather.location")
-		}
-		return missing
+		return []string{"home.name"}
 	}
 
 	var missing []string
 	if strings.TrimSpace(cfg.Home.Name) == "" {
 		missing = append(missing, "home.name")
-	}
-	if strings.TrimSpace(cfg.Home.Timezone) == "" {
-		missing = append(missing, "home.timezone")
-	}
-	if strings.TrimSpace(cfg.Home.Locale) == "" {
-		missing = append(missing, "home.locale")
-	}
-	if cfg.Weather.Enabled && strings.TrimSpace(cfg.Weather.LocationName) == "" {
-		missing = append(missing, "weather.location")
 	}
 	return missing
 }
@@ -662,81 +620,6 @@ func boolToInt(value bool) int {
 
 func nowUTC() string {
 	return time.Now().UTC().Format(time.RFC3339Nano)
-}
-
-func (s *Store) HouseholdSettings(ctx context.Context) (homestate.HouseholdSettings, error) {
-	return s.homestateRepo.HouseholdSettings(ctx)
-}
-
-func (s *Store) SaveHouseholdSettings(
-	ctx context.Context,
-	settings homestate.HouseholdSettings,
-) (homestate.HouseholdSettings, error) {
-	res, err := s.homestateRepo.SaveHouseholdSettings(ctx, settings)
-	if err == nil {
-		s.triggerSync(ctx)
-	}
-	return res, err
-}
-
-func (s *Store) Rooms(ctx context.Context) ([]homestate.RoomConfig, error) {
-	return s.homestateRepo.Rooms(ctx)
-}
-
-func (s *Store) SaveRooms(ctx context.Context, rooms []homestate.RoomConfig) ([]homestate.RoomConfig, error) {
-	res, err := s.homestateRepo.SaveRooms(ctx, rooms)
-	if err == nil {
-		s.triggerSync(ctx)
-	}
-	return res, err
-}
-
-func (s *Store) Tiles(ctx context.Context) ([]homestate.TileConfig, error) {
-	return s.homestateRepo.Tiles(ctx)
-}
-
-func (s *Store) SaveTiles(ctx context.Context, tiles []homestate.TileConfig) ([]homestate.TileConfig, error) {
-	res, err := s.homestateRepo.SaveTiles(ctx, tiles)
-	if err == nil {
-		s.triggerSync(ctx)
-	}
-	return res, err
-}
-
-func (s *Store) WidgetLayout(ctx context.Context, profileID string) (dashboard.WidgetLayout, error) {
-	return s.dashboardRepo.WidgetLayout(ctx, profileID)
-}
-
-func (s *Store) SaveWidgetLayout(ctx context.Context, layout dashboard.WidgetLayout) (dashboard.WidgetLayout, error) {
-	res, err := s.dashboardRepo.SaveWidgetLayout(ctx, layout)
-	if err == nil {
-		s.triggerSync(ctx)
-	}
-	return res, err
-}
-
-func (s *Store) ResetWidgetLayout(ctx context.Context, profileID string) (dashboard.WidgetLayout, error) {
-	res, err := s.dashboardRepo.ResetWidgetLayout(ctx, profileID)
-	if err == nil {
-		s.triggerSync(ctx)
-	}
-	return res, err
-}
-
-func (s *Store) VoiceSettings(ctx context.Context, deviceProfileID string) (voice.Settings, error) {
-	return s.voiceRepo.VoiceSettings(ctx, deviceProfileID)
-}
-
-func (s *Store) SetVoiceMuted(ctx context.Context, deviceProfileID string, muted bool) (voice.Settings, error) {
-	return s.voiceRepo.SetVoiceMuted(ctx, deviceProfileID, muted)
-}
-
-func (s *Store) CancelVoice(ctx context.Context, deviceProfileID string) (voice.Settings, error) {
-	return s.voiceRepo.CancelVoice(ctx, deviceProfileID)
-}
-
-func (s *Store) VoiceProviders(ctx context.Context) ([]voice.ProviderPack, error) {
-	return s.voiceRepo.VoiceProviders(ctx)
 }
 
 func (s *Store) StartQueue(syncer filesync.Syncer) error {

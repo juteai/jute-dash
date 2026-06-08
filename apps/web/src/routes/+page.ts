@@ -1,4 +1,4 @@
-import { initialDashboard } from '$lib/api';
+import { initialDashboard } from '$lib/hubClient';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = async () => {

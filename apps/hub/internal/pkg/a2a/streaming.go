@@ -62,6 +62,11 @@ func (c *JSONRPCClient) StreamMessage(ctx context.Context, req SendMessageReques
 	if httpClient == nil {
 		httpClient = NewJSONRPCClient().HTTPClient
 	}
+	if httpClient.Timeout > 0 {
+		cloned := *httpClient
+		cloned.Timeout = 0
+		httpClient = &cloned
+	}
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
 		return ErrAgentTransport

@@ -5,9 +5,11 @@
     Mic,
     Plus,
     RefreshCw,
-    VolumeX
+    VolumeX,
+    X,
+    History
   } from 'lucide-svelte';
-  import AssistantActivity from '$lib/components/chat/AssistantActivity.svelte';
+  import Markdown from '$lib/components/chat/Markdown.svelte';
   import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import {
@@ -40,6 +42,8 @@
   export let selectedConversationId = '';
   export let selectedAvailability: AgentAvailability = 'unknown';
   export let status: AppStatus | undefined;
+  export let timerProgress = 0;
+  export let showTimer = false;
   export let onAgentChange: (agentId: string) => void = () => {};
   export let onConversationSelect: (
     conversationId: string
@@ -59,7 +63,14 @@
 
   let statusTone: BadgeTone;
   let showDiagnostics = false;
+  let showHistory = false;
   let refreshingCard = false;
+  let selectedArtifact: { id: string; title: string; content: string } | null =
+    null;
+
+  $: if (selectedConversationId) {
+    selectedArtifact = null;
+  }
 
   $: selectedAgent =
     agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
@@ -123,35 +134,78 @@
       refreshingCard = false;
     }
   }
+
+  interface Particle {
+    size: number;
+    left: number;
+    duration: number;
+    delay: number;
+    driftX: number;
+    maxOpacity: number;
+    scale: number;
+  }
+
+  const particles: Particle[] = Array.from({ length: 24 }, (_, i) => {
+    const duration = 12 + ((i * 13) % 16);
+    return {
+      size: 3 + ((i * 7) % 6),
+      left: ((i * 17) % 95) + 2.5,
+      duration,
+      delay: -((i * 9) % duration),
+      driftX: -40 + ((i * 29) % 80),
+      maxOpacity: 0.2 + ((i * 3) % 4) * 0.15,
+      scale: 0.8 + ((i * 5) % 5) * 0.15
+    };
+  });
 </script>
 
 <section class="chat-view" aria-label="Agent conversation">
+  <!-- Antigravity Stardust Canvas -->
+  <div class="stardust-canvas stardust-canvas--{state}">
+    {#each particles as p, i (i)}
+      <div
+        class="stardust-particle"
+        style="
+          --size: {p.size}px;
+          --left: {p.left}%;
+          --duration: {p.duration}s;
+          --delay: {p.delay}s;
+          --drift-x: {p.driftX}px;
+          --max-opacity: {p.maxOpacity};
+          --scale: {p.scale};
+        "
+      ></div>
+    {/each}
+  </div>
+
   <header class="chat-header">
     <div class="chat-agent">
       <div class="chat-agent-title">
         {selectedAgent?.name ?? 'No agent configured'}
       </div>
-      <div class="chat-agent-meta">
-        <Badge tone={statusTone}>{state}</Badge>
-        {#if selectedAgent}
-          <Badge tone={availabilityTone(agentAvailability)}
-            >{availabilityLabel(agentAvailability)}</Badge
-          >
-          {#if selectedAgent.dashboardContextSupported}
-            <span>screen context</span>
+      {#if showDiagnostics}
+        <div class="chat-agent-meta">
+          <Badge tone={statusTone}>{state}</Badge>
+          {#if selectedAgent}
+            <Badge tone={availabilityTone(agentAvailability)}
+              >{availabilityLabel(agentAvailability)}</Badge
+            >
+            {#if selectedAgent.dashboardContextSupported}
+              <span>screen context</span>
+            {/if}
+            <span>{mcpLabel}</span>
           {/if}
-          <span>{mcpLabel}</span>
+        </div>
+        {#if selectedAgent}
+          <p class="chat-agent-description">
+            {availabilityDescription(agentAvailability)}
+          </p>
         {/if}
-      </div>
-      {#if selectedAgent}
-        <p class="chat-agent-description">
-          {availabilityDescription(agentAvailability)}
-        </p>
       {/if}
     </div>
 
     <div class="chat-controls">
-      {#if agents.length > 1}
+      {#if showDiagnostics && agents.length > 1}
         <label class="agent-select-label">
           <span>Agent</span>
           <select
@@ -177,6 +231,14 @@
         <Info size={19} />
       </IconButton>
       <IconButton
+        label="Toggle history"
+        variant="outline"
+        pressed={showHistory}
+        on:click={() => (showHistory = !showHistory)}
+      >
+        <History size={19} />
+      </IconButton>
+      <IconButton
         label={voiceLabel}
         variant="outline"
         pressed={voiceReady && !voice.muted}
@@ -189,34 +251,26 @@
           <VolumeX size={19} />
         {/if}
       </IconButton>
-      <IconButton label="Close chat" variant="outline" on:click={onClose}>
-        <ChevronDown size={20} />
-      </IconButton>
+      <div class="close-timer-container">
+        {#if showTimer}
+          <svg class="close-timer-svg">
+            <circle class="close-timer-track" cx="22" cy="22" r="18" />
+            <circle
+              class="close-timer-bar"
+              cx="22"
+              cy="22"
+              r="18"
+              stroke-dasharray="113.1"
+              stroke-dashoffset={113.1 * (1 - timerProgress)}
+            />
+          </svg>
+        {/if}
+        <IconButton label="Close chat" variant="outline" on:click={onClose}>
+          <ChevronDown size={20} />
+        </IconButton>
+      </div>
     </div>
   </header>
-
-  <div class="chat-status-row">
-    <AssistantActivity {state} />
-    <span>
-      {#if !selectedAgent}
-        No agent connected
-      {:else if voiceIssue}
-        {voiceIssue}
-      {:else if !voiceReady}
-        Voice input is not configured yet. Typed chat is available.
-      {:else if agentAvailability !== 'available'}
-        {availabilityDescription(agentAvailability)}
-      {:else if state === 'thinking'}
-        {statusText || 'Waiting for the agent'}
-      {:else if state === 'streaming'}
-        Response in progress
-      {:else if state === 'error'}
-        Something needs another try
-      {:else}
-        Ready
-      {/if}
-    </span>
-  </div>
 
   {#if showDiagnostics}
     <section class="agent-diagnostics" aria-label="Agent diagnostics">
@@ -319,53 +373,60 @@
     </section>
   {/if}
 
-  <div class="chat-body">
-    <aside class="conversation-sidebar" aria-label="Conversation history">
-      <div class="conversation-sidebar-header">
-        <div>
-          <strong>History</strong>
-          <span>{conversations.length} saved</span>
+  <div
+    class="chat-body"
+    class:chat-view--with-history={showHistory}
+    class:chat-view--minimal={!showHistory}
+    class:chat-view--with-preview={selectedArtifact}
+  >
+    {#if showHistory}
+      <aside class="conversation-sidebar" aria-label="Conversation history">
+        <div class="conversation-sidebar-header">
+          <div>
+            <strong>History</strong>
+            <span>{conversations.length} saved</span>
+          </div>
+          <IconButton
+            label="New conversation"
+            variant="outline"
+            disabled={composerDisabled}
+            on:click={onNewConversation}
+          >
+            <Plus size={17} />
+          </IconButton>
         </div>
-        <IconButton
-          label="New conversation"
-          variant="outline"
-          disabled={composerDisabled}
-          on:click={onNewConversation}
-        >
-          <Plus size={17} />
-        </IconButton>
-      </div>
 
-      <div class="conversation-list">
-        {#if conversations.length === 0}
-          <div class="conversation-empty">
-            {#if composerDisabled}
-              No available agent yet.
+        <div class="conversation-list">
+          {#if conversations.length === 0}
+            <div class="conversation-empty">
+              {#if composerDisabled}
+                No available agent yet.
+                <button
+                  type="button"
+                  class="conversation-link-button"
+                  on:click={onManageAgents}>Add agent</button
+                >
+              {:else}
+                Agent-backed history is empty or unsupported.
+              {/if}
+            </div>
+          {:else}
+            {#each conversations as conversation (conversation.id)}
               <button
                 type="button"
-                class="conversation-link-button"
-                on:click={onManageAgents}>Add agent</button
+                class:conversation-item--active={conversation.id ===
+                  selectedConversationId}
+                class="conversation-item"
+                on:click={() => onConversationSelect(conversation.id)}
               >
-            {:else}
-              Agent-backed history is empty or unsupported.
-            {/if}
-          </div>
-        {:else}
-          {#each conversations as conversation (conversation.id)}
-            <button
-              type="button"
-              class:conversation-item--active={conversation.id ===
-                selectedConversationId}
-              class="conversation-item"
-              on:click={() => onConversationSelect(conversation.id)}
-            >
-              <span>{conversation.title || 'Conversation'}</span>
-              <small>{formatConversationTime(conversation.updatedAt)}</small>
-            </button>
-          {/each}
-        {/if}
-      </div>
-    </aside>
+                <span>{conversation.title || 'Conversation'}</span>
+                <small>{formatConversationTime(conversation.updatedAt)}</small>
+              </button>
+            {/each}
+          {/if}
+        </div>
+      </aside>
+    {/if}
 
     <div class="chat-thread">
       <div class="conversation-thread-header">
@@ -387,11 +448,13 @@
 
       <MessageList
         {messages}
+        {state}
         emptyTitle={selectedAgent ? 'Ask Jute anything' : 'No agent connected'}
         emptyMessage={selectedAgent
           ? 'Choose an agent and start with a short request.'
           : 'Add an A2A agent to start conversations.'}
         {onRetry}
+        onSelectArtifact={(artifact) => (selectedArtifact = artifact)}
       />
 
       <MessageComposer
@@ -403,5 +466,23 @@
         onVoiceClick={onToggleVoiceMute}
       />
     </div>
+
+    {#if selectedArtifact}
+      <aside class="artifact-preview-panel" aria-label="Artifact preview">
+        <header class="artifact-preview-header">
+          <span class="artifact-preview-title">{selectedArtifact.title}</span>
+          <IconButton
+            label="Close preview"
+            variant="ghost"
+            on:click={() => (selectedArtifact = null)}
+          >
+            <X size={18} />
+          </IconButton>
+        </header>
+        <div class="artifact-preview-body">
+          <Markdown content={selectedArtifact.content} />
+        </div>
+      </aside>
+    {/if}
   </div>
 </section>

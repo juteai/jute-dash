@@ -13,8 +13,10 @@ import (
 )
 
 type Repository struct {
-	db      *gorm.DB
-	catalog map[string]WidgetCatalogItem
+	db          *gorm.DB
+	catalog     map[string]WidgetCatalogItem
+	onSave      func(ctx context.Context)
+	configStore any
 }
 
 func NewRepository(db *gorm.DB) *Repository {
@@ -22,6 +24,18 @@ func NewRepository(db *gorm.DB) *Repository {
 		db:      db,
 		catalog: widgetCatalogByKind(),
 	}
+}
+
+func (r *Repository) SetOnSave(onSave func(ctx context.Context)) {
+	r.onSave = onSave
+}
+
+func (r *Repository) SetConfigStore(cs any) {
+	r.configStore = cs
+}
+
+func (r *Repository) ConfigStore() any {
+	return r.configStore
 }
 
 func (r *Repository) SetCatalog(items []WidgetCatalogItem) {
@@ -140,6 +154,9 @@ func (r *Repository) SaveWidgetLayout(ctx context.Context, layout WidgetLayout) 
 	})
 	if err != nil {
 		return WidgetLayout{}, err
+	}
+	if r.onSave != nil {
+		r.onSave(ctx)
 	}
 
 	return normalized, nil

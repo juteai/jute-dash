@@ -14,11 +14,7 @@
 
   let value = '';
 
-  $: canSend =
-    value.trim().length > 0 &&
-    !disabled &&
-    state !== 'thinking' &&
-    state !== 'streaming';
+  $: canSend = value.trim().length > 0 && !disabled;
   $: voiceReady = voice?.serviceStatus === 'ready';
   $: voiceLabel = voiceReady
     ? voice.muted
@@ -47,7 +43,7 @@
   <IconButton
     label={voiceLabel}
     variant="outline"
-    disabled={!voiceReady || state === 'thinking'}
+    disabled={!voiceReady || state === 'thinking' || state === 'streaming'}
     pressed={voiceReady && !voice.muted}
     on:click={onVoiceClick}
   >
@@ -60,7 +56,9 @@
   <Textarea
     bind:value
     rows={1}
-    placeholder="Ask your home assistant"
+    placeholder={state === 'thinking' || state === 'streaming'
+      ? 'Type a message to queue...'
+      : 'Ask your home assistant'}
     {disabled}
     on:keydown={handleKeydown}
   />
@@ -68,10 +66,11 @@
     <IconButton label="Cancel response" variant="outline" on:click={onCancel}>
       <X size={19} />
     </IconButton>
-  {:else}
-    <Button type="submit" size="md" disabled={!canSend}>
-      <Send size={18} />
-      <span>Send</span>
-    </Button>
   {/if}
+  <Button type="submit" size="md" disabled={!canSend}>
+    <Send size={18} />
+    <span
+      >{state === 'thinking' || state === 'streaming' ? 'Queue' : 'Send'}</span
+    >
+  </Button>
 </form>

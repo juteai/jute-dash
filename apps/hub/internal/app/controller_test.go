@@ -129,25 +129,6 @@ func TestEventsStreamDisplayActions(t *testing.T) {
 	}
 }
 
-func TestHomeEndpointExcludesWeather(t *testing.T) {
-	handler := New(testConfig(), "test")
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/home", nil)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rec.Code)
-	}
-	var body map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if _, exists := body["weather"]; exists {
-		t.Fatalf("home response should not include global weather: %+v", body)
-	}
-}
-
 func TestSetupStatusEndpoint(t *testing.T) {
 	handler := NewWithSetupStatus(testConfig(), "test", SetupStatus{
 		Complete: false,
@@ -173,17 +154,20 @@ func TestSetupStatusEndpoint(t *testing.T) {
 func TestHouseholdSettingsEndpointUpdatesStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	handler := NewWithSetupStatusAndLayoutStore(
+	handler := NewServer(
 		testConfig(),
 		"test",
 		SetupStatus{Complete: true},
-		runtimeStore,
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		"",
+		nil,
 	)
 
 	payload := bytes.NewBufferString(`{
-		"home":{"name":"Updated Home","timezone":"Europe/London","locale":"en-GB"},
-		"display":{"theme":"dark","accentColor":"teal","idleMode":"ambient"},
-		"weather":{"enabled":true,"provider":"open-meteo","locationName":"Manchester","latitude":53.4808,"longitude":-2.2426,"temperatureUnit":"celsius","windSpeedUnit":"kmh"}
+		"home":{"name":"Updated Home"},
+		"display":{"theme":"dark","accentColor":"teal","idleMode":"ambient"}
 	}`)
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", payload)
 	rec := httptest.NewRecorder()
@@ -197,36 +181,15 @@ func TestHouseholdSettingsEndpointUpdatesStore(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Home.Name != "Updated Home" || body.Weather.LocationName != "Manchester" ||
-		!body.Setup.Complete {
+	if body.Home.Name != "Updated Home" || !body.Setup.Complete {
 		t.Fatalf("unexpected household settings: %+v", body)
 	}
-	reloaded, err := runtimeStore.HouseholdSettings(context.Background())
+	reloaded, err := runtimeStore.HomestateRepo.HouseholdSettings(context.Background())
 	if err != nil {
 		t.Fatalf("reload household settings: %v", err)
 	}
-	if reloaded.Home.Name != "Updated Home" || reloaded.Weather.Latitude != 53.4808 {
+	if reloaded.Home.Name != "Updated Home" {
 		t.Fatalf("settings did not persist: %+v", reloaded)
-	}
-}
-
-func TestHouseholdSettingsEndpointRejectsInvalidTimezone(t *testing.T) {
-	handler := NewWithSetupStatus(testConfig(), "test", SetupStatus{Complete: true})
-	payload := bytes.NewBufferString(`{
-		"home":{"name":"Updated Home","timezone":"Nope/Nowhere","locale":"en-GB"},
-		"display":{"theme":"dark","accentColor":"teal","idleMode":"ambient"},
-		"weather":{"enabled":true,"provider":"open-meteo","locationName":"Manchester","latitude":53.4808,"longitude":-2.2426,"temperatureUnit":"celsius","windSpeedUnit":"kmh"}
-	}`)
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", payload)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
-	}
-	if strings.Contains(rec.Body.String(), "Nope/Nowhere") {
-		t.Fatalf("error response leaked raw invalid value: %s", rec.Body.String())
 	}
 }
 
@@ -239,18 +202,20 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
 
-	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
+	handler := NewServer(
 		cfg,
 		"test",
 		SetupStatus{Complete: true},
-		runtimeStore,
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
 		configPath,
+		nil,
 	)
 
 	payload := bytes.NewBufferString(`{
-		"home":{"name":"YAML Home","timezone":"Europe/London","locale":"en-GB"},
-		"display":{"theme":"light","accentColor":"teal","idleMode":"ambient"},
-		"weather":{"enabled":true,"provider":"open-meteo","locationName":"Bristol","latitude":51.4545,"longitude":-2.5879,"temperatureUnit":"celsius","windSpeedUnit":"kmh"}
+		"home":{"name":"YAML Home"},
+		"display":{"theme":"light","accentColor":"teal","idleMode":"ambient"}
 	}`)
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", payload)
 	rec := httptest.NewRecorder()
@@ -275,8 +240,7 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
-	if reloaded.Home.Name != "YAML Home" || reloaded.Weather.LocationName != "Bristol" ||
-		len(reloaded.Agents) != 2 {
+	if reloaded.Home.Name != "YAML Home" || len(reloaded.Agents) != 2 {
 		t.Fatalf("unexpected saved config: %+v", reloaded)
 	}
 }
@@ -284,11 +248,15 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 func TestRoomSettingsEndpointUpdatesStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	handler := NewWithSetupStatusAndLayoutStore(
+	handler := NewServer(
 		testConfig(),
 		"test",
 		SetupStatus{Complete: true},
-		runtimeStore,
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		"",
+		nil,
 	)
 
 	payload := bytes.NewBufferString(
@@ -311,7 +279,7 @@ func TestRoomSettingsEndpointUpdatesStore(t *testing.T) {
 	if len(body.Rooms) != 1 || body.Rooms[0].ID != "living-room" {
 		t.Fatalf("unexpected room response: %+v", body.Rooms)
 	}
-	reloaded, err := runtimeStore.Rooms(context.Background())
+	reloaded, err := runtimeStore.HomestateRepo.Rooms(context.Background())
 	if err != nil {
 		t.Fatalf("reload rooms: %v", err)
 	}
@@ -341,11 +309,15 @@ func TestRoomSettingsEndpointRejectsInvalidRooms(t *testing.T) {
 func TestTileSettingsEndpointUpdatesStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	handler := NewWithSetupStatusAndLayoutStore(
+	handler := NewServer(
 		testConfig(),
 		"test",
 		SetupStatus{Complete: true},
-		runtimeStore,
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		"",
+		nil,
 	)
 
 	payload := bytes.NewBufferString(
@@ -369,7 +341,7 @@ func TestTileSettingsEndpointUpdatesStore(t *testing.T) {
 		body.Tiles[0].Kind != "security" {
 		t.Fatalf("unexpected tile response: %+v", body.Tiles)
 	}
-	reloaded, err := runtimeStore.Tiles(context.Background())
+	reloaded, err := runtimeStore.HomestateRepo.Tiles(context.Background())
 	if err != nil {
 		t.Fatalf("reload tiles: %v", err)
 	}
@@ -405,12 +377,15 @@ func TestRoomAndTileSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
 
-	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
+	handler := NewServer(
 		cfg,
 		"test",
 		SetupStatus{Complete: true},
-		runtimeStore,
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
 		configPath,
+		nil,
 	)
 
 	roomReq := httptest.NewRequest(
@@ -700,11 +675,15 @@ func TestWidgetCatalogEndpoint(t *testing.T) {
 func TestWidgetLayoutPutPersistsWithStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
-	handler := NewWithSetupStatusAndLayoutStore(
+	handler := NewServer(
 		testConfig(),
 		"test",
 		SetupStatus{Complete: true},
-		runtimeStore,
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		"",
+		nil,
 	)
 
 	layout := DefaultWidgetLayout()
@@ -722,7 +701,7 @@ func TestWidgetLayoutPutPersistsWithStore(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	reloaded, err := runtimeStore.WidgetLayout(context.Background(), "")
+	reloaded, err := runtimeStore.DashboardRepo.WidgetLayout(context.Background(), "")
 	if err != nil {
 		t.Fatalf("WidgetLayout() error = %v", err)
 	}
@@ -758,14 +737,18 @@ func TestWidgetLayoutResetEndpoint(t *testing.T) {
 	defer runtimeStore.Close()
 	layout := DefaultWidgetLayout()
 	layout.Widgets[0].Visible = false
-	if _, err := runtimeStore.SaveWidgetLayout(context.Background(), layout); err != nil {
+	if _, err := runtimeStore.DashboardRepo.SaveWidgetLayout(context.Background(), layout); err != nil {
 		t.Fatalf("SaveWidgetLayout() error = %v", err)
 	}
-	handler := NewWithSetupStatusAndLayoutStore(
+	handler := NewServer(
 		testConfig(),
 		"test",
 		SetupStatus{Complete: true},
-		runtimeStore,
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		"",
+		nil,
 	)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/widgets/layout/reset", nil)
 	rec := httptest.NewRecorder()
@@ -791,11 +774,15 @@ func TestWidgetLayoutPutReturnsSafeStoreFailure(t *testing.T) {
 	layoutStore.EXPECT().
 		SaveWidgetLayout(mock.Anything, mock.Anything).
 		Return(WidgetLayout{}, errors.New("sqlite path /private/raw/details failed"))
-	handler := NewWithSetupStatusAndLayoutStore(
+	handler := NewServer(
 		testConfig(),
 		"test",
 		SetupStatus{Complete: true},
 		layoutStore,
+		nil,
+		nil,
+		"",
+		nil,
 	)
 	payload, err := json.Marshal(layout)
 	if err != nil {
@@ -897,7 +884,16 @@ func TestAgentsEndpointIncludesDiscoveredCardMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize store: %v", err)
 	}
-	handler := NewWithSetupStatusAndLayoutStore(cfg, "test", result.Setup, runtimeStore)
+	handler := NewServer(
+		cfg,
+		"test",
+		result.Setup,
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		"",
+		nil,
+	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil)
 	rec := httptest.NewRecorder()
@@ -1392,12 +1388,15 @@ func TestAgentsEndpointAddsAgentToYAMLConfig(t *testing.T) {
 	if err := SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
-	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
+	handler := NewServer(
 		cfg,
 		"test",
 		SetupStatus{Complete: true},
 		nil,
+		nil,
+		nil,
 		configPath,
+		nil,
 	)
 
 	payload := bytes.NewBufferString(`{"cardUrl":` + strconv.Quote(agentCardServer.URL) + `}`)
@@ -1435,12 +1434,15 @@ func TestAgentEndpointPatchesEnabledStateInYAMLConfig(t *testing.T) {
 	if err := SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
-	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
+	handler := NewServer(
 		cfg,
 		"test",
 		SetupStatus{Complete: true},
 		nil,
+		nil,
+		nil,
 		configPath,
+		nil,
 	)
 
 	req := httptest.NewRequest(
@@ -1480,12 +1482,15 @@ func TestAgentEndpointDeletesAgentFromYAMLConfig(t *testing.T) {
 	if err := SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
-	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
+	handler := NewServer(
 		cfg,
 		"test",
 		SetupStatus{Complete: true},
 		nil,
+		nil,
+		nil,
 		configPath,
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/agents/house", nil)
@@ -1571,12 +1576,15 @@ func TestAgentSubroutesValidateRequests(t *testing.T) {
 	if err := SaveYAML(configPath, cfg); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
-	handler := NewWithSetupStatusAndLayoutStoreAndConfigPath(
+	handler := NewServer(
 		cfg,
 		"test",
 		SetupStatus{Complete: true},
 		nil,
+		nil,
+		nil,
 		configPath,
+		nil,
 	)
 	tests := []struct {
 		name      string
@@ -1694,7 +1702,7 @@ func allowAgentCardURL(cfg *config.Config, cardURL string) {
 
 func openInitializedServerStore(t *testing.T) *Store {
 	t.Helper()
-	logger := slog.New(slog.DiscardHandler)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"), logger)
 	if err != nil {
 		t.Fatalf("open store: %v", err)

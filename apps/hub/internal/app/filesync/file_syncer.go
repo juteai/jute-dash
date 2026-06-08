@@ -48,7 +48,6 @@ func (s *fileSyncer) Sync(ctx context.Context) error {
 
 	cfg.Home = dbCfg.Home
 	cfg.Display = dbCfg.Display
-	cfg.Weather = dbCfg.Weather
 	cfg.Voice = dbCfg.Voice
 	cfg.Rooms = dbCfg.Rooms
 	cfg.Tiles = dbCfg.Tiles

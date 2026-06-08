@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { CalendarDays, Clock3 } from 'lucide-svelte';
-  import type { HomeConfig } from '$lib/types';
 
-  export let home: HomeConfig;
+  export let settings: { timezone: string; locale: string } = {
+    timezone: 'UTC',
+    locale: 'en'
+  };
   export let stale = false;
 
   let now = new Date();
@@ -16,17 +18,17 @@
     return () => window.clearInterval(timer);
   });
 
-  $: time = new Intl.DateTimeFormat(home.locale, {
+  $: time = new Intl.DateTimeFormat(settings.locale || 'en', {
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: home.timezone
+    timeZone: settings.timezone || 'UTC'
   }).format(now);
 
-  $: date = new Intl.DateTimeFormat(home.locale, {
+  $: date = new Intl.DateTimeFormat(settings.locale || 'en', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
-    timeZone: home.timezone
+    timeZone: settings.timezone || 'UTC'
   }).format(now);
 </script>
 
@@ -39,7 +41,7 @@
     <CalendarDays size={18} aria-hidden="true" />
     <span>{date}</span>
   </div>
-  <div class="date-time-zone">{home.timezone}</div>
+  <div class="date-time-zone">{settings.timezone || 'UTC'}</div>
   {#if stale}
     <div class="widget-state-note">Showing last hub state</div>
   {/if}

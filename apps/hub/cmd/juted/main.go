@@ -118,9 +118,9 @@ func run() error {
 		cfg,
 		version,
 		result.Setup,
-		runtimeStore,
-		runtimeStore,
-		runtimeStore,
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
 		*configPath,
 		displayActions,
 	)
@@ -227,7 +227,7 @@ type mcpSnapshotProvider struct {
 
 func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapshot, error) {
 	cfg := p.currentConfig()
-	layout, err := p.store.WidgetLayout(ctx, "")
+	layout, err := p.store.DashboardRepo.WidgetLayout(ctx, "")
 	if err != nil {
 		return widgetskills.Snapshot{}, err
 	}
@@ -246,9 +246,23 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 		})
 	}
 
+	timezone := "UTC"
+	locale := "en"
+	for _, w := range layout.Widgets {
+		if w.Kind == "date-time" {
+			if tzVal, ok := w.Settings["timezone"].(string); ok && tzVal != "" {
+				timezone = tzVal
+			}
+			if locVal, ok := w.Settings["locale"].(string); ok && locVal != "" {
+				locale = locVal
+			}
+			break
+		}
+	}
+
 	wsCfg := widgetskills.Config{}
-	wsCfg.Home.Locale = cfg.Home.Locale
-	wsCfg.Home.Timezone = cfg.Home.Timezone
+	wsCfg.Home.Locale = locale
+	wsCfg.Home.Timezone = timezone
 	wsCfg.Voice.PreferredAgentID = cfg.Voice.PreferredAgentID
 
 	wsRooms := make([]widgetskills.RoomConfig, len(cfg.Rooms))

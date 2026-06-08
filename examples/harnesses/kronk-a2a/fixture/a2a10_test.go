@@ -89,6 +89,7 @@ func TestKronkA2AServerListsAndGetsTasks(t *testing.T) {
 	}
 
 	getResp := invokeA2A(t, server, "GetTask", `{"id":"`+taskID+`"}`)
+	t.Logf("RAW TASK RESULT: %s", string(getResp.Result))
 	var task struct {
 		ID        string `json:"id"`
 		ContextID string `json:"contextId"`

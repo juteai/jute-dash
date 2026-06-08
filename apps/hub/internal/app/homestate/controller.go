@@ -233,12 +233,6 @@ func mergeHouseholdSettings(current, next HouseholdSettings) HouseholdSettings {
 	if strings.TrimSpace(next.Home.Name) == "" {
 		next.Home.Name = current.Home.Name
 	}
-	if strings.TrimSpace(next.Home.Timezone) == "" {
-		next.Home.Timezone = current.Home.Timezone
-	}
-	if strings.TrimSpace(next.Home.Locale) == "" {
-		next.Home.Locale = current.Home.Locale
-	}
 
 	// We handle Display as a generic map or shape.
 	currentDisplayBytes, err := json.Marshal(current.Display)
@@ -282,18 +276,6 @@ func mergeHouseholdSettings(current, next HouseholdSettings) HouseholdSettings {
 
 	next.Display = nextDisplay
 
-	if strings.TrimSpace(next.Weather.Provider) == "" {
-		next.Weather.Provider = current.Weather.Provider
-	}
-	if strings.TrimSpace(next.Weather.LocationName) == "" {
-		next.Weather.LocationName = current.Weather.LocationName
-	}
-	if strings.TrimSpace(next.Weather.TemperatureUnit) == "" {
-		next.Weather.TemperatureUnit = current.Weather.TemperatureUnit
-	}
-	if strings.TrimSpace(next.Weather.WindSpeedUnit) == "" {
-		next.Weather.WindSpeedUnit = current.Weather.WindSpeedUnit
-	}
 	next.Setup = current.Setup
 	return next
 }
@@ -302,15 +284,8 @@ func validateHouseholdSettings(settings HouseholdSettings) error {
 	if strings.TrimSpace(settings.Home.Name) == "" {
 		return fmt.Errorf("%w: home.name is required", errInvalidHouseholdSettings)
 	}
-	if _, err := time.LoadLocation(settings.Home.Timezone); err != nil {
-		return fmt.Errorf("%w: home.timezone is invalid", errInvalidHouseholdSettings)
-	}
-	if strings.TrimSpace(settings.Home.Locale) == "" {
-		return fmt.Errorf("%w: home.locale is required", errInvalidHouseholdSettings)
-	}
 
 	probs := ValidateHome(settings.Home)
-	probs = append(probs, ValidateWeather(settings.Weather)...)
 	if len(probs) > 0 {
 		return fmt.Errorf("%w: %s", errInvalidHouseholdSettings, strings.Join(probs, "; "))
 	}

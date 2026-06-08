@@ -273,14 +273,29 @@ func DashboardSnapshot(snapshot Snapshot) DashboardContext {
 			Context:      ContextForSkill(snapshot, skill),
 		})
 	}
+
+	timezone := "UTC"
+	locale := "en"
+	for _, w := range snapshot.Layout.Widgets {
+		if w.Kind == "date-time" {
+			if tzVal, ok := w.Settings["timezone"].(string); ok && tzVal != "" {
+				timezone = tzVal
+			}
+			if locVal, ok := w.Settings["locale"].(string); ok && locVal != "" {
+				locale = locVal
+			}
+			break
+		}
+	}
+
 	return DashboardContext{
 		Schema:      SchemaDashboardContext,
 		GeneratedAt: generatedAt(snapshot),
 		Display: Display{
 			DeviceID:        "default-display",
 			Profile:         firstNonEmpty(snapshot.Layout.ProfileID, "default-dashboard"),
-			Locale:          snapshot.Config.Home.Locale,
-			Timezone:        snapshot.Config.Home.Timezone,
+			Locale:          locale,
+			Timezone:        timezone,
 			InteractionMode: "touch",
 		},
 		Dashboard: Dashboard{
