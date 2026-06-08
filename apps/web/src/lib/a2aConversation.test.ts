@@ -3,9 +3,58 @@ import {
   createConversation,
   getConversations,
   getConversation,
-  sendConversationTurn,
-  sendConversationTurnStream
+  executeConversationTurn
 } from './a2aConversation';
+import type { ConversationDetail } from '$lib/types';
+
+async function sendConversationTurn(
+  fetcher: typeof fetch,
+  conversationId: string,
+  agentId: string,
+  text: string,
+  options?: any
+): Promise<ConversationDetail> {
+  let detail: ConversationDetail | undefined;
+  let error: Error | undefined;
+  for await (const event of executeConversationTurn(
+    fetcher,
+    conversationId,
+    { id: agentId, streaming: false },
+    text,
+    options
+  )) {
+    if (event.type === 'turn_completed') {
+      detail = { conversation: event.conversation, messages: event.messages };
+    } else if (event.type === 'turn_failed') {
+      error = new Error(event.message);
+    } else if (event.type === 'turn_canceled') {
+      throw new DOMException('The user aborted a request.', 'AbortError');
+    }
+  }
+  if (error) throw error;
+  if (!detail) throw new Error('Turn did not complete');
+  return detail;
+}
+
+async function sendConversationTurnStream(
+  fetcher: typeof fetch,
+  conversationId: string,
+  agentId: string,
+  text: string,
+  onEvent: (event: any) => void,
+  options?: any
+): Promise<void> {
+  const eventStream = executeConversationTurn(
+    fetcher,
+    conversationId,
+    { id: agentId, streaming: true },
+    text,
+    options
+  );
+  for await (const event of eventStream) {
+    onEvent(event);
+  }
+}
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -1512,9 +1561,11 @@ describe('api conversation streaming', () => {
         status: 'completed'
       },
       {
-        id: 'task-123:tool:019ea66c-b874-7753-b56e-3168d15403da:2',
+        id: 'call_6f7b97fb-7dfa-4b79-b584-3d141f63f119',
         text: 'Called tool: jute_skill_read_context',
-        status: 'completed'
+        status: 'completed',
+        args: { skillId: 'jute.weather.current' },
+        output: 'Weather is nice'
       },
       {
         id: 'task-123:thought:019ea66c-f82c-7c7f-aa86-f15b1f63d8d6',
@@ -1612,5 +1663,127 @@ describe('api conversation streaming', () => {
     expect(toolCallEvent).toBeDefined();
     expect(toolCallEvent?.text).toBe('Calling tool: jute_skill_read_context');
     expect(toolCallEvent?.status).toBe('working');
+  });
+
+  it('extracts args and response output from streamed function call and function response', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        const accept = (
+          options?.headers as Record<string, string> | undefined
+        )?.['Accept'];
+        if (accept === 'text/event-stream') {
+          const events = [
+            {
+              artifactUpdate: {
+                taskId: 'task-1',
+                contextId: 'ctx-1',
+                artifact: {
+                  artifactId: 'tool-use-stream',
+                  parts: [
+                    {
+                      data: {
+                        id: 'call-1',
+                        name: 'jute_skill_list',
+                        args: { filter: 'active' }
+                      },
+                      metadata: { adk_type: 'function_call' }
+                    }
+                  ]
+                },
+                append: true,
+                lastChunk: false
+              }
+            },
+            {
+              artifactUpdate: {
+                taskId: 'task-1',
+                contextId: 'ctx-1',
+                artifact: {
+                  artifactId: 'tool-use-stream',
+                  parts: [
+                    {
+                      data: {
+                        id: 'call-1',
+                        name: 'jute_skill_list',
+                        response: { output: 'success output' }
+                      },
+                      metadata: { adk_type: 'function_response' }
+                    }
+                  ]
+                },
+                append: true,
+                lastChunk: false
+              }
+            }
+          ];
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const encoder = new TextEncoder();
+              for (const result of events) {
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: body.id,
+                      result
+                    })}\n\n`
+                  )
+                );
+              }
+              controller.close();
+            }
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' }
+          });
+        }
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [task('task-1', 'ctx-1')] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: task('task-1', 'ctx-1')
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+    const events: Array<{
+      type: string;
+      status?: string;
+      text?: string;
+      args?: any;
+      output?: any;
+    }> = [];
+
+    await sendConversationTurnStream(
+      fetcher,
+      'ctx-1',
+      'house',
+      'Check skills',
+      (event) => events.push(event)
+    );
+
+    const callEvent = events.find(
+      (e) => e.type === 'status_changed' && e.status === 'working'
+    );
+    expect(callEvent).toBeDefined();
+    expect(callEvent?.text).toBe('Calling tool: jute_skill_list');
+    expect(callEvent?.args).toEqual({ filter: 'active' });
+
+    const responseEvent = events.find(
+      (e) => e.type === 'status_changed' && e.status === 'completed'
+    );
+    expect(responseEvent).toBeDefined();
+    expect(responseEvent?.text).toBe('Called tool: jute_skill_list');
+    expect(responseEvent?.output).toBe('success output');
   });
 });

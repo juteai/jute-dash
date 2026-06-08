@@ -86,7 +86,7 @@ export function looksLikeToolInvocation(text: string): boolean {
   return false;
 }
 
-export function isReasoningArtifact(artifact: {
+export function isReasoningArtifact(artifact?: {
   artifactId?: string;
   name?: string;
   description?: string;

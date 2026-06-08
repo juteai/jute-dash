@@ -3,8 +3,7 @@ import {
   getConversations,
   getConversation,
   createConversation,
-  sendConversationTurn,
-  sendConversationTurnStream
+  executeConversationTurn
 } from '$lib/a2aConversation';
 import { isAgentAvailable } from '$lib/agents';
 import { navigationStore } from '$lib/navigationStore';
@@ -15,9 +14,9 @@ import type {
   Conversation,
   ConversationDetail,
   ConversationMessage,
-  UserFacingIssue
+  UserFacingIssue,
+  ConversationStreamEvent
 } from '$lib/types';
-import { createStreamHandler } from '$lib/turnEngine';
 import { createMessageQueue } from '$lib/messageQueue';
 
 export interface ChatStoreState {
@@ -347,64 +346,127 @@ function createChatStore() {
         };
       });
 
-      if (agent.streaming) {
-        const { handler, result } = createStreamHandler(
-          assistantMessageId,
-          turnStartedAt,
-          {
-            updateMessages: (fn) =>
-              update((s) => ({ ...s, messages: fn(s.messages) })),
-            setChatState: (state) =>
-              update((s) => ({ ...s, chatState: state })),
-            setAssistantStatus: (statusText) =>
-              update((s) => ({ ...s, assistantStatusText: statusText })),
-            applyConversationDetail
+      let completed = false;
+      let canceled = false;
+      let failure: Error | undefined;
+      let thinkingDurationMs: number | undefined;
+
+      const eventStream = executeConversationTurn(
+        fetcher,
+        conversationId,
+        agent,
+        text,
+        { signal: turnController.signal }
+      );
+
+      for await (const event of eventStream) {
+        if (turnController.signal.aborted && event.type !== 'turn_canceled') {
+          break;
+        }
+
+        if (event.type === 'turn_started') {
+          update((s) => ({ ...s, chatState: 'thinking' }));
+          continue;
+        }
+        if (event.type === 'assistant_delta') {
+          if (thinkingDurationMs === undefined) {
+            thinkingDurationMs = Date.now() - turnStartedAt;
           }
-        );
-
-        await sendConversationTurnStream(
-          fetcher,
-          conversationId,
-          agent.id,
-          text,
-          (event) => {
-            if (
-              turnController.signal.aborted &&
-              event.type !== 'turn_canceled'
-            ) {
-              return;
+          update((s) => ({
+            ...s,
+            chatState: 'streaming',
+            messages: upsertAssistantDelta(
+              s.messages,
+              assistantMessageId,
+              event,
+              thinkingDurationMs
+            )
+          }));
+          continue;
+        }
+        if (event.type === 'artifact_update') {
+          if (event.isReasoning) {
+            update((s) => ({
+              ...s,
+              chatState: 'thinking',
+              messages: upsertReasoningStep(
+                s.messages,
+                assistantMessageId,
+                event
+              )
+            }));
+          } else if (event.isStructured) {
+            if (thinkingDurationMs === undefined) {
+              thinkingDurationMs = Date.now() - turnStartedAt;
             }
-            handler(event);
-          },
-          { signal: turnController.signal }
-        );
+            update((s) => ({
+              ...s,
+              chatState: 'streaming',
+              messages: upsertArtifactUpdate(
+                s.messages,
+                event,
+                thinkingDurationMs
+              )
+            }));
+          } else {
+            if (thinkingDurationMs === undefined) {
+              thinkingDurationMs = Date.now() - turnStartedAt;
+            }
+            update((s) => ({
+              ...s,
+              chatState: 'streaming',
+              messages: upsertAssistantDelta(
+                s.messages,
+                assistantMessageId,
+                {
+                  type: 'assistant_delta',
+                  conversationId: event.conversationId,
+                  agentId: event.agentId,
+                  taskId: event.taskId,
+                  text: event.text,
+                  append: event.append
+                },
+                thinkingDurationMs
+              )
+            }));
+          }
+          continue;
+        }
+        if (event.type === 'status_changed') {
+          update((s) => ({
+            ...s,
+            chatState: event.status === 'completed' ? 'streaming' : 'thinking',
+            assistantStatusText: event.text || '',
+            messages: upsertInterimStep(s.messages, assistantMessageId, event)
+          }));
+          continue;
+        }
+        if (event.type === 'turn_completed') {
+          completed = true;
+          applyConversationDetail({
+            conversation: event.conversation,
+            messages: event.messages
+          });
+          continue;
+        }
+        if (event.type === 'turn_failed') {
+          failure = new Error(event.message);
+          continue;
+        }
+        if (event.type === 'turn_canceled') {
+          canceled = true;
+          update((s) => ({ ...s, chatState: 'idle', assistantStatusText: '' }));
+        }
+      }
 
-        const turnResult = result();
-        if (turnController.signal.aborted || turnResult.canceled) {
-          return;
-        }
-        if (turnResult.failure) {
-          throw turnResult.failure;
-        }
-        if (!turnResult.completed) {
-          throw new Error('stream ended before completion');
-        }
-      } else {
-        const detail = await sendConversationTurn(
-          fetcher,
-          conversationId,
-          agent.id,
-          text,
-          { signal: turnController.signal }
-        );
-        const duration = Date.now() - turnStartedAt;
-        const lastMsg = detail.messages
-          .filter((m) => m.role === 'assistant')
-          .pop();
-        if (lastMsg) {
-          lastMsg.thinkingDurationMs = duration;
-        }
-        applyConversationDetail(detail);
+      if (turnController.signal.aborted || canceled) {
+        return;
+      }
+      if (failure) {
+        throw failure;
+      }
+      if (!completed) {
+        throw new Error('turn ended before completion');
       }
 
       if (onMarkConnected) onMarkConnected();
@@ -738,6 +800,272 @@ function createChatStore() {
       }));
     }
   };
+}
+
+function upsertAssistantDelta(
+  messages: ChatMessage[],
+  messageId: string,
+  event: Extract<ConversationStreamEvent, { type: 'assistant_delta' }>,
+  thinkingDurationMs?: number
+): ChatMessage[] {
+  let found = false;
+  const updatedMessages = messages.map((message) => {
+    if (message.id !== messageId) {
+      return message;
+    }
+    found = true;
+    const steps = (message.interimSteps || []).map((step) => {
+      if (step.status === 'thinking') {
+        return { ...step, status: 'completed' as const };
+      }
+      return step;
+    });
+    return {
+      ...message,
+      conversationId: event.conversationId || message.conversationId,
+      content: event.append ? message.content + event.text : event.text,
+      status: 'streaming' as const,
+      agentId: event.agentId || message.agentId,
+      thinkingDurationMs: thinkingDurationMs ?? message.thinkingDurationMs,
+      interimSteps: steps.length > 0 ? steps : undefined
+    };
+  });
+
+  if (!found) {
+    updatedMessages.push(
+      makeMessage('assistant', event.text, {
+        id: messageId,
+        conversationId: event.conversationId,
+        status: 'streaming',
+        agentId: event.agentId,
+        thinkingDurationMs
+      })
+    );
+  }
+  return updatedMessages;
+}
+
+function upsertArtifactUpdate(
+  messages: ChatMessage[],
+  event: Extract<ConversationStreamEvent, { type: 'artifact_update' }>,
+  thinkingDurationMs?: number
+): ChatMessage[] {
+  if (event.isReasoning) {
+    return messages;
+  }
+  const messageId = `${event.taskId || 'stream'}:artifact:${event.artifactId}`;
+
+  let found = false;
+  const updatedMessages = messages.map((message) => {
+    if (message.id !== messageId) {
+      return message;
+    }
+    found = true;
+    const prevContent = message.content || '';
+    const newContent = event.append ? prevContent + event.text : event.text;
+
+    const steps = (message.interimSteps || []).map((step) => {
+      if (step.status === 'thinking') {
+        return { ...step, status: 'completed' as const };
+      }
+      return step;
+    });
+
+    return {
+      ...message,
+      status: 'streaming' as const,
+      content: newContent,
+      thinkingDurationMs: thinkingDurationMs ?? message.thinkingDurationMs,
+      interimSteps: steps.length > 0 ? steps : undefined,
+      artifact: {
+        id: event.artifactId,
+        title: event.name || event.artifactId || 'Artifact',
+        content: newContent
+      }
+    };
+  });
+
+  if (!found) {
+    updatedMessages.push({
+      id: messageId,
+      conversationId: event.conversationId,
+      agentId: event.agentId,
+      role: 'assistant',
+      content: event.text,
+      status: 'streaming',
+      createdAt: new Date().toISOString(),
+      thinkingDurationMs,
+      artifact: {
+        id: event.artifactId,
+        title: event.name || event.artifactId || 'Artifact',
+        content: event.text
+      }
+    });
+  }
+  return updatedMessages;
+}
+
+function upsertReasoningStep(
+  messages: ChatMessage[],
+  assistantMessageId: string,
+  event: Extract<ConversationStreamEvent, { type: 'artifact_update' }>
+): ChatMessage[] {
+  const stepId = `${event.taskId || 'stream'}:reasoning:${event.artifactId}`;
+  const stepText = event.text;
+
+  let foundMessage = false;
+  const updatedMessages = messages.map((message) => {
+    if (message.id !== assistantMessageId) {
+      return message;
+    }
+    foundMessage = true;
+    const steps = (message.interimSteps || []).map((step) => {
+      if (step.status === 'thinking' && step.id !== stepId) {
+        return { ...step, status: 'completed' as const };
+      }
+      return step;
+    });
+    const existingIndex = steps.findIndex((s) => s.id === stepId);
+    let updatedSteps;
+    if (existingIndex > -1) {
+      updatedSteps = [...steps];
+      updatedSteps[existingIndex] = {
+        ...updatedSteps[existingIndex],
+        text: event.append
+          ? updatedSteps[existingIndex].text + stepText
+          : stepText,
+        status: 'thinking' as const
+      };
+    } else {
+      if (!stepText.trim()) {
+        return message;
+      }
+      updatedSteps = [
+        ...steps,
+        {
+          id: stepId,
+          text: stepText,
+          status: 'thinking' as const
+        }
+      ];
+    }
+    return {
+      ...message,
+      interimSteps: updatedSteps
+    };
+  });
+
+  if (!foundMessage) {
+    if (stepText.trim()) {
+      updatedMessages.push({
+        id: assistantMessageId,
+        conversationId: event.conversationId,
+        agentId: event.agentId,
+        role: 'assistant',
+        content: '',
+        status: 'streaming',
+        createdAt: new Date().toISOString(),
+        interimSteps: [
+          {
+            id: stepId,
+            text: stepText,
+            status: 'thinking' as const
+          }
+        ]
+      });
+    } else {
+      updatedMessages.push({
+        id: assistantMessageId,
+        conversationId: event.conversationId,
+        agentId: event.agentId,
+        role: 'assistant',
+        content: '',
+        status: 'streaming',
+        createdAt: new Date().toISOString()
+      });
+    }
+  }
+  return updatedMessages;
+}
+
+function upsertInterimStep(
+  messages: ChatMessage[],
+  assistantMessageId: string,
+  event: Extract<ConversationStreamEvent, { type: 'status_changed' }>
+): ChatMessage[] {
+  if (!event.text || !event.text.trim()) {
+    return messages;
+  }
+  const stepId = event.taskId || makeID();
+
+  let foundMessage = false;
+  const updatedMessages = messages.map((message) => {
+    if (message.id !== assistantMessageId) {
+      return message;
+    }
+    foundMessage = true;
+    const steps = (message.interimSteps || []).map((step) => {
+      if (step.status === 'thinking' && step.id !== stepId) {
+        return { ...step, status: 'completed' as const };
+      }
+      return step;
+    });
+    const existingIndex = steps.findIndex((s) => s.id === stepId);
+    let updatedSteps;
+    if (existingIndex > -1) {
+      updatedSteps = [...steps];
+      updatedSteps[existingIndex] = {
+        ...updatedSteps[existingIndex],
+        text: event.text || updatedSteps[existingIndex].text,
+        status: event.status as any,
+        args:
+          event.args !== undefined
+            ? event.args
+            : updatedSteps[existingIndex].args,
+        output:
+          event.output !== undefined
+            ? event.output
+            : updatedSteps[existingIndex].output
+      };
+    } else {
+      updatedSteps = [
+        ...steps,
+        {
+          id: stepId,
+          text: event.text || '',
+          status: event.status as any,
+          args: event.args,
+          output: event.output
+        }
+      ];
+    }
+    return {
+      ...message,
+      interimSteps: updatedSteps
+    };
+  });
+
+  if (!foundMessage) {
+    updatedMessages.push({
+      id: assistantMessageId,
+      conversationId: event.conversationId,
+      agentId: event.agentId,
+      role: 'assistant',
+      content: '',
+      status: 'sending',
+      createdAt: new Date().toISOString(),
+      interimSteps: [
+        {
+          id: stepId,
+          text: event.text || '',
+          status: event.status as any,
+          args: event.args,
+          output: event.output
+        }
+      ]
+    });
+  }
+  return updatedMessages;
 }
 
 export const chatStore = createChatStore();

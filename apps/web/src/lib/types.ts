@@ -365,6 +365,8 @@ export type InterimStep = {
   text: string;
   status: 'pending' | 'working' | 'completed' | 'failed' | string;
   timestamp?: string;
+  args?: any;
+  output?: any;
 };
 
 export type ChatMessage = {
@@ -458,6 +460,8 @@ export type ConversationStreamEvent =
       status: string;
       text?: string;
       terminal?: boolean;
+      args?: any;
+      output?: any;
     }
   | ({
       type: 'turn_completed';

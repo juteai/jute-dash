@@ -5,8 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Coerce a string value or input event's value to a number, defaulting to 0. */
-export function numeric(value: string | Event): number {
+/** Coerce a string value, input event, or null/undefined to a number, defaulting to 0. */
+export function numeric(value: string | Event | null | undefined): number {
+  if (!value) return 0;
   const val =
     typeof value === 'string'
       ? value

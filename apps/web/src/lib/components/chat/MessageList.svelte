@@ -16,6 +16,7 @@
   }) => void = () => {};
 
   let stepsExpanded: Record<string, boolean> = {};
+  let stepExpansion: Record<string, boolean> = {};
   let copiedId = '';
   let copiedTimeout: ReturnType<typeof setTimeout> | undefined;
 
@@ -32,6 +33,21 @@
       return stepsExpanded[messageId];
     }
     return messageStatus === 'streaming' || messageStatus === 'sending';
+  }
+
+  function toggleStep(stepId: string) {
+    stepExpansion = {
+      ...stepExpansion,
+      [stepId]: !stepExpansion[stepId]
+    };
+  }
+
+  function isStepExpanded(step: any) {
+    if (stepExpansion[step.id] !== undefined) {
+      return stepExpansion[step.id];
+    }
+    // Expand by default if currently active
+    return step.status === 'thinking' || step.status === 'working';
   }
 
   function copyToClipboard(text: string, messageId: string) {
@@ -65,6 +81,17 @@
         class:message-bubble--failed={message.status === 'failed'}
         class:message-bubble--queued={message.status === 'queued'}
       >
+        {#if message.role === 'assistant' && !message.content && (!message.interimSteps || message.interimSteps.length === 0) && (message.status === 'sending' || message.status === 'streaming')}
+          <div
+            class="assistant-activity--working"
+            aria-live="polite"
+            style="margin-bottom: 8px;"
+          >
+            <div class="interim-step-spinner inline-spinner"></div>
+            <span>Working...</span>
+          </div>
+        {/if}
+
         {#if message.role === 'assistant' && message.interimSteps && message.interimSteps.length > 0}
           <!-- Collapsible activity checklist -->
           <div class="interim-steps-container">
@@ -95,19 +122,128 @@
             {#if isExpanded(message.id, message.status)}
               <div class="interim-steps-list">
                 {#each message.interimSteps as step (step.id)}
-                  <div class="interim-step-item {step.status}">
-                    {#if step.status === 'working' || step.status === 'thinking' || step.status === 'running' || step.status === 'pending'}
-                      <div class="interim-step-spinner"></div>
-                    {:else if step.status === 'completed'}
-                      <span style="color: var(--success);">✓</span>
-                    {:else if step.status === 'failed'}
-                      <span style="color: var(--danger);">✗</span>
+                  {@const isReasoning =
+                    step.status === 'thinking' ||
+                    step.id.includes(':reasoning:') ||
+                    step.id.includes(':thought:') ||
+                    step.id.includes(':status-thought')}
+                  {@const isTool =
+                    step.text.startsWith('Calling tool') ||
+                    step.text.startsWith('Called tool') ||
+                    step.id.includes(':tool:')}
+
+                  <div class="interim-step-wrapper">
+                    {#if isReasoning}
+                      <div class="interim-step-item-container">
+                        <button
+                          type="button"
+                          class="interim-step-toggle-btn"
+                          on:click={() => toggleStep(step.id)}
+                        >
+                          <div class="interim-step-status-row">
+                            {#if step.status === 'thinking'}
+                              <div class="interim-step-spinner"></div>
+                              <span class="active-pulse-text">Thinking...</span>
+                            {:else}
+                              <span
+                                class="completed-icon"
+                                style="color: var(--success);">✓</span
+                              >
+                              <span>Thought</span>
+                            {/if}
+                          </div>
+                          <span
+                            class="interim-steps-chevron"
+                            class:expanded={isStepExpanded(step)}>›</span
+                          >
+                        </button>
+                        {#if isStepExpanded(step)}
+                          <div class="interim-step-details reasoning-details">
+                            <Markdown content={step.text} />
+                          </div>
+                        {/if}
+                      </div>
+                    {:else if isTool}
+                      <div class="interim-step-item-container">
+                        <button
+                          type="button"
+                          class="interim-step-toggle-btn"
+                          on:click={() => toggleStep(step.id)}
+                        >
+                          <div class="interim-step-status-row">
+                            {#if step.status === 'working'}
+                              <div class="interim-step-spinner"></div>
+                              <span class="active-pulse-text">{step.text}</span>
+                            {:else}
+                              <span
+                                class="completed-icon"
+                                style="color: var(--success);">✓</span
+                              >
+                              <span>{step.text}</span>
+                            {/if}
+                          </div>
+                          <span
+                            class="interim-steps-chevron"
+                            class:expanded={isStepExpanded(step)}>›</span
+                          >
+                        </button>
+                        {#if isStepExpanded(step)}
+                          <div class="interim-step-details tool-details">
+                            {#if step.args}
+                              <div class="tool-snippet">
+                                <div class="tool-snippet-header">Arguments</div>
+                                <pre class="tool-code"><code
+                                    >{JSON.stringify(step.args, null, 2)}</code
+                                  ></pre>
+                              </div>
+                            {/if}
+                            {#if step.output}
+                              <div class="tool-snippet">
+                                <div class="tool-snippet-header">Result</div>
+                                <pre class="tool-code"><code
+                                    >{typeof step.output === 'string'
+                                      ? step.output
+                                      : JSON.stringify(
+                                          step.output,
+                                          null,
+                                          2
+                                        )}</code
+                                  ></pre>
+                              </div>
+                            {/if}
+                          </div>
+                        {/if}
+                      </div>
                     {:else}
-                      <span style="color: var(--muted); opacity: 0.5;">○</span>
+                      <div class="interim-step-item {step.status}">
+                        {#if step.status === 'working' || step.status === 'thinking' || step.status === 'running' || step.status === 'pending'}
+                          <div class="interim-step-spinner"></div>
+                        {:else if step.status === 'completed'}
+                          <span style="color: var(--success);">✓</span>
+                        {:else if step.status === 'failed'}
+                          <span style="color: var(--danger);">✗</span>
+                        {:else}
+                          <span style="color: var(--muted); opacity: 0.5;"
+                            >○</span
+                          >
+                        {/if}
+                        <span>{step.text}</span>
+                      </div>
                     {/if}
-                    <span>{step.text}</span>
                   </div>
                 {/each}
+
+                {#if message.status === 'streaming' || message.status === 'sending' || (state === 'thinking' && messages[messages.length - 1]?.id === message.id)}
+                  {#if !message.interimSteps.some((s) => s.status === 'working' || s.status === 'thinking' || s.status === 'running' || s.status === 'pending')}
+                    <div
+                      class="interim-step-item working"
+                      style="margin-top: 4px;"
+                    >
+                      <div class="interim-step-spinner"></div>
+                      <span class="active-pulse-text">Working...</span>
+                    </div>
+                  {/if}
+                {/if}
               </div>
             {/if}
           </div>

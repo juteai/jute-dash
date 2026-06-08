@@ -94,7 +94,10 @@
     {#if stateDetails}
       <div class="widget-state-overlay">
         {#if state === 'loading'}
-          <Loader2 class="widget-state-icon animate-spin" size={24} />
+          <Loader2
+            class="widget-state-icon animate-spin text-active"
+            size={24}
+          />
         {:else if state === 'error'}
           <AlertCircle class="widget-state-icon text-danger" size={24} />
         {:else if state === 'unavailable'}
