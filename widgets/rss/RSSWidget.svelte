@@ -146,4 +146,16 @@
     color: var(--muted);
     font-style: italic;
   }
+
+  :global(.widget-frame--medium) .rss-widget {
+    font-size: var(--widget-body-size);
+  }
+
+  :global(.widget-frame--medium) .rss-widget h4 {
+    font-size: 0.72rem;
+  }
+
+  :global(.widget-frame--medium) .rss-widget a {
+    font-size: 0.85rem;
+  }
 </style>

@@ -227,4 +227,16 @@
     color: var(--muted);
     font-style: italic;
   }
+
+  :global(.widget-frame--medium) .markets-widget {
+    font-size: var(--widget-body-size);
+  }
+
+  :global(.widget-frame--medium) .markets-widget :global(.text-xs) {
+    font-size: 0.72rem;
+  }
+
+  :global(.widget-frame--medium) .markets-widget :global(.text-sm) {
+    font-size: 0.85rem;
+  }
 </style>

@@ -178,3 +178,141 @@
     </div>
   </section>
 </div>
+
+<style>
+  :global(.settings-layer) {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: color-mix(in srgb, var(--background) 72%, transparent);
+  }
+
+  .settings-panel {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    gap: 12px;
+    width: min(100%, 860px);
+    max-height: min(90vh, 760px);
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    padding: 16px;
+    box-shadow: 0 20px 80px var(--shadow);
+  }
+
+  .settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .settings-header strong {
+    display: block;
+    color: var(--foreground);
+  }
+
+  .settings-header span {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 650;
+  }
+
+  .settings-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+  }
+
+  .settings-tabs button {
+    min-height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--foreground);
+    padding: 0 12px;
+    cursor: pointer;
+    font-weight: 740;
+  }
+
+  .settings-tabs button.settings-tab--active {
+    border-color: var(--foreground);
+    background: var(--foreground);
+    color: var(--background);
+  }
+
+  .settings-body {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .settings-status-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .settings-status-grid > div {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-muted);
+    padding: 10px;
+  }
+
+  .settings-status-grid strong {
+    display: block;
+    margin-top: 4px;
+    overflow: hidden;
+    color: var(--foreground);
+    font-size: 0.84rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .settings-status-grid span {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 650;
+  }
+
+  .settings-help {
+    margin: 12px 0 0;
+    line-height: 1.4;
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 650;
+  }
+
+  .settings-issue {
+    margin: 0;
+    border: 1px solid var(--warning);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--warning);
+  }
+
+  @media (max-width: 640px) {
+    :global(.settings-layer) {
+      position: fixed;
+    }
+
+    .settings-panel {
+      width: 100%;
+      max-height: calc(100vh - 16px);
+    }
+
+    .settings-status-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -141,3 +141,82 @@
     <p class="agent-diagnostics-empty">Add an A2A agent to see diagnostics.</p>
   {/if}
 </section>
+
+<style>
+  .agent-diagnostics {
+    display: grid;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-muted);
+  }
+
+  .agent-diagnostics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .agent-diagnostics-grid > div,
+  .agent-diagnostics-skills {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    padding: 10px;
+  }
+
+  .agent-diagnostics span,
+  .agent-diagnostics small {
+    display: block;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .agent-diagnostics strong {
+    display: block;
+    margin-top: 4px;
+    overflow: hidden;
+    color: var(--foreground);
+    font-size: 0.84rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .agent-diagnostics small {
+    margin-top: 4px;
+    overflow-wrap: anywhere;
+  }
+
+  .agent-diagnostics-skills {
+    display: grid;
+    gap: 8px;
+  }
+
+  .agent-diagnostics-skills > div,
+  .agent-diagnostics-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .agent-diagnostics-empty {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.84rem;
+    font-weight: 650;
+  }
+
+  @media (max-width: 920px) {
+    .agent-diagnostics-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 640px) {
+    .agent-diagnostics-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

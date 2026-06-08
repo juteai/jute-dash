@@ -69,3 +69,84 @@
     </Button>
   </div>
 </div>
+
+<style>
+  .chat-history-widget {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+    gap: 10px;
+    font-size: var(--widget-body-size);
+  }
+
+  .chat-history-summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .chat-history-agent {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    color: var(--muted);
+    font-size: var(--widget-label-size);
+    font-weight: 680;
+  }
+
+  .chat-history-agent span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chat-history-count {
+    font-size: calc(var(--widget-display-size) * 0.68);
+    font-weight: 780;
+    line-height: 1;
+  }
+
+  .chat-history-label,
+  .chat-history-footer,
+  .chat-history-list p {
+    color: var(--muted);
+    font-size: var(--widget-body-size);
+  }
+
+  .chat-history-list {
+    display: grid;
+    gap: 8px;
+    min-height: 0;
+  }
+
+  .chat-history-item {
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-muted);
+  }
+
+  .chat-history-item span {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-weight: 760;
+    text-transform: uppercase;
+  }
+
+  .chat-history-item p {
+    display: -webkit-box;
+    margin: 4px 0 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .chat-history-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+</style>

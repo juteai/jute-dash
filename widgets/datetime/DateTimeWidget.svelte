@@ -46,3 +46,67 @@
     <div class="widget-state-note">Showing last hub state</div>
   {/if}
 </div>
+
+<style>
+  .date-time-widget {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 100%;
+    gap: 8px;
+  }
+
+  .date-time-clock {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: var(--widget-display-size);
+    font-weight: 780;
+    line-height: 1;
+  }
+
+  .date-time-clock :global(svg) {
+    width: clamp(14px, 8cqmin, 40px);
+    height: auto;
+  }
+
+  .date-time-date {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted-strong);
+    font-size: var(--widget-value-size);
+    font-weight: 680;
+  }
+
+  .date-time-zone {
+    color: var(--muted);
+    font-size: var(--widget-label-size);
+    font-weight: 650;
+  }
+
+  :global(.widget-frame--wide) .date-time-widget {
+    justify-content: center;
+  }
+
+  :global(.widget-frame--wide) .date-time-date,
+  :global(.widget-frame--wide) .date-time-zone {
+    display: none;
+  }
+
+  .widget-stale {
+    opacity: 0.72;
+  }
+
+  .widget-state-note {
+    color: var(--warning);
+    font-size: 0.78rem;
+    font-weight: 720;
+  }
+
+  @media (max-width: 640px) {
+    .date-time-clock :global(svg) {
+      width: 28px;
+    }
+  }
+</style>

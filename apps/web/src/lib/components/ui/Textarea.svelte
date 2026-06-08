@@ -18,3 +18,28 @@
   on:keydown
   on:input
 ></textarea>
+
+<style>
+  .ui-textarea {
+    width: 100%;
+    min-height: 44px;
+    max-height: 128px;
+    resize: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--foreground);
+    padding: 11px 12px;
+    font: inherit;
+  }
+
+  .ui-textarea:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  .ui-textarea:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+</style>

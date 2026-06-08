@@ -332,3 +332,403 @@
     {/if}
   {/if}
 </div>
+
+<style>
+  .message-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px;
+    scrollbar-gutter: stable;
+  }
+
+  .chat-empty {
+    display: grid;
+    min-height: 100%;
+    place-content: center;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .chat-empty-title {
+    color: var(--foreground);
+    font-size: 1.45rem;
+    font-weight: 780;
+  }
+
+  .message-bubble {
+    width: fit-content;
+    max-width: 75%;
+    padding: 10px 32px 10px 16px;
+    border-radius: 18px;
+    position: relative;
+    transition:
+      background-color 0.2s ease,
+      border-color 0.2s ease;
+  }
+
+  .message-bubble--user {
+    align-self: flex-end;
+    background: var(--foreground);
+    color: var(--inverse);
+    border: none;
+    border-bottom-right-radius: 4px;
+  }
+
+  .message-bubble--assistant {
+    align-self: flex-start;
+    background: transparent;
+    border: none;
+    padding: 10px 32px 10px 0;
+    max-width: 80%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .message-bubble--system {
+    align-self: flex-start;
+    background: transparent;
+    border: none;
+    border-left: 2px solid var(--warning);
+    padding: 10px 32px 10px 12px;
+    max-width: 80%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .message-bubble--failed {
+    border-left: 2px solid var(--danger);
+    padding-left: 12px;
+  }
+
+  .message-bubble--sending,
+  .message-bubble--queued {
+    opacity: 0.62;
+  }
+
+  .message-bubble--queued {
+    border-style: dashed;
+  }
+
+  .message-copy-btn {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: none;
+    background: color-mix(in srgb, var(--surface-strong) 15%, transparent);
+    color: var(--muted);
+    cursor: pointer;
+    opacity: 0;
+    transition:
+      opacity 0.25s ease,
+      background-color 0.2s ease,
+      color 0.2s ease;
+  }
+
+  .message-copy-btn:hover {
+    background: color-mix(in srgb, var(--surface-strong) 30%, transparent);
+    color: var(--foreground);
+  }
+
+  .message-bubble:hover .message-copy-btn {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    .message-copy-btn {
+      opacity: 0.35;
+    }
+  }
+
+  .message-actions {
+    display: flex;
+    margin-top: 8px;
+  }
+
+  .assistant-activity--working {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--active);
+    font-size: 0.88rem;
+    font-weight: 500;
+  }
+
+  /* Redesigned Collapsible progress logs */
+  .interim-steps-container {
+    margin-bottom: 12px;
+    font-size: 0.82rem;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .interim-steps-header {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    user-select: none;
+    color: var(--muted-strong);
+    font-weight: 600;
+    transition: color 0.2s ease;
+  }
+
+  .interim-steps-header:hover {
+    color: var(--foreground);
+  }
+
+  .interim-steps-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .interim-steps-chevron {
+    font-size: 0.85rem;
+    transition: transform 0.2s ease;
+    display: inline-block;
+    color: var(--muted);
+  }
+
+  .interim-steps-chevron.expanded {
+    transform: rotate(90deg);
+  }
+
+  .interim-steps-list {
+    border-left: 2px solid var(--border);
+    margin-left: 6px;
+    padding: 6px 0 8px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .interim-step-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+
+  .interim-step-spinner {
+    width: 11px;
+    height: 11px;
+    border: 2px solid color-mix(in srgb, var(--active) 20%, transparent);
+    border-top-color: var(--active);
+    border-radius: 50%;
+    animation: step-spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  .inline-spinner {
+    border-top-color: var(--active);
+  }
+
+  @keyframes step-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .interim-step-wrapper {
+    margin-top: 4px;
+  }
+
+  .interim-step-item-container {
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--surface-strong) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+    text-align: left;
+    width: fit-content;
+    min-width: 280px;
+    max-width: 100%;
+  }
+
+  .interim-step-item-container:hover {
+    background: color-mix(in srgb, var(--surface-strong) 20%, transparent);
+    border-color: var(--border);
+  }
+
+  .interim-step-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 6px 12px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    color: var(--foreground);
+    font-size: 0.78rem;
+    font-weight: 550;
+    transition: color 0.2s ease;
+  }
+
+  .interim-step-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .completed-icon {
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .active-pulse-text {
+    color: var(--active);
+    animation: active-text-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes active-text-pulse {
+    0%,
+    100% {
+      opacity: 0.75;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .interim-step-details {
+    border-top: 1px solid color-mix(in srgb, var(--border) 35%, transparent);
+    padding: 10px 12px;
+    font-size: 0.78rem;
+    color: var(--muted-strong);
+    line-height: 1.45;
+    background: color-mix(in srgb, var(--surface) 60%, transparent);
+  }
+
+  .reasoning-details {
+    font-style: italic;
+    max-height: 240px;
+    overflow-y: auto;
+    border-left: 2px solid var(--active);
+  }
+
+  .tool-details {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .tool-snippet {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .tool-snippet-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+
+  .tool-code {
+    margin: 0 !important;
+    padding: 8px !important;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    font-size: 0.72rem !important;
+    border-radius: 6px !important;
+    background: color-mix(
+      in srgb,
+      var(--surface-strong) 40%,
+      var(--surface)
+    ) !important;
+    border: 1px solid color-mix(in srgb, var(--border) 25%, transparent) !important;
+    overflow-x: auto;
+    color: var(--foreground) !important;
+    max-height: 160px;
+  }
+
+  /* Artifact Card */
+  .artifact-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--surface-strong) 40%, var(--surface));
+    padding: 12px;
+    box-shadow: 0 4px 12px var(--shadow);
+    max-width: 520px;
+    text-align: left;
+  }
+
+  .artifact-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .artifact-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--active) 12%, transparent);
+    color: var(--active);
+    flex-shrink: 0;
+  }
+
+  .artifact-card-details {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .artifact-card-title {
+    font-weight: 760;
+    color: var(--foreground);
+    font-size: 0.86rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .artifact-card-subtitle {
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .artifact-card-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  @media (max-width: 640px) {
+    .message-bubble {
+      width: 100%;
+      max-width: 100%;
+    }
+  }
+</style>

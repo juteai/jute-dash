@@ -2,7 +2,7 @@
 
 ## Overview
 
-Jute Dash's widget ecosystem is a unified, high-performance, and **monorepo-driven native library**. Both the back-end data fetching and scheduling logic (written in Go) and the front-end display view (written in Svelte) live side-by-side inside a single widget directory under the root `widgets/` folder. 
+Jute Dash's widget ecosystem is a unified, high-performance, and **monorepo-driven native library**. Both the back-end data fetching and scheduling logic (written in Go) and the front-end display view (written in Svelte) live side-by-side inside a single widget directory under the root `widgets/` folder.
 
 There are no sandboxed iframes, manifests, or postMessage message protocols. Everything compiles and executes natively within Jute's own runtime.
 
@@ -94,7 +94,16 @@ If your widget is agent-visible, define its `Skill()` return structure to declar
 
 ## 4. UI & Styling Guidelines
 
-- **Theme Compliance**: Use Jute Theme Pack tokens rather than hard-coded colors. The default theme is `jute-mono` BOW/WOB, but contributed themes can change the full UI token set.
+- **Theme Compliance & CSS Variables**: Use Jute Theme Pack tokens rather than hardcoded hex colors. Widgets inherit the display root's CSS custom properties down the DOM cascade. You should use the following inherited variables inside your Svelte `<style>` blocks:
+  - `var(--foreground)`: Default text color.
+  - `var(--muted)`: Secondary/de-emphasized text color.
+  - `var(--muted-strong)`: Stronger muted text.
+  - `var(--border)`: Default border color.
+  - `var(--border-strong)`: High-contrast borders.
+  - `var(--surface-muted)`: Background color for muted elements (e.g. table headers, card list backdrops).
+  - `var(--surface-strong)`: Background color for highlighted visual elements.
+  - `var(--active)`: Accent/active state colors.
+  - `var(--success)`, `var(--warning)`, `var(--danger)`: Semantic state indicator colors.
 - **Widget Chrome**: Design for `solid`, `clear`, `smoked`, `frosted`, and `auto` host chrome modes. Do not assume an opaque widget background.
 - **Hover Micro-Animations**: Use smooth CSS transitions (`transition-all`, `hover:scale-[1.01]`) to make interactions feel premium and responsive.
 - **Grids & Layouts**: Design the Svelte component to fit cleanly inside the standard `WidgetFrame` at all supported grid sizes. Expose a clean empty or loading state when data is unavailable.

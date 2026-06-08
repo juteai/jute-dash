@@ -74,3 +74,116 @@
     {/if}
   </div>
 </aside>
+
+<style>
+  .conversation-sidebar {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    border-right: 1px solid var(--border);
+    background: var(--surface-muted);
+  }
+
+  .conversation-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .conversation-sidebar-header strong {
+    display: block;
+    color: var(--foreground);
+    font-size: 0.92rem;
+  }
+
+  .conversation-sidebar-header span {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 650;
+  }
+
+  .conversation-list {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px;
+    scrollbar-gutter: stable;
+  }
+
+  .conversation-empty {
+    padding: 12px;
+    color: var(--muted);
+    font-size: 0.84rem;
+    line-height: 1.35;
+  }
+
+  .conversation-link-button {
+    display: block;
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--foreground);
+    padding: 8px 10px;
+    cursor: pointer;
+    font-weight: 720;
+    width: 100%;
+    text-align: center;
+  }
+
+  .conversation-item {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--foreground);
+    padding: 10px;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+  }
+
+  .conversation-item:hover,
+  .conversation-item--active {
+    border-color: var(--border);
+    background: var(--surface);
+  }
+
+  .conversation-item span {
+    overflow: hidden;
+    font-size: 0.88rem;
+    font-weight: 720;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .conversation-item small {
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 650;
+  }
+
+  @media (max-width: 640px) {
+    .conversation-sidebar {
+      max-height: 160px;
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .conversation-list {
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(190px, 1fr);
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+  }
+</style>
