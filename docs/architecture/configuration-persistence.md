@@ -31,14 +31,35 @@ Runtime rules:
 
 ## Configuration Layers
 
-Effective configuration is built in this order:
+Effective configuration is built in this order of precedence (highest overriding lowest):
 
-1. compiled safe defaults;
-2. boot-only CLI and environment overrides;
-3. optional bootstrap YAML or JSON, applied only when initializing an empty runtime store;
-4. SQLite household settings;
-5. SQLite device profile overrides;
-6. transient browser state for non-durable UI only.
+```mermaid
+flowchart TD
+    subgraph Precedence [Precedence Order]
+        direction BT
+        L6[6. Transient UI state in Browser]
+        L5[5. SQLite Device Profile overrides]
+        L4[4. SQLite Household Settings]
+        L3[3. Bootstrap YAML/JSON file]
+        L2[2. Boot-only CLI & Env variables]
+        L1[1. Compiled-in Safe Defaults]
+
+        L1 --> L2
+        L2 --> L3
+        L3 --> L4
+        L4 --> L5
+        L5 --> L6
+    end
+
+    subgraph DataFlow [Data Flow & Persistence]
+        YAML[Bootstrap YAML] -->|Loads on first boot only| SQLite[(SQLite Runtime Store\njute.db)]
+        Env[Env Variables] -->|Overrides at runtime| Hub[Jute Hub Server]
+        SQLite -->|Authoritative runtime truth| Hub
+        Hub -->|Serves config/status APIs| Web[Svelte display client]
+        Web -->|Persists config updates| Hub
+        Hub -->|Writes back to database| SQLite
+    end
+```
 
 Boot-only values include:
 

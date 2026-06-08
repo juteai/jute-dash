@@ -21,6 +21,28 @@ Agents are registered by direct configuration, registry lookup, or well-known Ag
 https://{agent-domain}/.well-known/agent-card.json
 ```
 
+The discovery and messaging flow follows this sequence:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User / Display
+    participant Hub as Jute Hub (Go)
+    participant Agent as A2A Agent (Server)
+
+    Note over Hub,Agent: Discovery & Registration
+    Hub->>Agent: GET /.well-known/agent-card.json
+    Agent-->>Hub: Return Agent Card (supportedInterfaces, capabilities)
+    Note over Hub: Validate card, cache locally,<br/>and select best protocol binding (JSONRPC, HTTP, gRPC)
+
+    Note over User,Agent: Conversation Proxy Flow
+    User->>Hub: POST /api/v1/proxy/agents/{agentId}/... (standard A2A message)
+    Note over Hub: Retrieve credentials, inject Auth headers,<br/>and map binding parameters
+    Hub->>Agent: Send Message via Protocol Binding (e.g. JSON-RPC over HTTP)
+    Agent-->>Hub: Return Message / Task Artifact Response
+    Hub-->>User: Forward sanitized response to Display
+```
+
 The hub resolves the Agent Card, validates it, caches it, and records:
 
 - identity and provider metadata;

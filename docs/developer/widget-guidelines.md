@@ -44,16 +44,20 @@ type Widget interface {
 ```
 
 ### Self-Registration
-During `init()`, register your widget with the global registry:
+During `init()`, register your widget with the global registry. For widgets with agent-facing skills, use `RegisterWithSkill` to register both the widget and its skill context function:
 
 ```go
 func init() {
+	// Visual-only widgets:
 	widgets.Register(&MyWidget{})
+
+	// Widgets with agent skills:
+	widgets.RegisterWithSkill(&MyWidget{}, myWidgetContext)
 }
 ```
 
 ### Server Instantiation (Blank Imports)
-To trigger the widget's `init()` block, add a blank import for your subpackage inside Jute's main entrypoint [main.go](file:///Users/craig/Repos/jute-dash/apps/hub/cmd/juted/main.go):
+To trigger the widget's `init()` block, add a blank import for your subpackage inside Jute's main entrypoint [main.go](file:///Users/craighutcheon/Repos/Other/jute-dash/apps/hub/cmd/juted/main.go):
 
 ```go
 import (
