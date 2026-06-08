@@ -27,18 +27,6 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.Server.ListenAddress != "127.0.0.1:8787" {
 		t.Fatalf("unexpected listen address: %s", cfg.Server.ListenAddress)
 	}
-	if cfg.Home.Timezone != "UTC" {
-		t.Fatalf("unexpected timezone: %s", cfg.Home.Timezone)
-	}
-	if !cfg.Weather.Enabled {
-		t.Fatal("expected weather to be enabled by default")
-	}
-	if cfg.Weather.Provider != "open-meteo" {
-		t.Fatalf("unexpected weather provider: %s", cfg.Weather.Provider)
-	}
-	if cfg.Weather.LocationName != "London" {
-		t.Fatalf("unexpected weather location: %s", cfg.Weather.LocationName)
-	}
 	if cfg.Voice.Enabled || !cfg.Voice.MutedByDefault || cfg.Voice.FollowupWindowSeconds != 8 {
 		t.Fatalf("unexpected voice defaults: %+v", cfg.Voice)
 	}
@@ -61,8 +49,6 @@ func TestYAMLConfigLoadsKebabCaseFields(t *testing.T) {
 	path := writeYAMLConfig(t, `
 home:
   name: Workshop
-  timezone: Europe/London
-  locale: en-GB
 server:
   listen-address: 127.0.0.1:9999
 mcp:
@@ -91,14 +77,6 @@ display:
     default: frosted
   accent-color: neutral
   idle-mode: ambient
-weather:
-  enabled: true
-  provider: open-meteo
-  location-name: York
-  latitude: 53.959
-  longitude: -1.0815
-  temperature-unit: fahrenheit
-  wind-speed-unit: mph
 voice:
   enabled: true
   muted-by-default: false
@@ -145,7 +123,7 @@ tiles: []
 		cfg.A2A.URLs[0] != "https://agent.example.com/.well-known/agent-card.json" {
 		t.Fatalf("unexpected A2A policy: %+v", cfg.A2A)
 	}
-	if cfg.Display.AccentColor != "neutral" || cfg.Weather.LocationName != "York" {
+	if cfg.Display.AccentColor != "neutral" {
 		t.Fatalf("kebab-case YAML fields were not decoded: %+v", cfg)
 	}
 	if cfg.Display.ColorMode != "dark" || cfg.Display.Theme != "dark" || cfg.Display.ThemeID != "jute-mono" ||
@@ -716,62 +694,6 @@ func assertDevHarnessWidgets(t *testing.T, cfg Config) {
 		if (got.Type == "weather" || got.Type == "rss" || got.Type == "markets") && len(got.Settings) == 0 {
 			t.Fatalf("expected settings for %s widget", got.Type)
 		}
-	}
-}
-
-func TestLoadRejectsInvalidWeatherCoordinates(t *testing.T) {
-	path := writeJSONConfig(t, `{
-		"home": {"name": "Workshop"},
-		"server": {},
-		"display": {},
-		"weather": {
-			"enabled": true,
-			"provider": "open-meteo",
-			"locationName": "Nowhere",
-			"latitude": 120,
-			"longitude": 0,
-			"temperatureUnit": "celsius",
-			"windSpeedUnit": "kmh"
-		},
-		"agents": [],
-		"rooms": [],
-		"tiles": []
-	}`)
-
-	_, err := LoadConfig(path)
-	if err == nil {
-		t.Fatal("LoadConfig() expected invalid latitude error")
-	}
-	if !strings.Contains(err.Error(), "weather.latitude") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestLoadAllowsDisabledWeatherWithoutProviderDetails(t *testing.T) {
-	path := writeJSONConfig(t, `{
-		"home": {"name": "Workshop"},
-		"server": {},
-		"display": {},
-		"weather": {
-			"enabled": false,
-			"provider": "offline",
-			"locationName": "",
-			"latitude": 120,
-			"longitude": 240,
-			"temperatureUnit": "kelvin",
-			"windSpeedUnit": "warp"
-		},
-		"agents": [],
-		"rooms": [],
-		"tiles": []
-	}`)
-
-	cfg, err := LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig() error = %v", err)
-	}
-	if cfg.Weather.Enabled {
-		t.Fatal("expected weather to remain disabled")
 	}
 }
 

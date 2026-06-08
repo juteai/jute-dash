@@ -340,9 +340,7 @@ export async function getVoiceProviders(
 export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {
   const config: PublicConfig = {
     home: {
-      name: 'Jute Home',
-      timezone: 'UTC',
-      locale: 'en'
+      name: 'Jute Home'
     },
     display: {
       theme: 'system',

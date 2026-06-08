@@ -68,8 +68,6 @@ func TestBootstrapConfigAppliesOnlyOnce(t *testing.T) {
 
 	first := DefaultConfig()
 	first.Home.Name = "Bootstrap One"
-	first.Home.Timezone = "Europe/London"
-	first.Home.Locale = "en-GB"
 	first.Agents = []AgentConfig{
 		{
 			ID:              "house",
@@ -119,8 +117,6 @@ func TestBootstrapDashboardWidgetsSeedRuntimeStore(t *testing.T) {
 
 	bootstrap := DefaultConfig()
 	bootstrap.Home.Name = "Bootstrap House"
-	bootstrap.Home.Timezone = "Europe/London"
-	bootstrap.Home.Locale = "en-GB"
 	bootstrap.Dashboard.Widgets = []DashboardWidgetConfig{
 		{
 			ID:      "custom-clock",
@@ -254,8 +250,6 @@ func TestYAMLBootstrapConfigAppliesOnlyOnce(t *testing.T) {
 	firstPath := writeStoreYAMLConfig(t, `
 home:
   name: YAML Bootstrap One
-  timezone: Europe/London
-  locale: en-GB
 agents:
   - id: yaml-house
     name: YAML House
@@ -282,8 +276,6 @@ tiles: []
 	secondPath := writeStoreYAMLConfig(t, `
 home:
   name: YAML Bootstrap Two
-  timezone: Europe/London
-  locale: en-GB
 agents: []
 rooms: []
 tiles: []
@@ -396,8 +388,6 @@ func TestSetupStatusReportsCompleteBootstrap(t *testing.T) {
 
 	bootstrap := DefaultConfig()
 	bootstrap.Home.Name = "Configured Home"
-	bootstrap.Home.Timezone = "Europe/London"
-	bootstrap.Home.Locale = "en-GB"
 
 	result, err := st.Initialize(context.Background(), bootstrap, true)
 	if err != nil {

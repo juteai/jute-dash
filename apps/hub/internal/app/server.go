@@ -539,9 +539,7 @@ func (s *Server) dashboardContext(ctx context.Context) map[string]any {
 		return map[string]any{}
 	}
 	home := homestate.HomeConfig{
-		Name:     serverSettings.Home.Name,
-		Timezone: serverSettings.Home.Timezone,
-		Locale:   serverSettings.Home.Locale,
+		Name: serverSettings.Home.Name,
 	}
 
 	rooms, err := s.settings.Rooms(ctx)
@@ -560,7 +558,7 @@ func (s *Server) dashboardContext(ctx context.Context) map[string]any {
 		layout = dashboard.WidgetLayout{}
 	}
 
-	snapshot := dashboard.Project(ctx, layout, home.Locale, home.Timezone)
+	snapshot := dashboard.Project(ctx, layout)
 	return map[string]any{
 		"home":      state,
 		"dashboard": snapshot,
@@ -619,7 +617,6 @@ func syncOnLoad(
 	if _, err := settingsStore.SaveHouseholdSettings(ctx, homestate.HouseholdSettings{
 		Home:    cfg.Home,
 		Display: cfg.Display,
-		Weather: cfg.Weather,
 	}); err != nil {
 		return err
 	}

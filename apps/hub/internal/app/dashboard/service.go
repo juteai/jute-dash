@@ -40,7 +40,21 @@ type WidgetInfo struct {
 }
 
 // Project compiles layout state and household locale/timezone into a dashboard snapshot.
-func Project(_ context.Context, layout WidgetLayout, locale, timezone string) DashboardSnapshot {
+func Project(_ context.Context, layout WidgetLayout) DashboardSnapshot {
+	timezone := "UTC"
+	locale := "en"
+	for _, w := range layout.Widgets {
+		if w.Kind == "date-time" {
+			if tzVal, ok := w.Settings["timezone"].(string); ok && tzVal != "" {
+				timezone = tzVal
+			}
+			if locVal, ok := w.Settings["locale"].(string); ok && locVal != "" {
+				locale = locVal
+			}
+			break
+		}
+	}
+
 	wsCfg := widgetskills.Config{}
 	wsCfg.Home.Locale = locale
 	wsCfg.Home.Timezone = timezone

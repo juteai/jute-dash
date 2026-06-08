@@ -10,6 +10,25 @@ import (
 
 const SkillID = "jute.date_time.current"
 
+type Settings struct {
+	Timezone string
+	Locale   string
+}
+
+func parseSettings(raw map[string]any) Settings {
+	s := Settings{
+		Timezone: "UTC",
+		Locale:   "en",
+	}
+	if v, ok := raw["timezone"].(string); ok && v != "" {
+		s.Timezone = v
+	}
+	if v, ok := raw["locale"].(string); ok && v != "" {
+		s.Locale = v
+	}
+	return s
+}
+
 type DateTimeWidget struct{}
 
 func (w *DateTimeWidget) Kind() string {
@@ -29,6 +48,20 @@ func (w *DateTimeWidget) CatalogInfo() widgets.WidgetCatalogItem {
 		DefaultSize:   "wide",
 		Overflow:      "clip",
 		AllowMultiple: false,
+		SettingsSchema: []widgets.SettingField{
+			{
+				ID:    "timezone",
+				Type:  widgets.SettingString,
+				Label: "Timezone",
+				Help:  "IANA Timezone identifier (e.g. Europe/London).",
+			},
+			{
+				ID:    "locale",
+				Type:  widgets.SettingString,
+				Label: "Locale",
+				Help:  "Unicode locale identifier (e.g. en-GB, fr-FR).",
+			},
+		},
 	}
 }
 
@@ -81,14 +114,24 @@ func dateTimeContext(snapshot widgetskills.Snapshot, _ string) map[string]any {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	location, err := time.LoadLocation(snapshot.Config.Home.Timezone)
+	timezone := "UTC"
+	locale := "en"
+	for _, w := range snapshot.Layout.Widgets {
+		if w.Kind == "date-time" {
+			settings := parseSettings(w.Settings)
+			timezone = settings.Timezone
+			locale = settings.Locale
+			break
+		}
+	}
+	location, err := time.LoadLocation(timezone)
 	if err != nil {
 		location = time.UTC
 	}
 	local := now.In(location)
 	return map[string]any{
-		"timezone": snapshot.Config.Home.Timezone,
-		"locale":   snapshot.Config.Home.Locale,
+		"timezone": timezone,
+		"locale":   locale,
 		"date":     local.Format("2006-01-02"),
 		"time":     local.Format("15:04"),
 		"weekday":  local.Weekday().String(),

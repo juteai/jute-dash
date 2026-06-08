@@ -14,9 +14,7 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
 
 const mockHouseholdSettings: HouseholdSettings = {
   home: {
-    name: 'Jute Home',
-    timezone: 'UTC',
-    locale: 'en'
+    name: 'Jute Home'
   },
   display: {
     theme: 'system',
@@ -36,15 +34,6 @@ const mockHouseholdSettings: HouseholdSettings = {
     },
     accentColor: 'neutral',
     idleMode: 'ambient'
-  },
-  weather: {
-    enabled: false,
-    provider: 'open-meteo',
-    locationName: 'London',
-    latitude: 51.5072,
-    longitude: -0.1276,
-    temperatureUnit: 'celsius',
-    windSpeedUnit: 'kmh'
   },
   setup: {
     complete: true,

@@ -28,8 +28,11 @@ export interface WidgetRegistryEntry {
 export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   'date-time': {
     component: DateTimeWidget,
-    props: ({ data, stale }) => ({
-      home: data.config.home,
+    props: ({ widget, stale }) => ({
+      settings: widget.settings ?? {
+        timezone: 'UTC',
+        locale: 'en'
+      },
       stale
     })
   },

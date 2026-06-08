@@ -23,7 +23,6 @@ func NewMemoryRepository(setup SetupStatus) *MemoryRepository {
 func NewMemoryRepositoryWithConfig(
 	home HomeConfig,
 	display any,
-	weather WeatherConfig,
 	rooms []RoomConfig,
 	tiles []TileConfig,
 ) *MemoryRepository {
@@ -31,7 +30,6 @@ func NewMemoryRepositoryWithConfig(
 		household: HouseholdSettings{
 			Home:    home,
 			Display: display,
-			Weather: weather,
 			Setup:   SetupStatus{Complete: true},
 		},
 		rooms: append([]RoomConfig(nil), rooms...),

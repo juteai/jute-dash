@@ -129,25 +129,6 @@ func TestEventsStreamDisplayActions(t *testing.T) {
 	}
 }
 
-func TestHomeEndpointExcludesWeather(t *testing.T) {
-	handler := New(testConfig(), "test")
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/home", nil)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rec.Code)
-	}
-	var body map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if _, exists := body["weather"]; exists {
-		t.Fatalf("home response should not include global weather: %+v", body)
-	}
-}
-
 func TestSetupStatusEndpoint(t *testing.T) {
 	handler := NewWithSetupStatus(testConfig(), "test", SetupStatus{
 		Complete: false,
@@ -185,9 +166,8 @@ func TestHouseholdSettingsEndpointUpdatesStore(t *testing.T) {
 	)
 
 	payload := bytes.NewBufferString(`{
-		"home":{"name":"Updated Home","timezone":"Europe/London","locale":"en-GB"},
-		"display":{"theme":"dark","accentColor":"teal","idleMode":"ambient"},
-		"weather":{"enabled":true,"provider":"open-meteo","locationName":"Manchester","latitude":53.4808,"longitude":-2.2426,"temperatureUnit":"celsius","windSpeedUnit":"kmh"}
+		"home":{"name":"Updated Home"},
+		"display":{"theme":"dark","accentColor":"teal","idleMode":"ambient"}
 	}`)
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", payload)
 	rec := httptest.NewRecorder()
@@ -201,36 +181,15 @@ func TestHouseholdSettingsEndpointUpdatesStore(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Home.Name != "Updated Home" || body.Weather.LocationName != "Manchester" ||
-		!body.Setup.Complete {
+	if body.Home.Name != "Updated Home" || !body.Setup.Complete {
 		t.Fatalf("unexpected household settings: %+v", body)
 	}
 	reloaded, err := runtimeStore.HomestateRepo.HouseholdSettings(context.Background())
 	if err != nil {
 		t.Fatalf("reload household settings: %v", err)
 	}
-	if reloaded.Home.Name != "Updated Home" || reloaded.Weather.Latitude != 53.4808 {
+	if reloaded.Home.Name != "Updated Home" {
 		t.Fatalf("settings did not persist: %+v", reloaded)
-	}
-}
-
-func TestHouseholdSettingsEndpointRejectsInvalidTimezone(t *testing.T) {
-	handler := NewWithSetupStatus(testConfig(), "test", SetupStatus{Complete: true})
-	payload := bytes.NewBufferString(`{
-		"home":{"name":"Updated Home","timezone":"Nope/Nowhere","locale":"en-GB"},
-		"display":{"theme":"dark","accentColor":"teal","idleMode":"ambient"},
-		"weather":{"enabled":true,"provider":"open-meteo","locationName":"Manchester","latitude":53.4808,"longitude":-2.2426,"temperatureUnit":"celsius","windSpeedUnit":"kmh"}
-	}`)
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", payload)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
-	}
-	if strings.Contains(rec.Body.String(), "Nope/Nowhere") {
-		t.Fatalf("error response leaked raw invalid value: %s", rec.Body.String())
 	}
 }
 
@@ -255,9 +214,8 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	)
 
 	payload := bytes.NewBufferString(`{
-		"home":{"name":"YAML Home","timezone":"Europe/London","locale":"en-GB"},
-		"display":{"theme":"light","accentColor":"teal","idleMode":"ambient"},
-		"weather":{"enabled":true,"provider":"open-meteo","locationName":"Bristol","latitude":51.4545,"longitude":-2.5879,"temperatureUnit":"celsius","windSpeedUnit":"kmh"}
+		"home":{"name":"YAML Home"},
+		"display":{"theme":"light","accentColor":"teal","idleMode":"ambient"}
 	}`)
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", payload)
 	rec := httptest.NewRecorder()
@@ -282,8 +240,7 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
-	if reloaded.Home.Name != "YAML Home" || reloaded.Weather.LocationName != "Bristol" ||
-		len(reloaded.Agents) != 2 {
+	if reloaded.Home.Name != "YAML Home" || len(reloaded.Agents) != 2 {
 		t.Fatalf("unexpected saved config: %+v", reloaded)
 	}
 }
@@ -1745,7 +1702,7 @@ func allowAgentCardURL(cfg *config.Config, cardURL string) {
 
 func openInitializedServerStore(t *testing.T) *Store {
 	t.Helper()
-	logger := slog.New(slog.DiscardHandler)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	runtimeStore, err := Open(filepath.Join(t.TempDir(), "jute.db"), logger)
 	if err != nil {
 		t.Fatalf("open store: %v", err)

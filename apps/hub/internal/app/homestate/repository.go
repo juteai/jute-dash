@@ -28,22 +28,12 @@ func (r *Repository) SetupStatus(ctx context.Context) (SetupStatus, error) {
 	if err := r.db.WithContext(ctx).First(&hs, "id = ?", DefaultHouseholdID).Error; err != nil {
 		return SetupStatus{}, fmt.Errorf("load setup status: %w", err)
 	}
-	var ws WeatherSettingsDB
-	if err := r.db.WithContext(ctx).First(&ws, "id = ?", DefaultHouseholdID).Error; err != nil {
-		return SetupStatus{}, fmt.Errorf("load weather settings: %w", err)
-	}
 
 	home := HomeConfig{
-		Name:     hs.Name,
-		Timezone: hs.Timezone,
-		Locale:   hs.Locale,
-	}
-	weather := WeatherConfig{
-		Enabled:      ws.Enabled == 1,
-		LocationName: ws.LocationName,
+		Name: hs.Name,
 	}
 
-	missing := missingSetupFields(home, weather, hs.SetupCompleted == 1)
+	missing := missingSetupFields(home, hs.SetupCompleted == 1)
 	if missing == nil {
 		missing = []string{}
 	}
@@ -80,25 +70,8 @@ func (r *Repository) HouseholdSettings(ctx context.Context) (HouseholdSettings, 
 		IdleMode:     hs.DisplayIdleMode,
 	}
 
-	var ws WeatherSettingsDB
-	if err := r.db.WithContext(ctx).First(&ws, "id = ?", DefaultHouseholdID).Error; err != nil {
-		return HouseholdSettings{}, fmt.Errorf("load weather settings: %w", err)
-	}
-
-	weather := WeatherConfig{
-		Enabled:         ws.Enabled == 1,
-		Provider:        ws.Provider,
-		LocationName:    ws.LocationName,
-		Latitude:        ws.Latitude,
-		Longitude:       ws.Longitude,
-		TemperatureUnit: ws.TemperatureUnit,
-		WindSpeedUnit:   ws.WindSpeedUnit,
-	}
-
 	home := HomeConfig{
-		Name:     hs.Name,
-		Timezone: hs.Timezone,
-		Locale:   hs.Locale,
+		Name: hs.Name,
 	}
 
 	setup, err := r.SetupStatus(ctx)
@@ -109,7 +82,6 @@ func (r *Repository) HouseholdSettings(ctx context.Context) (HouseholdSettings, 
 	return HouseholdSettings{
 		Home:    home,
 		Display: display,
-		Weather: weather,
 		Setup:   setup,
 	}, nil
 }
@@ -219,8 +191,6 @@ func (r *Repository) SaveHouseholdSettings(ctx context.Context, settings Househo
 			return err
 		}
 		hs.Name = settings.Home.Name
-		hs.Timezone = settings.Home.Timezone
-		hs.Locale = settings.Home.Locale
 		hs.DisplayTheme = display.Theme
 		hs.DisplayColorMode = display.ColorMode
 		hs.DisplayThemeID = display.ThemeID
@@ -234,23 +204,6 @@ func (r *Repository) SaveHouseholdSettings(ctx context.Context, settings Househo
 		hs.UpdatedAt = now
 
 		if err := tx.Save(&hs).Error; err != nil {
-			return err
-		}
-
-		var ws WeatherSettingsDB
-		if err := tx.First(&ws, "id = ?", DefaultHouseholdID).Error; err != nil {
-			return err
-		}
-		ws.Enabled = boolToInt(settings.Weather.Enabled)
-		ws.Provider = settings.Weather.Provider
-		ws.LocationName = settings.Weather.LocationName
-		ws.Latitude = settings.Weather.Latitude
-		ws.Longitude = settings.Weather.Longitude
-		ws.TemperatureUnit = settings.Weather.TemperatureUnit
-		ws.WindSpeedUnit = settings.Weather.WindSpeedUnit
-		ws.UpdatedAt = now
-
-		if err := tx.Save(&ws).Error; err != nil {
 			return err
 		}
 
@@ -405,38 +358,18 @@ func decodeJSONSetting(raw string, target any) error {
 	return json.Unmarshal([]byte(raw), target)
 }
 
-func boolToInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
-}
-
 func nowUTC() string {
 	return time.Now().UTC().Format(time.RFC3339Nano)
 }
 
-func missingSetupFields(home HomeConfig, weather WeatherConfig, confirmed bool) []string {
+func missingSetupFields(home HomeConfig, confirmed bool) []string {
 	if !confirmed {
-		missing := []string{"home.name", "home.timezone", "home.locale"}
-		if weather.Enabled {
-			missing = append(missing, "weather.location")
-		}
-		return missing
+		return []string{"home.name"}
 	}
 
 	var missing []string
 	if strings.TrimSpace(home.Name) == "" {
 		missing = append(missing, "home.name")
-	}
-	if strings.TrimSpace(home.Timezone) == "" {
-		missing = append(missing, "home.timezone")
-	}
-	if strings.TrimSpace(home.Locale) == "" {
-		missing = append(missing, "home.locale")
-	}
-	if weather.Enabled && strings.TrimSpace(weather.LocationName) == "" {
-		missing = append(missing, "weather.location")
 	}
 	return missing
 }

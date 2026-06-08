@@ -165,7 +165,6 @@ const gridBaseColumnsMetaKey = "grid_base_columns"
 func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.db.Migrate(
 		&homestate.HouseholdSettingsDB{},
-		&homestate.WeatherSettingsDB{},
 		&homestate.DeviceProfileDB{},
 		&homestate.LayoutProfileDB{},
 		&homestate.RoomDB{},
@@ -263,8 +262,6 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 		hs := homestate.HouseholdSettingsDB{
 			ID:                      homestate.DefaultHouseholdID,
 			Name:                    cfg.Home.Name,
-			Timezone:                cfg.Home.Timezone,
-			Locale:                  cfg.Home.Locale,
 			DisplayTheme:            cfg.Display.Theme,
 			DisplayAccentColor:      cfg.Display.AccentColor,
 			DisplayIdleMode:         cfg.Display.IdleMode,
@@ -280,21 +277,6 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 		}
 		if err := tx.Create(&hs).Error; err != nil {
 			return fmt.Errorf("seed household settings: %w", err)
-		}
-
-		ws := homestate.WeatherSettingsDB{
-			ID:              homestate.DefaultHouseholdID,
-			Enabled:         boolToInt(cfg.Weather.Enabled),
-			Provider:        cfg.Weather.Provider,
-			LocationName:    cfg.Weather.LocationName,
-			Latitude:        cfg.Weather.Latitude,
-			Longitude:       cfg.Weather.Longitude,
-			TemperatureUnit: cfg.Weather.TemperatureUnit,
-			WindSpeedUnit:   cfg.Weather.WindSpeedUnit,
-			UpdatedAt:       now,
-		}
-		if err := tx.Create(&ws).Error; err != nil {
-			return fmt.Errorf("seed weather settings: %w", err)
 		}
 
 		dp := homestate.DeviceProfileDB{
@@ -456,8 +438,6 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 		return config.Config{}, fmt.Errorf("load household settings: %w", err)
 	}
 	cfg.Home.Name = hs.Name
-	cfg.Home.Timezone = hs.Timezone
-	cfg.Home.Locale = hs.Locale
 	cfg.Display.Theme = hs.DisplayTheme
 	cfg.Display.ColorMode = hs.DisplayColorMode
 	cfg.Display.ThemeID = hs.DisplayThemeID
@@ -472,18 +452,6 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 	if err := decodeJSONSetting(hs.DisplayWidgetChromeJSON, &cfg.Display.WidgetChrome); err != nil {
 		return config.Config{}, fmt.Errorf("decode display widget chrome: %w", err)
 	}
-
-	var ws homestate.WeatherSettingsDB
-	if err := s.db.DB().WithContext(ctx).First(&ws, "id = ?", homestate.DefaultHouseholdID).Error; err != nil {
-		return config.Config{}, fmt.Errorf("load weather settings: %w", err)
-	}
-	cfg.Weather.Enabled = ws.Enabled == 1
-	cfg.Weather.Provider = ws.Provider
-	cfg.Weather.LocationName = ws.LocationName
-	cfg.Weather.Latitude = ws.Latitude
-	cfg.Weather.Longitude = ws.Longitude
-	cfg.Weather.TemperatureUnit = ws.TemperatureUnit
-	cfg.Weather.WindSpeedUnit = ws.WindSpeedUnit
 
 	var vs voice.SettingsDB
 	if err := s.db.DB().
@@ -618,25 +586,12 @@ func setupStatusForSeed(cfg config.Config, bootstrapProvided bool) homestate.Set
 
 func missingSetupFields(cfg config.Config, confirmed bool) []string {
 	if !confirmed {
-		missing := []string{"home.name", "home.timezone", "home.locale"}
-		if cfg.Weather.Enabled {
-			missing = append(missing, "weather.location")
-		}
-		return missing
+		return []string{"home.name"}
 	}
 
 	var missing []string
 	if strings.TrimSpace(cfg.Home.Name) == "" {
 		missing = append(missing, "home.name")
-	}
-	if strings.TrimSpace(cfg.Home.Timezone) == "" {
-		missing = append(missing, "home.timezone")
-	}
-	if strings.TrimSpace(cfg.Home.Locale) == "" {
-		missing = append(missing, "home.locale")
-	}
-	if cfg.Weather.Enabled && strings.TrimSpace(cfg.Weather.LocationName) == "" {
-		missing = append(missing, "weather.location")
 	}
 	return missing
 }

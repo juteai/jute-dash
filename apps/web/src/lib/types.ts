@@ -1,7 +1,5 @@
 export type HomeConfig = {
   name: string;
-  timezone: string;
-  locale: string;
 };
 
 export type DisplayConfig = {
@@ -227,15 +225,6 @@ export type PublicConfig = {
 export type HouseholdSettings = {
   home: HomeConfig;
   display: DisplayConfig;
-  weather: {
-    enabled: boolean;
-    provider: string;
-    locationName: string;
-    latitude: number;
-    longitude: number;
-    temperatureUnit: string;
-    windSpeedUnit: string;
-  };
   setup: {
     complete: boolean;
     missing: string[];

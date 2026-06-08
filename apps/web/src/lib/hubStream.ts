@@ -31,7 +31,7 @@ export interface HubStreamState {
 
 const initialStub: DashboardData = {
   config: {
-    home: { name: 'Jute Home', timezone: '', locale: '' },
+    home: { name: 'Jute Home' },
     display: {
       theme: 'jute-mono',
       colorMode: 'system',
@@ -55,7 +55,7 @@ const initialStub: DashboardData = {
   },
   home: {
     generatedAt: '',
-    home: { name: 'Jute Home', timezone: '', locale: '' },
+    home: { name: 'Jute Home' },
     rooms: [],
     tiles: []
   },
