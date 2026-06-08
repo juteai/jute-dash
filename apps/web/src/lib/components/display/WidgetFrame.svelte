@@ -70,21 +70,23 @@
   aria-label={widget.title}
   on:pointerdown={editMode ? onMoveStart : undefined}
 >
-  <header class="widget-frame-header">
-    <div class="widget-frame-title">
-      {widget.title}
-      {#if state === 'stale'}
-        <span class="widget-stale-badge">· Stale</span>
-      {/if}
-    </div>
-    <div
-      class="widget-frame-actions"
-      role="none"
-      on:pointerdown|stopPropagation
-    >
-      <slot name="actions" />
-    </div>
-  </header>
+  {#if editMode}
+    <header class="widget-frame-header">
+      <div class="widget-frame-title">
+        {widget.title}
+        {#if state === 'stale'}
+          <span class="widget-stale-badge">· Stale</span>
+        {/if}
+      </div>
+      <div
+        class="widget-frame-actions"
+        role="none"
+        on:pointerdown|stopPropagation
+      >
+        <slot name="actions" />
+      </div>
+    </header>
+  {/if}
 
   <div
     class="widget-frame-body"

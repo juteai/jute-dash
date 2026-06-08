@@ -160,6 +160,15 @@ describe('layout-editor', () => {
     expect(restored.widgets[0].mode).toBe('ui');
   });
 
+  it('preserves widget position when setting mode to the same value', () => {
+    const layout = createLayout([
+      createWidget({ id: 'w1', x: 2, y: 3, w: 6, h: 1, mode: 'ui' })
+    ]);
+    const result = setWidgetMode(layout, 'w1', 'ui');
+    expect(result.widgets[0].x).toBe(2);
+    expect(result.widgets[0].y).toBe(3);
+  });
+
   it('excludes headless widgets from grid packing', () => {
     const layout = createLayout([
       createWidget({ id: 'tile', x: 0, y: 0, w: 6, h: 1 }),

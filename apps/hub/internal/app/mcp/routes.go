@@ -330,6 +330,7 @@ func (juteSkillInvokeActionTool) InputSchema() map[string]any {
 }
 func (juteSkillInvokeActionTool) Call(ctx RouteContext, args map[string]any) (any, error) {
 	return widgetskills.InvokeAction(
+		ctx.Context,
 		ctx.Snapshot,
 		stringArg(args, "skillId"),
 		stringArg(args, "widgetInstanceId"),

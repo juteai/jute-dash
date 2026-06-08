@@ -16,7 +16,7 @@
   class={cn('ui-button', className)}
   class:default={variant === 'default'}
   class:secondary={variant === 'secondary'}
-  class:outline={variant === 'outline'}
+  class:ui-outline={variant === 'outline'}
   class:ghost={variant === 'ghost'}
   class:danger={variant === 'danger'}
   class:sm={size === 'sm'}
@@ -71,9 +71,9 @@
     color: var(--foreground);
   }
 
-  .outline {
-    border: 1px solid var(--border);
-    background: var(--surface);
+  .ui-outline {
+    border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+    background: transparent;
     color: var(--foreground);
   }
 

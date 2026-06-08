@@ -342,8 +342,8 @@ button {
 }
 
 .dashboard-view {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   height: 100%;
   padding: 16px;
   gap: 12px;
@@ -478,7 +478,7 @@ button {
 
 .dashboard-canvas {
   position: relative;
-  grid-row: -2 / -1;
+  flex: 1;
   display: grid;
   /* grid-template-rows/columns are set inline: both axes are proportional (1fr)
      so the configured layout fills the viewport and scales to fit. */

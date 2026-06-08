@@ -3,7 +3,12 @@ package rss
 import (
 	"context"
 	"encoding/xml"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,8 +45,9 @@ type rssItem struct {
 }
 
 type RSSItemResult struct {
-	Title string `json:"title"`
-	Link  string `json:"link"`
+	Title   string `json:"title"`
+	Link    string `json:"link"`
+	PubDate string `json:"pubDate,omitempty"`
 }
 
 type RSSFeedResult struct {
@@ -181,10 +187,7 @@ func (w *RSSWidget) FetchData(ctx context.Context, raw map[string]any) (any, err
 			if i >= s.Limit {
 				break
 			}
-			items = append(items, RSSItemResult{
-				Title: it.Title,
-				Link:  it.Link,
-			})
+			items = append(items, RSSItemResult(it))
 		}
 
 		result := RSSFeedResult{
@@ -234,9 +237,150 @@ func (w *RSSWidget) Skill() *widgetskills.Definition {
 					"required": []string{"status"},
 				},
 			},
+			{
+				ID:          "read_article",
+				Title:       "Read article content",
+				Description: "Fetch the text content of a given article URL, optionally searching for a grep query.",
+				SideEffect:  "read",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"url": map[string]any{
+							"type":        "string",
+							"description": "The URL of the article to read.",
+						},
+						"query": map[string]any{
+							"type":        "string",
+							"description": "Optional keyword query to filter matching paragraphs with surrounding context.",
+						},
+					},
+					"required":             []string{"url"},
+					"additionalProperties": false,
+				},
+				OutputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"status":  map[string]any{"type": "string"},
+						"title":   map[string]any{"type": "string"},
+						"content": map[string]any{"type": "string"},
+					},
+					"required": []string{"status", "title", "content"},
+				},
+			},
 		},
 		SupportedWidgetSizes: []string{"medium", "wide", "large"},
 	}
+}
+
+func (w *RSSWidget) InvokeAction(
+	ctx context.Context,
+	_ widgetskills.Snapshot,
+	_ string,
+	actionID string,
+	arguments map[string]any,
+) (map[string]any, error) {
+	if actionID != "read_article" {
+		return nil, fmt.Errorf("unknown action: %s", actionID)
+	}
+
+	url, _ := arguments["url"].(string)
+	if url == "" {
+		return nil, errors.New("url parameter is required")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "JuteDash/1.0 (RSS Reader)")
+
+	w.cacheMu.Lock()
+	if w.client == nil {
+		w.client = &http.Client{Timeout: 4 * time.Second}
+	}
+	client := w.client
+	w.cacheMu.Unlock()
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch article page: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("server returned status: %s", resp.Status)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read body: %w", err)
+	}
+
+	cleanedText := cleanHTML(string(bodyBytes))
+
+	query, _ := arguments["query"].(string)
+	if query != "" {
+		cleanedText = grepArticle(cleanedText, query)
+	} else if len(cleanedText) > 6000 {
+		cleanedText = cleanedText[:6000] + "\n\n[Truncated to first 6,000 characters. Specify a query parameter to search/grep for specific details.]"
+	}
+
+	return map[string]any{
+		"status":    "completed",
+		"title":     "Article content from " + url,
+		"content":   cleanedText,
+		"updatedAt": time.Now().UTC().Format(time.RFC3339Nano),
+	}, nil
+}
+
+var (
+	reScript = regexp.MustCompile(`(?s)<script.*?>.*?</script>`)
+	reStyle  = regexp.MustCompile(`(?s)<style.*?>.*?</style>`)
+	reTags   = regexp.MustCompile(`<.*?>`)
+)
+
+func cleanHTML(html string) string {
+	text := reScript.ReplaceAllString(html, "")
+	text = reStyle.ReplaceAllString(text, "")
+	text = reTags.ReplaceAllString(text, " ")
+
+	lines := strings.Split(text, "\n")
+	var cleanedLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			cleanedLines = append(cleanedLines, trimmed)
+		}
+	}
+	return strings.Join(cleanedLines, "\n\n")
+}
+
+func grepArticle(text string, query string) string {
+	paragraphs := strings.Split(text, "\n\n")
+	queryLower := strings.ToLower(query)
+
+	matchedIndices := make(map[int]bool)
+	for i, p := range paragraphs {
+		if strings.Contains(strings.ToLower(p), queryLower) {
+			matchedIndices[i] = true
+		}
+	}
+
+	var matchedParagraphs []string
+	for i := range paragraphs {
+		if matchedIndices[i] || matchedIndices[i-1] || matchedIndices[i+1] {
+			matchedParagraphs = append(matchedParagraphs, paragraphs[i])
+		}
+	}
+
+	result := strings.Join(matchedParagraphs, "\n\n")
+	if len(result) > 12000 {
+		return result[:12000] + "\n\n[Truncated due to grep matches limit...]"
+	}
+	if len(result) == 0 {
+		return "[No matches found for query: " + query + "]"
+	}
+	return result
 }
 
 func init() {

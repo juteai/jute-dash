@@ -18,7 +18,7 @@
   class={cn('ui-icon-button', className)}
   class:default={variant === 'default'}
   class:ghost={variant === 'ghost'}
-  class:outline={variant === 'outline'}
+  class:ui-outline={variant === 'outline'}
   class:danger={variant === 'danger'}
   on:click
 >
@@ -59,9 +59,9 @@
     color: var(--foreground);
   }
 
-  .outline {
-    border: 1px solid var(--border);
-    background: var(--surface);
+  .ui-outline {
+    border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+    background: transparent;
     color: var(--foreground);
   }
 
@@ -70,9 +70,19 @@
     color: var(--inverse);
   }
 
+  .ui-icon-button[aria-pressed='true']:not(:disabled) {
+    background: var(--active);
+    border-color: var(--active);
+    color: var(--inverse);
+  }
+
   .ui-icon-button:hover:not(:disabled) {
     background: var(--surface-strong);
     color: var(--foreground);
+  }
+
+  .ui-icon-button[aria-pressed='true']:hover:not(:disabled) {
+    opacity: 0.9;
   }
 
   .ui-icon-button:disabled {

@@ -262,8 +262,104 @@ func (w *MarketsWidget) Skill() *widgetskills.Definition {
 					"required": []string{"status"},
 				},
 			},
+			{
+				ID:          "query_ticker",
+				Title:       "Query stock or cryptocurrency ticker price",
+				Description: "Query Yahoo Finance for detailed price and quote information of a specific ticker symbol.",
+				SideEffect:  "read",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"symbol": map[string]any{
+							"type":        "string",
+							"description": "The stock or cryptocurrency symbol to query, e.g. AAPL, GOOG, BTC-USD.",
+						},
+					},
+					"required":             []string{"symbol"},
+					"additionalProperties": false,
+				},
+				OutputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"status":        map[string]any{"type": "string"},
+						"symbol":        map[string]any{"type": "string"},
+						"name":          map[string]any{"type": "string"},
+						"price":         map[string]any{"type": "number"},
+						"change":        map[string]any{"type": "number"},
+						"changePercent": map[string]any{"type": "number"},
+						"currency":      map[string]any{"type": "string"},
+					},
+					"required": []string{
+						"status",
+						"symbol",
+						"name",
+						"price",
+						"change",
+						"changePercent",
+						"currency",
+					},
+				},
+			},
 		},
 		SupportedWidgetSizes: []string{"medium", "wide", "large"},
+	}
+}
+
+func (w *MarketsWidget) InvokeAction(
+	ctx context.Context,
+	snapshot widgetskills.Snapshot,
+	instanceID string,
+	actionID string,
+	arguments map[string]any,
+) (map[string]any, error) {
+	w.cacheMu.Lock()
+	if w.client == nil {
+		w.client = &http.Client{Timeout: 4 * time.Second}
+		w.cache = make(map[string]marketCacheEntry)
+		w.cacheTTL = 5 * time.Minute
+	}
+	w.cacheMu.Unlock()
+
+	switch actionID {
+	case "refresh":
+		var settings map[string]any
+		for _, inst := range snapshot.Layout.Widgets {
+			if inst.ID == instanceID {
+				settings = inst.Settings
+				break
+			}
+		}
+		_, err := w.FetchData(ctx, settings)
+		if err != nil {
+			return nil, fmt.Errorf("failed to refresh: %w", err)
+		}
+		return map[string]any{
+			"status": "completed",
+		}, nil
+
+	case "query_ticker":
+		symbol, _ := arguments["symbol"].(string)
+		if symbol == "" {
+			return nil, errors.New("symbol parameter is required")
+		}
+
+		res, err := w.fetchTicker(ctx, symbol)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch ticker: %w", err)
+		}
+
+		return map[string]any{
+			"status":        "completed",
+			"symbol":        res.Symbol,
+			"name":          res.Name,
+			"price":         res.Price,
+			"change":        res.Change,
+			"changePercent": res.ChangePercent,
+			"currency":      res.Currency,
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("unknown action: %s", actionID)
 	}
 }
 
