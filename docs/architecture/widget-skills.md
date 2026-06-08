@@ -19,6 +19,28 @@ A2A remains the conversation and task protocol. Widget Skills do not replace A2A
 
 MCP is the local pull/tool surface for trusted agents. The MCP Bridge exposes Widget Skills as resources, prompts, and tools after applying hub policy, widget permissions, visibility, and per-agent scopes.
 
+The relationship and routing look like this:
+
+```mermaid
+flowchart TD
+    Agent[Agent / MCP Client] -->|1. Request list / Read resource| Bridge[Jute MCP Bridge]
+    Agent -->|2. Call jute_skill_invoke_action| Bridge
+
+    Bridge -->|Check scopes & permissions| Registry[Widget Skill Registry]
+    Registry -->|Fetch schema / info| GoWidget[Go Widget Code]
+
+    subgraph Execution [Hub Execution Boundary]
+        GoWidget -->|FetchData| Data[Dynamic state / APIs]
+        GoWidget -->|ContextFunc| Context[Redacted Context payload]
+    end
+
+    Bridge -->|Return resources / tools / prompts| Agent
+
+    Registry -->|Dispatch action| GoWidget
+    GoWidget -->|InvokeAction| ActionExec[Modify settings / trigger event]
+    ActionExec -.->|Broadcast update| Svelte[Svelte Frontend Component]
+```
+
 The compact A2A dashboard-context extension may include a summary of currently relevant Widget Skills, but full action invocation goes through MCP or a future hub-approved action API.
 
 ## Skill Model
@@ -35,70 +57,82 @@ Skill identity:
 
 Skill availability is dynamic. A skill is available only when the widget exists, is allowed by policy, has required permissions, and matches the configured visibility policy.
 
-## Manifest Contract
+## Skill Definition Contract
 
-Every widget declares its agent-facing skill in `widget.yaml`, committed alongside the widget source under `widgets/`. The Hub reads all `widget.yaml` files at startup and builds the Widget Skill Registry from them.
+Every widget declares its agent-facing skill programmatically by implementing the Go `Widget` interface and returning a `*widgetskills.Definition` from `Skill()`. The Hub retrieves all registered widget definitions at startup to build the Widget Skill Registry.
 
-```yaml
-id: com.example.energy-price
-name: Energy Price
-version: 1.0.0
-sizes: [small, medium, wide]
-settings:
-  # widget-specific settings schema
-
-agentSkill:
-  enabled: true
-  skillId: com.example.energy-price.current
-  summary: Read current energy tariff and identify cheaper upcoming usage windows.
-  visibilityPolicy: visible_or_focused
-  context:
-    fields:
-      - name: tariffName
-        type: string
-        description: Current tariff display name.
-      - name: currentPrice
-        type: number
-        unit: GBP/kWh
-        description: Current import electricity price.
-      - name: nextCheapWindow
-        type: string
-        description: Next known cheaper usage window.
-  actions:
-    - id: refresh
-      title: Refresh tariff data
-      description: Ask the widget to refresh its tariff data through the hub.
-      sideEffect: read
-      requiresConfirmation: false
-  prompts:
-    - id: energy_usage_advice
-      title: Energy usage advice
-      purpose: Guide the agent when answering questions about cheaper appliance usage times.
+```go
+func (w *MyWidget) Skill() *widgetskills.Definition {
+	return &widgetskills.Definition{
+		SkillID:             "com.example.energy-price.current",
+		WidgetKind:          "energy-price",
+		DisplayName:         "Energy Price",
+		Summary:             "Read current energy tariff and identify cheaper upcoming usage windows.",
+		RequiredPermissions: []string{"agent:skill"},
+		VisibilityPolicy:    "visible_or_focused",
+		ContextFields: []widgetskills.Field{
+			{
+				Name:        "tariffName",
+				Type:        "string",
+				Description: "Current tariff display name.",
+				Sensitivity: "public",
+			},
+			{
+				Name:        "currentPrice",
+				Type:        "number",
+				Description: "Current import electricity price.",
+				Sensitivity: "public",
+			},
+			{
+				Name:        "nextCheapWindow",
+				Type:        "string",
+				Description: "Next known cheaper usage window.",
+				Sensitivity: "public",
+			},
+		},
+		Actions: []widgetskills.Action{
+			widgetskills.ReadAction(
+				"refresh",
+				"Refresh tariff data",
+				"Ask the widget to refresh its tariff data through the hub.",
+			),
+		},
+		Prompts: []widgetskills.Prompt{
+			{
+				ID:      "energy_usage_advice",
+				Title:   "Energy usage advice",
+				Purpose: "Guide the agent when answering questions about cheaper appliance usage times.",
+			},
+		},
+		SupportedWidgetSizes: []string{"small", "medium", "wide"},
+	}
+}
 ```
 
-`agentSkill` is optional. Visual-only widgets should omit it or set `enabled` to false. Agent-visible widgets must include a complete `agentSkill` block.
+Declaring a skill is optional. Visual-only widgets should return `nil` from `Skill()`. Agent-visible widgets must return a complete `*widgetskills.Definition`.
 
-Required `agentSkill` fields:
+Required skill definition fields:
 
-- `enabled`
-- `skillId`
-- `summary`
-- `requiredPermissions`
-- `visibilityPolicy`
-- `context.fields`
+- `SkillID`
+- `WidgetKind`
+- `DisplayName`
+- `Summary`
+- `RequiredPermissions`
+- `VisibilityPolicy`
+- `ContextFields`
 
-Optional `agentSkill` fields:
+Optional skill definition fields:
 
-- `actions`
-- `prompts`
+- `Actions`
+- `Prompts`
 
 Field rules:
 
-- `skillId` uses reverse-DNS or `jute.*` naming and must be stable across versions.
-- `summary` is a short capability description, not an instruction to the model.
-- `requiredPermissions` must be a subset of the widget's manifest permissions.
-- `visibilityPolicy` is `visible`, `focused`, `visible_or_focused`, or `always` for v1. `always` covers `headless`-mode instances, which are active and feed the agent but render no tile.
-- `context.fields`, `actions`, and `prompts` must use stable IDs because agents may learn or cache them.
+- `SkillID` uses reverse-DNS or `jute.*` naming and must be stable across versions.
+- `Summary` is a short capability description, not an instruction to the model.
+- `RequiredPermissions` must be a subset of the widget's authorized permissions.
+- `VisibilityPolicy` is `visible`, `focused`, `visible_or_focused`, or `always` for v1. `always` covers `headless`-mode instances, which are active and feed the agent but render no tile.
+- `ContextFields`, `Actions`, and `Prompts` must use stable IDs because agents may learn or cache them.
 
 ## Context
 
@@ -185,7 +219,7 @@ Widget Skill prompts are reusable guidance fragments for agents.
 Prompt rules:
 
 - hub-authored prompts are trusted project guidance;
-- prompt declarations in `widget.yaml` are reviewed as part of the contribution PR — they are trusted once merged;
+- prompt declarations in Go widget definitions are reviewed as part of the contribution PR — they are trusted once merged;
 - MCP prompt output should be generated from stable hub templates;
 - prompt text must not include secrets, hidden state, or private widget data;
 - prompts guide the agent but never grant permission.
@@ -271,7 +305,7 @@ When a skill is disabled, MCP resources omit it and A2A dashboard context does n
 
 - The hub validates and normalizes every skill before exposing it.
 - The hub generates MCP tool descriptions from stable templates.
-- `widget.yaml` summary and prompt text must not contain raw model instructions that override Jute policy or bypass permissions.
+- Go widget skill summary and prompt text must not contain raw model instructions that override Jute policy or bypass permissions.
 - Agents cannot access private widget state, hidden widget state, raw credentials, raw smart-home adapter payloads, camera frames, microphone audio, or browser storage.
 - Widgets cannot grant themselves agent access; users or trusted config grant permissions.
 - Agents should treat skills as available capabilities, not as user intent.
@@ -279,8 +313,8 @@ When a skill is disabled, MCP resources omit it and A2A dashboard context does n
 ## Implementation Order
 
 1. Document the Widget Skill contract.
-2. Add `widget.yaml` manifests for `date-time`, `weather`, and `chat-history`.
-3. Build the Hub Widget Skill Registry to read and validate all `widget.yaml` files at startup.
+2. Add skill definitions inside `date-time`, `weather`, and `chat-history` Go widgets.
+3. Build the Hub Widget Skill Registry to read and validate registered Go widget skills at startup.
 4. Build the MCP Bridge around generic skill resources and tools.
 5. Add per-agent skill scopes.
 6. Add approval-gated configure and home-action skills later.

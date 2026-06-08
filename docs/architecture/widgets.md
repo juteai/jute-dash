@@ -15,6 +15,35 @@ Widget frame styling, transparency, and background blending are host-owned displ
 
 Widgets also declare agent-facing capabilities through [Widget Skills](widget-skills.md). The hub uses this contract to expose widget capabilities through A2A dashboard context and the optional MCP Bridge.
 
+The runtime widget architecture is illustrated below:
+
+```mermaid
+flowchart TD
+    subgraph Browser [Svelte Display App]
+        Shell[DisplayShell.svelte] -->|1. Mounts| Grid[DashboardGrid.svelte]
+        Grid -->|2. Renders| Frame[WidgetFrame.svelte]
+        Frame -->|3. Loads component from| Registry[widgets/widget-registry.ts]
+        Registry -->|4. Instantiates| SvelteComp["Widget View Component\n(e.g., WeatherWidget.svelte)"]
+        ConfigSheet[WidgetSettingsSheet.svelte] -->|5. Edits Settings| SvelteComp
+    end
+
+    subgraph Hub [Go Hub Backend]
+        API[REST & Event API] -->|Hydrates JSON state| SvelteComp
+        ConfigSheet -->|6. Saves config changes| API
+        API -->|7. Updates| DB[(SQLite Runtime Store)]
+
+        DB -->|Loads Layouts & Settings| RegistryGo["Go Widget Registry\n(widgets/registry.go)"]
+        RegistryGo -->|8. Instantiates| GoWidget["Go Widget Package\n(e.g., weather/weather.go)"]
+
+        GoWidget -->|9. Implements| Catalog["CatalogInfo & SettingsSchema"]
+        Catalog -.->|Generates Settings UI Form| ConfigSheet
+
+        Scheduler[Background Runner] -->|10. Calls Cadence| GoWidget
+        GoWidget -->|FetchData| ExtData["External API / Adapter"]
+        GoWidget -->|Produces Payload| DB
+    end
+```
+
 ---
 
 ## Monorepo Widgets Library
@@ -90,7 +119,7 @@ Headless instances are added, configured, and removed from the **headless tray**
 
 Widgets declare a typed settings schema so the display can render a settings form without bespoke per-widget UI, and so the hub can validate and introspect settings.
 
-The Go `Widget` interface exposes `SettingsSchema() []SettingField`. Each field declares:
+The Go `Widget` interface exposes `CatalogInfo() WidgetCatalogItem`, which contains a `SettingsSchema []SettingField` list. Each field declares:
 
 - `id`: settings key;
 - `type`: one of `string`, `number`, `boolean`, `enum`, `string-list`, or `object-list`;
@@ -122,5 +151,5 @@ To build a new widget:
 2. Implement your backend provider in `widgets/[name]/[name].go` under `package [name]`. Make sure it registers itself inside `init()`, and declare a `SettingsSchema()` so the widget is configurable from the UI.
 3. Add a blank import for your subpackage in `apps/hub/cmd/juted/main.go` to trigger auto-registration.
 4. Implement your frontend view in `widgets/[name]/[Name]Widget.svelte`.
-5. Import your view in `DashboardGrid.svelte` and map it inside the widget render block.
+5. Import and register your view inside [widget-registry.ts](file:///Users/craighutcheon/Repos/Other/jute-dash/widgets/widget-registry.ts).
 6. Document usage, settings schemas, and examples in a `README.md` file inside your widget folder.

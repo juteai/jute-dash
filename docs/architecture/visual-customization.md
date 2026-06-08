@@ -10,6 +10,24 @@ Themes are data, not code. They can be contributed to the repo, reviewed, tested
 
 A Theme Pack is a repo-contributed manifest, planned under `themes/[theme-id]/theme.json`.
 
+The visual customization and styling data flow follows this pipeline:
+
+```mermaid
+flowchart TD
+    Manifest["Theme Pack Manifest\nthemes/[id]/theme.json"] -->|1. Reads on boot| Hub[Jute Hub Server]
+    Hub -->|2. Serves active theme data| Svelte[Svelte Display App]
+
+    subgraph Browser ["Display Cascading Style Sheets"]
+        Svelte -->|3. Mounts & translates tokens| Root[":root / Display Root HTML"]
+        Root -->|4. Injects CSS Custom Properties| CSSVars["var(--background)\nvar(--foreground)\nvar(--border)\nvar(--active)\n..."]
+
+        CSSVars -->|5. Controls backgrounds & filters| Frame[WidgetFrame.svelte]
+        CSSVars -->|5. Controls text & borders| Widget[Custom Widget Components]
+
+        Frame -->|6. Wraps & styles| Widget
+    end
+```
+
 Each pack declares:
 
 - `id`: stable lowercase identifier, such as `jute-mono`;
@@ -101,7 +119,8 @@ Supported sources:
 - `color`: use a configured solid color token or literal color value after validation;
 - `asset`: use a packaged display asset, such as `/backgrounds/kitchen-mono.jpg`;
 - `file`: use a single file under the hub-managed backgrounds directory;
-- `slideshow`: cycle through a list of files under the hub-managed backgrounds directory.
+- `slideshow`: cycle through a list of files under the hub-managed backgrounds directory;
+- `dynamic`: render a dynamically compiled Svelte background (e.g. `weather-ambient` or `stardust`) with custom runtime property inputs.
 
 Remote image URLs are out of scope for v1. They create privacy, availability, CSP, and mixed-content risks that need a separate remote media policy.
 
