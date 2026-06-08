@@ -15,7 +15,8 @@ import {
 import type {
   Conversation,
   ConversationDetail,
-  ConversationStreamEvent
+  ConversationStreamEvent,
+  InterimStep
 } from '$lib/types';
 import { API_BASE } from '$lib/hubClient';
 import {
@@ -378,11 +379,7 @@ export async function getConversation(
     detail.conversation.status = statusFromTask(record);
     detail.conversation.updatedAt = recordUpdatedAt;
 
-    const recordInterimSteps: Array<{
-      id: string;
-      text: string;
-      status: string;
-    }> = [];
+    const recordInterimSteps: InterimStep[] = [];
     if (record.status?.message?.parts) {
       const reasoningParts = record.status.message.parts.filter(
         (p) => p.metadata?.adk_thought === true
@@ -431,14 +428,36 @@ export async function getConversation(
         const isFunctionCall =
           part.metadata?.adk_type === 'function_call' ||
           (data && !data.response && (data.name || data.id));
+        const isFunctionResponse =
+          part.metadata?.adk_type === 'function_response' ||
+          (data && data.response);
 
         if (isFunctionCall) {
           const toolName = data?.name || 'agent tool';
+          const toolCallId = data?.id || `${record.id}:tool:${artifact.artifactId || index}:${pIdx}`;
           recordInterimSteps.push({
-            id: `${record.id}:tool:${artifact.artifactId || index}:${pIdx}`,
+            id: toolCallId,
             text: `Called tool: ${toolName}`,
-            status: 'completed'
+            status: 'completed',
+            args: (data as any)?.args
           });
+          continue;
+        }
+
+        if (isFunctionResponse) {
+          const toolName = data?.name || 'agent tool';
+          const toolCallId = data?.id || `${record.id}:tool:${artifact.artifactId || index}:${pIdx}`;
+          const existing = data?.id ? recordInterimSteps.find((s) => s.id === data.id) : undefined;
+          if (existing) {
+            existing.output = (data as any)?.response?.output;
+          } else {
+            recordInterimSteps.push({
+              id: toolCallId,
+              text: `Called tool: ${toolName}`,
+              status: 'completed',
+              output: (data as any)?.response?.output
+            });
+          }
           continue;
         }
 
@@ -451,10 +470,18 @@ export async function getConversation(
             text.match(/"name"\s*:\s*"([^"]+)"/) ||
             text.match(/^([a-zA-Z_]\w*)\s*-\s*\{/);
           const toolName = nameMatch ? nameMatch[1] : 'agent tool';
+          let args: any = undefined;
+          try {
+            const jsonStart = text.indexOf('{');
+            if (jsonStart > -1) {
+              args = JSON.parse(text.slice(jsonStart));
+            }
+          } catch {}
           recordInterimSteps.push({
             id: `${record.id}:tool:${artifact.artifactId || index}:${pIdx}`,
             text: `Called tool: ${toolName}`,
-            status: 'completed'
+            status: 'completed',
+            args
           });
         }
       }
@@ -476,6 +503,8 @@ export async function getConversation(
           id: string;
           text: string;
           status: string;
+          args?: any;
+          output?: any;
         }> = [];
         if (isA2AMessage && msg.parts) {
           for (const [idx, part] of msg.parts.entries()) {
@@ -494,14 +523,32 @@ export async function getConversation(
               const isFunctionCall =
                 part.metadata?.adk_type === 'function_call' ||
                 (data && !data.response && (data.name || data.id));
+              const isFunctionResponse =
+                part.metadata?.adk_type === 'function_response' ||
+                (data && data.response);
 
               if (isFunctionCall) {
                 const toolName = data?.name || 'agent tool';
                 messageThoughts.push({
-                  id: `${msg.messageId || 'msg'}:tool:${idx}`,
+                  id: data?.id || `${msg.messageId || 'msg'}:tool:${idx}`,
                   text: `Called tool: ${toolName}`,
-                  status: 'completed'
+                  status: 'completed',
+                  args: (data as any)?.args
                 });
+              } else if (isFunctionResponse) {
+                const toolName = data?.name || 'agent tool';
+                const toolCallId = data?.id || `${msg.messageId || 'msg'}:tool:${idx}`;
+                const existing = data?.id ? messageThoughts.find((s) => s.id === data.id) : undefined;
+                if (existing) {
+                  existing.output = (data as any)?.response?.output;
+                } else {
+                  messageThoughts.push({
+                    id: toolCallId,
+                    text: `Called tool: ${toolName}`,
+                    status: 'completed',
+                    output: (data as any)?.response?.output
+                  });
+                }
               } else {
                 const text = (
                   'text' in part && part.text
@@ -519,10 +566,18 @@ export async function getConversation(
                     text.match(/"name"\s*:\s*"([^"]+)"/) ||
                     text.match(/^([a-zA-Z_]\w*)\s*-\s*\{/);
                   const toolName = nameMatch ? nameMatch[1] : 'agent tool';
+                  let args: any = undefined;
+                  try {
+                    const jsonStart = text.indexOf('{');
+                    if (jsonStart > -1) {
+                      args = JSON.parse(text.slice(jsonStart));
+                    }
+                  } catch {}
                   messageThoughts.push({
                     id: `${msg.messageId || 'msg'}:tool:${idx}`,
                     text: `Called tool: ${toolName}`,
-                    status: 'completed'
+                    status: 'completed',
+                    args
                   });
                 }
               }
@@ -825,7 +880,8 @@ export async function sendConversationTurnStream(
                   agentId,
                   taskId: toolCallId,
                   status: 'working',
-                  text: `Calling tool: ${toolName}`
+                  text: `Calling tool: ${toolName}`,
+                  args: (data as any)?.args
                 });
                 emittedLengths.set(key, 1);
               }
@@ -843,7 +899,8 @@ export async function sendConversationTurnStream(
                   agentId,
                   taskId: toolCallId,
                   status: 'completed',
-                  text: `Called tool: ${toolName}`
+                  text: `Called tool: ${toolName}`,
+                  output: (data as any)?.response?.output
                 });
                 emittedLengths.set(key, 1);
               }
@@ -870,13 +927,21 @@ export async function sendConversationTurnStream(
                   partText.match(/"name"\s*:\s*"([^"]+)"/) ||
                   partText.match(/^([a-zA-Z_]\w*)\s*-\s*\{/);
                 const toolName = nameMatch ? nameMatch[1] : 'agent tool';
+                let args: any = undefined;
+                try {
+                  const jsonStart = partText.indexOf('{');
+                  if (jsonStart > -1) {
+                    args = JSON.parse(partText.slice(jsonStart));
+                  }
+                } catch {}
                 onEvent({
                   type: 'status_changed',
                   conversationId,
                   agentId,
                   taskId: `${latestTaskId}:tool_call:${pIdx}`,
                   status: 'working',
-                  text: `Calling tool: ${toolName}`
+                  text: `Calling tool: ${toolName}`,
+                  args
                 });
                 emittedLengths.set(key, partText.length);
               }

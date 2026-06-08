@@ -1203,6 +1203,121 @@ select:focus-visible {
   }
 }
 
+.interim-step-wrapper {
+  margin-top: 4px;
+}
+
+.interim-step-item-container {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-strong) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  text-align: left;
+  width: fit-content;
+  min-width: 280px;
+  max-width: 100%;
+}
+
+.interim-step-item-container:hover {
+  background: color-mix(in srgb, var(--surface-strong) 20%, transparent);
+  border-color: var(--border);
+}
+
+.interim-step-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-weight: 550;
+  transition: color 0.2s ease;
+}
+
+.interim-step-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.completed-icon {
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.active-pulse-text {
+  color: var(--active);
+  animation: active-text-pulse 2s ease-in-out infinite;
+}
+
+@keyframes active-text-pulse {
+  0%, 100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.interim-step-details {
+  border-top: 1px solid color-mix(in srgb, var(--border) 35%, transparent);
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  color: var(--muted-strong);
+  line-height: 1.45;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+}
+
+.reasoning-details {
+  font-style: italic;
+  max-height: 240px;
+  overflow-y: auto;
+  border-left: 2px solid var(--active);
+}
+
+.tool-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-snippet {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-snippet-header {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.tool-code {
+  margin: 0 !important;
+  padding: 8px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 0.72rem !important;
+  border-radius: 6px !important;
+  background: color-mix(in srgb, var(--surface-strong) 40%, var(--surface)) !important;
+  border: 1px solid color-mix(in srgb, var(--border) 25%, transparent) !important;
+  overflow-x: auto;
+  color: var(--foreground) !important;
+  max-height: 160px;
+}
+
 /* Artifact Card */
 .artifact-card {
   display: flex;

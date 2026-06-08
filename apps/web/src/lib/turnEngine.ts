@@ -59,13 +59,20 @@ function upsertAssistantDelta(
         return message;
       }
       found = true;
+      const steps = (message.interimSteps || []).map((step) => {
+        if (step.status === 'thinking') {
+          return { ...step, status: 'completed' };
+        }
+        return step;
+      });
       return {
         ...message,
         conversationId: event.conversationId || message.conversationId,
         content: event.append ? message.content + event.text : event.text,
         status: 'streaming' as const,
         agentId: event.agentId || message.agentId,
-        thinkingDurationMs: thinkingDurationMs ?? message.thinkingDurationMs
+        thinkingDurationMs: thinkingDurationMs ?? message.thinkingDurationMs,
+        interimSteps: steps.length > 0 ? steps : undefined
       };
     });
 
@@ -104,11 +111,19 @@ function upsertArtifactUpdate(
       const prevContent = message.content || '';
       const newContent = event.append ? prevContent + event.text : event.text;
 
+      const steps = (message.interimSteps || []).map((step) => {
+        if (step.status === 'thinking') {
+          return { ...step, status: 'completed' };
+        }
+        return step;
+      });
+
       return {
         ...message,
         status: 'streaming' as const,
         content: newContent,
         thinkingDurationMs: thinkingDurationMs ?? message.thinkingDurationMs,
+        interimSteps: steps.length > 0 ? steps : undefined,
         artifact: {
           id: event.artifactId,
           title: event.name || event.artifactId || 'Artifact',
@@ -153,7 +168,12 @@ function upsertReasoningStep(
         return message;
       }
       foundMessage = true;
-      const steps = message.interimSteps || [];
+      const steps = (message.interimSteps || []).map((step) => {
+        if (step.status === 'thinking' && step.id !== stepId) {
+          return { ...step, status: 'completed' };
+        }
+        return step;
+      });
       const existingIndex = steps.findIndex((s) => s.id === stepId);
       let updatedSteps;
       if (existingIndex > -1) {
@@ -235,7 +255,12 @@ function upsertInterimStep(
         return message;
       }
       foundMessage = true;
-      const steps = message.interimSteps || [];
+      const steps = (message.interimSteps || []).map((step) => {
+        if (step.status === 'thinking' && step.id !== stepId) {
+          return { ...step, status: 'completed' };
+        }
+        return step;
+      });
       const existingIndex = steps.findIndex((s) => s.id === stepId);
       let updatedSteps;
       if (existingIndex > -1) {
@@ -243,7 +268,9 @@ function upsertInterimStep(
         updatedSteps[existingIndex] = {
           ...updatedSteps[existingIndex],
           text: event.text || updatedSteps[existingIndex].text,
-          status: event.status
+          status: event.status,
+          args: event.args !== undefined ? event.args : updatedSteps[existingIndex].args,
+          output: event.output !== undefined ? event.output : updatedSteps[existingIndex].output
         };
       } else {
         updatedSteps = [
@@ -251,7 +278,9 @@ function upsertInterimStep(
           {
             id: stepId,
             text: event.text || '',
-            status: event.status
+            status: event.status,
+            args: event.args,
+            output: event.output
           }
         ];
       }
@@ -274,7 +303,9 @@ function upsertInterimStep(
           {
             id: stepId,
             text: event.text || '',
-            status: event.status
+            status: event.status,
+            args: event.args,
+            output: event.output
           }
         ]
       });
