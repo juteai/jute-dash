@@ -3,6 +3,7 @@ import {
   createConversation,
   fallbackDashboard,
   getConversations,
+  getConversation,
   initialDashboard,
   sendConversationTurn,
   sendConversationTurnStream
@@ -323,6 +324,313 @@ describe('api conversation history', () => {
     );
   });
 
+  it('filters out reasoning artifacts and populates artifact field for non-reasoning structured ones in getConversation', async () => {
+    const taskData = {
+      ...task('task-1', 'ctx-1', [message('ROLE_USER', 'Run task', 'msg-1')]),
+      artifacts: [
+        {
+          artifactId: 'reasoning',
+          name: 'Agent Thinking',
+          description: 'internal thought process',
+          parts: [{ text: 'I should call a tool...' }]
+        },
+        {
+          artifactId: 'summary',
+          name: 'Final Summary',
+          parts: [{ text: 'Done summary text', mediaType: 'application/json' }]
+        }
+      ]
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [taskData] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: taskData
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+
+    const result = await getConversation(fetcher, 'ctx-1', 'house');
+
+    // The reasoning artifact should be filtered out
+    const reasoningMessage = result.messages.find(
+      (m) => m.a2aMessageId === 'reasoning'
+    );
+    expect(reasoningMessage).toBeUndefined();
+
+    // The summary artifact should be present and have the artifact field set
+    const summaryMessage = result.messages.find(
+      (m) => m.a2aMessageId === 'summary'
+    );
+    expect(summaryMessage).toBeDefined();
+    expect(summaryMessage?.artifact).toEqual({
+      id: 'summary',
+      title: 'Final Summary',
+      content: 'Done summary text'
+    });
+  });
+
+  it('filters out reasoning/tool artifacts containing only whitespace, thoughts, and function calls/responses in getConversation', async () => {
+    const taskData = {
+      ...task('task-1', 'ctx-1', [message('ROLE_USER', 'Run task', 'msg-1')]),
+      artifacts: [
+        {
+          artifactId: '019ea64b-020c-7a12-b7ae-27d98b98910a',
+          parts: [
+            { text: '\n', metadata: { adk_thought: true } },
+            { text: '\n\n' },
+            {
+              data: {
+                id: 'call_cbc0c43a-a5cd-4b43-85d3-cdfdc6686740',
+                name: 'jute_skill_read_context'
+              },
+              metadata: { adk_type: 'function_call' }
+            }
+          ]
+        },
+        {
+          artifactId: '019ea64b-023a-70a0-b60f-19121f6c8467',
+          parts: [
+            {
+              data: {
+                id: 'call_cbc0c43a-a5cd-4b43-85d3-cdfdc6686740',
+                name: 'jute_skill_read_context',
+                response: { output: 'result' }
+              },
+              metadata: { adk_type: 'function_response' }
+            }
+          ]
+        }
+      ]
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [taskData] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: taskData
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+
+    const result = await getConversation(fetcher, 'ctx-1', 'house');
+
+    // Both reasoning/tool artifacts should be filtered out
+    const art1 = result.messages.find(
+      (m) => m.a2aMessageId === '019ea64b-020c-7a12-b7ae-27d98b98910a'
+    );
+    expect(art1).toBeUndefined();
+
+    const art2 = result.messages.find(
+      (m) => m.a2aMessageId === '019ea64b-023a-70a0-b60f-19121f6c8467'
+    );
+    expect(art2).toBeUndefined();
+  });
+
+  it('treats non-reasoning plain-text artifacts as normal replies without artifact field in getConversation', async () => {
+    const taskData = {
+      ...task('task-1', 'ctx-1', [message('ROLE_USER', 'Run task', 'msg-1')]),
+      artifacts: [
+        {
+          artifactId: 'summary-text',
+          name: 'Final Summary Text',
+          parts: [{ text: 'Done summary text', mediaType: 'text/plain' }]
+        }
+      ]
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [taskData] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: taskData
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+
+    const result = await getConversation(fetcher, 'ctx-1', 'house');
+
+    const summaryMessage = result.messages.find(
+      (m) => m.a2aMessageId === 'summary-text'
+    );
+    expect(summaryMessage).toBeDefined();
+    expect(summaryMessage?.artifact).toBeUndefined();
+    expect(summaryMessage?.content).toBe('Done summary text');
+  });
+
+  it('filters out parts with adk_thought true in metadata from artifacts in getConversation', async () => {
+    const taskData = {
+      ...task('task-1', 'ctx-1', [message('ROLE_USER', 'Run task', 'msg-1')]),
+      artifacts: [
+        {
+          artifactId: 'summary',
+          name: 'Final Summary',
+          parts: [
+            { text: 'Okay, thinking...', metadata: { adk_thought: true } },
+            { text: 'Done summary text', mediaType: 'text/plain' }
+          ]
+        }
+      ]
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [taskData] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: taskData
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+
+    const result = await getConversation(fetcher, 'ctx-1', 'house');
+
+    const summaryMessage = result.messages.find(
+      (m) => m.a2aMessageId === 'summary'
+    );
+    expect(summaryMessage).toBeDefined();
+    expect(summaryMessage?.artifact).toBeUndefined();
+    expect(summaryMessage?.content).toBe('Done summary text');
+    expect(summaryMessage?.interimSteps).toEqual([
+      {
+        id: 'task-1:thought:summary',
+        text: 'Okay, thinking...',
+        status: 'completed'
+      }
+    ]);
+  });
+
+  it('correctly filters out adk_thought parts from actual A2A assistant turn response payload', async () => {
+    const rawTurnResponse = {
+      id: '019ea32d-0aa9-7111-9754-e9d9f99f689a',
+      artifacts: [
+        {
+          artifactId: '019ea32d-0f51-7e19-a581-fbd1cf3fef9d',
+          metadata: {
+            adk_app_name: 'kronk_a2a_assistant',
+            adk_author: 'kronk_a2a_assistant',
+            adk_custom_metadata: { kronk_model_id: 'Qwen3-0.6B-Q8_0' },
+            adk_invocation_id: 'e-bb38bd7a-bcef-4150-aba7-0b57d002a0e7',
+            adk_session_id: 'ctx-2m8ktd',
+            adk_usage_metadata: {
+              candidatesTokenCount: 11,
+              promptTokenCount: 975,
+              totalTokenCount: 1076
+            },
+            adk_user_id: 'jute-local-dev'
+          },
+          parts: [
+            {
+              text: 'Okay, the user just sent "test". I need to respond correctly. Since the user is testing, maybe they want to see if I can handle it. But according to the instructions, I should return the final answer without using tools or analysis. The user might be testing my ability or providing a prompt. I should acknowledge their message and confirm that I\'m here to help. No tool calls are needed here. Just a simple response.\n',
+              metadata: { adk_thought: true }
+            },
+            { text: 'Hello! How can I assist you today?' }
+          ]
+        }
+      ],
+      contextId: 'ctx-2m8ktd',
+      history: [
+        {
+          messageId: '69006a71-dc13-4a86-9a30-fe943fcb2582',
+          contextId: 'ctx-2m8ktd',
+          parts: [{ text: 'test', mediaType: 'text/plain' }],
+          role: 'ROLE_USER'
+        }
+      ],
+      metadata: {
+        adk_app_name: 'kronk_a2a_assistant',
+        adk_session_id: 'ctx-2m8ktd',
+        adk_user_id: 'jute-local-dev'
+      },
+      status: {
+        state: 'TASK_STATE_COMPLETED',
+        timestamp: '2026-06-07T18:41:39.887174+01:00'
+      }
+    };
+
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [rawTurnResponse] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: rawTurnResponse
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+
+    const result = await getConversation(fetcher, 'ctx-2m8ktd', 'house');
+
+    // Expected 2 messages: user turn ("test"), and assistant turn ("Hello! How can I assist you today?")
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].role).toBe('user');
+    expect(result.messages[0].content).toBe('test');
+    expect(result.messages[1].role).toBe('assistant');
+    expect(result.messages[1].content).toBe(
+      'Hello! How can I assist you today?'
+    );
+    expect(result.messages[1].artifact).toBeUndefined();
+    expect(result.messages[1].interimSteps).toBeDefined();
+    expect(result.messages[1].interimSteps?.[0].text).toContain(
+      'Okay, the user just sent "test". I need to respond correctly.'
+    );
+    expect(result.messages[1].interimSteps?.[0].status).toBe('completed');
+  });
+
   it('passes cancellation through a blocking turn', async () => {
     const controller = new AbortController();
     controller.abort();
@@ -532,13 +840,17 @@ describe('api conversation streaming', () => {
       text: 'Searching',
       terminal: false
     });
-    expect(events).toContainEqual({
-      type: 'assistant_delta',
-      conversationId: 'ctx-1',
-      agentId: 'house',
-      text: 'Result',
-      append: true
-    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'artifact_update',
+        conversationId: 'ctx-1',
+        agentId: 'house',
+        taskId: 'task-1',
+        artifactId: 'artifact-1',
+        text: 'Result',
+        append: true
+      })
+    );
     expect(events).toContainEqual({
       type: 'status_changed',
       conversationId: 'ctx-1',
@@ -548,6 +860,203 @@ describe('api conversation streaming', () => {
       text: '',
       terminal: true
     });
+  });
+
+  it('filters out streamed artifact updates that represent reasoning artifacts', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        const accept = (
+          options?.headers as Record<string, string> | undefined
+        )?.['Accept'];
+        if (accept === 'text/event-stream') {
+          const events = [
+            {
+              artifactUpdate: {
+                taskId: 'task-1',
+                contextId: 'ctx-1',
+                artifact: {
+                  artifactId: 'reasoning',
+                  name: 'Thinking',
+                  parts: [{ text: 'I should think...' }]
+                },
+                append: true,
+                lastChunk: false
+              }
+            },
+            {
+              artifactUpdate: {
+                taskId: 'task-1',
+                contextId: 'ctx-1',
+                artifact: {
+                  artifactId: 'actual-result',
+                  name: 'Result',
+                  parts: [{ text: 'Here is the answer' }]
+                },
+                append: true,
+                lastChunk: false
+              }
+            }
+          ];
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const encoder = new TextEncoder();
+              for (const result of events) {
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: body.id,
+                      result
+                    })}\n\n`
+                  )
+                );
+              }
+              controller.close();
+            }
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' }
+          });
+        }
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [task('task-1', 'ctx-1')] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: task('task-1', 'ctx-1')
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+    const events: Array<{
+      type: string;
+      artifactId?: string;
+      text?: string;
+      isReasoning?: boolean;
+    }> = [];
+
+    await sendConversationTurnStream(
+      fetcher,
+      'ctx-1',
+      'house',
+      'Find it',
+      (event) => events.push(event)
+    );
+
+    // The 'reasoning' artifact update should be emitted with isReasoning: true
+    const reasoningEvent = events.find((e) => e.artifactId === 'reasoning');
+    expect(reasoningEvent).toBeDefined();
+    expect(reasoningEvent?.isReasoning).toBe(true);
+    expect(reasoningEvent?.text).toBe('I should think...');
+
+    // The 'actual-result' artifact update SHOULD be emitted
+    const resultEvent = events.find((e) => e.artifactId === 'actual-result');
+    expect(resultEvent).toBeDefined();
+    expect(resultEvent?.text).toBe('Here is the answer');
+  });
+
+  it('splits streamed artifact updates that contain parts with adk_thought true into reasoning and non-reasoning events', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        const accept = (
+          options?.headers as Record<string, string> | undefined
+        )?.['Accept'];
+        if (accept === 'text/event-stream') {
+          const events = [
+            {
+              artifactUpdate: {
+                taskId: 'task-1',
+                contextId: 'ctx-1',
+                artifact: {
+                  artifactId: 'mixed-result',
+                  name: 'Result',
+                  parts: [
+                    {
+                      text: 'I am thinking...',
+                      metadata: { adk_thought: true }
+                    },
+                    { text: 'Here is the answer' }
+                  ]
+                },
+                append: true,
+                lastChunk: false
+              }
+            }
+          ];
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const encoder = new TextEncoder();
+              for (const result of events) {
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: body.id,
+                      result
+                    })}\n\n`
+                  )
+                );
+              }
+              controller.close();
+            }
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' }
+          });
+        }
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [task('task-1', 'ctx-1')] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: task('task-1', 'ctx-1')
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+    const events: Array<{
+      type: string;
+      artifactId?: string;
+      text?: string;
+      isReasoning?: boolean;
+    }> = [];
+
+    await sendConversationTurnStream(
+      fetcher,
+      'ctx-1',
+      'house',
+      'Find it',
+      (event) => events.push(event)
+    );
+
+    const resultEvent = events.find((e) => e.artifactId === 'mixed-result');
+    expect(resultEvent).toBeDefined();
+    expect(resultEvent?.text).toBe('Here is the answer');
+
+    const thoughtEvent = events.find(
+      (e) => e.artifactId === 'mixed-result-thought'
+    );
+    expect(thoughtEvent).toBeDefined();
+    expect(thoughtEvent?.text).toBe('I am thinking...');
+    expect(thoughtEvent?.isReasoning).toBe(true);
   });
 
   it('emits a failed turn without loading history when streaming fails', async () => {
@@ -826,6 +1335,285 @@ describe('api conversation streaming', () => {
     expect(events).not.toContainEqual(
       expect.objectContaining({ type: 'turn_failed' })
     );
+  });
+
+  it('detects tool calls in getConversation and parses them as interim steps', async () => {
+    const taskData = {
+      ...task('task-1', 'ctx-1', [
+        message('ROLE_USER', 'Weather info', 'msg-1')
+      ]),
+      artifacts: [
+        {
+          artifactId: 'tool-use',
+          name: 'Tool Call',
+          parts: [
+            {
+              text: 'Okay, checking weather...',
+              metadata: { adk_thought: true }
+            },
+            {
+              text: '<tool_call>\n{"name": "jute_skill_read_context", "arguments": {"skillId": "jute.weather.current"}}\n</tool_call>'
+            }
+          ]
+        }
+      ]
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [taskData] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: taskData
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+
+    const result = await getConversation(fetcher, 'ctx-1', 'house');
+    const msg = result.messages.find(
+      (m) => m.a2aTaskId === 'task-1' && m.role === 'assistant'
+    );
+    expect(msg).toBeDefined();
+    expect(msg?.content).toBe('');
+    expect(msg?.interimSteps).toEqual([
+      {
+        id: 'task-1:thought:tool-use',
+        text: 'Okay, checking weather...',
+        status: 'completed'
+      },
+      {
+        id: 'task-1:tool:tool-use:1',
+        text: 'Called tool: jute_skill_read_context',
+        status: 'completed'
+      }
+    ]);
+  });
+
+  it('detects both thought processes and tool calls in getConversation', async () => {
+    const taskData = {
+      id: 'task-123',
+      contextId: 'ctx-123',
+      status: {
+        state: 'TASK_STATE_COMPLETED',
+        timestamp: '2026-06-08T09:50:22.073488+01:00'
+      },
+      artifacts: [
+        {
+          artifactId: '019ea66c-b874-7753-b56e-3168d15403da',
+          metadata: {
+            adk_app_name: 'kronk_a2a_assistant',
+            adk_author: 'kronk_a2a_assistant'
+          },
+          parts: [
+            {
+              text: 'Okay, the user is asking about the weather...',
+              metadata: { adk_thought: true }
+            },
+            {
+              text: '\n\n'
+            },
+            {
+              data: {
+                args: { skillId: 'jute.weather.current' },
+                id: 'call_6f7b97fb-7dfa-4b79-b584-3d141f63f119',
+                name: 'jute_skill_read_context'
+              },
+              metadata: { adk_type: 'function_call' }
+            }
+          ]
+        },
+        {
+          artifactId: '019ea66c-c819-7bf2-890d-bd24388bec4c',
+          parts: [
+            {
+              data: {
+                id: 'call_6f7b97fb-7dfa-4b79-b584-3d141f63f119',
+                name: 'jute_skill_read_context',
+                response: { output: 'Weather is nice' }
+              },
+              metadata: { adk_type: 'function_response' }
+            }
+          ]
+        },
+        {
+          artifactId: '019ea66c-f82c-7c7f-aa86-f15b1f63d8d6',
+          parts: [
+            {
+              text: 'Okay, user asked about weather...',
+              metadata: { adk_thought: true }
+            },
+            {
+              text: 'The weather is nice.'
+            }
+          ]
+        }
+      ],
+      history: [
+        {
+          messageId: 'msg-user',
+          role: 1, // USER
+          parts: [
+            {
+              text: 'What is the weather?'
+            }
+          ]
+        },
+        {
+          messageId: 'msg-agent',
+          role: 2, // AGENT
+          parts: [
+            {
+              text: 'Okay, user asked about weather...',
+              metadata: { adk_thought: true }
+            },
+            {
+              text: 'The weather is nice.'
+            }
+          ]
+        }
+      ]
+    };
+
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [taskData] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: taskData
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+
+    const result = await getConversation(fetcher, 'ctx-123', 'house');
+    const msg = result.messages.find((m) => m.role === 'assistant');
+    expect(msg?.interimSteps).toEqual([
+      {
+        id: 'task-123:thought:019ea66c-b874-7753-b56e-3168d15403da',
+        text: 'Okay, the user is asking about the weather...\n\n',
+        status: 'completed'
+      },
+      {
+        id: 'task-123:tool:019ea66c-b874-7753-b56e-3168d15403da:2',
+        text: 'Called tool: jute_skill_read_context',
+        status: 'completed'
+      },
+      {
+        id: 'task-123:thought:019ea66c-f82c-7c7f-aa86-f15b1f63d8d6',
+        text: 'Okay, user asked about weather...',
+        status: 'completed'
+      },
+      {
+        id: 'msg-agent:thought:0',
+        text: 'Okay, user asked about weather...',
+        status: 'completed'
+      }
+    ]);
+  });
+
+  it('detects streamed tool calls and emits status_changed events', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        const accept = (
+          options?.headers as Record<string, string> | undefined
+        )?.['Accept'];
+        if (accept === 'text/event-stream') {
+          const events = [
+            {
+              artifactUpdate: {
+                taskId: 'task-1',
+                contextId: 'ctx-1',
+                artifact: {
+                  artifactId: 'tool-use-stream',
+                  parts: [
+                    {
+                      text: '<tool_call>\n{"name": "jute_skill_read_context"}\n</tool_call>'
+                    }
+                  ]
+                },
+                append: true,
+                lastChunk: false
+              }
+            }
+          ];
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const encoder = new TextEncoder();
+              for (const result of events) {
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: body.id,
+                      result
+                    })}\n\n`
+                  )
+                );
+              }
+              controller.close();
+            }
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' }
+          });
+        }
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [task('task-1', 'ctx-1')] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: task('task-1', 'ctx-1')
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+    const events: Array<{ type: string; status?: string; text?: string }> = [];
+
+    await sendConversationTurnStream(
+      fetcher,
+      'ctx-1',
+      'house',
+      'Check context',
+      (event) => events.push(event)
+    );
+
+    const toolCallEvent = events.find(
+      (e) =>
+        e.type === 'status_changed' &&
+        e.text?.includes('jute_skill_read_context')
+    );
+    expect(toolCallEvent).toBeDefined();
+    expect(toolCallEvent?.text).toBe('Calling tool: jute_skill_read_context');
+    expect(toolCallEvent?.status).toBe('working');
   });
 });
 

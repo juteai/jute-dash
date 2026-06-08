@@ -371,15 +371,29 @@ export type ChatState =
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system';
 
+export type InterimStep = {
+  id: string;
+  text: string;
+  status: 'pending' | 'working' | 'completed' | 'failed' | string;
+  timestamp?: string;
+};
+
 export type ChatMessage = {
   id: string;
   conversationId?: string;
   role: ChatMessageRole;
   content: string;
   createdAt: string;
-  status?: 'sending' | 'streaming' | 'sent' | 'failed';
+  status?: 'sending' | 'streaming' | 'sent' | 'failed' | 'queued';
   retryText?: string;
   agentId?: string;
+  interimSteps?: InterimStep[];
+  thinkingDurationMs?: number;
+  artifact?: {
+    id: string;
+    title: string;
+    content: string;
+  };
 };
 
 export type Conversation = {
@@ -405,6 +419,13 @@ export type ConversationMessage = {
   a2aTaskId: string;
   createdAt: string;
   updatedAt: string;
+  interimSteps?: InterimStep[];
+  thinkingDurationMs?: number;
+  artifact?: {
+    id: string;
+    title: string;
+    content: string;
+  };
 };
 
 export type ConversationDetail = {
@@ -427,6 +448,18 @@ export type ConversationStreamEvent =
       taskId?: string;
       text: string;
       append: boolean;
+    }
+  | {
+      type: 'artifact_update';
+      conversationId: string;
+      agentId: string;
+      taskId?: string;
+      artifactId: string;
+      name?: string;
+      text: string;
+      append: boolean;
+      isStructured?: boolean;
+      isReasoning?: boolean;
     }
   | {
       type: 'status_changed';

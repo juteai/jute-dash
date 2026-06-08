@@ -350,7 +350,6 @@ button {
 .chat-header,
 .chat-controls,
 .chat-agent-meta,
-.chat-status-row,
 .message-composer,
 .ui-button,
 .ui-icon-button {
@@ -958,27 +957,360 @@ select:focus-visible {
 .chat-layer {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: end center;
-  padding: 16px;
-  background: color-mix(in srgb, var(--background) 82%, transparent);
-  animation: chat-layer-in 180ms ease-out;
+  z-index: 50;
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in srgb, var(--active) 8%, transparent) 0%,
+    color-mix(in srgb, var(--background) 95%, transparent) 70%,
+    var(--background) 100%
+  );
+  background-size: 180% 180%;
+  animation:
+    ambient-gradient-morph 12s ease-in-out infinite alternate,
+    chat-layer-in 300ms ease-out;
+  backdrop-filter: blur(40px) saturate(220%);
+  -webkit-backdrop-filter: blur(40px) saturate(220%);
+  display: flex;
+  flex-direction: column;
 }
 
 .chat-view {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-  width: min(100%, 1080px);
-  height: min(100%, 760px);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
+  background: transparent;
+  animation: chat-panel-in 300ms ease-out;
+}
+
+/* Antigravity Stardust Canvas */
+.stardust-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1; /* Behind chat content, in front of background gradient */
+  opacity: 0.35;
+  transition: opacity 0.8s ease;
+}
+
+.stardust-particle {
+  position: absolute;
+  bottom: 0;
+  width: var(--size, 4px);
+  height: var(--size, 4px);
+  border-radius: 50%;
+  background: var(--stardust-color, var(--active));
+  filter: drop-shadow(0 0 6px var(--stardust-color, var(--active)));
+  left: var(--left);
+  opacity: 0;
+  animation: stardust-drift calc(var(--duration) / var(--stardust-speed, 1))
+    linear infinite;
+  animation-delay: var(--delay);
+  will-change: transform;
+}
+
+/* State Modifiers for Stardust Canvas */
+.stardust-canvas--idle {
+  --stardust-speed: 0.55;
+  --stardust-color: var(--muted);
+  opacity: 0.12;
+}
+
+.stardust-canvas--listening {
+  --stardust-speed: 1;
+  --stardust-color: var(--active);
+  opacity: 0.45;
+}
+
+.stardust-canvas--thinking,
+.stardust-canvas--streaming {
+  --stardust-speed: 2.3;
+  --stardust-color: var(--focus);
+  opacity: 0.6;
+}
+
+.stardust-canvas--error {
+  --stardust-speed: 1.2;
+  --stardust-color: var(--danger);
+  opacity: 0.4;
+}
+
+@keyframes stardust-drift {
+  0% {
+    transform: translate3d(0, 15px, 0) scale(0.5);
+    opacity: 0;
+  }
+  12% {
+    opacity: var(--max-opacity, 0.5);
+  }
+  88% {
+    opacity: var(--max-opacity, 0.5);
+  }
+  100% {
+    transform: translate3d(var(--drift-x, 25px), -105vh, 0)
+      scale(var(--scale, 1.1));
+    opacity: 0;
+  }
+}
+
+/* Reduced Motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .stardust-particle {
+    animation: none !important;
+    opacity: var(--max-opacity, 0.3) !important;
+    transform: translate3d(0, calc(-50vh + var(--left) * 1px), 0)
+      scale(var(--scale, 1)) !important;
+  }
+}
+
+@keyframes ambient-gradient-morph {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Circular Close Countdown Timer */
+.close-timer-container {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-timer-svg {
+  position: absolute;
+  inset: 0;
+  width: 44px;
+  height: 44px;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.close-timer-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--border) 40%, transparent);
+  stroke-width: 2px;
+}
+
+.close-timer-bar {
+  fill: none;
+  stroke: var(--active);
+  stroke-width: 2.5px;
+  stroke-linecap: round;
+  transition:
+    stroke-dashoffset 0.1s linear,
+    stroke 0.3s ease;
+}
+
+/* Redesigned Collapsible progress logs */
+.interim-steps-container {
+  margin-bottom: 12px;
+  font-size: 0.82rem;
+  width: 100%;
+  overflow: hidden;
+}
+
+.interim-steps-header {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  color: var(--muted-strong);
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.interim-steps-header:hover {
+  color: var(--foreground);
+}
+
+.interim-steps-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.interim-steps-chevron {
+  font-size: 0.85rem;
+  transition: transform 0.2s ease;
+  display: inline-block;
+  color: var(--muted);
+}
+
+.interim-steps-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.interim-steps-list {
+  border-left: 2px solid var(--border);
+  margin-left: 6px;
+  padding: 6px 0 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.interim-step-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.interim-step-item.completed {
+  color: var(--foreground);
+}
+
+.interim-step-item.working {
+  color: var(--active);
+}
+
+.interim-step-spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border);
+  border-top-color: var(--active);
+  border-radius: 50%;
+  animation: step-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.inline-spinner {
+  border-top-color: var(--active);
+}
+
+@keyframes step-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Artifact Card */
+.artifact-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
   border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-strong) 40%, var(--surface));
+  padding: 12px;
+  box-shadow: 0 4px 12px var(--shadow);
+  max-width: 520px;
+  text-align: left;
+}
+
+.artifact-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.artifact-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
+  background: color-mix(in srgb, var(--active) 12%, transparent);
+  color: var(--active);
+  flex-shrink: 0;
+}
+
+.artifact-card-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.artifact-card-title {
+  font-weight: 760;
+  color: var(--foreground);
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-card-subtitle {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.artifact-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Artifact Preview Side Panel */
+.artifact-preview-panel {
+  border-left: 1px solid var(--border);
   background: var(--surface);
-  box-shadow: 0 20px 80px var(--shadow);
-  animation: chat-panel-in 220ms ease-out;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  animation: slide-in-right 0.25s ease-out;
+}
+
+.artifact-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.artifact-preview-title {
+  font-weight: 760;
+  font-size: 0.94rem;
+  color: var(--foreground);
+}
+
+.artifact-preview-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
 .chat-header {
+  position: relative;
+  z-index: 10;
   justify-content: space-between;
   gap: 12px;
   padding: 14px;
@@ -1037,16 +1369,6 @@ select {
   background: var(--surface);
   color: var(--foreground);
   padding: 0 10px;
-}
-
-.chat-status-row {
-  gap: 10px;
-  min-height: 42px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 0.84rem;
-  font-weight: 650;
 }
 
 .agent-diagnostics {
@@ -1115,9 +1437,38 @@ select {
 }
 
 .chat-body {
+  position: relative;
+  z-index: 10;
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  flex: 1;
   min-height: 0;
+}
+
+@media (min-width: 641px) {
+  .chat-body.chat-view--minimal {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chat-body.chat-view--minimal.chat-view--with-preview {
+    grid-template-columns: minmax(0, 1.2fr) minmax(320px, 480px);
+  }
+
+  .chat-body.chat-view--with-history {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  }
+
+  .chat-body.chat-view--with-history.chat-view--with-preview {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1.2fr) minmax(
+        320px,
+        480px
+      );
+  }
+}
+
+.chat-view--minimal .chat-thread {
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .conversation-sidebar {
@@ -1538,6 +1889,15 @@ select {
   gap: 4px;
 }
 
+.assistant-activity--working {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
 .assistant-activity span {
   width: 7px;
   height: 7px;
@@ -1585,47 +1945,93 @@ select {
 }
 
 .message-bubble {
-  width: min(86%, 680px);
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-muted);
+  width: fit-content;
+  max-width: 75%;
+  padding: 10px 32px 10px 16px;
+  border-radius: 18px;
+  position: relative;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .message-bubble--user {
   align-self: flex-end;
   background: var(--foreground);
   color: var(--inverse);
+  border: none;
+  border-bottom-right-radius: 4px;
 }
 
-.message-bubble--assistant,
+.message-bubble--assistant {
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  padding: 10px 32px 10px 0;
+  max-width: 80%;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .message-bubble--system {
   align-self: flex-start;
-}
-
-.message-bubble--system {
-  border-color: var(--warning);
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--warning);
+  padding: 10px 32px 10px 12px;
+  max-width: 80%;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .message-bubble--failed {
-  border-color: var(--danger);
+  border-left: 2px solid var(--danger);
+  padding-left: 12px;
 }
 
-.message-bubble--sending {
-  opacity: 0.72;
+.message-bubble--sending,
+.message-bubble--queued {
+  opacity: 0.62;
 }
 
-.message-role {
+.message-bubble--queued {
+  border-style: dashed;
+}
+
+.message-copy-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
-  font-size: 0.72rem;
-  font-weight: 780;
-  text-transform: uppercase;
-  color: currentColor;
-  opacity: 0.72;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: color-mix(in srgb, var(--surface-strong) 15%, transparent);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.25s ease,
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.message-copy-btn:hover {
+  background: color-mix(in srgb, var(--surface-strong) 30%, transparent);
+  color: var(--foreground);
+}
+
+.message-bubble:hover .message-copy-btn {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .message-copy-btn {
+    opacity: 0.35;
+  }
 }
 
 .message-actions {
@@ -2001,9 +2407,16 @@ select {
   *,
   *::before,
   *::after {
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
+    animation: none !important;
+    transition: none !important;
     scroll-behavior: auto !important;
-    transition-duration: 1ms !important;
   }
+}
+
+/* Hide custom reasoning elements defensively */
+think,
+thinking,
+reasoning,
+scratchpad {
+  display: none !important;
 }

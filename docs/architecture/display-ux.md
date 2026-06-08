@@ -275,19 +275,22 @@ Entry points:
 
 Transition:
 
-- use smooth zoom/fade or sheet expansion from the dashboard;
-- respect reduced-motion preferences;
-- keep the dashboard context visually connected, but make chat the focus;
-- closing chat returns to the previous dashboard scroll position.
+- enters a full-screen viewport overlay with a high backdrop blur and an ambient animating background gradient;
+- automatically creates a new A2A conversation context upon entry;
+- respects reduced-motion preferences (disabling or simplifying animations);
+- closing chat returns to the dashboard immediately.
 
 Chat layout:
 
-- conversation header with agent name, status, close/minimize, mute, and cancel;
-- markdown-rendered message stream;
+- conversation header with agent name, mute button, and a close button wrapped by a circular SVG countdown progress ring;
+- full-screen ambient animated gradient backdrop matching active theme colors;
+- glowing border ambient halo of moving speckles around the screen edge indicating state;
+- markdown-rendered message stream aligned in a spacious touch-friendly center-aligned layout;
 - user and assistant message bubbles;
-- task/progress rows for A2A status;
-- bottom input bar with text entry, send, voice, and cancel controls;
-- optional side metadata on wide displays for sources, widgets in context, or task artifacts.
+- collapsible step-by-step progress checklist (interim tool execution/status logs) nested under user queries;
+- task artifacts rendered as distinct structured cards in the thread;
+- optional side metadata/preview panel on wide displays to inspect selected artifacts in detail;
+- bottom message composer allowing typing and queueing of inputs while the assistant is processing.
 
 Markdown rendering:
 
@@ -299,8 +302,8 @@ Markdown rendering:
 Chat states:
 
 - `idle`: ready for input.
-- `listening`: voice or push-to-talk capture is active.
-- `thinking`: agent turn started and response is pending.
+- `listening`: waiting for voice/text input (represented by a slow, breathing border halo wave of speckles).
+- `thinking`: agent processing turn (represented by a faster, high-frequency border halo wave of speckles).
 - `streaming`: response is arriving.
 - `error`: recoverable failure with retry or close.
 
@@ -318,9 +321,9 @@ When no agent is available, chat remains reachable but opens to a setup-needed s
 
 Activity animation:
 
-- use a restrained pulsing ring or three-dot shimmer;
-- do not use decorative blobs or large gradients;
-- keep animation disabled or simplified under reduced motion.
+- a theme-aligned border ambient halo of glowing speckles/dots around the screen frame (slow wave when waiting/listening, quick wave when thinking/processing);
+- a slow, breathing background gradient that shifts coordinates;
+- keep animations disabled or simplified under reduced motion.
 
 The Svelte app does not call agents directly. Chat sends turns to the hub and renders hub conversation/task events.
 

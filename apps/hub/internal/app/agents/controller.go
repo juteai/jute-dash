@@ -8,6 +8,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 
 	a2aclient "jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/httphelper"
@@ -151,6 +152,10 @@ func (c *Controller) writeMethodNotAllowed(w http.ResponseWriter, allow string) 
 }
 
 func (c *Controller) handleProxyAgent(w http.ResponseWriter, r *http.Request) {
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Time{})
+	_ = rc.SetWriteDeadline(time.Now().Add(5 * time.Minute))
+
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/proxy/agents/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
@@ -207,7 +212,34 @@ func (c *Controller) handleProxyAgent(w http.ResponseWriter, r *http.Request) {
 			}
 		},
 	}
-	proxy.ServeHTTP(w, r)
+	wrappedWriter := &idleTimeoutWriter{
+		ResponseWriter: w,
+		rc:             rc,
+		idleTimeout:    5 * time.Minute,
+	}
+	proxy.ServeHTTP(wrappedWriter, r)
+}
+
+type idleTimeoutWriter struct {
+	http.ResponseWriter
+
+	rc          *http.ResponseController
+	idleTimeout time.Duration
+}
+
+func (w *idleTimeoutWriter) Write(p []byte) (int, error) {
+	_ = w.rc.SetWriteDeadline(time.Now().Add(w.idleTimeout))
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *idleTimeoutWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (w *idleTimeoutWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 func singleJoiningSlash(a, b string) string {

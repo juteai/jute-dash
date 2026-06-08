@@ -133,8 +133,8 @@ func main() {
 		Addr:              listen,
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
+		ReadTimeout:       5 * time.Minute,
+		WriteTimeout:      5 * time.Minute,
 		IdleTimeout:       60 * time.Second,
 	}
 	log.Printf("Mock A2A agent card: %s/.well-known/agent-card.json", baseURL)
