@@ -141,7 +141,7 @@ func TestBootstrapDashboardWidgetsSeedRuntimeStore(t *testing.T) {
 		t.Fatalf("Initialize() error = %v", err)
 	}
 
-	layout, err := st.WidgetLayout(context.Background(), "")
+	layout, err := st.DashboardRepo.WidgetLayout(context.Background(), "")
 	if err != nil {
 		t.Fatalf("WidgetLayout() error = %v", err)
 	}
@@ -175,7 +175,7 @@ func TestVoiceSettingsSeededFromBootstrap(t *testing.T) {
 		t.Fatalf("unexpected config voice settings: %+v", cfg.Voice)
 	}
 
-	settings, err := st.VoiceSettings(context.Background(), "")
+	settings, err := st.VoiceRepo.VoiceSettings(context.Background(), "")
 	if err != nil {
 		t.Fatalf("VoiceSettings() error = %v", err)
 	}
@@ -198,7 +198,7 @@ func TestVoiceMuteAndCancelUpdateState(t *testing.T) {
 		t.Fatalf("Initialize() error = %v", err)
 	}
 
-	muted, err := st.SetVoiceMuted(context.Background(), "", true)
+	muted, err := st.VoiceRepo.SetVoiceMuted(context.Background(), "", true)
 	if err != nil {
 		t.Fatalf("SetVoiceMuted(true) error = %v", err)
 	}
@@ -206,7 +206,7 @@ func TestVoiceMuteAndCancelUpdateState(t *testing.T) {
 		t.Fatalf("unexpected muted settings: %+v", muted)
 	}
 
-	unmuted, err := st.SetVoiceMuted(context.Background(), "", false)
+	unmuted, err := st.VoiceRepo.SetVoiceMuted(context.Background(), "", false)
 	if err != nil {
 		t.Fatalf("SetVoiceMuted(false) error = %v", err)
 	}
@@ -214,7 +214,7 @@ func TestVoiceMuteAndCancelUpdateState(t *testing.T) {
 		t.Fatalf("unexpected unmuted settings: %+v", unmuted)
 	}
 
-	cancelled, err := st.CancelVoice(context.Background(), "")
+	cancelled, err := st.VoiceRepo.CancelVoice(context.Background(), "")
 	if err != nil {
 		t.Fatalf("CancelVoice() error = %v", err)
 	}
@@ -238,7 +238,7 @@ func TestVoiceProvidersDefaultsToEmptyList(t *testing.T) {
 	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
-	providers, err := st.VoiceProviders(context.Background())
+	providers, err := st.VoiceRepo.VoiceProviders(context.Background())
 	if err != nil {
 		t.Fatalf("VoiceProviders() error = %v", err)
 	}
@@ -344,7 +344,7 @@ func TestDisplayCustomizationSeededFromBootstrap(t *testing.T) {
 		t.Fatalf("unexpected widget chrome: %+v", cfg.Display.WidgetChrome)
 	}
 
-	settings, err := st.HouseholdSettings(context.Background())
+	settings, err := st.HomestateRepo.HouseholdSettings(context.Background())
 	if err != nil {
 		t.Fatalf("HouseholdSettings() error = %v", err)
 	}
@@ -416,7 +416,7 @@ func TestWidgetLayoutReturnsSeededWidgets(t *testing.T) {
 		t.Fatalf("Initialize() error = %v", err)
 	}
 
-	layout, err := st.WidgetLayout(context.Background(), "")
+	layout, err := st.DashboardRepo.WidgetLayout(context.Background(), "")
 	if err != nil {
 		t.Fatalf("WidgetLayout() error = %v", err)
 	}
@@ -468,7 +468,7 @@ func TestSaveWidgetLayoutPersists(t *testing.T) {
 	layout.Widgets[0].W = 3
 	layout.Widgets[1].Visible = false
 
-	saved, err := st.SaveWidgetLayout(context.Background(), layout)
+	saved, err := st.DashboardRepo.SaveWidgetLayout(context.Background(), layout)
 	if err != nil {
 		t.Fatalf("SaveWidgetLayout() error = %v", err)
 	}
@@ -476,7 +476,7 @@ func TestSaveWidgetLayoutPersists(t *testing.T) {
 		t.Fatalf("unexpected saved layout: %+v", saved.Widgets)
 	}
 
-	reloaded, err := st.WidgetLayout(context.Background(), "")
+	reloaded, err := st.DashboardRepo.WidgetLayout(context.Background(), "")
 	if err != nil {
 		t.Fatalf("WidgetLayout() error = %v", err)
 	}
@@ -538,7 +538,10 @@ func TestSaveWidgetLayoutRejectsInvalidLayouts(t *testing.T) {
 			}
 			layout := DefaultWidgetLayout()
 			tt.mutate(&layout)
-			if _, err := st.SaveWidgetLayout(context.Background(), layout); !errors.Is(err, ErrInvalidLayout) {
+			if _, err := st.DashboardRepo.SaveWidgetLayout(
+				context.Background(),
+				layout,
+			); !errors.Is(err, ErrInvalidLayout) {
 				t.Fatalf("SaveWidgetLayout() error = %v, want ErrInvalidLayout", err)
 			}
 		})
@@ -554,11 +557,11 @@ func TestResetWidgetLayoutRestoresDefaults(t *testing.T) {
 
 	layout := DefaultWidgetLayout()
 	layout.Widgets[0].Visible = false
-	if _, err := st.SaveWidgetLayout(context.Background(), layout); err != nil {
+	if _, err := st.DashboardRepo.SaveWidgetLayout(context.Background(), layout); err != nil {
 		t.Fatalf("SaveWidgetLayout() error = %v", err)
 	}
 
-	reset, err := st.ResetWidgetLayout(context.Background(), "")
+	reset, err := st.DashboardRepo.ResetWidgetLayout(context.Background(), "")
 	if err != nil {
 		t.Fatalf("ResetWidgetLayout() error = %v", err)
 	}

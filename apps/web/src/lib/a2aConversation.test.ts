@@ -1,13 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createConversation,
-  fallbackDashboard,
   getConversations,
   getConversation,
-  initialDashboard,
   sendConversationTurn,
   sendConversationTurnStream
-} from './api';
+} from './a2aConversation';
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -1614,28 +1612,5 @@ describe('api conversation streaming', () => {
     expect(toolCallEvent).toBeDefined();
     expect(toolCallEvent?.text).toBe('Calling tool: jute_skill_read_context');
     expect(toolCallEvent?.status).toBe('working');
-  });
-});
-
-describe('fallback dashboard', () => {
-  it('marks offline scaffolding as stale and agentless', () => {
-    const fallback = fallbackDashboard();
-
-    expect(fallback.connectionState).toBe('offline');
-    expect(fallback.stale).toBe(true);
-    expect(fallback.agents).toEqual([]);
-    expect(fallback.layout.widgets.map((widget) => widget.kind)).toEqual([
-      'date-time',
-      'weather',
-      'chat-history'
-    ]);
-    expect('weather' in fallback.home).toBe(false);
-  });
-
-  it('can create a neutral initial dashboard before client-side hub connection', () => {
-    const initial = initialDashboard();
-
-    expect(initial.connectionState).toBe('starting');
-    expect(initial.issue).toBeUndefined();
   });
 });

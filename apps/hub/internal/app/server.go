@@ -25,22 +25,23 @@ import (
 )
 
 type Server struct {
-	cfg           config.Config
-	agentsManager *agents.AgentManager
-	messages      a2aclient.MessageSender
-	setup         homestate.SetupStatus
-	layout        dashboard.WidgetLayout
-	layoutStore   dashboard.LayoutStore
-	settings      homestate.SettingsStore
-	voice         voice.Config
-	voiceStore    voice.Store
-	configPath    string
-	syncer        filesync.Syncer
-	display       *displayactions.Dispatcher
-	turnRunner    *agents.Runner
-	mu            sync.Mutex
-	started       time.Time
-	version       string
+	cfg             config.Config
+	agentsManager   *agents.AgentManager
+	messages        a2aclient.MessageSender
+	setup           homestate.SetupStatus
+	layout          dashboard.WidgetLayout
+	layoutStore     dashboard.LayoutStore
+	settings        homestate.SettingsStore
+	voice           voice.Config
+	voiceStore      voice.Store
+	configPath      string
+	syncer          filesync.Syncer
+	display         *displayactions.Dispatcher
+	voiceDispatcher *voice.Dispatcher
+	turnRunner      *agents.Runner
+	mu              sync.Mutex
+	started         time.Time
+	version         string
 }
 
 type HealthResponse struct {
@@ -127,53 +128,6 @@ func NewWithMessageSender(
 	)
 }
 
-func NewWithSetupStatusAndLayoutStore(
-	cfg config.Config,
-	version string,
-	setup homestate.SetupStatus,
-	layoutStore dashboard.LayoutStore,
-) http.Handler {
-	return NewWithSetupStatusAndLayoutStoreAndConfigPath(cfg, version, setup, layoutStore, "")
-}
-
-func NewWithSetupStatusAndLayoutStoreAndConfigPath(
-	cfg config.Config,
-	version string,
-	setup homestate.SetupStatus,
-	layoutStore dashboard.LayoutStore,
-	configPath string,
-) http.Handler {
-	return NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(
-		cfg,
-		version,
-		setup,
-		layoutStore,
-		configPath,
-		nil,
-	)
-}
-
-func NewWithSetupStatusAndLayoutStoreAndConfigPathAndDisplayActions(
-	cfg config.Config,
-	version string,
-	setup homestate.SetupStatus,
-	layoutStore dashboard.LayoutStore,
-	configPath string,
-	display *displayactions.Dispatcher,
-) http.Handler {
-	var voiceStore voice.Store
-	var settingsStore homestate.SettingsStore
-	if layoutStore != nil {
-		if candidate, ok := layoutStore.(voice.Store); ok {
-			voiceStore = candidate
-		}
-		if candidate, ok := layoutStore.(homestate.SettingsStore); ok {
-			settingsStore = candidate
-		}
-	}
-	return NewServer(cfg, version, setup, layoutStore, settingsStore, voiceStore, configPath, display)
-}
-
 func NewServer(
 	cfg config.Config,
 	version string,
@@ -227,6 +181,15 @@ func newServer(
 	var dbStore filesync.ConfigStore
 	if candidate, ok := activeLayoutStore.(filesync.ConfigStore); ok {
 		dbStore = candidate
+	} else {
+		type configStoreProvider interface {
+			ConfigStore() any
+		}
+		if provider, ok := activeLayoutStore.(configStoreProvider); ok {
+			if cs, ok := provider.ConfigStore().(filesync.ConfigStore); ok {
+				dbStore = cs
+			}
+		}
 	}
 
 	var syncer filesync.Syncer
@@ -258,6 +221,18 @@ func newServer(
 		StartQueue(syncer filesync.Syncer) error
 	}); ok {
 		_ = qs.StartQueue(syncer)
+	} else {
+		type configStoreProvider interface {
+			ConfigStore() any
+		}
+		if provider, ok := activeLayoutStore.(configStoreProvider); ok {
+			type queueStarter interface {
+				StartQueue(syncer filesync.Syncer) error
+			}
+			if qs, ok := provider.ConfigStore().(queueStarter); ok {
+				_ = qs.StartQueue(syncer)
+			}
+		}
 	}
 
 	if display == nil {
@@ -267,21 +242,24 @@ func newServer(
 	agentCards := agents.NewCardService(cfg.A2A)
 	agentsManager := agents.NewAgentManager(syncer, agentCards, configPath)
 
+	voiceDispatcher := voice.NewDispatcher()
+
 	server := &Server{
-		cfg:           cfg,
-		agentsManager: agentsManager,
-		messages:      messageSender,
-		setup:         setup,
-		layout:        layout,
-		layoutStore:   activeLayoutStore,
-		settings:      activeSettingsStore,
-		voice:         cfg.Voice,
-		voiceStore:    activeVoiceStore,
-		configPath:    configPath,
-		syncer:        syncer,
-		display:       display,
-		started:       time.Now().UTC(),
-		version:       version,
+		cfg:             cfg,
+		agentsManager:   agentsManager,
+		messages:        messageSender,
+		setup:           setup,
+		layout:          layout,
+		layoutStore:     activeLayoutStore,
+		settings:        activeSettingsStore,
+		voice:           cfg.Voice,
+		voiceStore:      activeVoiceStore,
+		configPath:      configPath,
+		syncer:          syncer,
+		display:         display,
+		voiceDispatcher: voiceDispatcher,
+		started:         time.Now().UTC(),
+		version:         version,
 	}
 
 	agents.SetEnvReader(os.Getenv)
@@ -343,7 +321,7 @@ func newServer(
 
 	voice.NewController(
 		server.voiceStore,
-		server.display,
+		server.voiceDispatcher,
 	).RegisterRoutes(mux)
 
 	agents.NewController(agents.ControllerOptions{
@@ -354,7 +332,7 @@ func newServer(
 	}).RegisterRoutes(mux)
 
 	// SSE broker mount
-	broker := events.NewBroker(server.display)
+	broker := events.NewBroker(server.display, server.voiceDispatcher)
 	mux.Handle("/api/v1/events", broker)
 
 	handler := withCommonHeaders(withCORS(mux))

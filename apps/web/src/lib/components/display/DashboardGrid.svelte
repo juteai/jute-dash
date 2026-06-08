@@ -12,6 +12,7 @@
   import { widgetRegistry } from '$lib/components/display/widget-registry';
   import { resolveWidgetChrome } from '$lib/themes';
   import { BASE_COLUMNS, GRID_GAP, rendersTile } from '$lib/layout-editor';
+  import { layoutStore } from '$lib/layoutStore';
   import type {
     Agent,
     AgentAvailability,
@@ -28,23 +29,6 @@
   export let selectedAvailability: AgentAvailability = 'unknown';
   export let focusedWidgetId = '';
   export let onOpenChat: () => void = () => {};
-  export let onMoveWidget: (
-    widgetId: string,
-    x: number,
-    y: number
-  ) => void = () => {};
-  export let onResizeWidget: (
-    widgetId: string,
-    w: number,
-    h: number
-  ) => void = () => {};
-  export let onRemoveWidget: (widgetId: string) => void = () => {};
-  export let onConfigureWidget: (widgetId: string) => void = () => {};
-  export let onSetHeadless: (widgetId: string) => void = () => {};
-  export let onReorderWidget: (
-    widgetId: string,
-    direction: -1 | 1
-  ) => void = () => {};
 
   let canvasEl: HTMLElement;
   let viewportWidth = 1280;
@@ -271,11 +255,11 @@
 
       if (drag.mode === 'move') {
         if (ghostX !== drag.startX || ghostY !== drag.startY) {
-          onMoveWidget(drag.id, ghostX, ghostY);
+          layoutStore.moveWidget(drag.id, ghostX, ghostY);
         }
       } else {
         if (ghostW !== drag.startW || ghostH !== drag.startH) {
-          onResizeWidget(drag.id, ghostW, ghostH);
+          layoutStore.resizeWidget(drag.id, ghostW, ghostH);
         }
       }
     }
@@ -396,7 +380,7 @@
                     type="button"
                     role="menuitem"
                     on:click|stopPropagation={() => {
-                      onConfigureWidget(widget.id);
+                      layoutStore.openWidgetConfig(widget.id);
                       closeMenu();
                     }}
                   >
@@ -408,7 +392,7 @@
                       type="button"
                       role="menuitem"
                       on:click|stopPropagation={() => {
-                        onReorderWidget(widget.id, -1);
+                        layoutStore.reorderWidget(widget.id, -1);
                         closeMenu();
                       }}
                     >
@@ -419,7 +403,7 @@
                       type="button"
                       role="menuitem"
                       on:click|stopPropagation={() => {
-                        onReorderWidget(widget.id, 1);
+                        layoutStore.reorderWidget(widget.id, 1);
                         closeMenu();
                       }}
                     >
@@ -431,7 +415,7 @@
                     type="button"
                     role="menuitem"
                     on:click|stopPropagation={() => {
-                      onSetHeadless(widget.id);
+                      layoutStore.setWidgetHeadless(widget.id);
                       closeMenu();
                     }}
                   >
@@ -443,7 +427,7 @@
                     role="menuitem"
                     class="widget-menu-danger"
                     on:click|stopPropagation={() => {
-                      onRemoveWidget(widget.id);
+                      layoutStore.removeWidget(widget.id);
                       closeMenu();
                     }}
                   >

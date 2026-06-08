@@ -13,7 +13,7 @@ import {
   getWidgetCatalog,
   saveWidgetLayout,
   resetWidgetLayout
-} from '$lib/api';
+} from '$lib/hubClient';
 import type { WidgetLayout, WidgetCatalogItem } from '$lib/types';
 
 export interface LayoutState {

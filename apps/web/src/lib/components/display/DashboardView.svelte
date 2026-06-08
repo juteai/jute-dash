@@ -11,6 +11,7 @@
   import DashboardGrid from '$lib/components/display/DashboardGrid.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
+  import { layoutStore } from '$lib/layoutStore';
   import type {
     Agent,
     AgentAvailability,
@@ -38,28 +39,6 @@
   export let onSaveEdit: () => void = () => {};
   export let onCancelEdit: () => void = () => {};
   export let onResetLayout: () => void = () => {};
-  export let onAddWidget: (
-    kind: string,
-    mode?: 'ui' | 'headless'
-  ) => void = () => {};
-  export let onMoveWidget: (
-    widgetId: string,
-    x: number,
-    y: number
-  ) => void = () => {};
-  export let onResizeWidget: (
-    widgetId: string,
-    w: number,
-    h: number
-  ) => void = () => {};
-  export let onRemoveWidget: (widgetId: string) => void = () => {};
-  export let onConfigureWidget: (widgetId: string) => void = () => {};
-  export let onSetHeadless: (widgetId: string) => void = () => {};
-  export let onRestoreWidget: (widgetId: string) => void = () => {};
-  export let onReorderWidget: (
-    widgetId: string,
-    direction: -1 | 1
-  ) => void = () => {};
 
   let showCatalog = false;
 
@@ -85,7 +64,10 @@
   }
 
   function addWidget(kind: string, mode: 'ui' | 'headless' = 'ui') {
-    onAddWidget(kind, mode);
+    const item = $layoutStore.widgetCatalog.find((c) => c.kind === kind);
+    if (item) {
+      layoutStore.addWidget(item, mode);
+    }
     showCatalog = false;
   }
 </script>
@@ -226,21 +208,21 @@
               <button
                 type="button"
                 class="headless-chip-action"
-                on:click={() => onConfigureWidget(widget.id)}
+                on:click={() => layoutStore.openWidgetConfig(widget.id)}
               >
                 Configure
               </button>
               <button
                 type="button"
                 class="headless-chip-action"
-                on:click={() => onRestoreWidget(widget.id)}
+                on:click={() => layoutStore.restoreWidget(widget.id)}
               >
                 Show
               </button>
               <button
                 type="button"
                 class="headless-chip-action headless-chip-danger"
-                on:click={() => onRemoveWidget(widget.id)}
+                on:click={() => layoutStore.removeWidget(widget.id)}
                 aria-label={`Remove ${widget.title}`}
               >
                 <X size={14} />
@@ -261,12 +243,6 @@
     {selectedAvailability}
     {focusedWidgetId}
     {onOpenChat}
-    {onMoveWidget}
-    {onResizeWidget}
-    {onRemoveWidget}
-    {onConfigureWidget}
-    {onSetHeadless}
-    {onReorderWidget}
   />
 </section>
 

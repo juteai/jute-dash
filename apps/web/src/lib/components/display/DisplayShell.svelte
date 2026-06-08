@@ -9,54 +9,25 @@
   import { fade } from 'svelte/transition';
   import OfflineState from '$lib/components/display/OfflineState.svelte';
   import StatusRibbon from '$lib/components/display/StatusRibbon.svelte';
-  import {
-    addAgent,
-    backgroundImageURL,
-    deleteAgent,
-    getDashboard,
-    getHouseholdSettings,
-    getRoomSettings,
-    getTileSettings,
-    refreshAgentCard,
-    saveHouseholdSettings,
-    saveRoomSettings,
-    saveTileSettings,
-    setAgentEnabled
-  } from '$lib/api';
+  import { backgroundImageURL } from '$lib/hubClient';
   import {
     firstAvailableAgent,
     getAgentAvailability,
     isAgentAvailable
   } from '$lib/agents';
   import { displayThemeStyle, resolveColorMode } from '$lib/themes';
-  import type {
-    Agent,
-    DashboardData,
-    DisplayMode,
-    HouseholdSettings,
-    Room,
-    Tile
-  } from '$lib/types';
+  import type { Agent, DashboardData } from '$lib/types';
   import { cn } from '$lib/utils';
   import WidgetSettingsSheet from '$lib/components/display/WidgetSettingsSheet.svelte';
   import { layoutStore } from '$lib/layoutStore';
   import { hubStream } from '$lib/hubStream';
   import { chatStore } from '$lib/chatStore';
+  import { settingsStore } from '$lib/settingsStore';
+  import { navigationStore } from '$lib/navigationStore';
 
   export let data: DashboardData;
 
-  let mode: DisplayMode = 'dashboard';
   let showAgentManager = false;
-  let agentCardUrl = '';
-  let agentIssue = '';
-  let savingAgent = false;
-  let householdSettings: HouseholdSettings | undefined;
-  let roomSettings: Room[] = [];
-  let tileSettings: Tile[] = [];
-  let settingsIssue = '';
-  let savingSettings = false;
-  let savingRooms = false;
-  let savingTiles = false;
   let activeSettingsSection:
     | 'household'
     | 'rooms'
@@ -64,6 +35,7 @@
     | 'agents'
     | 'mcp'
     | 'voice'
+    | 'appearance'
     | 'about' = 'household';
   let mounted = false;
   let voiceIssue = '';
@@ -202,11 +174,7 @@
 
     // Initialize layout catalog and stores
     void layoutStore.initCatalog(fetch);
-    hubStream.connect(() => {
-      if (mode === 'chat') {
-        mode = 'dashboard';
-      }
-    }, fetch);
+    hubStream.connect(fetch);
     void retryDashboard();
 
     return () => {
@@ -225,168 +193,25 @@
   });
 
   async function openChat(agent?: Agent) {
-    mode = 'chat';
-    await chatStore.openChat($hubStream.dashboard.agents, agent, fetch, () => {
-      mode = 'dashboard';
-    });
+    navigationStore.openChat();
+    await chatStore.openChat($hubStream.dashboard.agents, agent, fetch);
   }
 
   function closeChat() {
-    chatStore.closeChat(() => {
-      mode = 'dashboard';
-    });
+    chatStore.closeChat();
   }
 
   function handleInteraction() {
-    chatStore.resetTimer(() => {
-      mode = 'dashboard';
-    });
+    chatStore.resetTimer();
   }
 
-  async function saveAgentFromCard() {
-    const cardUrl = agentCardUrl.trim();
-    if (!cardUrl || savingAgent) {
-      return;
-    }
-    savingAgent = true;
-    agentIssue = '';
-    settingsIssue = '';
-    try {
-      const agent = await addAgent(fetch, cardUrl);
-      chatStore.setAgentId(agent.id);
-      agentCardUrl = '';
-      const fresh = await getDashboard(fetch);
-      hubStream.updateDashboard(fresh);
-      await chatStore.loadHistory(fresh.agents, '', agent.id, fetch);
-    } catch {
-      agentIssue =
-        'Agent was not added. Check the Agent Card URL and that the hub was started with a YAML config.';
-      settingsIssue = agentIssue;
-    } finally {
-      savingAgent = false;
-    }
-  }
-
-  async function toggleAgent(agent: Agent) {
-    try {
-      await setAgentEnabled(fetch, agent.id, !agent.enabled);
-      const fresh = await getDashboard(fetch);
-      hubStream.updateDashboard(fresh);
-    } catch {
-      agentIssue = 'Agent state could not be updated.';
-      settingsIssue = agentIssue;
-    }
-  }
-
-  async function removeAgent(agent: Agent) {
-    try {
-      await deleteAgent(fetch, agent.id);
-      const fresh = await getDashboard(fetch);
-      hubStream.updateDashboard(fresh);
-      if ($chatStore.selectedAgentId === agent.id) {
-        chatStore.clearHistory();
-      }
-    } catch {
-      agentIssue = 'Agent could not be removed.';
-      settingsIssue = agentIssue;
-    }
-  }
-
-  async function openSettings(
-    section: typeof activeSettingsSection = 'household'
-  ) {
+  function openSettings(section: typeof activeSettingsSection = 'household') {
     activeSettingsSection = section;
     showAgentManager = true;
-    settingsIssue = '';
-    try {
-      const [household, rooms, tiles] = await Promise.all([
-        getHouseholdSettings(fetch),
-        getRoomSettings(fetch),
-        getTileSettings(fetch)
-      ]);
-      householdSettings = household;
-      roomSettings = rooms;
-      tileSettings = tiles;
-    } catch {
-      settingsIssue =
-        'Settings are unavailable. Check that the hub is running.';
-    }
-  }
-
-  async function saveSettings(settings: HouseholdSettings) {
-    if (savingSettings) {
-      return;
-    }
-    savingSettings = true;
-    settingsIssue = '';
-    try {
-      householdSettings = await saveHouseholdSettings(fetch, settings);
-      const fresh = await getDashboard(fetch);
-      hubStream.updateDashboard(fresh);
-    } catch {
-      settingsIssue =
-        'Settings were not saved. Check required fields and try again.';
-    } finally {
-      savingSettings = false;
-    }
-  }
-
-  async function saveRooms(rooms: Room[]) {
-    if (savingRooms) {
-      return;
-    }
-    savingRooms = true;
-    settingsIssue = '';
-    try {
-      roomSettings = await saveRoomSettings(fetch, rooms);
-      const fresh = await getDashboard(fetch);
-      hubStream.updateDashboard(fresh);
-    } catch {
-      settingsIssue =
-        'Rooms were not saved. Check required fields and try again.';
-    } finally {
-      savingRooms = false;
-    }
-  }
-
-  async function saveTiles(tiles: Tile[]) {
-    if (savingTiles) {
-      return;
-    }
-    savingTiles = true;
-    settingsIssue = '';
-    try {
-      tileSettings = await saveTileSettings(fetch, tiles);
-      const fresh = await getDashboard(fetch);
-      hubStream.updateDashboard(fresh);
-    } catch {
-      settingsIssue =
-        'Tiles were not saved. Check required fields and try again.';
-    } finally {
-      savingTiles = false;
-    }
-  }
-
-  async function refreshSelectedAgentCard(agentId: string) {
-    if (!agentId) {
-      return;
-    }
-    try {
-      const refreshed = await refreshAgentCard(fetch, agentId);
-      const updatedAgents = $hubStream.dashboard.agents.map((agent) =>
-        agent.id === refreshed.id ? refreshed : agent
-      );
-      hubStream.updateDashboard({
-        ...$hubStream.dashboard,
-        agents: updatedAgents
-      });
-    } catch {
-      // ignore
-    }
   }
 
   function startLongPress(event: PointerEvent) {
-    if (!browser || mode !== 'dashboard') {
+    if (!browser || $navigationStore.mode !== 'dashboard') {
       return;
     }
     const target = event.target as HTMLElement | null;
@@ -429,9 +254,6 @@
           stale: true,
           issue
         });
-      },
-      () => {
-        mode = 'dashboard';
       }
     );
   }
@@ -471,7 +293,7 @@
 <main
   class={cn(
     'display-root',
-    mode === 'chat' && 'display-root--chat',
+    $navigationStore.mode === 'chat' && 'display-root--chat',
     $hubStream.dashboard.stale && 'display-root--stale'
   )}
   data-theme={activeTheme}
@@ -537,17 +359,6 @@
             hubStream.updateLayout(reset);
           }
         )}
-      onAddWidget={(kind, m) => {
-        const item = $layoutStore.widgetCatalog.find((c) => c.kind === kind);
-        if (item) layoutStore.addWidget(item, m);
-      }}
-      onMoveWidget={layoutStore.moveWidget}
-      onResizeWidget={layoutStore.resizeWidget}
-      onRemoveWidget={layoutStore.removeWidget}
-      onConfigureWidget={layoutStore.openWidgetConfig}
-      onSetHeadless={layoutStore.setWidgetHeadless}
-      onRestoreWidget={layoutStore.restoreWidget}
-      onReorderWidget={layoutStore.reorderWidget}
       onManageAgents={() => openSettings('household')}
     />
 
@@ -562,34 +373,12 @@
 
     {#if showAgentManager}
       <SettingsPanel
-        agents={$hubStream.dashboard.agents}
-        status={$hubStream.dashboard.status}
-        voice={$hubStream.dashboard.voice}
-        settings={householdSettings}
-        rooms={roomSettings}
-        tiles={tileSettings}
-        issue={settingsIssue}
-        saving={savingSettings}
-        {savingRooms}
-        {savingTiles}
-        {savingAgent}
-        {agentCardUrl}
         bind:activeSection={activeSettingsSection}
         onClose={() => (showAgentManager = false)}
-        onSaveHousehold={saveSettings}
-        onSaveRooms={saveRooms}
-        onSaveTiles={saveTiles}
-        onAddAgent={(cardUrl) => {
-          agentCardUrl = cardUrl;
-          return saveAgentFromCard();
-        }}
-        onToggleAgent={toggleAgent}
-        onRemoveAgent={removeAgent}
-        onRefreshAgentCard={refreshSelectedAgentCard}
       />
     {/if}
 
-    {#if mode === 'chat'}
+    {#if $navigationStore.mode === 'chat'}
       <div
         class="chat-layer"
         role="presentation"
@@ -627,25 +416,13 @@
               fetch
             )}
           onNewConversation={() =>
-            chatStore.newConversation(
-              $hubStream.dashboard.agents,
-              fetch,
-              undefined,
-              undefined,
-              () => (mode = 'dashboard')
-            )}
+            chatStore.newConversation($hubStream.dashboard.agents, fetch)}
           onManageAgents={() => openSettings('agents')}
-          onRefreshAgentCard={refreshSelectedAgentCard}
+          onRefreshAgentCard={(agentId) =>
+            settingsStore.refreshAgentCard(agentId, fetch)}
           onSubmit={(value) => submitMessage(value)}
           onRetry={(msg) =>
-            chatStore.retry(
-              msg,
-              $hubStream.dashboard.agents,
-              fetch,
-              undefined,
-              undefined,
-              () => (mode = 'dashboard')
-            )}
+            chatStore.retry(msg, $hubStream.dashboard.agents, fetch)}
           onClose={closeChat}
           onCancel={chatStore.cancel}
           onToggleVoiceMute={toggleVoiceMute}

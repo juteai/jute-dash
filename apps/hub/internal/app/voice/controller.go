@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/internal/pkg/httphelper"
 )
 
@@ -16,7 +15,7 @@ type Store interface {
 }
 
 type DisplayEmitter interface {
-	EmitVoiceStateChanged(deviceProfileID string, payload displayactions.VoiceStatePayload) displayactions.VoiceEvent
+	EmitVoiceStateChanged(deviceProfileID string, payload VoiceStatePayload) VoiceEvent
 }
 
 type Controller struct {
@@ -62,7 +61,7 @@ func (c *Controller) handleVoiceMute(w http.ResponseWriter, r *http.Request) {
 	}
 	status := StatusFromSettings(settings)
 	if c.display != nil {
-		c.display.EmitVoiceStateChanged("default-display", displayactions.VoiceStatePayload{
+		c.display.EmitVoiceStateChanged("default-display", VoiceStatePayload{
 			Enabled:       status.Enabled,
 			Muted:         status.Muted,
 			State:         status.State,
@@ -83,7 +82,7 @@ func (c *Controller) handleVoiceUnmute(w http.ResponseWriter, r *http.Request) {
 	}
 	status := StatusFromSettings(settings)
 	if c.display != nil {
-		c.display.EmitVoiceStateChanged("default-display", displayactions.VoiceStatePayload{
+		c.display.EmitVoiceStateChanged("default-display", VoiceStatePayload{
 			Enabled:       status.Enabled,
 			Muted:         status.Muted,
 			State:         status.State,
@@ -104,7 +103,7 @@ func (c *Controller) handleVoiceCancel(w http.ResponseWriter, r *http.Request) {
 	}
 	status := StatusFromSettings(settings)
 	if c.display != nil {
-		c.display.EmitVoiceStateChanged("default-display", displayactions.VoiceStatePayload{
+		c.display.EmitVoiceStateChanged("default-display", VoiceStatePayload{
 			Enabled:       status.Enabled,
 			Muted:         status.Muted,
 			State:         status.State,

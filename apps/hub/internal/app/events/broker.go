@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"jute-dash/apps/hub/internal/pkg/displayactions"
@@ -15,11 +16,11 @@ type EventSource interface {
 }
 
 type Broker struct {
-	source EventSource
+	sources []EventSource
 }
 
-func NewBroker(source EventSource) *Broker {
-	return &Broker{source: source}
+func NewBroker(sources ...EventSource) *Broker {
+	return &Broker{sources: sources}
 }
 
 func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +46,42 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rc := http.NewResponseController(w)
 	_ = rc.SetWriteDeadline(time.Time{})
 
-	events := b.source.Subscribe(r.Context())
+	mergedCh := make(chan displayactions.Event, 32)
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	for _, src := range b.sources {
+		if src == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(s EventSource) {
+			defer wg.Done()
+			ch := s.Subscribe(ctx)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case ev, ok := <-ch:
+					if !ok {
+						return
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case mergedCh <- ev:
+					}
+				}
+			}
+		}(src)
+	}
+
+	go func() {
+		wg.Wait()
+		close(mergedCh)
+	}()
+
 	sendDisplaySSE(w, flusher, "hub.connected", map[string]any{
 		"connectedAt": time.Now().UTC().Format(time.RFC3339Nano),
 	})
@@ -56,9 +92,13 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-r.Context().Done():
+			cancel()
+			wg.Wait()
 			return
-		case event, ok := <-events:
+		case event, ok := <-mergedCh:
 			if !ok {
+				cancel()
+				wg.Wait()
 				return
 			}
 			sendDisplayEventSSE(w, flusher, event)

@@ -11,11 +11,16 @@ import (
 )
 
 type Repository struct {
-	db *gorm.DB
+	db     *gorm.DB
+	onSave func(ctx context.Context)
 }
 
 func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
+}
+
+func (r *Repository) SetOnSave(onSave func(ctx context.Context)) {
+	r.onSave = onSave
 }
 
 func (r *Repository) SetupStatus(ctx context.Context) (SetupStatus, error) {
@@ -143,6 +148,9 @@ func (r *Repository) SaveRooms(ctx context.Context, rooms []RoomConfig) ([]RoomC
 	if err != nil {
 		return nil, err
 	}
+	if r.onSave != nil {
+		r.onSave(ctx)
+	}
 	return r.loadRooms(ctx)
 }
 
@@ -180,6 +188,9 @@ func (r *Repository) SaveTiles(ctx context.Context, tiles []TileConfig) ([]TileC
 	})
 	if err != nil {
 		return nil, err
+	}
+	if r.onSave != nil {
+		r.onSave(ctx)
 	}
 	return r.loadTiles(ctx)
 }
@@ -248,7 +259,9 @@ func (r *Repository) SaveHouseholdSettings(ctx context.Context, settings Househo
 	if err != nil {
 		return HouseholdSettings{}, fmt.Errorf("save settings transaction: %w", err)
 	}
-
+	if r.onSave != nil {
+		r.onSave(ctx)
+	}
 	return r.HouseholdSettings(ctx)
 }
 

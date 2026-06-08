@@ -55,7 +55,15 @@
   {:else}
     {#each messages as message (message.id)}
       <article
-        class={`message-bubble message-bubble--${message.role} ${message.status ? `message-bubble--${message.status}` : ''}`}
+        class="message-bubble"
+        class:message-bubble--user={message.role === 'user'}
+        class:message-bubble--assistant={message.role === 'assistant'}
+        class:message-bubble--system={message.role === 'system'}
+        class:message-bubble--sending={message.status === 'sending'}
+        class:message-bubble--streaming={message.status === 'streaming'}
+        class:message-bubble--sent={message.status === 'sent'}
+        class:message-bubble--failed={message.status === 'failed'}
+        class:message-bubble--queued={message.status === 'queued'}
       >
         {#if message.role === 'assistant' && message.interimSteps && message.interimSteps.length > 0}
           <!-- Collapsible activity checklist -->
@@ -80,12 +88,8 @@
                 {/if}
               </div>
               <span
-                class="interim-steps-chevron {isExpanded(
-                  message.id,
-                  message.status
-                )
-                  ? 'expanded'
-                  : ''}">›</span
+                class="interim-steps-chevron"
+                class:expanded={isExpanded(message.id, message.status)}>›</span
               >
             </button>
             {#if isExpanded(message.id, message.status)}

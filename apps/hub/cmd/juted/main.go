@@ -118,9 +118,9 @@ func run() error {
 		cfg,
 		version,
 		result.Setup,
-		runtimeStore,
-		runtimeStore,
-		runtimeStore,
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
 		*configPath,
 		displayActions,
 	)
@@ -227,7 +227,7 @@ type mcpSnapshotProvider struct {
 
 func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapshot, error) {
 	cfg := p.currentConfig()
-	layout, err := p.store.WidgetLayout(ctx, "")
+	layout, err := p.store.DashboardRepo.WidgetLayout(ctx, "")
 	if err != nil {
 		return widgetskills.Snapshot{}, err
 	}

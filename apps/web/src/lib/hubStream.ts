@@ -6,8 +6,9 @@ import {
   unmuteVoice,
   cancelVoice,
   getDashboard
-} from '$lib/api';
+} from '$lib/hubClient';
 import { logger } from '$lib/logger';
+import { navigationStore } from '$lib/navigationStore';
 import type {
   DashboardData,
   DisplayNotification,
@@ -229,13 +230,8 @@ function createHubStreamStore() {
     });
   }
 
-  function focusWidget(
-    focus: DisplayFocusWidget,
-    onNavigateToDashboard?: () => void
-  ) {
-    if (onNavigateToDashboard) {
-      onNavigateToDashboard();
-    }
+  function focusWidget(focus: DisplayFocusWidget) {
+    navigationStore.closeChat();
 
     if (focusTimer) {
       window.clearTimeout(focusTimer);
@@ -269,10 +265,7 @@ function createHubStreamStore() {
         dashboard: data
       }));
     },
-    connect: (
-      onNavigateToDashboard?: () => void,
-      fetcher: typeof fetch = window.fetch
-    ) => {
+    connect: (fetcher: typeof fetch = window.fetch) => {
       if (!browser || eventSource) return;
       isMounted = true;
 
@@ -341,7 +334,7 @@ function createHubStreamStore() {
         const focus = parseDisplayEvent<DisplayFocusWidget>(
           (event as MessageEvent).data
         );
-        if (focus) focusWidget(focus, onNavigateToDashboard);
+        if (focus) focusWidget(focus);
       });
 
       eventSource.addEventListener('voice.state_changed', (event) => {
@@ -591,6 +584,21 @@ function createHubStreamStore() {
       } catch (err) {
         console.error('Failed to cancel voice session:', err);
         throw err;
+      }
+    },
+    refreshAfterMutation: async (fetcher: typeof fetch = window.fetch) => {
+      try {
+        const fresh = await getDashboard(fetcher);
+        update((s) => ({
+          ...s,
+          dashboard: fresh
+        }));
+        markConnected();
+        return fresh;
+      } catch (err) {
+        // Mutation succeeded but refresh failed — not critical.
+        // Dashboard will catch up on next poll or SSE event.
+        console.error('Failed to refresh dashboard after mutation:', err);
       }
     },
     updateDashboard: (fresh: DashboardData) => {

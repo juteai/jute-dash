@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { chatStore } from './chatStore';
+import { navigationStore } from './navigationStore';
 import type { Agent } from './types';
 import type { ChatStoreState } from './chatStore';
 
@@ -137,10 +138,10 @@ describe('chatStore unit tests', () => {
       state = s;
     });
 
-    const closeSpy = vi.fn();
+    const closeSpy = vi.spyOn(navigationStore, 'closeChat');
 
     // Start dismiss timer
-    chatStore.resetTimer(closeSpy);
+    chatStore.resetTimer();
 
     expect(state).toBeDefined();
     expect(state!.showTimer).toBe(true);
@@ -159,5 +160,6 @@ describe('chatStore unit tests', () => {
     expect(closeSpy).toHaveBeenCalled();
 
     unsubscribe();
+    closeSpy.mockRestore();
   });
 });

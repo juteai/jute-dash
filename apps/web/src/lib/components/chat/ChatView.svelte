@@ -134,30 +134,45 @@
       refreshingCard = false;
     }
   }
+
+  interface Particle {
+    size: number;
+    left: number;
+    duration: number;
+    delay: number;
+    driftX: number;
+    maxOpacity: number;
+    scale: number;
+  }
+
+  const particles: Particle[] = Array.from({ length: 24 }, (_, i) => {
+    const duration = 12 + ((i * 13) % 16);
+    return {
+      size: 3 + ((i * 7) % 6),
+      left: ((i * 17) % 95) + 2.5,
+      duration,
+      delay: -((i * 9) % duration),
+      driftX: -40 + ((i * 29) % 80),
+      maxOpacity: 0.2 + ((i * 3) % 4) * 0.15,
+      scale: 0.8 + ((i * 5) % 5) * 0.15
+    };
+  });
 </script>
 
 <section class="chat-view" aria-label="Agent conversation">
   <!-- Antigravity Stardust Canvas -->
   <div class="stardust-canvas stardust-canvas--{state}">
-    {#each Array(24) as _particle, i (i)}
-      {@const size = 3 + ((i * 7) % 6)}
-      {@const left = ((i * 17) % 95) + 2.5}
-      {@const duration = 12 + ((i * 13) % 16)}
-      {@const delay = -((i * 9) % duration)}
-      {@const driftX = -40 + ((i * 29) % 80)}
-      {@const maxOpacity = 0.2 + ((i * 3) % 4) * 0.15}
-      {@const scale = 0.8 + ((i * 5) % 5) * 0.15}
+    {#each particles as p, i (i)}
       <div
         class="stardust-particle"
-        data-unused={_particle}
         style="
-          --size: {size}px;
-          --left: {left}%;
-          --duration: {duration}s;
-          --delay: {delay}s;
-          --drift-x: {driftX}px;
-          --max-opacity: {maxOpacity};
-          --scale: {scale};
+          --size: {p.size}px;
+          --left: {p.left}%;
+          --duration: {p.duration}s;
+          --delay: {p.delay}s;
+          --drift-x: {p.driftX}px;
+          --max-opacity: {p.maxOpacity};
+          --scale: {p.scale};
         "
       ></div>
     {/each}
@@ -359,11 +374,10 @@
   {/if}
 
   <div
-    class="chat-body {showHistory
-      ? 'chat-view--with-history'
-      : 'chat-view--minimal'} {selectedArtifact
-      ? 'chat-view--with-preview'
-      : ''}"
+    class="chat-body"
+    class:chat-view--with-history={showHistory}
+    class:chat-view--minimal={!showHistory}
+    class:chat-view--with-preview={selectedArtifact}
   >
     {#if showHistory}
       <aside class="conversation-sidebar" aria-label="Conversation history">

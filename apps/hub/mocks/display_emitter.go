@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	displayactions "jute-dash/apps/hub/internal/pkg/displayactions"
+	voice "jute-dash/apps/hub/internal/app/voice"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -22,18 +22,18 @@ func (_m *DisplayEmitter) EXPECT() *DisplayEmitter_Expecter {
 }
 
 // EmitVoiceStateChanged provides a mock function with given fields: deviceProfileID, payload
-func (_m *DisplayEmitter) EmitVoiceStateChanged(deviceProfileID string, payload displayactions.VoiceStatePayload) displayactions.VoiceEvent {
+func (_m *DisplayEmitter) EmitVoiceStateChanged(deviceProfileID string, payload voice.VoiceStatePayload) voice.VoiceEvent {
 	ret := _m.Called(deviceProfileID, payload)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EmitVoiceStateChanged")
 	}
 
-	var r0 displayactions.VoiceEvent
-	if rf, ok := ret.Get(0).(func(string, displayactions.VoiceStatePayload) displayactions.VoiceEvent); ok {
+	var r0 voice.VoiceEvent
+	if rf, ok := ret.Get(0).(func(string, voice.VoiceStatePayload) voice.VoiceEvent); ok {
 		r0 = rf(deviceProfileID, payload)
 	} else {
-		r0 = ret.Get(0).(displayactions.VoiceEvent)
+		r0 = ret.Get(0).(voice.VoiceEvent)
 	}
 
 	return r0
@@ -46,24 +46,24 @@ type DisplayEmitter_EmitVoiceStateChanged_Call struct {
 
 // EmitVoiceStateChanged is a helper method to define mock.On call
 //   - deviceProfileID string
-//   - payload displayactions.VoiceStatePayload
+//   - payload voice.VoiceStatePayload
 func (_e *DisplayEmitter_Expecter) EmitVoiceStateChanged(deviceProfileID interface{}, payload interface{}) *DisplayEmitter_EmitVoiceStateChanged_Call {
 	return &DisplayEmitter_EmitVoiceStateChanged_Call{Call: _e.mock.On("EmitVoiceStateChanged", deviceProfileID, payload)}
 }
 
-func (_c *DisplayEmitter_EmitVoiceStateChanged_Call) Run(run func(deviceProfileID string, payload displayactions.VoiceStatePayload)) *DisplayEmitter_EmitVoiceStateChanged_Call {
+func (_c *DisplayEmitter_EmitVoiceStateChanged_Call) Run(run func(deviceProfileID string, payload voice.VoiceStatePayload)) *DisplayEmitter_EmitVoiceStateChanged_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(displayactions.VoiceStatePayload))
+		run(args[0].(string), args[1].(voice.VoiceStatePayload))
 	})
 	return _c
 }
 
-func (_c *DisplayEmitter_EmitVoiceStateChanged_Call) Return(_a0 displayactions.VoiceEvent) *DisplayEmitter_EmitVoiceStateChanged_Call {
+func (_c *DisplayEmitter_EmitVoiceStateChanged_Call) Return(_a0 voice.VoiceEvent) *DisplayEmitter_EmitVoiceStateChanged_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *DisplayEmitter_EmitVoiceStateChanged_Call) RunAndReturn(run func(string, displayactions.VoiceStatePayload) displayactions.VoiceEvent) *DisplayEmitter_EmitVoiceStateChanged_Call {
+func (_c *DisplayEmitter_EmitVoiceStateChanged_Call) RunAndReturn(run func(string, voice.VoiceStatePayload) voice.VoiceEvent) *DisplayEmitter_EmitVoiceStateChanged_Call {
 	_c.Call.Return(run)
 	return _c
 }
