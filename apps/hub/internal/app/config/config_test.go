@@ -666,11 +666,11 @@ func assertDevHarnessWidgets(t *testing.T, cfg Config) {
 	var want []widgetExpectation
 	if cfg.Home.Name == "Jute Kronk A2A Dev" {
 		want = []widgetExpectation{
-			{id: "date-time-widget", kind: "date-time", size: "small", x: 0, y: 0, w: 3, h: 2},
-			{id: "weather-widget", kind: "weather", size: "small", x: 3, y: 0, w: 3, h: 2},
-			{id: "assistant-chat", kind: "chat-history", size: "large", x: 0, y: 2, w: 6, h: 3},
-			{id: "hacker-news", kind: "rss", size: "large", x: 6, y: 2, w: 6, h: 3},
-			{id: "stocks-watchlist", kind: "markets", size: "medium", x: 6, y: 0, w: 6, h: 2},
+			{id: "date-time-widget", kind: "date-time", size: "small", x: 0, y: 0, w: 4, h: 2},
+			{id: "weather-widget", kind: "weather", size: "small", x: 8, y: 0, w: 4, h: 2},
+			{id: "assistant-chat", kind: "chat-history", size: "large", x: 0, y: 3, w: 4, h: 3},
+			{id: "hacker-news", kind: "rss", size: "large", x: 8, y: 3, w: 4, h: 3},
+			{id: "stocks-watchlist", kind: "markets", size: "large", x: 4, y: 3, w: 4, h: 3},
 		}
 	} else {
 		want = []widgetExpectation{

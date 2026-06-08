@@ -1,10 +1,22 @@
 package widgets
 
 import (
+	"context"
 	"sync"
 
 	"jute-dash/apps/hub/pkg/widgetskills"
 )
+
+type ActionWidget interface {
+	Widget
+	InvokeAction(
+		ctx context.Context,
+		snapshot widgetskills.Snapshot,
+		instanceID string,
+		actionID string,
+		arguments map[string]any,
+	) (map[string]any, error)
+}
 
 var (
 	registryMu sync.RWMutex
@@ -24,6 +36,9 @@ func RegisterWithSkill(w Widget, contextFn widgetskills.ContextFunc) {
 	Register(w)
 	if skill := w.Skill(); skill != nil {
 		widgetskills.Register(*skill, contextFn)
+		if aw, ok := w.(ActionWidget); ok {
+			widgetskills.RegisterAction(skill.SkillID, aw.InvokeAction)
+		}
 	}
 }
 

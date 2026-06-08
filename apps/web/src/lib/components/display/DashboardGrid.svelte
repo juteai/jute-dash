@@ -9,7 +9,7 @@
     ArrowDown
   } from 'lucide-svelte';
   import WidgetFrame from '$lib/components/display/WidgetFrame.svelte';
-  import { widgetRegistry } from '$lib/components/display/widget-registry';
+  import { widgetRegistry } from '$widgets/widget-registry';
   import { resolveWidgetChrome } from '$lib/themes';
   import { BASE_COLUMNS, GRID_GAP, rendersTile } from '$lib/layout-editor';
   import { layoutStore } from '$lib/layoutStore';

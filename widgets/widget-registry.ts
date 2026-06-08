@@ -1,16 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import ChatHistoryWidget from '$widgets/chathistory/ChatHistoryWidget.svelte';
-import DateTimeWidget from '$widgets/datetime/DateTimeWidget.svelte';
-import WeatherWidget from '$widgets/weather/WeatherWidget.svelte';
-import RSSWidget from '$widgets/rss/RSSWidget.svelte';
-import MarketsWidget from '$widgets/markets/MarketsWidget.svelte';
+import ChatHistoryWidget from './chathistory/ChatHistoryWidget.svelte';
+import DateTimeWidget from './datetime/DateTimeWidget.svelte';
+import WeatherWidget from './weather/WeatherWidget.svelte';
+import RSSWidget from './rss/RSSWidget.svelte';
+import MarketsWidget from './markets/MarketsWidget.svelte';
+import { chatStore } from '$lib/chatStore';
+import { navigationStore } from '$lib/navigationStore';
 import type {
   DashboardData,
   ChatMessage,
   Agent,
   AgentAvailability,
   WidgetInstance
-} from '../../types';
+} from '$lib/types';
 
 export interface WidgetRegistryEntry {
   component: any;
@@ -29,9 +31,11 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   'date-time': {
     component: DateTimeWidget,
     props: ({ widget, stale }) => ({
-      settings: widget.settings ?? {
+      settings: {
         timezone: 'UTC',
-        locale: 'en'
+        locale: 'en',
+        style: 'digital',
+        ...(widget.settings || {})
       },
       stale
     })
@@ -62,16 +66,36 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   },
   rss: {
     component: RSSWidget,
-    props: ({ widget, stale }) => ({
+    props: ({ widget, stale, data }) => ({
       data: widget.data,
-      stale
+      stale,
+      onQueryAgent: async (title: string, link: string) => {
+        navigationStore.openChat();
+        await chatStore.newConversation(data.agents, fetch);
+        void chatStore.submit(
+          `Read the article: ${title} (${link})`,
+          data.agents,
+          undefined,
+          fetch
+        );
+      }
     })
   },
   markets: {
     component: MarketsWidget,
-    props: ({ widget, stale }) => ({
+    props: ({ widget, stale, data }) => ({
       data: widget.data,
-      stale
+      stale,
+      onQueryAgent: async (symbol: string) => {
+        navigationStore.openChat();
+        await chatStore.newConversation(data.agents, fetch);
+        void chatStore.submit(
+          `Show me details and recent news for ${symbol}`,
+          data.agents,
+          undefined,
+          fetch
+        );
+      }
     })
   },
   'chat-history': {

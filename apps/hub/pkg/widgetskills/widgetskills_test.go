@@ -1,6 +1,7 @@
 package widgetskills
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strings"
@@ -95,7 +96,7 @@ func TestUnknownSkillFailsSafely(t *testing.T) {
 
 func TestInvokeActionReturnsContext(t *testing.T) {
 	registerTestSkill()
-	result, err := InvokeAction(testSnapshot(), testSkillID, "", "read", nil)
+	result, err := InvokeAction(context.Background(), testSnapshot(), testSkillID, "", "read", nil)
 	if err != nil {
 		t.Fatalf("InvokeAction() error = %v", err)
 	}

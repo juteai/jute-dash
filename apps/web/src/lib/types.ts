@@ -15,7 +15,7 @@ export type DisplayConfig = {
 };
 
 export type DisplayBackground = {
-  kind: 'theme' | 'color' | 'asset' | 'file' | 'slideshow' | string;
+  kind: 'theme' | 'color' | 'asset' | 'file' | 'slideshow' | 'dynamic' | string;
   value: string;
   fit: 'cover' | 'contain' | 'tile' | string;
   position: string;
@@ -23,6 +23,7 @@ export type DisplayBackground = {
   images?: string[];
   intervalSeconds?: number;
   transition?: 'none' | 'crossfade' | string;
+  properties?: Record<string, any>;
 };
 
 export type BackgroundImage = {
@@ -32,6 +33,8 @@ export type BackgroundImage = {
 
 export type DisplayWidgetChrome = {
   default: WidgetChrome;
+  smokedOpacity?: number;
+  frostedOpacity?: number;
 };
 
 export type WidgetChrome =

@@ -1,6 +1,7 @@
 package widgetskills
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -19,11 +20,19 @@ const (
 var ErrNotFound = errors.New("widget skill not found")
 
 type ContextFunc func(snapshot Snapshot, instanceID string) map[string]any
+type ActionFunc func(
+	ctx context.Context,
+	snapshot Snapshot,
+	instanceID string,
+	actionID string,
+	arguments map[string]any,
+) (map[string]any, error)
 
 var (
 	registryMu   sync.RWMutex
 	customDefs   = make(map[string]Definition)
 	contextFuncs = make(map[string]ContextFunc)
+	actionFuncs  = make(map[string]ActionFunc)
 )
 
 func Register(def Definition, contextFn ContextFunc) {
@@ -33,6 +42,12 @@ func Register(def Definition, contextFn ContextFunc) {
 	if contextFn != nil {
 		contextFuncs[def.SkillID] = contextFn
 	}
+}
+
+func RegisterAction(skillID string, actionFn ActionFunc) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	actionFuncs[skillID] = actionFn
 }
 
 type RoomConfig struct {
@@ -406,6 +421,7 @@ func WidgetContext(snapshot Snapshot, widgetID string) (SkillContextResource, er
 }
 
 func InvokeAction(
+	ctx context.Context,
 	snapshot Snapshot,
 	skillID string,
 	widgetID string,
@@ -418,6 +434,18 @@ func InvokeAction(
 	}
 	for _, action := range skill.Actions {
 		if action.ID == actionID {
+			registryMu.RLock()
+			fn, exists := actionFuncs[skill.SkillID]
+			registryMu.RUnlock()
+
+			if exists && fn != nil {
+				res, err := fn(ctx, snapshot, skill.WidgetInstanceID, actionID, arguments)
+				if err != nil {
+					return nil, err
+				}
+				return res, nil
+			}
+
 			context := ContextForSkill(snapshot, skill)
 			return map[string]any{
 				"status":           "completed",

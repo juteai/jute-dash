@@ -112,3 +112,84 @@
     {/each}
   {/if}
 </div>
+
+<style>
+  .settings-add-form {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .settings-add-form input {
+    flex: 1;
+    min-width: 0;
+    min-height: 42px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--foreground);
+    padding: 0 10px;
+  }
+
+  .settings-list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .settings-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-muted);
+    padding: 12px;
+  }
+
+  .settings-list-item strong {
+    display: block;
+    color: var(--foreground);
+  }
+
+  .settings-list-item span {
+    display: block;
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+
+  .settings-badges {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .settings-item-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .settings-empty {
+    margin: 12px 0 0;
+    line-height: 1.4;
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 650;
+  }
+
+  @media (max-width: 640px) {
+    .settings-list-item,
+    .settings-add-form {
+      align-items: stretch;
+      flex-direction: column;
+    }
+  }
+</style>

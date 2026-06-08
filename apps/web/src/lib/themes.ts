@@ -35,10 +35,10 @@ const themeTokens: Record<string, Record<ResolvedThemeMode, ThemeTokens>> = {
       mutedStrong: '#2d2d2d',
       inverse: '#ffffff',
       accent: '#111111',
-      danger: '#111111',
-      warning: '#5f5f5f',
-      success: '#111111',
-      active: '#5f5f5f',
+      danger: '#b42318',
+      warning: '#8a5a00',
+      success: '#147a3d',
+      active: '#155eef',
       shadow: 'rgba(0, 0, 0, 0.12)',
       focus: '#000000'
     },
@@ -54,10 +54,10 @@ const themeTokens: Record<string, Record<ResolvedThemeMode, ThemeTokens>> = {
       mutedStrong: '#dddddd',
       inverse: '#000000',
       accent: '#ffffff',
-      danger: '#ffffff',
-      warning: '#a6a6a6',
-      success: '#ffffff',
-      active: '#a6a6a6',
+      danger: '#ffb4ab',
+      warning: '#ffd28a',
+      success: '#8de6ad',
+      active: '#adc6ff',
       shadow: 'rgba(255, 255, 255, 0.12)',
       focus: '#ffffff'
     }
@@ -652,7 +652,26 @@ export function displayThemeStyle(
     cssVar('display-background-size', size),
     cssVar('display-background-repeat', repeat),
     cssVar('display-background-position', background.position || 'center'),
-    cssVar('display-background-overlay', overlayColor(background.overlay, mode))
+    cssVar(
+      'display-background-overlay',
+      overlayColor(background.overlay, mode)
+    ),
+    cssVar(
+      'smoked-opacity',
+      String(display.widgetChrome?.smokedOpacity ?? 0.6)
+    ),
+    cssVar(
+      'smoked-opacity-percent',
+      `${Math.round((display.widgetChrome?.smokedOpacity ?? 0.6) * 100)}%`
+    ),
+    cssVar(
+      'frosted-opacity',
+      String(display.widgetChrome?.frostedOpacity ?? 0.3)
+    ),
+    cssVar(
+      'frosted-opacity-percent',
+      `${Math.round((display.widgetChrome?.frostedOpacity ?? 0.3) * 100)}%`
+    )
   ].join(' ');
 }
 
@@ -671,7 +690,10 @@ export function resolveWidgetChrome(
     return requested;
   }
   const hasBackground =
-    display.background?.kind === 'asset' || display.background?.kind === 'file';
+    display.background?.kind === 'asset' ||
+    display.background?.kind === 'file' ||
+    display.background?.kind === 'slideshow' ||
+    display.background?.kind === 'dynamic';
   return hasBackground ? 'smoked' : 'solid';
 }
 

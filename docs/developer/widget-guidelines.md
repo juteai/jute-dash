@@ -2,7 +2,7 @@
 
 ## Overview
 
-Jute Dash's widget ecosystem is a unified, high-performance, and **monorepo-driven native library**. Both the back-end data fetching and scheduling logic (written in Go) and the front-end display view (written in Svelte) live side-by-side inside a single widget directory under the root `widgets/` folder. 
+Jute Dash's widget ecosystem is a unified, high-performance, and **monorepo-driven native library**. Both the back-end data fetching and scheduling logic (written in Go) and the front-end display view (written in Svelte) live side-by-side inside a single widget directory under the root `widgets/` folder.
 
 There are no sandboxed iframes, manifests, or postMessage message protocols. Everything compiles and executes natively within Jute's own runtime.
 
@@ -64,12 +64,34 @@ This guarantees dynamic registration upon server boot while preventing Go circul
 
 ---
 
-## 2. Frontend Implementation (Svelte)
+## 2. Frontend Implementation & Svelte Registry
 
 Your Svelte view must be named `[Name]Widget.svelte` (e.g. `WeatherWidget.svelte`).
 
+### Svelte Widget Registry
+Rather than manually hardcoding components in layouts, all widgets must register their frontend component and prop mapper inside [widget-registry.ts](file:///Users/craighutcheon/Repos/Other/jute-dash/widgets/widget-registry.ts). Each entry maps the widget `kind` to a Svelte component and a `props` mapping function:
+
+```typescript
+export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
+  'date-time': {
+    component: DateTimeWidget,
+    props: ({ widget, stale }) => ({
+      settings: {
+        timezone: 'UTC',
+        locale: 'en',
+        style: 'digital',
+        ...(widget.settings || {})
+      },
+      stale
+    })
+  }
+};
+```
+
+The prop builder receives the database `widget` instance (containing `widget.settings` and `widget.data` payload), a `stale` boolean, and the global chat states.
+
 ### Path Alias Resolution
-To import your Svelte view inside the main layout displays (like `DashboardGrid.svelte`), use the `$widgets` path alias which points to the repository root:
+To import your Svelte view inside the registry, use the `$widgets` path alias which points to the repository root:
 
 ```typescript
 import MyWidget from '$widgets/mywidget/MyWidget.svelte';
@@ -80,7 +102,22 @@ Because widgets live outside the SvelteKit project directory (`apps/web`), Vite 
 
 ---
 
-## 3. Widget Skills & Agent Context
+## 3. Widget Settings Generation
+
+Jute Dash automatically generates settings forms in the settings sheet UI using the widget's Go `CatalogInfo().SettingsSchema`. Developers do not need to write form markup.
+
+### Supported Field Types
+Map your configuration using the `SettingFieldType` enums defined in `widgets/widget.go`:
+- `SettingString` (`"string"`): Standard text input.
+- `SettingNumber` (`"number"`): Numeric input.
+- `SettingBoolean` (`"boolean"`): On/off checkbox.
+- `SettingEnum` (`"enum"`): Dropdown list selector. Must supply `Options []string` list.
+- `SettingStringList` (`"string-list"`): Dynamic array of strings.
+- `SettingObjectList` (`"object-list"`): Dynamic array of objects. Must supply sub-`Fields []SettingField`.
+
+---
+
+## 4. Widget Skills & Agent Context
 
 If your widget is agent-visible, define its `Skill()` return structure to declare what an agent can see and do through A2A or MCP:
 
@@ -92,9 +129,18 @@ If your widget is agent-visible, define its `Skill()` return structure to declar
 
 ---
 
-## 4. UI & Styling Guidelines
+## 5. UI & Styling Guidelines
 
-- **Theme Compliance**: Use Jute Theme Pack tokens rather than hard-coded colors. The default theme is `jute-mono` BOW/WOB, but contributed themes can change the full UI token set.
+- **Theme Compliance & CSS Variables**: Use Jute Theme Pack tokens rather than hardcoded hex colors. Widgets inherit the display root's CSS custom properties down the DOM cascade. You should use the following inherited variables inside your Svelte `<style>` blocks:
+  - `var(--foreground)`: Default text color.
+  - `var(--muted)`: Secondary/de-emphasized text color.
+  - `var(--muted-strong)`: Stronger muted text.
+  - `var(--border)`: Default border color.
+  - `var(--border-strong)`: High-contrast borders.
+  - `var(--surface-muted)`: Background color for muted elements (e.g. table headers, card list backdrops).
+  - `var(--surface-strong)`: Background color for highlighted visual elements.
+  - `var(--active)`: Accent/active state colors.
+  - `var(--success)`, `var(--warning)`, `var(--danger)`: Semantic state indicator colors.
 - **Widget Chrome**: Design for `solid`, `clear`, `smoked`, `frosted`, and `auto` host chrome modes. Do not assume an opaque widget background.
 - **Hover Micro-Animations**: Use smooth CSS transitions (`transition-all`, `hover:scale-[1.01]`) to make interactions feel premium and responsive.
 - **Grids & Layouts**: Design the Svelte component to fit cleanly inside the standard `WidgetFrame` at all supported grid sizes. Expose a clean empty or loading state when data is unavailable.
@@ -103,12 +149,39 @@ Visual customization rules are defined in [Visual Customization](../architecture
 
 ---
 
+## 6. Widget Architecture
+
+The following diagram illustrates how widgets are registered, customized, rendered, and integrated with home assistant agent actions:
+
+```mermaid
+flowchart TD
+    subgraph Svelte Frontend
+        A[DashboardGrid.svelte] -->|renders| B[WidgetFrame.svelte]
+        B -->|loads mapping from| C[widget-registry.ts]
+        C -->|mounts component| D["DateTime/WeatherWidget.svelte"]
+        E[SettingsSheet.svelte] -->|builds settings UI from| F["Go Catalog SettingsSchema"]
+    end
+
+    subgraph Go Hub Backend
+        G[SQLite DB] -->|stores layouts & settings| H["Widget Registry (widgets/registry.go)"]
+        H -->|instantiates| I["Go Widget Code"]
+        I -->|implements CatalogInfo| F
+        I -->|FetchData| J["Data State Payload"]
+        J -->|JSON REST API| C
+        K["Agent (A2A / MCP)"] -->|invokes action| L["widgetskills Registry"]
+        L -->|dispatches| M["ActionWidget (InvokeAction)"]
+        M -->|executes commands| I
+    end
+```
+
+---
+
 ## Contribution Checklist
 
 When contributing a new widget:
 1. **Directory**: Create `widgets/[name]/` containing `[name].go` and `[Name]Widget.svelte`.
 2. **Dynamic Boot**: Blank import your package inside `apps/hub/cmd/juted/main.go`.
-3. **Dashboard Mapping**: Import and map the component inside `DashboardGrid.svelte`.
+3. **Dashboard Mapping**: Import and register the component and its props inside [widget-registry.ts](file:///Users/craighutcheon/Repos/Other/jute-dash/widgets/widget-registry.ts).
 4. **Documentation**: Write a `README.md` inside your widget folder detailing its kind, supported sizes, and custom settings schemas.
 5. **Visual Verification**: Check the widget in light and dark mode, and with at least `solid` and `smoked` widget chrome.
 6. **Quality Verification**: Run `make check` to verify Go compilation, backend package tests (`go test ./...`), and SvelteKit type checks (`make web-check`).

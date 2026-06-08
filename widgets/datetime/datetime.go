@@ -13,18 +13,23 @@ const SkillID = "jute.date_time.current"
 type Settings struct {
 	Timezone string
 	Locale   string
+	Style    string
 }
 
 func parseSettings(raw map[string]any) Settings {
 	s := Settings{
 		Timezone: "UTC",
 		Locale:   "en",
+		Style:    "digital",
 	}
 	if v, ok := raw["timezone"].(string); ok && v != "" {
 		s.Timezone = v
 	}
 	if v, ok := raw["locale"].(string); ok && v != "" {
 		s.Locale = v
+	}
+	if v, ok := raw["style"].(string); ok && v != "" {
+		s.Style = v
 	}
 	return s
 }
@@ -60,6 +65,14 @@ func (w *DateTimeWidget) CatalogInfo() widgets.WidgetCatalogItem {
 				Type:  widgets.SettingString,
 				Label: "Locale",
 				Help:  "Unicode locale identifier (e.g. en-GB, fr-FR).",
+			},
+			{
+				ID:      "style",
+				Type:    widgets.SettingEnum,
+				Label:   "Clock Style",
+				Help:    "Select layout style (digital, analog).",
+				Default: "digital",
+				Options: []string{"digital", "analog"},
 			},
 		},
 	}

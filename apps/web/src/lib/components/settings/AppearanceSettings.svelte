@@ -24,11 +24,26 @@
           overlay: 'none'
         };
       }
+      if (!draft.display.widgetChrome) {
+        draft.display.widgetChrome = {
+          default: 'solid',
+          smokedOpacity: 0.6,
+          frostedOpacity: 0.3
+        };
+      }
       lastJSON = currentJSON;
     }
   }
 
-  const BACKGROUND_KINDS = ['theme', 'color', 'file', 'slideshow'];
+  const BACKGROUND_KINDS = ['theme', 'color', 'file', 'slideshow', 'dynamic'];
+
+  $: if (
+    draft &&
+    draft.display.background?.kind === 'dynamic' &&
+    !draft.display.background.value
+  ) {
+    draft.display.background.value = 'stardust';
+  }
 
   function ensureBackground() {
     if (!draft) {
@@ -136,6 +151,52 @@
         <option value="auto">Auto</option>
       </select>
     </label>
+    {#if draft.display.widgetChrome.default === 'smoked' || draft.display.widgetChrome.default === 'auto'}
+      <label>
+        <span
+          >Smoked opacity ({Math.round(
+            (draft.display.widgetChrome.smokedOpacity ?? 0.6) * 100
+          )}%)</span
+        >
+        <input
+          type="range"
+          min="0.1"
+          max="0.95"
+          step="0.05"
+          value={draft.display.widgetChrome.smokedOpacity ?? 0.6}
+          on:input={(event) => {
+            if (draft) {
+              draft.display.widgetChrome.smokedOpacity = parseFloat(
+                event.currentTarget.value
+              );
+            }
+          }}
+        />
+      </label>
+    {/if}
+    {#if draft.display.widgetChrome.default === 'frosted' || draft.display.widgetChrome.default === 'auto'}
+      <label>
+        <span
+          >Frosted opacity ({Math.round(
+            (draft.display.widgetChrome.frostedOpacity ?? 0.3) * 100
+          )}%)</span
+        >
+        <input
+          type="range"
+          min="0.1"
+          max="0.95"
+          step="0.05"
+          value={draft.display.widgetChrome.frostedOpacity ?? 0.3}
+          on:input={(event) => {
+            if (draft) {
+              draft.display.widgetChrome.frostedOpacity = parseFloat(
+                event.currentTarget.value
+              );
+            }
+          }}
+        />
+      </label>
+    {/if}
     <label>
       <span>Background</span>
       <select bind:value={draft.display.background.kind}>
@@ -151,6 +212,15 @@
           bind:value={draft.display.background.value}
           placeholder="#101010"
         />
+      </label>
+    {/if}
+    {#if bg.kind === 'dynamic'}
+      <label>
+        <span>Dynamic background</span>
+        <select bind:value={draft.display.background.value}>
+          <option value="stardust">Stardust</option>
+          <option value="weather-ambient">Weather Ambient</option>
+        </select>
       </label>
     {/if}
     <label>
@@ -319,5 +389,69 @@
     padding: 4px;
     cursor: pointer;
     display: inline-flex;
+  }
+
+  .settings-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .settings-form-grid label {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-muted);
+    padding: 10px;
+  }
+
+  .settings-form-grid label span {
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 760;
+  }
+
+  .settings-form-grid input:not([type='range']),
+  .settings-form-grid select {
+    min-width: 0;
+    min-height: 42px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--foreground);
+    padding: 0 10px;
+  }
+
+  .settings-form-grid input[type='range'] {
+    min-height: 42px;
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    accent-color: var(--active);
+  }
+
+  .settings-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 12px;
+  }
+
+  .settings-empty {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 650;
+    margin: 12px 0 0;
+    line-height: 1.4;
+  }
+
+  @media (max-width: 640px) {
+    .settings-form-grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

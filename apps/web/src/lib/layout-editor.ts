@@ -321,6 +321,9 @@ export function setWidgetMode(
   if (!widget) {
     return layout;
   }
+  if (widget.mode === mode) {
+    return layout;
+  }
   widget.mode = mode;
   if (mode === 'ui') {
     widget.y = nextWidgetRow(next);

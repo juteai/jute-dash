@@ -33,14 +33,14 @@ pre-commit-install:
 	fi
 
 lint:
-	cd apps/hub && golangci-lint run --timeout=5m
+	golangci-lint run --timeout=5m
 
 test:
-	cd apps/hub && go test ./...
+	go test ./...
 
 test-coverage:
-	cd apps/hub && go test -coverprofile=coverage.out ./...
-	cd apps/hub && go tool cover -func=coverage.out
+	go test -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out
 
 generate-mocks:
 	go run github.com/vektra/mockery/v2@latest --config=.mockery.yaml

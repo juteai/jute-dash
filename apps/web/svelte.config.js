@@ -7,7 +7,8 @@ const config = {
   kit: {
     adapter: adapter(),
     alias: {
-      $widgets: '../../widgets'
+      $widgets: '../../widgets',
+      $backgrounds: '../../backgrounds'
     }
   }
 };

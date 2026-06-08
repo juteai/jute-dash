@@ -74,3 +74,19 @@
     >
   </Button>
 </form>
+
+<style>
+  .message-composer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  @media (max-width: 640px) {
+    .message-composer {
+      align-items: stretch;
+    }
+  }
+</style>

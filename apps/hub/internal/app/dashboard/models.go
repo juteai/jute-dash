@@ -48,11 +48,15 @@ type DisplayBackground struct {
 	Images          []string `json:"images,omitempty"          yaml:"images,omitempty"`
 	IntervalSeconds int      `json:"intervalSeconds,omitempty" yaml:"interval-seconds,omitempty"`
 	Transition      string   `json:"transition,omitempty"      yaml:"transition,omitempty"`
+	// Properties contains custom configuration parameters for dynamic backgrounds.
+	Properties map[string]any `json:"properties,omitempty" yaml:"properties,omitempty"`
 }
 
 // DisplayWidgetChrome defines default visual framing rules.
 type DisplayWidgetChrome struct {
-	Default string `json:"default" yaml:"default"`
+	Default        string   `json:"default"                  yaml:"default"`
+	SmokedOpacity  *float64 `json:"smokedOpacity,omitempty"  yaml:"smoked-opacity,omitempty"`
+	FrostedOpacity *float64 `json:"frostedOpacity,omitempty" yaml:"frosted-opacity,omitempty"`
 }
 
 // DashboardConfig represents grid configuration defaults.
@@ -85,19 +89,41 @@ type WidgetLayout struct {
 	Widgets   []WidgetInstance `json:"widgets"`
 }
 
+type SettingFieldType string
+
+const (
+	SettingString     SettingFieldType = "string"
+	SettingNumber     SettingFieldType = "number"
+	SettingBoolean    SettingFieldType = "boolean"
+	SettingEnum       SettingFieldType = "enum"
+	SettingStringList SettingFieldType = "string-list"
+	SettingObjectList SettingFieldType = "object-list"
+)
+
+type SettingField struct {
+	ID      string           `json:"id"`
+	Type    SettingFieldType `json:"type"`
+	Label   string           `json:"label"`
+	Help    string           `json:"help,omitempty"`
+	Default any              `json:"default,omitempty"`
+	Options []string         `json:"options,omitempty"`
+	Fields  []SettingField   `json:"fields,omitempty"`
+}
+
 // WidgetCatalogItem holds metadata of a widget kind.
 type WidgetCatalogItem struct {
-	Kind          string `json:"kind"`
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	DefaultTitle  string `json:"defaultTitle"`
-	DefaultW      int    `json:"defaultW"`
-	DefaultH      int    `json:"defaultH"`
-	MinW          int    `json:"minW"`
-	MinH          int    `json:"minH"`
-	DefaultSize   string `json:"defaultSize"`
-	Overflow      string `json:"overflow"`
-	AllowMultiple bool   `json:"allowMultiple"`
+	Kind           string         `json:"kind"`
+	Name           string         `json:"name"`
+	Description    string         `json:"description"`
+	DefaultTitle   string         `json:"defaultTitle"`
+	DefaultW       int            `json:"defaultW"`
+	DefaultH       int            `json:"defaultH"`
+	MinW           int            `json:"minW"`
+	MinH           int            `json:"minH"`
+	DefaultSize    string         `json:"defaultSize"`
+	Overflow       string         `json:"overflow"`
+	AllowMultiple  bool           `json:"allowMultiple"`
+	SettingsSchema []SettingField `json:"settingsSchema,omitempty"`
 }
 
 // WidgetInstance represents an active widget.
@@ -193,6 +219,15 @@ func SupportedThemeIDs() []string {
 func IsSupportedThemeID(id string) bool {
 	id = strings.TrimSpace(id)
 	return slices.Contains(SupportedThemeIDs(), id)
+}
+
+func SupportedBackgroundIDs() []string {
+	return []string{"stardust", "weather-ambient"}
+}
+
+func IsSupportedBackgroundID(id string) bool {
+	id = strings.TrimSpace(id)
+	return slices.Contains(SupportedBackgroundIDs(), id)
 }
 
 // Validation
@@ -297,8 +332,22 @@ func validateDisplayBackground(background DisplayBackground, problems *[]string)
 		if t := strings.TrimSpace(background.Transition); t != "" && t != "none" && t != "crossfade" {
 			*problems = append(*problems, "display.background.transition must be none or crossfade")
 		}
+	case "dynamic":
+		value := strings.TrimSpace(background.Value)
+		if value == "" {
+			*problems = append(*problems, "display.background.value is required when kind is dynamic")
+		}
+		if !IsSupportedBackgroundID(value) {
+			*problems = append(
+				*problems,
+				"display.background.value must be a supported background ID when kind is dynamic",
+			)
+		}
 	default:
-		*problems = append(*problems, "display.background.kind must be theme, color, asset, file, or slideshow")
+		*problems = append(
+			*problems,
+			"display.background.kind must be theme, color, asset, file, slideshow, or dynamic",
+		)
 	}
 	switch strings.TrimSpace(background.Fit) {
 	case "cover", "contain", "tile":
@@ -336,6 +385,18 @@ func ValidateDisplay(cfg DisplayConfig) []string {
 	validateDisplayBackground(cfg.Background, &problems)
 	if !isSupportedWidgetChrome(cfg.WidgetChrome.Default) {
 		problems = append(problems, "display.widgetChrome.default must be solid, clear, smoked, frosted, or auto")
+	}
+	if cfg.WidgetChrome.SmokedOpacity != nil {
+		val := *cfg.WidgetChrome.SmokedOpacity
+		if val < 0.0 || val > 1.0 {
+			problems = append(problems, "display.widgetChrome.smokedOpacity must be between 0.0 and 1.0")
+		}
+	}
+	if cfg.WidgetChrome.FrostedOpacity != nil {
+		val := *cfg.WidgetChrome.FrostedOpacity
+		if val < 0.0 || val > 1.0 {
+			problems = append(problems, "display.widgetChrome.frostedOpacity must be between 0.0 and 1.0")
+		}
 	}
 	return problems
 }

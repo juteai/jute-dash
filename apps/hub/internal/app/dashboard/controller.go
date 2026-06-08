@@ -35,6 +35,25 @@ func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/widgets/layout/reset", c.handleWidgetLayoutReset)
 }
 
+func convertSettingFields(fields []widgets.SettingField) []SettingField {
+	if fields == nil {
+		return nil
+	}
+	res := make([]SettingField, 0, len(fields))
+	for _, f := range fields {
+		res = append(res, SettingField{
+			ID:      f.ID,
+			Type:    SettingFieldType(f.Type),
+			Label:   f.Label,
+			Help:    f.Help,
+			Default: f.Default,
+			Options: f.Options,
+			Fields:  convertSettingFields(f.Fields),
+		})
+	}
+	return res
+}
+
 // RegisteredCatalog returns catalog metadata for every registered widget,
 // converted into the dashboard package's catalog item shape. This is the single
 // source the layout store uses for normalization, so all registered kinds
@@ -45,17 +64,18 @@ func RegisteredCatalog() []WidgetCatalogItem {
 	for _, it := range items {
 		info := it.CatalogInfo()
 		catalog = append(catalog, WidgetCatalogItem{
-			Kind:          info.Kind,
-			Name:          info.Name,
-			Description:   info.Description,
-			DefaultTitle:  info.DefaultTitle,
-			DefaultW:      info.DefaultW,
-			DefaultH:      info.DefaultH,
-			MinW:          info.MinW,
-			MinH:          info.MinH,
-			DefaultSize:   info.DefaultSize,
-			Overflow:      info.Overflow,
-			AllowMultiple: info.AllowMultiple,
+			Kind:           info.Kind,
+			Name:           info.Name,
+			Description:    info.Description,
+			DefaultTitle:   info.DefaultTitle,
+			DefaultW:       info.DefaultW,
+			DefaultH:       info.DefaultH,
+			MinW:           info.MinW,
+			MinH:           info.MinH,
+			DefaultSize:    info.DefaultSize,
+			Overflow:       info.Overflow,
+			AllowMultiple:  info.AllowMultiple,
+			SettingsSchema: convertSettingFields(info.SettingsSchema),
 		})
 	}
 	return catalog

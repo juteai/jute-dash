@@ -28,13 +28,16 @@ display:
     density: comfortable
     motion: full
     background:
-        kind: theme
-        value: ""
+        kind: dynamic
+        value: weather-ambient
         fit: cover
         position: center
         overlay: none
+        properties:
+            max-opacity: 0.25
+            speed: 0.4
     widget-chrome:
-        default: solid
+        default: auto
     accent-color: neutral
     idle-mode: ambient
 voice:
@@ -59,7 +62,7 @@ dashboard:
           title: Clock
           x: 0
           "y": 0
-          w: 3
+          w: 4
           h: 2
           min-w: 3
           min-h: 1
@@ -67,15 +70,14 @@ dashboard:
           visible: true
           mode: ui
           settings:
-            chrome: clear
             locale: en-GB
             timezone: Europe/London
         - id: weather-widget
           type: weather
           title: Local Weather
-          x: 3
+          x: 8
           "y": 0
-          w: 3
+          w: 4
           h: 2
           min-w: 3
           min-h: 1
@@ -92,8 +94,8 @@ dashboard:
           type: chat-history
           title: Concierge Chat
           x: 0
-          "y": 2
-          w: 6
+          "y": 3
+          w: 4
           h: 3
           min-w: 3
           min-h: 1
@@ -103,9 +105,9 @@ dashboard:
         - id: hacker-news
           type: rss
           title: Tech News
-          x: 6
-          "y": 2
-          w: 6
+          x: 8
+          "y": 3
+          w: 4
           h: 3
           min-w: 3
           min-h: 1
@@ -120,13 +122,13 @@ dashboard:
         - id: stocks-watchlist
           type: markets
           title: Markets
-          x: 6
-          "y": 0
-          w: 6
-          h: 2
+          x: 4
+          "y": 3
+          w: 4
+          h: 3
           min-w: 3
           min-h: 1
-          size: medium
+          size: large
           visible: true
           mode: ui
           settings:
