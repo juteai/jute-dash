@@ -81,8 +81,12 @@
         class:message-bubble--failed={message.status === 'failed'}
         class:message-bubble--queued={message.status === 'queued'}
       >
-        {#if message.role === 'assistant' && (!message.content && (!message.interimSteps || message.interimSteps.length === 0) && (message.status === 'sending' || message.status === 'streaming'))}
-          <div class="assistant-activity--working" aria-live="polite" style="margin-bottom: 8px;">
+        {#if message.role === 'assistant' && !message.content && (!message.interimSteps || message.interimSteps.length === 0) && (message.status === 'sending' || message.status === 'streaming')}
+          <div
+            class="assistant-activity--working"
+            aria-live="polite"
+            style="margin-bottom: 8px;"
+          >
             <div class="interim-step-spinner inline-spinner"></div>
             <span>Working...</span>
           </div>
@@ -118,8 +122,15 @@
             {#if isExpanded(message.id, message.status)}
               <div class="interim-steps-list">
                 {#each message.interimSteps as step (step.id)}
-                  {@const isReasoning = step.status === 'thinking' || step.id.includes(':reasoning:') || step.id.includes(':thought:') || step.id.includes(':status-thought')}
-                  {@const isTool = step.text.startsWith('Calling tool') || step.text.startsWith('Called tool') || step.id.includes(':tool:')}
+                  {@const isReasoning =
+                    step.status === 'thinking' ||
+                    step.id.includes(':reasoning:') ||
+                    step.id.includes(':thought:') ||
+                    step.id.includes(':status-thought')}
+                  {@const isTool =
+                    step.text.startsWith('Calling tool') ||
+                    step.text.startsWith('Called tool') ||
+                    step.id.includes(':tool:')}
 
                   <div class="interim-step-wrapper">
                     {#if isReasoning}
@@ -134,7 +145,10 @@
                               <div class="interim-step-spinner"></div>
                               <span class="active-pulse-text">Thinking...</span>
                             {:else}
-                              <span class="completed-icon" style="color: var(--success);">✓</span>
+                              <span
+                                class="completed-icon"
+                                style="color: var(--success);">✓</span
+                              >
                               <span>Thought</span>
                             {/if}
                           </div>
@@ -161,7 +175,10 @@
                               <div class="interim-step-spinner"></div>
                               <span class="active-pulse-text">{step.text}</span>
                             {:else}
-                              <span class="completed-icon" style="color: var(--success);">✓</span>
+                              <span
+                                class="completed-icon"
+                                style="color: var(--success);">✓</span
+                              >
                               <span>{step.text}</span>
                             {/if}
                           </div>
@@ -175,13 +192,23 @@
                             {#if step.args}
                               <div class="tool-snippet">
                                 <div class="tool-snippet-header">Arguments</div>
-                                <pre class="tool-code"><code>{JSON.stringify(step.args, null, 2)}</code></pre>
+                                <pre class="tool-code"><code
+                                    >{JSON.stringify(step.args, null, 2)}</code
+                                  ></pre>
                               </div>
                             {/if}
                             {#if step.output}
                               <div class="tool-snippet">
                                 <div class="tool-snippet-header">Result</div>
-                                <pre class="tool-code"><code>{typeof step.output === 'string' ? step.output : JSON.stringify(step.output, null, 2)}</code></pre>
+                                <pre class="tool-code"><code
+                                    >{typeof step.output === 'string'
+                                      ? step.output
+                                      : JSON.stringify(
+                                          step.output,
+                                          null,
+                                          2
+                                        )}</code
+                                  ></pre>
                               </div>
                             {/if}
                           </div>
@@ -196,7 +223,9 @@
                         {:else if step.status === 'failed'}
                           <span style="color: var(--danger);">✗</span>
                         {:else}
-                          <span style="color: var(--muted); opacity: 0.5;">○</span>
+                          <span style="color: var(--muted); opacity: 0.5;"
+                            >○</span
+                          >
                         {/if}
                         <span>{step.text}</span>
                       </div>
@@ -206,7 +235,10 @@
 
                 {#if message.status === 'streaming' || message.status === 'sending' || (state === 'thinking' && messages[messages.length - 1]?.id === message.id)}
                   {#if !message.interimSteps.some((s) => s.status === 'working' || s.status === 'thinking' || s.status === 'running' || s.status === 'pending')}
-                    <div class="interim-step-item working" style="margin-top: 4px;">
+                    <div
+                      class="interim-step-item working"
+                      style="margin-top: 4px;"
+                    >
                       <div class="interim-step-spinner"></div>
                       <span class="active-pulse-text">Working...</span>
                     </div>

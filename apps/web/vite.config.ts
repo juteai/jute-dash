@@ -7,9 +7,16 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: [
+        'src/lib/a2aConversation.ts',
+        'src/lib/a2aParser.ts',
         'src/lib/agents.ts',
-        'src/lib/api.ts',
-        'src/lib/layout-editor.ts'
+        'src/lib/chatStore.ts',
+        'src/lib/displaySanitizer.ts',
+        'src/lib/layout-editor.ts',
+        'src/lib/logger.ts',
+        'src/lib/messageQueue.ts',
+        'src/lib/navigationStore.ts',
+        'src/lib/utils.ts'
       ],
       thresholds: {
         statements: 60,

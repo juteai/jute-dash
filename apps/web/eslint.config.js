@@ -38,5 +38,18 @@ export default tseslint.config(
     rules: {
       'svelte/no-at-html-tags': 'off'
     }
+  },
+  {
+    files: [
+      'src/lib/a2aConversation.ts',
+      'src/lib/a2aConversation.test.ts',
+      'src/lib/a2aParser.ts',
+      'src/lib/chatStore.ts',
+      'src/lib/types.ts',
+      'src/lib/components/chat/MessageList.svelte'
+    ],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off'
+    }
   }
 );

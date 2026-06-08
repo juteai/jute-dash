@@ -3,9 +3,58 @@ import {
   createConversation,
   getConversations,
   getConversation,
-  sendConversationTurn,
-  sendConversationTurnStream
+  executeConversationTurn
 } from './a2aConversation';
+import type { ConversationDetail } from '$lib/types';
+
+async function sendConversationTurn(
+  fetcher: typeof fetch,
+  conversationId: string,
+  agentId: string,
+  text: string,
+  options?: any
+): Promise<ConversationDetail> {
+  let detail: ConversationDetail | undefined;
+  let error: Error | undefined;
+  for await (const event of executeConversationTurn(
+    fetcher,
+    conversationId,
+    { id: agentId, streaming: false },
+    text,
+    options
+  )) {
+    if (event.type === 'turn_completed') {
+      detail = { conversation: event.conversation, messages: event.messages };
+    } else if (event.type === 'turn_failed') {
+      error = new Error(event.message);
+    } else if (event.type === 'turn_canceled') {
+      throw new DOMException('The user aborted a request.', 'AbortError');
+    }
+  }
+  if (error) throw error;
+  if (!detail) throw new Error('Turn did not complete');
+  return detail;
+}
+
+async function sendConversationTurnStream(
+  fetcher: typeof fetch,
+  conversationId: string,
+  agentId: string,
+  text: string,
+  onEvent: (event: any) => void,
+  options?: any
+): Promise<void> {
+  const eventStream = executeConversationTurn(
+    fetcher,
+    conversationId,
+    { id: agentId, streaming: true },
+    text,
+    options
+  );
+  for await (const event of eventStream) {
+    onEvent(event);
+  }
+}
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -1707,7 +1756,13 @@ describe('api conversation streaming', () => {
         }
         return jsonResponse({ error: 'Not mocked' }, { status: 400 });
       });
-    const events: Array<{ type: string; status?: string; text?: string; args?: any; output?: any }> = [];
+    const events: Array<{
+      type: string;
+      status?: string;
+      text?: string;
+      args?: any;
+      output?: any;
+    }> = [];
 
     await sendConversationTurnStream(
       fetcher,
@@ -1717,12 +1772,16 @@ describe('api conversation streaming', () => {
       (event) => events.push(event)
     );
 
-    const callEvent = events.find((e) => e.type === 'status_changed' && e.status === 'working');
+    const callEvent = events.find(
+      (e) => e.type === 'status_changed' && e.status === 'working'
+    );
     expect(callEvent).toBeDefined();
     expect(callEvent?.text).toBe('Calling tool: jute_skill_list');
     expect(callEvent?.args).toEqual({ filter: 'active' });
 
-    const responseEvent = events.find((e) => e.type === 'status_changed' && e.status === 'completed');
+    const responseEvent = events.find(
+      (e) => e.type === 'status_changed' && e.status === 'completed'
+    );
     expect(responseEvent).toBeDefined();
     expect(responseEvent?.text).toBe('Called tool: jute_skill_list');
     expect(responseEvent?.output).toBe('success output');

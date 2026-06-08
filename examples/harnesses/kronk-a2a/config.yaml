@@ -68,8 +68,8 @@ dashboard:
           mode: ui
           settings:
             chrome: clear
-            timezone: Europe/London
             locale: en-GB
+            timezone: Europe/London
         - id: weather-widget
           type: weather
           title: Local Weather

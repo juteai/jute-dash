@@ -1,25 +1,12 @@
 <script lang="ts">
-  import {
-    ChevronDown,
-    Info,
-    Mic,
-    Plus,
-    RefreshCw,
-    VolumeX,
-    X,
-    History
-  } from 'lucide-svelte';
-  import Markdown from '$lib/components/chat/Markdown.svelte';
+  import { ChevronDown, Info, Mic, VolumeX, History } from 'lucide-svelte';
   import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
-  import {
-    availabilityDescription,
-    availabilityLabel,
-    availabilityTone,
-    getAgentAvailability
-  } from '$lib/agents';
-  import Badge from '$lib/components/ui/Badge.svelte';
-  import Button from '$lib/components/ui/Button.svelte';
+  import StardustCanvas from '$lib/components/chat/StardustCanvas.svelte';
+  import ChatDiagnostics from '$lib/components/chat/ChatDiagnostics.svelte';
+  import ConversationSidebar from '$lib/components/chat/ConversationSidebar.svelte';
+  import ArtifactPreview from '$lib/components/chat/ArtifactPreview.svelte';
+  import { getAgentAvailability, availabilityLabel } from '$lib/agents';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import type {
     Agent,
@@ -35,9 +22,7 @@
   export let messages: ChatMessage[] = [];
   export let conversations: Conversation[] = [];
   export let state: ChatState = 'idle';
-  export let statusText = '';
   export let voice: VoiceStatus;
-  export let voiceIssue = '';
   export let selectedAgentId = '';
   export let selectedConversationId = '';
   export let selectedAvailability: AgentAvailability = 'unknown';
@@ -59,9 +44,6 @@
   export let onCancel: () => void = () => {};
   export let onToggleVoiceMute: () => Promise<void> | void = () => {};
 
-  type BadgeTone = 'danger' | 'neutral' | 'active';
-
-  let statusTone: BadgeTone;
   let showDiagnostics = false;
   let showHistory = false;
   let refreshingCard = false;
@@ -78,15 +60,7 @@
     ? getAgentAvailability(selectedAgent)
     : selectedAvailability;
   $: composerDisabled = agentAvailability !== 'available';
-  $: selectedBinding =
-    selectedAgent?.selectedProtocolBinding || selectedAgent?.protocolBinding;
-  $: selectedVersion = selectedAgent?.selectedProtocolVersion || '1.0';
-  $: selectedEndpoint =
-    selectedAgent?.selectedEndpointUrl || selectedAgent?.endpointUrl || '';
   $: mcpStatus = status?.mcp;
-  $: mcpLabel = mcpStatus?.enabled
-    ? `MCP ${mcpStatus.serviceStatus}`
-    : 'MCP disabled';
   $: selectedConversation = conversations.find(
     (conversation) => conversation.id === selectedConversationId
   );
@@ -96,34 +70,8 @@
       ? 'Voice muted'
       : 'Wake listening'
     : 'Voice not configured';
-  $: statusTone =
-    state === 'error' ? 'danger' : state === 'idle' ? 'neutral' : 'active';
 
-  function formatConversationTime(value: string) {
-    if (!value) {
-      return '';
-    }
-    return new Intl.DateTimeFormat(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(new Date(value));
-  }
-
-  function endpointHost(value: string) {
-    if (!value) {
-      return 'not selected';
-    }
-    try {
-      const url = new URL(value);
-      return `${url.host}${url.pathname}`;
-    } catch {
-      return value.replace(/^https?:\/\//, '');
-    }
-  }
-
-  async function refreshCard() {
+  async function handleRefreshCard() {
     if (!selectedAgent || refreshingCard) {
       return;
     }
@@ -134,49 +82,11 @@
       refreshingCard = false;
     }
   }
-
-  interface Particle {
-    size: number;
-    left: number;
-    duration: number;
-    delay: number;
-    driftX: number;
-    maxOpacity: number;
-    scale: number;
-  }
-
-  const particles: Particle[] = Array.from({ length: 24 }, (_, i) => {
-    const duration = 12 + ((i * 13) % 16);
-    return {
-      size: 3 + ((i * 7) % 6),
-      left: ((i * 17) % 95) + 2.5,
-      duration,
-      delay: -((i * 9) % duration),
-      driftX: -40 + ((i * 29) % 80),
-      maxOpacity: 0.2 + ((i * 3) % 4) * 0.15,
-      scale: 0.8 + ((i * 5) % 5) * 0.15
-    };
-  });
 </script>
 
 <section class="chat-view" aria-label="Agent conversation">
-  <!-- Antigravity Stardust Canvas -->
-  <div class="stardust-canvas stardust-canvas--{state}">
-    {#each particles as p, i (i)}
-      <div
-        class="stardust-particle"
-        style="
-          --size: {p.size}px;
-          --left: {p.left}%;
-          --duration: {p.duration}s;
-          --delay: {p.delay}s;
-          --drift-x: {p.driftX}px;
-          --max-opacity: {p.maxOpacity};
-          --scale: {p.scale};
-        "
-      ></div>
-    {/each}
-  </div>
+  <!-- Encapsulated Particles Background -->
+  <StardustCanvas {state} />
 
   <header class="chat-header">
     <div class="chat-agent">
@@ -185,22 +95,14 @@
       </div>
       {#if showDiagnostics}
         <div class="chat-agent-meta">
-          <Badge tone={statusTone}>{state}</Badge>
+          <span>{state}</span>
           {#if selectedAgent}
-            <Badge tone={availabilityTone(agentAvailability)}
-              >{availabilityLabel(agentAvailability)}</Badge
-            >
+            <span>{availabilityLabel(agentAvailability)}</span>
             {#if selectedAgent.dashboardContextSupported}
               <span>screen context</span>
             {/if}
-            <span>{mcpLabel}</span>
           {/if}
         </div>
-        {#if selectedAgent}
-          <p class="chat-agent-description">
-            {availabilityDescription(agentAvailability)}
-          </p>
-        {/if}
       {/if}
     </div>
 
@@ -271,106 +173,15 @@
       </div>
     </div>
   </header>
-
+  <!-- Encapsulated Diagnostics Dashboard Panel -->
   {#if showDiagnostics}
-    <section class="agent-diagnostics" aria-label="Agent diagnostics">
-      {#if selectedAgent}
-        <div class="agent-diagnostics-grid">
-          <div>
-            <span>Agent Card</span>
-            <strong>{selectedAgent.cardStatus || 'unknown'}</strong>
-            {#if selectedAgent.cardError}
-              <small>{selectedAgent.cardError}</small>
-            {:else if selectedAgent.cardFetchedAt}
-              <small
-                >Fetched {formatConversationTime(
-                  selectedAgent.cardFetchedAt
-                )}</small
-              >
-            {/if}
-          </div>
-          <div>
-            <span>A2A binding</span>
-            <strong>{selectedBinding || 'not selected'}</strong>
-            <small>A2A {selectedVersion}</small>
-          </div>
-          <div>
-            <span>Endpoint</span>
-            <strong>{endpointHost(selectedEndpoint)}</strong>
-            <small
-              >{selectedAgent.streaming
-                ? 'streaming supported'
-                : 'blocking only'}</small
-            >
-          </div>
-          <div>
-            <span>Context</span>
-            <strong
-              >{selectedAgent.dashboardContextSupported
-                ? 'dashboard context supported'
-                : 'dashboard context unavailable'}</strong
-            >
-            <small>{selectedAgent.mcpScopes?.length ?? 0} MCP scopes</small>
-          </div>
-          <div>
-            <span>MCP bridge</span>
-            <strong
-              >{mcpStatus?.enabled
-                ? mcpStatus.serviceStatus
-                : 'disabled'}</strong
-            >
-            <small
-              >{mcpStatus?.enabled
-                ? `${mcpStatus.transport} · ${mcpStatus.authMode || 'no auth mode'}`
-                : 'A2A still works without MCP'}</small
-            >
-          </div>
-          <div>
-            <span>Credentials</span>
-            <strong
-              >{selectedAgent.authConfigured
-                ? selectedAgent.authAvailable === false
-                  ? 'missing'
-                  : 'configured'
-                : 'not required'}</strong
-            >
-            <small>Credential references stay inside the hub</small>
-          </div>
-        </div>
-        {#if selectedAgent.skills && selectedAgent.skills.length > 0}
-          <div class="agent-diagnostics-skills">
-            <span>Skills</span>
-            <div>
-              {#each selectedAgent.skills as skill (skill.id ?? skill.name)}
-                <Badge tone="neutral">{skill.name}</Badge>
-              {/each}
-            </div>
-          </div>
-        {:else}
-          <p class="agent-diagnostics-empty">
-            No Agent Card skills discovered yet.
-          </p>
-        {/if}
-        <div class="agent-diagnostics-actions">
-          <Button
-            size="sm"
-            variant="outline"
-            on:click={refreshCard}
-            disabled={refreshingCard}
-          >
-            <RefreshCw size={15} />
-            <span>{refreshingCard ? 'Refreshing' : 'Refresh Agent Card'}</span>
-          </Button>
-          <Button size="sm" variant="ghost" on:click={onManageAgents}
-            >Manage agents</Button
-          >
-        </div>
-      {:else}
-        <p class="agent-diagnostics-empty">
-          Add an A2A agent to see diagnostics.
-        </p>
-      {/if}
-    </section>
+    <ChatDiagnostics
+      {selectedAgent}
+      {mcpStatus}
+      {refreshingCard}
+      on:refreshCard={handleRefreshCard}
+      on:manageAgents={onManageAgents}
+    />
   {/if}
 
   <div
@@ -379,53 +190,16 @@
     class:chat-view--minimal={!showHistory}
     class:chat-view--with-preview={selectedArtifact}
   >
+    <!-- Encapsulated Saved History Sidebar -->
     {#if showHistory}
-      <aside class="conversation-sidebar" aria-label="Conversation history">
-        <div class="conversation-sidebar-header">
-          <div>
-            <strong>History</strong>
-            <span>{conversations.length} saved</span>
-          </div>
-          <IconButton
-            label="New conversation"
-            variant="outline"
-            disabled={composerDisabled}
-            on:click={onNewConversation}
-          >
-            <Plus size={17} />
-          </IconButton>
-        </div>
-
-        <div class="conversation-list">
-          {#if conversations.length === 0}
-            <div class="conversation-empty">
-              {#if composerDisabled}
-                No available agent yet.
-                <button
-                  type="button"
-                  class="conversation-link-button"
-                  on:click={onManageAgents}>Add agent</button
-                >
-              {:else}
-                Agent-backed history is empty or unsupported.
-              {/if}
-            </div>
-          {:else}
-            {#each conversations as conversation (conversation.id)}
-              <button
-                type="button"
-                class:conversation-item--active={conversation.id ===
-                  selectedConversationId}
-                class="conversation-item"
-                on:click={() => onConversationSelect(conversation.id)}
-              >
-                <span>{conversation.title || 'Conversation'}</span>
-                <small>{formatConversationTime(conversation.updatedAt)}</small>
-              </button>
-            {/each}
-          {/if}
-        </div>
-      </aside>
+      <ConversationSidebar
+        {conversations}
+        {selectedConversationId}
+        {composerDisabled}
+        on:select={(e) => onConversationSelect(e.detail.conversationId)}
+        on:new={onNewConversation}
+        on:manageAgents={onManageAgents}
+      />
     {/if}
 
     <div class="chat-thread">
@@ -467,22 +241,12 @@
       />
     </div>
 
+    <!-- Encapsulated sliding markdown artifact details preview -->
     {#if selectedArtifact}
-      <aside class="artifact-preview-panel" aria-label="Artifact preview">
-        <header class="artifact-preview-header">
-          <span class="artifact-preview-title">{selectedArtifact.title}</span>
-          <IconButton
-            label="Close preview"
-            variant="ghost"
-            on:click={() => (selectedArtifact = null)}
-          >
-            <X size={18} />
-          </IconButton>
-        </header>
-        <div class="artifact-preview-body">
-          <Markdown content={selectedArtifact.content} />
-        </div>
-      </aside>
+      <ArtifactPreview
+        artifact={selectedArtifact}
+        on:close={() => (selectedArtifact = null)}
+      />
     {/if}
   </div>
 </section>
