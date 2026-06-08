@@ -54,7 +54,9 @@ type DisplayBackground struct {
 
 // DisplayWidgetChrome defines default visual framing rules.
 type DisplayWidgetChrome struct {
-	Default string `json:"default" yaml:"default"`
+	Default        string   `json:"default"                  yaml:"default"`
+	SmokedOpacity  *float64 `json:"smokedOpacity,omitempty"  yaml:"smoked-opacity,omitempty"`
+	FrostedOpacity *float64 `json:"frostedOpacity,omitempty" yaml:"frosted-opacity,omitempty"`
 }
 
 // DashboardConfig represents grid configuration defaults.
@@ -361,6 +363,18 @@ func ValidateDisplay(cfg DisplayConfig) []string {
 	validateDisplayBackground(cfg.Background, &problems)
 	if !isSupportedWidgetChrome(cfg.WidgetChrome.Default) {
 		problems = append(problems, "display.widgetChrome.default must be solid, clear, smoked, frosted, or auto")
+	}
+	if cfg.WidgetChrome.SmokedOpacity != nil {
+		val := *cfg.WidgetChrome.SmokedOpacity
+		if val < 0.0 || val > 1.0 {
+			problems = append(problems, "display.widgetChrome.smokedOpacity must be between 0.0 and 1.0")
+		}
+	}
+	if cfg.WidgetChrome.FrostedOpacity != nil {
+		val := *cfg.WidgetChrome.FrostedOpacity
+		if val < 0.0 || val > 1.0 {
+			problems = append(problems, "display.widgetChrome.frostedOpacity must be between 0.0 and 1.0")
+		}
 	}
 	return problems
 }

@@ -24,6 +24,13 @@
           overlay: 'none'
         };
       }
+      if (!draft.display.widgetChrome) {
+        draft.display.widgetChrome = {
+          default: 'solid',
+          smokedOpacity: 0.6,
+          frostedOpacity: 0.3
+        };
+      }
       lastJSON = currentJSON;
     }
   }
@@ -144,6 +151,52 @@
         <option value="auto">Auto</option>
       </select>
     </label>
+    {#if draft.display.widgetChrome.default === 'smoked' || draft.display.widgetChrome.default === 'auto'}
+      <label>
+        <span
+          >Smoked opacity ({Math.round(
+            (draft.display.widgetChrome.smokedOpacity ?? 0.6) * 100
+          )}%)</span
+        >
+        <input
+          type="range"
+          min="0.1"
+          max="0.95"
+          step="0.05"
+          value={draft.display.widgetChrome.smokedOpacity ?? 0.6}
+          on:input={(event) => {
+            if (draft) {
+              draft.display.widgetChrome.smokedOpacity = parseFloat(
+                event.currentTarget.value
+              );
+            }
+          }}
+        />
+      </label>
+    {/if}
+    {#if draft.display.widgetChrome.default === 'frosted' || draft.display.widgetChrome.default === 'auto'}
+      <label>
+        <span
+          >Frosted opacity ({Math.round(
+            (draft.display.widgetChrome.frostedOpacity ?? 0.3) * 100
+          )}%)</span
+        >
+        <input
+          type="range"
+          min="0.1"
+          max="0.95"
+          step="0.05"
+          value={draft.display.widgetChrome.frostedOpacity ?? 0.3}
+          on:input={(event) => {
+            if (draft) {
+              draft.display.widgetChrome.frostedOpacity = parseFloat(
+                event.currentTarget.value
+              );
+            }
+          }}
+        />
+      </label>
+    {/if}
     <label>
       <span>Background</span>
       <select bind:value={draft.display.background.kind}>

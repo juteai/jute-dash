@@ -33,6 +33,8 @@ export type BackgroundImage = {
 
 export type DisplayWidgetChrome = {
   default: WidgetChrome;
+  smokedOpacity?: number;
+  frostedOpacity?: number;
 };
 
 export type WidgetChrome =
