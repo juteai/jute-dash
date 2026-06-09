@@ -84,8 +84,8 @@ agents:
   - id: mock-agent
     name: Mock Agent
     description: A deterministic mock A2A 1.0 test agent.
-    card-url: http://127.0.0.1:9797/.well-known/agent-card.json
-    endpoint-url: http://127.0.0.1:9797/a2a/invoke
+    card-url: http://127.0.0.1:9696/.well-known/agent-card.json
+    endpoint-url: http://127.0.0.1:9696/a2a/invoke
     protocol-binding: JSONRPC
     enabled: true
     capabilities:

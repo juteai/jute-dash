@@ -627,7 +627,7 @@ func assertDevAgents(t *testing.T, cfg Config) {
 	expected := map[string]struct {
 		cardURL string
 	}{
-		"mock-agent":   {cardURL: "http://127.0.0.1:9797/.well-known/agent-card.json"},
+		"mock-agent":   {cardURL: "http://127.0.0.1:9696/.well-known/agent-card.json"},
 		"kronk-agent":  {cardURL: "http://127.0.0.1:9797/.well-known/agent-card.json"},
 		"ollama-agent": {cardURL: "http://127.0.0.1:9999/.well-known/agent-card.json"},
 		"gemini-agent": {cardURL: "http://127.0.0.1:9898/.well-known/agent-card.json"},
