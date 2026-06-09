@@ -301,7 +301,7 @@ The bridge never exposes:
 - browser local storage;
 - undeclared widget fields.
 
-All widgets use the same context rules — context is limited to what is explicitly declared in `widget.yaml`.
+All widgets use the same context rules — context is limited to what is explicitly declared in the widget's Go skill `ContextFields` definition.
 
 Initial built-in skills:
 

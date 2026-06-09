@@ -35,5 +35,5 @@ A per-Agent permission that controls which parts of the MCP Bridge an Agent can 
 _Avoid_: MCP permission, MCP access level
 
 **Widget Skill Registry**:
-The Hub's internal index of all available Widget Skills, built from `widget.yaml` manifests at startup. The MCP Bridge serves skills from this registry after applying policy and per-Agent scopes.
+The Hub's internal index of all available Widget Skills, compiled from native Go widget registrations at startup. The MCP Bridge serves skills from this registry after applying policy and per-Agent scopes.
 _Avoid_: skill store, capability registry
