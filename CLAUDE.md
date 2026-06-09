@@ -83,11 +83,11 @@ make web-check
 make check
 ```
 
-Self-contained fixture-backed dev stacks live in `examples/harnesses`, for example:
+Self-contained dev stacks live in `examples/config/local/`, for example:
 
 ```sh
-cd examples/harnesses/mock-a2a-mcp
-make dev
+cd examples/config/local
+make run-mock
 ```
 
 ## Documentation Discipline

@@ -127,6 +127,7 @@ func main() {
 			},
 		})
 	})
+	mux.HandleFunc("/a2a/invoke", handleInvoke)
 	mux.HandleFunc("/invoke", handleInvoke)
 
 	server := &http.Server{

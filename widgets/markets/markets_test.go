@@ -125,3 +125,245 @@ func TestMarketsWidget_InvokeAction_QueryTicker(t *testing.T) {
 		t.Error("expected error for missing symbol parameter")
 	}
 }
+
+func TestMarketsWidget_ParseSettings(t *testing.T) {
+	// 1. Tickers as maps
+	raw1 := map[string]any{
+		"tickers": []any{
+			map[string]any{"symbol": "aapl"},
+			map[string]any{"symbol": ""}, // should be ignored
+			"goog",                       // string format
+		},
+	}
+	s1 := parseSettings(raw1)
+	if len(s1.Tickers) != 2 || s1.Tickers[0] != "AAPL" || s1.Tickers[1] != "GOOG" {
+		t.Errorf("parseSettings raw1 failed: %+v", s1.Tickers)
+	}
+}
+
+func TestMarketsWidget_FetchData_ErrorsAndCache(t *testing.T) {
+	// 1. Cache hit
+	w := &MarketsWidget{
+		client:   &http.Client{},
+		cache:    make(map[string]marketCacheEntry),
+		cacheTTL: 5 * time.Minute,
+	}
+	cachedData := []MarketItemResult{{Symbol: "AAPL", Price: 150.0}}
+	w.cache["AAPL"] = marketCacheEntry{
+		data:      cachedData,
+		fetchedAt: time.Now(),
+	}
+	settings := map[string]any{
+		"tickers": []any{"AAPL"},
+	}
+	res, err := w.FetchData(context.Background(), settings)
+	if err != nil {
+		t.Fatalf("FetchData cache hit error: %v", err)
+	}
+	results := res.([]MarketItemResult)
+	if len(results) != 1 || results[0].Symbol != "AAPL" || results[0].Price != 150.0 {
+		t.Errorf("expected cached AAPL data, got: %+v", results)
+	}
+
+	// 2. Empty tickers returns empty result
+	w = &MarketsWidget{
+		client: &http.Client{},
+	}
+	resEmpty, err := w.FetchData(context.Background(), map[string]any{})
+	if err != nil {
+		t.Fatalf("unexpected error for empty tickers: %v", err)
+	}
+	resultsEmpty := resEmpty.([]MarketItemResult)
+	if len(resultsEmpty) != 0 {
+		t.Errorf("expected 0 results, got %d", len(resultsEmpty))
+	}
+
+	// 3. Yahoo Finance HTTP non-200 response
+	w = &MarketsWidget{
+		client: &http.Client{
+			Transport: mockRoundTripper(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader("")),
+				}, nil
+			}),
+		},
+		cache:    make(map[string]marketCacheEntry),
+		cacheTTL: 5 * time.Minute,
+	}
+	_, err = w.FetchData(context.Background(), settings)
+	if err == nil {
+		t.Error("expected error when all tickers fail to fetch")
+	}
+
+	// 4. Yahoo Finance JSON decode error
+	w = &MarketsWidget{
+		client: &http.Client{
+			Transport: mockRoundTripper(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader("not-json")),
+				}, nil
+			}),
+		},
+		cache:    make(map[string]marketCacheEntry),
+		cacheTTL: 5 * time.Minute,
+	}
+	_, err = w.FetchData(context.Background(), settings)
+	if err == nil {
+		t.Error("expected error when json decoding fails")
+	}
+
+	// 5. Yahoo Finance API error response
+	apiErrJSON := `{
+		"chart": {
+			"result": null,
+			"error": {
+				"code": "404",
+				"description": "Symbol not found"
+			}
+		}
+	}`
+	w = &MarketsWidget{
+		client: &http.Client{
+			Transport: mockRoundTripper(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(apiErrJSON)),
+				}, nil
+			}),
+		},
+		cache:    make(map[string]marketCacheEntry),
+		cacheTTL: 5 * time.Minute,
+	}
+	_, err = w.FetchData(context.Background(), settings)
+	if err == nil {
+		t.Error("expected error when Yahoo Finance returns chart error")
+	}
+
+	// 6. Yahoo Finance empty results
+	emptyResultJSON := `{
+		"chart": {
+			"result": [],
+			"error": null
+		}
+	}`
+	w = &MarketsWidget{
+		client: &http.Client{
+			Transport: mockRoundTripper(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(emptyResultJSON)),
+				}, nil
+			}),
+		},
+		cache:    make(map[string]marketCacheEntry),
+		cacheTTL: 5 * time.Minute,
+	}
+	_, err = w.FetchData(context.Background(), settings)
+	if err == nil {
+		t.Error("expected error when Yahoo Finance returns empty result list")
+	}
+}
+
+func TestMarketsWidget_InvokeAction_EdgeCases(t *testing.T) {
+	// 1. Unknown action
+	w := &MarketsWidget{}
+	w.client = &http.Client{}
+	w.cache = make(map[string]marketCacheEntry)
+	w.cacheTTL = 5 * time.Minute
+
+	_, err := w.InvokeAction(context.Background(), widgetskills.Snapshot{}, "inst1", "unknown_action", nil)
+	if err == nil {
+		t.Error("expected error for unknown action")
+	}
+
+	// 2. refresh action success
+	sampleJSON := `{
+		"chart": {
+			"result": [
+				{
+					"meta": {
+						"symbol": "AAPL",
+						"regularMarketPrice": 150.0
+					}
+				}
+			]
+		}
+	}`
+	w = &MarketsWidget{
+		client: &http.Client{
+			Transport: mockRoundTripper(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(sampleJSON)),
+				}, nil
+			}),
+		},
+		cache:    make(map[string]marketCacheEntry),
+		cacheTTL: 5 * time.Minute,
+	}
+
+	snapshot := widgetskills.Snapshot{
+		Layout: widgetskills.WidgetLayout{
+			Widgets: []widgetskills.WidgetInstance{
+				{
+					ID:   "inst1",
+					Kind: "markets",
+					Settings: map[string]any{
+						"tickers": []any{"AAPL"},
+					},
+				},
+			},
+		},
+	}
+	resRefresh, err := w.InvokeAction(context.Background(), snapshot, "inst1", "refresh", nil)
+	if err != nil {
+		t.Fatalf("refresh action error: %v", err)
+	}
+	if resRefresh["status"] != "completed" {
+		t.Errorf("expected refresh status completed, got %q", resRefresh["status"])
+	}
+
+	// 3. refresh action error (when FetchData fails)
+	w = &MarketsWidget{
+		client: &http.Client{
+			Transport: mockRoundTripper(func(req *http.Request) (*http.Response, error) {
+				return nil, io.EOF
+			}),
+		},
+		cache:    make(map[string]marketCacheEntry),
+		cacheTTL: 5 * time.Minute,
+	}
+	_, err = w.InvokeAction(context.Background(), snapshot, "inst1", "refresh", nil)
+	if err == nil {
+		t.Error("expected error during refresh when FetchData fails")
+	}
+
+	// 4. query_ticker fetch error
+	w = &MarketsWidget{
+		client: &http.Client{
+			Transport: mockRoundTripper(func(req *http.Request) (*http.Response, error) {
+				return nil, io.EOF
+			}),
+		},
+		cache:    make(map[string]marketCacheEntry),
+		cacheTTL: 5 * time.Minute,
+	}
+	_, err = w.InvokeAction(context.Background(), widgetskills.Snapshot{}, "inst1", "query_ticker", map[string]any{
+		"symbol": "AAPL",
+	})
+	if err == nil {
+		t.Error("expected query_ticker to fail when fetch fails")
+	}
+
+	// CatalogInfo and Skill verification
+	info := w.CatalogInfo()
+	if info.Kind != "markets" {
+		t.Errorf("CatalogInfo kind: %q", info.Kind)
+	}
+	skill := w.Skill()
+	if skill.WidgetKind != "markets" {
+		t.Errorf("Skill WidgetKind: %q", skill.WidgetKind)
+	}
+}
