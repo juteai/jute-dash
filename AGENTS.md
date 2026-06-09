@@ -124,14 +124,13 @@ Setup dev environment (npm, pre-commit, and optional system dependencies):
 make setup
 ```
 
-Run self-contained local A2A dev stacks from the harness directories:
+Run self-contained local A2A dev stacks from the config directory:
 
 ```sh
-cd examples/harnesses/mock-a2a
-make run
+cd examples/config/local
+make run-mock
 
-cd ../kronk-a2a
-make run
+make run-kronk
 ```
 
 Run Svelte checks after dependencies are installed:

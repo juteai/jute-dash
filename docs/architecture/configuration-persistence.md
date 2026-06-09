@@ -92,7 +92,7 @@ $JUTE_HOME/jute.db
 
 Default bootstrap config:
 
-- development: `examples/harnesses/mock-a2a/config.yaml` or `examples/harnesses/kronk-a2a/config.yaml`;
+- development: `examples/config/local/config.yaml`;
 - Docker: `/config/config.yaml`;
 - systemd: `/etc/jute/config.yaml`;
 - ordinary local install: optional.
@@ -337,7 +337,7 @@ Recovery flow:
 
 ## Development Defaults
 
-Development keeps using the runnable harness configs under `examples/harnesses/`.
+Development keeps using the runnable configs under `examples/config/local/`.
 
 Production defaults should be quieter:
 

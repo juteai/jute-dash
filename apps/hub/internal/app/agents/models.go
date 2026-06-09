@@ -200,6 +200,19 @@ func DefaultMCPReadScopes() []string {
 	}
 }
 
+func AllMCPScopes() []string {
+	return []string{
+		MCPScopeDashboardRead,
+		MCPScopeWidgetsRead,
+		MCPScopeSkillsRead,
+		MCPScopeSkillsContextRead,
+		MCPScopeSkillsPromptRead,
+		MCPScopeSkillsActionInvoke,
+		MCPScopeDisplayWrite,
+		MCPScopeDisplayFocusWidget,
+	}
+}
+
 func IsKnownMCPScope(scope string) bool {
 	switch strings.TrimSpace(scope) {
 	case MCPScopeDashboardRead,

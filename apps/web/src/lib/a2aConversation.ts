@@ -21,9 +21,9 @@ import {
   isReasoningArtifact,
   isStructuredArtifact,
   looksLikeToolInvocation,
+  looksLikeReasoningParagraph,
   sanitizeDisplayText,
-  textFromParts,
-  textFromReasoningParts
+  textFromParts
 } from '$lib/displaySanitizer';
 import {
   statusFromTask,
@@ -266,6 +266,7 @@ export async function* executeConversationTurn(
     if (agent.streaming) {
       const emittedLengths = new Map<string, number>();
       const accumulatedRawTexts = new Map<string, string>();
+      const toolCallCounts = new Map<string, number>();
 
       for await (const event of client.sendMessageStream(
         {
@@ -327,57 +328,46 @@ export async function* executeConversationTurn(
             const artifactID = artifact.artifactId || 'streamed-artifact';
             const parts = artifact.parts ?? [];
 
-            // 1. Process reasoning parts together
-            const reasoningParts = parts.filter((part) => {
-              if (part.metadata?.adk_thought === true) return true;
-              if (isReasoningArt) {
-                const pt = getPartText(part);
-                const isToolText =
-                  looksLikeToolInvocation(pt) ||
-                  pt.includes('<tool_call>') ||
-                  pt.includes('<tool_response>');
-                return !isToolText;
-              }
-              return false;
-            });
+            let count = toolCallCounts.get(artifactID) || 0;
+            let currentThoughtText = '';
 
-            if (reasoningParts.length > 0) {
-              const combinedText = textFromReasoningParts(reasoningParts);
-              if (combinedText) {
-                const key = `${artifactID}:reasoning`;
-                const prevRaw = accumulatedRawTexts.get(key) || '';
-                const accumulatedRaw = payload.value.append
-                  ? prevRaw + combinedText
-                  : combinedText;
-                accumulatedRawTexts.set(key, accumulatedRaw);
+            const getThoughtEvent = () => {
+              if (!currentThoughtText) return null;
+              const key = `${artifactID}:${count}:reasoning`;
+              const prevRaw = accumulatedRawTexts.get(key) || '';
+              const accumulatedRaw = payload.value.append
+                ? prevRaw + currentThoughtText
+                : currentThoughtText;
+              accumulatedRawTexts.set(key, accumulatedRaw);
 
-                if (accumulatedRaw) {
-                  const prevLen = emittedLengths.get(key) || 0;
-                  if (accumulatedRaw.length > prevLen) {
-                    const delta = accumulatedRaw.slice(prevLen);
-                    yield {
-                      type: 'artifact_update',
-                      conversationId,
-                      agentId,
-                      taskId: latestTaskId,
-                      artifactId: isReasoningArt
-                        ? artifactID
-                        : `${artifactID}-thought`,
-                      name: isReasoningArt
-                        ? artifact.name
-                        : `${artifact.name || artifactID} (Thinking)`,
-                      text: delta,
-                      append: prevLen > 0 || payload.value.append,
-                      isStructured: false,
-                      isReasoning: true
-                    };
-                    emittedLengths.set(key, accumulatedRaw.length);
-                  }
+              if (accumulatedRaw && accumulatedRaw.trim() !== '') {
+                const prevLen = emittedLengths.get(key) || 0;
+                if (accumulatedRaw.length > prevLen) {
+                  const delta = accumulatedRaw.slice(prevLen);
+                  emittedLengths.set(key, accumulatedRaw.length);
+                  currentThoughtText = '';
+                  return {
+                    type: 'artifact_update' as const,
+                    conversationId,
+                    agentId,
+                    taskId: latestTaskId,
+                    artifactId: isReasoningArt
+                      ? `${artifactID}${count > 0 ? `-${count}` : ''}`
+                      : `${artifactID}-thought${count > 0 ? `-${count}` : ''}`,
+                    name: isReasoningArt
+                      ? `${artifact.name || 'Thinking'} (Step ${count + 1})`
+                      : `${artifact.name || artifactID} (Thinking)`,
+                    text: delta,
+                    append: prevLen > 0 || payload.value.append,
+                    isStructured: false,
+                    isReasoning: true
+                  };
                 }
               }
-            }
+              currentThoughtText = '';
+              return null;
+            };
 
-            // 2. Process non-reasoning parts in loop
             for (const [pIdx, part] of parts.entries()) {
               const data = getPartData(part) as PartWithData['data'];
               const isFunctionCall =
@@ -386,6 +376,30 @@ export async function* executeConversationTurn(
               const isFunctionResponse =
                 part.metadata?.adk_type === 'function_response' ||
                 (data && data.response);
+
+              const partText = getPartText(part);
+              const isToolText =
+                looksLikeToolInvocation(partText) ||
+                partText.includes('<tool_call>') ||
+                partText.includes('<tool_response>');
+              const isPartReasoning =
+                part.metadata?.adk_thought === true ||
+                (isReasoningArt &&
+                  !isToolText &&
+                  !isFunctionCall &&
+                  !isFunctionResponse &&
+                  (partText.trim() === '' ||
+                    looksLikeReasoningParagraph(partText)));
+
+              if (isPartReasoning) {
+                currentThoughtText += partText;
+                continue;
+              }
+
+              const thoughtEvent = getThoughtEvent();
+              if (thoughtEvent) {
+                yield thoughtEvent;
+              }
 
               if (isFunctionCall) {
                 const toolName = data?.name || 'agent tool';
@@ -402,6 +416,8 @@ export async function* executeConversationTurn(
                     args: (data as any)?.args
                   };
                   emittedLengths.set(key, 1);
+                  count++;
+                  toolCallCounts.set(artifactID, count);
                 }
                 continue;
               }
@@ -422,18 +438,6 @@ export async function* executeConversationTurn(
                   };
                   emittedLengths.set(key, 1);
                 }
-                continue;
-              }
-
-              const partText = getPartText(part);
-              const isToolText =
-                looksLikeToolInvocation(partText) ||
-                partText.includes('<tool_call>') ||
-                partText.includes('<tool_response>');
-              const isPartReasoning =
-                part.metadata?.adk_thought === true ||
-                (isReasoningArt && !isToolText);
-              if (isPartReasoning) {
                 continue;
               }
 
@@ -463,6 +467,8 @@ export async function* executeConversationTurn(
                     args
                   };
                   emittedLengths.set(key, partText.length);
+                  count++;
+                  toolCallCounts.set(artifactID, count);
                 }
               } else {
                 const key = `${artifactID}:${pIdx}:content`;
@@ -494,6 +500,11 @@ export async function* executeConversationTurn(
                   }
                 }
               }
+            }
+
+            const finalThoughtEvent = getThoughtEvent();
+            if (finalThoughtEvent) {
+              yield finalThoughtEvent;
             }
           }
         } else if (payload?.$case === 'task') {

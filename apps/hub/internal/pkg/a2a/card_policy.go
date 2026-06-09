@@ -10,8 +10,14 @@ import (
 var ErrAgentCardURLNotAllowed = errors.New("agent card url is not allowed")
 
 var defaultLoopbackAgentCardURLs = []string{
+	"http://127.0.0.1:9696/.well-known/agent-card.json",
+	"http://localhost:9696/.well-known/agent-card.json",
 	"http://127.0.0.1:9797/.well-known/agent-card.json",
 	"http://localhost:9797/.well-known/agent-card.json",
+	"http://127.0.0.1:9898/.well-known/agent-card.json",
+	"http://localhost:9898/.well-known/agent-card.json",
+	"http://127.0.0.1:9999/.well-known/agent-card.json",
+	"http://localhost:9999/.well-known/agent-card.json",
 }
 
 type AgentCardURLPolicy struct {

@@ -87,6 +87,20 @@ func (f *AgentCardFetcher) Fetch(
 
 func SelectInterface(card AgentCard) (SelectedInterface, error) {
 	interfaces := append([]AgentInterface(nil), card.SupportedInterfaces...)
+	if len(interfaces) == 0 && card.URL != "" {
+		binding := card.PreferredTransport
+		if binding == "" {
+			binding = ProtocolJSONRPC
+		}
+		interfaces = []AgentInterface{
+			{
+				URL:             card.URL,
+				ProtocolBinding: binding,
+				ProtocolVersion: firstNonEmpty(card.ProtocolVersion, ProtocolVersion10),
+			},
+		}
+	}
+
 	if len(interfaces) == 0 {
 		return SelectedInterface{}, ErrNoSupportedInterface
 	}

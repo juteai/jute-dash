@@ -39,7 +39,7 @@ Before making product changes or contributions, read the design documents in `do
 
 ## Getting Started
 
-If you want to set up your development environment, run the tests, or spin up the full-stack example harnesses (`mock-a2a` or `kronk-a2a`), please refer to:
+If you want to set up your development environment, run the tests, or spin up the full-stack examples (like the Mock or Kronk agents), please refer to:
 
 👉 **[CONTRIBUTING.md](CONTRIBUTING.md)**
 

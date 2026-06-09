@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"regexp"
@@ -321,8 +322,10 @@ func (w *RSSWidget) InvokeAction(
 	query, _ := arguments["query"].(string)
 	if query != "" {
 		cleanedText = grepArticle(cleanedText, query)
-	} else if len(cleanedText) > 6000 {
-		cleanedText = cleanedText[:6000] + "\n\n[Truncated to first 6,000 characters. Specify a query parameter to search/grep for specific details.]"
+	} else {
+		if truncatedText, truncated := truncateString(cleanedText, 6000); truncated {
+			cleanedText = truncatedText + "\n\n[Truncated to first 6,000 characters. Specify a query parameter to search/grep for specific details.]"
+		}
 	}
 
 	return map[string]any{
@@ -334,15 +337,16 @@ func (w *RSSWidget) InvokeAction(
 }
 
 var (
-	reScript = regexp.MustCompile(`(?s)<script.*?>.*?</script>`)
-	reStyle  = regexp.MustCompile(`(?s)<style.*?>.*?</style>`)
+	reScript = regexp.MustCompile(`(?si)<script.*?>.*?</script>`)
+	reStyle  = regexp.MustCompile(`(?si)<style.*?>.*?</style>`)
 	reTags   = regexp.MustCompile(`<.*?>`)
 )
 
-func cleanHTML(html string) string {
-	text := reScript.ReplaceAllString(html, "")
+func cleanHTML(rawHTML string) string {
+	text := reScript.ReplaceAllString(rawHTML, "")
 	text = reStyle.ReplaceAllString(text, "")
 	text = reTags.ReplaceAllString(text, " ")
+	text = html.UnescapeString(text)
 
 	lines := strings.Split(text, "\n")
 	var cleanedLines []string
@@ -353,6 +357,14 @@ func cleanHTML(html string) string {
 		}
 	}
 	return strings.Join(cleanedLines, "\n\n")
+}
+
+func truncateString(s string, limit int) (string, bool) {
+	runes := []rune(s)
+	if len(runes) > limit {
+		return string(runes[:limit]), true
+	}
+	return s, false
 }
 
 func grepArticle(text string, query string) string {
@@ -374,8 +386,8 @@ func grepArticle(text string, query string) string {
 	}
 
 	result := strings.Join(matchedParagraphs, "\n\n")
-	if len(result) > 12000 {
-		return result[:12000] + "\n\n[Truncated due to grep matches limit...]"
+	if truncatedResult, truncated := truncateString(result, 12000); truncated {
+		return truncatedResult + "\n\n[Truncated due to grep matches limit...]"
 	}
 	if len(result) == 0 {
 		return "[No matches found for query: " + query + "]"

@@ -61,22 +61,22 @@ make check
 
 ---
 
-## Development Harnesses (Running Examples)
+## Running Examples (Example Agents)
 
-To run the Jute Dash stack against A2A mock or model fixtures, navigate to the harness directories:
+To run the Jute Dash stack against A2A mock or model fixtures, navigate to the unified config directory:
 
-- **Mock Agent (MCP Enabled by Default)**: Fast, deterministic chat.
+- **Mock Agent**: Fast, deterministic assistant (no models/keys needed)
   ```bash
-  cd examples/harnesses/mock-a2a
-  make run
+  cd examples/config/local
+  make run-mock
   ```
-- **Kronk Local Agent (MCP Enabled by Default)**: Backed by a local model.
+- **Kronk Agent**: Backed by a local model using `llama.cpp`
   ```bash
-  cd examples/harnesses/kronk-a2a
-  make run
+  cd examples/config/local
+  make run-kronk
   ```
 
-For more info, see the [Harnesses README](examples/harnesses/README.md).
+For more info, see the [Unified Config README](examples/config/local/README.md).
 
 ---
 
@@ -91,7 +91,8 @@ themes/                         Theme Pack definitions (design tokens only)
 widgets/                        Native dashboard widgets (Svelte components + Go providers)
 config/                         Generic example local configuration
 docs/                           Architecture notes, decisions (ADRs), and developer guidelines
-examples/harnesses/             Self-contained local dev stacks with embedded fixtures
+examples/config/local/          Unified local configuration and Makefiles to run the dev stack
+examples/agents/                Self-contained example A2A agents (mock, kronk, ollama, gemini)
 ```
 
 ---

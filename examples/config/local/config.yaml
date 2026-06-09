@@ -1,5 +1,5 @@
 home:
-    name: Jute Kronk A2A Dev
+    name: Jute Local Dev
 server:
     listen-address: 127.0.0.1:8787
 log:
@@ -49,7 +49,7 @@ voice:
     stt-model-id: ""
     tts-model-id: ""
     tts-voice-id: ""
-    preferred-agent-id: kronk-local
+    preferred-agent-id: mock-agent
     cloud-opt-in: false
     command-providers-enabled: false
     sensitive-output-policy: visual_only_sensitive
@@ -137,17 +137,73 @@ dashboard:
                 - GOOG
                 - symbol: BTC-USD
 agents:
-    - id: kronk-local
-      name: Kronk Local
+    - id: mock-agent
+      name: Mock Agent
+      description: A deterministic mock A2A 1.0 test agent.
+      card-url: http://127.0.0.1:9696/.well-known/agent-card.json
+      endpoint-url: http://127.0.0.1:9696/a2a/invoke
+      protocol-binding: JSONRPC
+      enabled: true
+      capabilities:
+        - conversation
+        - mock-a2a
+        - dashboard-context
+      mcp-scopes:
+        - dashboard:read
+        - widgets:read
+        - skills:read
+        - skills:context_read
+        - skills:prompt_read
+        - skills:action_invoke
+    - id: kronk-agent
+      name: Kronk Agent
       description: Local Kronk-backed A2A assistant.
       card-url: http://127.0.0.1:9797/.well-known/agent-card.json
-      endpoint-url: http://127.0.0.1:9797/invoke
+      endpoint-url: http://127.0.0.1:9797/a2a/invoke
       protocol-binding: JSONRPC
       enabled: true
       capabilities:
         - conversation
         - local-a2a
         - kronk
+        - dashboard-context
+      mcp-scopes:
+        - dashboard:read
+        - widgets:read
+        - skills:read
+        - skills:context_read
+        - skills:prompt_read
+        - skills:action_invoke
+    - id: gemini-agent
+      name: Gemini Agent
+      description: Cloud Gemini-backed A2A assistant.
+      card-url: http://127.0.0.1:9898/.well-known/agent-card.json
+      endpoint-url: http://127.0.0.1:9898/a2a/invoke
+      protocol-binding: JSONRPC
+      enabled: true
+      capabilities:
+        - conversation
+        - local-a2a
+        - gemini
+        - dashboard-context
+      mcp-scopes:
+        - dashboard:read
+        - widgets:read
+        - skills:read
+        - skills:context_read
+        - skills:prompt_read
+        - skills:action_invoke
+    - id: ollama-agent
+      name: Ollama Agent
+      description: Local Ollama-backed A2A assistant.
+      card-url: http://127.0.0.1:9999/.well-known/agent-card.json
+      endpoint-url: http://127.0.0.1:9999/a2a/invoke
+      protocol-binding: JSONRPC
+      enabled: true
+      capabilities:
+        - conversation
+        - local-a2a
+        - ollama
         - dashboard-context
       mcp-scopes:
         - dashboard:read

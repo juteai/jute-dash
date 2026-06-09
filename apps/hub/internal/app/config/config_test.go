@@ -595,20 +595,20 @@ func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 	}
 }
 
-func TestDevMockA2AConfigLoads(t *testing.T) {
+func TestDevConfigLoads(t *testing.T) {
 	cfg, err := LoadConfig(
-		filepath.Join("..", "..", "..", "..", "..", "examples", "harnesses", "mock-a2a", "config.yaml"),
+		filepath.Join("..", "..", "..", "..", "..", "examples", "config", "local", "config.yaml"),
 	)
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
-	assertSingleDevAgent(t, cfg, "mock-a2a-agent")
+	assertDevAgents(t, cfg)
 	assertDevHarnessWidgets(t, cfg)
 }
 
-func TestDevMockA2AMCPConfigLoads(t *testing.T) {
+func TestDevMCPConfigLoads(t *testing.T) {
 	cfg, err := LoadConfig(
-		filepath.Join("..", "..", "..", "..", "..", "examples", "harnesses", "mock-a2a", "config.yaml"),
+		filepath.Join("..", "..", "..", "..", "..", "examples", "config", "local", "config.yaml"),
 	)
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
@@ -616,44 +616,33 @@ func TestDevMockA2AMCPConfigLoads(t *testing.T) {
 	if !cfg.MCP.Enabled || cfg.MCP.Auth.Mode != "none" || cfg.MCP.ListenAddress != "127.0.0.1:8790" {
 		t.Fatalf("unexpected dev MCP config: %+v", cfg.MCP)
 	}
-	assertSingleDevAgent(t, cfg, "mock-a2a-agent")
+	assertDevAgents(t, cfg)
 }
 
-func TestDevKronkA2AConfigLoads(t *testing.T) {
-	cfg, err := LoadConfig(
-		filepath.Join("..", "..", "..", "..", "..", "examples", "harnesses", "kronk-a2a", "config.yaml"),
-	)
-	if err != nil {
-		t.Fatalf("LoadConfig() error = %v", err)
-	}
-	assertSingleDevAgent(t, cfg, "kronk-local")
-	assertDevHarnessWidgets(t, cfg)
-}
-
-func TestDevKronkA2AMCPConfigLoads(t *testing.T) {
-	cfg, err := LoadConfig(
-		filepath.Join("..", "..", "..", "..", "..", "examples", "harnesses", "kronk-a2a", "config.yaml"),
-	)
-	if err != nil {
-		t.Fatalf("LoadConfig() error = %v", err)
-	}
-	if !cfg.MCP.Enabled || cfg.MCP.Auth.Mode != "none" || cfg.MCP.ListenAddress != "127.0.0.1:8790" {
-		t.Fatalf("unexpected dev MCP config: %+v", cfg.MCP)
-	}
-	assertSingleDevAgent(t, cfg, "kronk-local")
-}
-
-func assertSingleDevAgent(t *testing.T, cfg Config, wantID string) {
+func assertDevAgents(t *testing.T, cfg Config) {
 	t.Helper()
-	if len(cfg.Agents) != 1 {
-		t.Fatalf("expected one dev A2A agent, got %d", len(cfg.Agents))
+	if len(cfg.Agents) != 4 {
+		t.Fatalf("expected 4 dev A2A agents, got %d", len(cfg.Agents))
 	}
-	agent := cfg.Agents[0]
-	if agent.ID != wantID || !agent.Enabled || agent.ProtocolBinding != "JSONRPC" {
-		t.Fatalf("unexpected dev A2A agent: %+v", agent)
+	expected := map[string]struct {
+		cardURL string
+	}{
+		"mock-agent":   {cardURL: "http://127.0.0.1:9696/.well-known/agent-card.json"},
+		"kronk-agent":  {cardURL: "http://127.0.0.1:9797/.well-known/agent-card.json"},
+		"ollama-agent": {cardURL: "http://127.0.0.1:9999/.well-known/agent-card.json"},
+		"gemini-agent": {cardURL: "http://127.0.0.1:9898/.well-known/agent-card.json"},
 	}
-	if agent.CardURL != "http://127.0.0.1:9797/.well-known/agent-card.json" {
-		t.Fatalf("unexpected card URL: %s", agent.CardURL)
+	for _, agent := range cfg.Agents {
+		exp, ok := expected[agent.ID]
+		if !ok {
+			t.Fatalf("unexpected agent ID: %s", agent.ID)
+		}
+		if !agent.Enabled || agent.ProtocolBinding != "JSONRPC" {
+			t.Fatalf("unexpected state for agent %s: %+v", agent.ID, agent)
+		}
+		if agent.CardURL != exp.cardURL {
+			t.Fatalf("unexpected card URL for agent %s: got %s, want %s", agent.ID, agent.CardURL, exp.cardURL)
+		}
 	}
 }
 
@@ -664,7 +653,7 @@ func assertDevHarnessWidgets(t *testing.T, cfg Config) {
 		x, y, w, h     int
 	}
 	var want []widgetExpectation
-	if cfg.Home.Name == "Jute Kronk A2A Dev" {
+	if cfg.Home.Name == "Jute Local Dev" || cfg.Home.Name == "Jute Kronk A2A Dev" {
 		want = []widgetExpectation{
 			{id: "date-time-widget", kind: "date-time", size: "small", x: 0, y: 0, w: 4, h: 2},
 			{id: "weather-widget", kind: "weather", size: "small", x: 8, y: 0, w: 4, h: 2},

@@ -55,7 +55,7 @@ Raspberry Pi support targets 64-bit Raspberry Pi OS first.
 Run hub and display separately for fast iteration:
 
 ```sh
-go run ./cmd/juted -config examples/harnesses/mock-a2a/config.yaml
+go run ./cmd/juted -config examples/config/local/config.yaml
 cd apps/web && npm run dev
 ```
 

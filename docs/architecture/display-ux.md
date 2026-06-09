@@ -117,7 +117,7 @@ Initial sections:
 - `Appearance`: theme, color mode, density, and background — including background image upload, the local image library, single-image vs slideshow selection, slideshow interval, and fit/overlay;
 - `About`: home name, active layout profile, version, setup, config mode, and enabled-agent summary.
 
-Settings writes go through the hub. Store-backed runs persist to SQLite. YAML-backed local harnesses persist the same records to the active YAML config for easy developer iteration. Browser storage is not durable settings storage.
+Settings writes go through the hub. Store-backed runs persist to SQLite. YAML-backed local development runs persist the same records to the active YAML config for easy developer iteration. Browser storage is not durable settings storage.
 
 Responsive behavior:
 

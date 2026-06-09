@@ -1011,6 +1011,106 @@ describe('api conversation streaming', () => {
     expect(resultEvent?.text).toBe('Here is the answer');
   });
 
+  it('filters out empty/whitespace-only streamed reasoning artifact updates', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, options) => {
+        const body = JSON.parse(options?.body as string);
+        const accept = (
+          options?.headers as Record<string, string> | undefined
+        )?.['Accept'];
+        if (accept === 'text/event-stream') {
+          const events = [
+            {
+              artifactUpdate: {
+                taskId: 'task-1',
+                contextId: 'ctx-1',
+                artifact: {
+                  artifactId: 'reasoning',
+                  name: 'Thinking',
+                  parts: [{ text: '\n   \n' }]
+                },
+                append: true,
+                lastChunk: false
+              }
+            },
+            {
+              artifactUpdate: {
+                taskId: 'task-1',
+                contextId: 'ctx-1',
+                artifact: {
+                  artifactId: 'actual-result',
+                  name: 'Result',
+                  parts: [{ text: 'Here is the answer' }]
+                },
+                append: true,
+                lastChunk: false
+              }
+            }
+          ];
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const encoder = new TextEncoder();
+              for (const result of events) {
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: body.id,
+                      result
+                    })}\n\n`
+                  )
+                );
+              }
+              controller.close();
+            }
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' }
+          });
+        }
+        if (body.method === 'ListTasks') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { tasks: [task('task-1', 'ctx-1')] }
+          });
+        }
+        if (body.method === 'GetTask') {
+          return jsonResponse({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: task('task-1', 'ctx-1')
+          });
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
+    const events: Array<{
+      type: string;
+      artifactId?: string;
+      text?: string;
+      isReasoning?: boolean;
+    }> = [];
+
+    await sendConversationTurnStream(
+      fetcher,
+      'ctx-1',
+      'house',
+      'Find it',
+      (event) => events.push(event)
+    );
+
+    // The 'reasoning' artifact update should NOT be emitted because it's only whitespace
+    const reasoningEvent = events.find((e) => e.artifactId === 'reasoning');
+    expect(reasoningEvent).toBeUndefined();
+
+    // The 'actual-result' artifact update SHOULD be emitted
+    const resultEvent = events.find((e) => e.artifactId === 'actual-result');
+    expect(resultEvent).toBeDefined();
+    expect(resultEvent?.text).toBe('Here is the answer');
+  });
+
   it('splits streamed artifact updates that contain parts with adk_thought true into reasoning and non-reasoning events', async () => {
     const fetcher = vi
       .fn<typeof fetch>()

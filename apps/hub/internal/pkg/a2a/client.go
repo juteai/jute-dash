@@ -1,28 +1,18 @@
 package a2a
 
 import (
-	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
+	"os"
 	"strings"
 	"time"
-)
 
-const (
-	jsonRPCVersion             = "2.0"
-	methodSendMessage          = "message/send"
-	methodSendStreamingMessage = "message/stream"
-	methodGetTask              = "tasks/get"
-	methodListTasks            = "ListTasks"
-	methodNotFoundCode         = -32601
+	"github.com/a2aproject/a2a-go/v2/a2a"
+	"github.com/a2aproject/a2a-go/v2/a2aclient"
+	"github.com/a2aproject/a2a-go/v2/a2acompat/a2av0"
 )
 
 var (
@@ -76,7 +66,6 @@ type TaskHistoryClient interface {
 	GetTask(ctx context.Context, req GetTaskRequest) (TaskRecord, error)
 }
 
-// Client consolidates all A2A client operations under a single port.
 type Client interface {
 	MessageSender
 	StreamingMessageSender
@@ -89,24 +78,23 @@ type JSONRPCClient struct {
 }
 
 func NewJSONRPCClient() *JSONRPCClient {
+	timeout := 10 * time.Minute
+	if val := os.Getenv("JUTE_A2A_TIMEOUT"); val != "" {
+		if d, err := time.ParseDuration(val); err == nil {
+			timeout = d
+		}
+	}
 	return &JSONRPCClient{
-		HTTPClient: &http.Client{Timeout: 45 * time.Second},
-		Logger:     slog.Default(), // fallback default global logger
+		HTTPClient: &http.Client{Timeout: timeout},
+		Logger:     slog.Default(),
 	}
 }
 
-func (c *JSONRPCClient) SendMessage(ctx context.Context, req SendMessageRequest) (SendMessageResult, error) {
-	if req.ProtocolBinding != "" && req.ProtocolBinding != ProtocolJSONRPC {
-		return SendMessageResult{}, ErrUnsupportedProtocol
+func (c *JSONRPCClient) timeout() time.Duration {
+	if c.HTTPClient != nil && c.HTTPClient.Timeout > 0 {
+		return c.HTTPClient.Timeout
 	}
-	if strings.TrimSpace(req.EndpointURL) == "" {
-		return SendMessageResult{}, errors.New("a2a endpoint url is required")
-	}
-	if strings.TrimSpace(req.Text) == "" {
-		return SendMessageResult{}, errors.New("a2a message text is required")
-	}
-
-	return c.send(ctx, req)
+	return 10 * time.Minute
 }
 
 type RPCError struct {
@@ -114,313 +102,187 @@ type RPCError struct {
 }
 
 func (e *RPCError) Error() string {
-	if e.Code == methodNotFoundCode {
+	if e.Code == -32601 {
 		return "agent does not support the requested a2a method"
 	}
 	return ErrAgentRPCFailure.Error()
 }
 
-func (c *JSONRPCClient) send(ctx context.Context, req SendMessageRequest) (SendMessageResult, error) {
-	payload := newSendRequest(req, methodSendMessage)
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return SendMessageResult{}, fmt.Errorf("encode a2a request: %w", err)
+func (c *JSONRPCClient) getClient(
+	ctx context.Context,
+	endpointURL, protocolBinding, protocolVersion string,
+	timeout time.Duration,
+) (*a2aclient.Client, error) {
+	if protocolBinding != "" && protocolBinding != ProtocolJSONRPC {
+		return nil, ErrUnsupportedProtocol
+	}
+	if strings.TrimSpace(endpointURL) == "" {
+		return nil, errors.New("a2a endpoint url is required")
 	}
 
-	httpReq, err := newHTTPRequest(ctx, req, body)
-	if err != nil {
-		return SendMessageResult{}, err
+	binding := protocolBinding
+	if binding == "" {
+		binding = ProtocolJSONRPC
+	}
+	version := protocolVersion
+	if version == "" {
+		version = ProtocolVersion10
 	}
 
 	httpClient := c.HTTPClient
 	if httpClient == nil {
-		httpClient = NewJSONRPCClient().HTTPClient
+		httpClient = &http.Client{Timeout: timeout}
+	} else {
+		cloned := *httpClient
+		cloned.Timeout = timeout
+		httpClient = &cloned
 	}
 
-	logger := c.Logger
-	if logger == nil {
-		logger = slog.Default() // fallback default logger
+	iface := &a2a.AgentInterface{
+		URL:             endpointURL,
+		ProtocolBinding: a2a.TransportProtocol(binding),
+		ProtocolVersion: a2a.ProtocolVersion(version),
 	}
 
-	start := time.Now()
-	resp, err := httpClient.Do(httpReq)
-	duration := time.Since(start)
-
-	attrs := []any{
-		slog.String("url", req.EndpointURL),
-		slog.String("method", methodSendMessage),
-		slog.String("conversation_id", req.ConversationID),
-		slog.Float64("duration_ms", float64(duration.Microseconds())/1000.0),
+	opts := []a2aclient.FactoryOption{
+		a2aclient.WithJSONRPCTransport(httpClient),
+		a2av0.WithJSONRPCTransport(a2av0.JSONRPCTransportConfig{Client: httpClient}),
 	}
 
+	client, err := a2aclient.NewFromEndpoints(ctx, []*a2a.AgentInterface{iface}, opts...)
 	if err != nil {
-		attrs = append(attrs, slog.Any("error", err))
-		logger.ErrorContext(ctx, "a2a client request failed", attrs...)
-		return SendMessageResult{}, fmt.Errorf("%w", ErrAgentTransport)
+		return nil, fmt.Errorf("failed to create a2a client: %w", err)
 	}
-	defer resp.Body.Close()
-
-	attrs = append(attrs, slog.Int("status", resp.StatusCode))
-
-	responseBytes, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if err != nil {
-		attrs = append(attrs, slog.Any("error", err))
-		logger.ErrorContext(ctx, "a2a client read response failed", attrs...)
-		return SendMessageResult{}, fmt.Errorf("read a2a response: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		logger.ErrorContext(ctx, "a2a client returned non-2xx status", attrs...)
-		return SendMessageResult{}, fmt.Errorf("%w: status %d", ErrAgentTransport, resp.StatusCode)
-	}
-
-	var rpcResp jsonRPCResponse
-	if err := json.Unmarshal(responseBytes, &rpcResp); err != nil {
-		attrs = append(attrs, slog.Any("error", err))
-		logger.ErrorContext(ctx, "a2a client decode JSON-RPC failed", attrs...)
-		return SendMessageResult{}, fmt.Errorf("decode a2a response: %w", err)
-	}
-	if rpcResp.Error != nil {
-		logger.ErrorContext(
-			ctx,
-			"a2a client returned JSON-RPC error",
-			append(attrs, slog.Int("code", rpcResp.Error.Code))...,
-		)
-		return SendMessageResult{}, &RPCError{Code: rpcResp.Error.Code}
-	}
-	if len(rpcResp.Result) == 0 {
-		logger.ErrorContext(ctx, "a2a client returned empty result", attrs...)
-		return SendMessageResult{}, errors.New("a2a response did not include a result")
-	}
-
-	logger.InfoContext(ctx, "a2a client request succeeded", attrs...)
-	return extractResult(rpcResp.Result)
+	return client, nil
 }
 
-func newSendRequest(req SendMessageRequest, method string) jsonRPCRequest {
-	return jsonRPCRequest{
-		JSONRPC: jsonRPCVersion,
-		ID:      newID(),
-		Method:  method,
-		Params: sendParams{
-			Message: message{
-				MessageID: newID(),
-				ContextID: strings.TrimSpace(req.ConversationID),
-				TaskID:    strings.TrimSpace(req.TaskID),
-				Role:      "ROLE_USER",
-				Parts: []part{
-					{Kind: "text", Text: req.Text},
-				},
-				Metadata: cleanMetadata(req.Metadata),
-			},
-			Configuration: sendConfiguration{
-				ReturnImmediately:   boolPtr(false),
-				AcceptedOutputModes: []string{"text/plain"},
-			},
+func (c *JSONRPCClient) SendMessage(
+	ctx context.Context,
+	req SendMessageRequest,
+) (SendMessageResult, error) {
+	if strings.TrimSpace(req.Text) == "" {
+		return SendMessageResult{}, errors.New("a2a message text is required")
+	}
+
+	client, err := c.getClient(
+		ctx,
+		req.EndpointURL,
+		req.ProtocolBinding,
+		req.ProtocolVersion,
+		c.timeout(),
+	)
+	if err != nil {
+		return SendMessageResult{}, err
+	}
+
+	sdkMsg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart(req.Text))
+	sdkMsg.ContextID = req.ConversationID
+	sdkMsg.TaskID = a2a.TaskID(req.TaskID)
+	sdkMsg.Metadata = cleanMetadata(req.Metadata)
+
+	sdkReq := &a2a.SendMessageRequest{
+		Message: sdkMsg,
+		Config: &a2a.SendMessageConfig{
+			ReturnImmediately:   false,
+			AcceptedOutputModes: []string{"text/plain"},
 		},
 	}
-}
 
-func newHTTPRequest(ctx context.Context, req SendMessageRequest, body []byte) (*http.Request, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, req.EndpointURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("build a2a request: %w", err)
+	params := make(a2aclient.ServiceParams)
+	if req.BearerToken != "" {
+		params.Append("Authorization", "Bearer "+req.BearerToken)
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/json")
-	httpReq.Header.Set("A2a-Version", fallbackID(req.ProtocolVersion, ProtocolVersion10))
+	if req.ProtocolVersion != "" {
+		params.Append("A2A-Version", req.ProtocolVersion)
+	} else {
+		params.Append("A2A-Version", ProtocolVersion10)
+	}
 	if len(req.Extensions) > 0 {
-		httpReq.Header.Set("A2a-Extensions", strings.Join(req.Extensions, ","))
+		params.Append("A2A-Extensions", strings.Join(req.Extensions, ","))
 	}
-	if strings.TrimSpace(req.BearerToken) != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(req.BearerToken))
-	}
-	return httpReq, nil
-}
+	ctx = a2aclient.AttachServiceParams(ctx, params)
 
-type jsonRPCRequest struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      string `json:"id"`
-	Method  string `json:"method"`
-	Params  any    `json:"params,omitempty"`
-}
-
-type sendParams struct {
-	Message       message           `json:"message"`
-	Configuration sendConfiguration `json:"configuration"`
-}
-
-type sendConfiguration struct {
-	ReturnImmediately   *bool    `json:"returnImmediately,omitempty"`
-	AcceptedOutputModes []string `json:"acceptedOutputModes,omitempty"`
-}
-
-type jsonRPCResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id"`
-	Result  json.RawMessage `json:"result"`
-	Error   *jsonRPCError   `json:"error"`
-}
-
-type jsonRPCError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-type resultKind struct {
-	Kind string `json:"kind"`
-}
-
-type sendMessageResponse struct {
-	Message *message `json:"message,omitempty"`
-	Task    *task    `json:"task,omitempty"`
-}
-
-type message struct {
-	Kind      string         `json:"kind,omitempty"`
-	MessageID string         `json:"messageId,omitempty"`
-	ContextID string         `json:"contextId,omitempty"`
-	TaskID    string         `json:"taskId,omitempty"`
-	Role      string         `json:"role,omitempty"`
-	Parts     []part         `json:"parts,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
-}
-
-type task struct {
-	Kind      string     `json:"kind,omitempty"`
-	ID        string     `json:"id,omitempty"`
-	ContextID string     `json:"contextId,omitempty"`
-	Status    taskStatus `json:"status,omitempty"`
-	History   []message  `json:"history,omitempty"`
-	Artifacts []artifact `json:"artifacts,omitempty"`
-}
-
-type taskStatus struct {
-	State   string   `json:"state,omitempty"`
-	Message *message `json:"message,omitempty"`
-}
-
-type artifact struct {
-	Parts []part `json:"parts,omitempty"`
-}
-
-type part struct {
-	Kind string `json:"kind,omitempty"`
-	Text string `json:"text,omitempty"`
-}
-
-func extractResult(raw json.RawMessage) (SendMessageResult, error) {
-	var wrapped sendMessageResponse
-	if err := json.Unmarshal(raw, &wrapped); err == nil {
-		switch {
-		case wrapped.Message != nil:
-			return resultFromMessage(*wrapped.Message), nil
-		case wrapped.Task != nil:
-			return resultFromTask(*wrapped.Task), nil
-		}
+	res, err := client.SendMessage(ctx, sdkReq)
+	if err != nil {
+		return SendMessageResult{}, mapError(err)
 	}
 
-	var kind resultKind
-	if err := json.Unmarshal(raw, &kind); err != nil {
-		return SendMessageResult{}, fmt.Errorf("decode a2a result kind: %w", err)
-	}
-
-	switch kind.Kind {
-	case "message":
-		var msg message
-		if err := json.Unmarshal(raw, &msg); err != nil {
-			return SendMessageResult{}, fmt.Errorf("decode a2a message result: %w", err)
-		}
-		return resultFromMessage(msg), nil
-	case "task":
-		var task task
-		if err := json.Unmarshal(raw, &task); err != nil {
-			return SendMessageResult{}, fmt.Errorf("decode a2a task result: %w", err)
-		}
-		return resultFromTask(task), nil
+	switch v := res.(type) {
+	case *a2a.Message:
+		return resultFromSDKMessage(v), nil
+	case *a2a.Task:
+		return resultFromSDKTask(v), nil
 	default:
-		return SendMessageResult{}, fmt.Errorf("unsupported a2a result kind %q", kind.Kind)
+		return SendMessageResult{}, fmt.Errorf("unexpected send message result type %T", res)
 	}
 }
 
-func resultFromMessage(msg message) SendMessageResult {
-	text := displayTextFromMessage(msg)
+func resultFromSDKMessage(msg *a2a.Message) SendMessageResult {
+	text := displayTextFromSDKMessage(msg)
 	if text == "" {
 		text = "Agent returned an empty message."
 	}
 	return SendMessageResult{
-		ConversationID: fallbackID(msg.ContextID, msg.MessageID, "local-a2a"),
-		TaskID:         msg.TaskID,
+		ConversationID: fallbackID(msg.ContextID, msg.ID, "local-a2a"),
+		TaskID:         string(msg.TaskID),
 		Status:         "completed",
 		Text:           text,
 	}
 }
 
-func resultFromTask(t task) SendMessageResult {
-	status := normalizeTaskState(t.Status.State)
+func resultFromSDKTask(t *a2a.Task) SendMessageResult {
+	status := normalizeTaskState(string(t.Status.State))
 	if status == "" {
 		status = "unknown"
 	}
-	if text := displayTextFromOptionalMessage(t.Status.Message); text != "" {
+	if text := displayTextFromOptionalSDKMessage(t.Status.Message); text != "" {
 		return SendMessageResult{
-			ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"),
-			TaskID:         t.ID,
+			ConversationID: fallbackID(t.ContextID, string(t.ID), "local-a2a"),
+			TaskID:         string(t.ID),
 			Status:         status,
 			Text:           text,
 		}
 	}
 	for i := len(t.History) - 1; i >= 0; i-- {
-		role := strings.TrimSpace(t.History[i].Role)
+		role := strings.TrimSpace(string(t.History[i].Role))
 		if role != "agent" && role != "ROLE_AGENT" {
 			continue
 		}
-		if text := displayTextFromMessage(t.History[i]); text != "" {
+		if text := displayTextFromSDKMessage(t.History[i]); text != "" {
 			return SendMessageResult{
-				ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"),
-				TaskID:         t.ID,
+				ConversationID: fallbackID(t.ContextID, string(t.ID), "local-a2a"),
+				TaskID:         string(t.ID),
 				Status:         status,
 				Text:           text,
 			}
 		}
 	}
 	for i := len(t.History) - 1; i >= 0; i-- {
-		if text := displayTextFromMessage(t.History[i]); text != "" {
+		if text := displayTextFromSDKMessage(t.History[i]); text != "" {
 			return SendMessageResult{
-				ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"),
-				TaskID:         t.ID,
+				ConversationID: fallbackID(t.ContextID, string(t.ID), "local-a2a"),
+				TaskID:         string(t.ID),
 				Status:         status,
 				Text:           text,
 			}
 		}
 	}
 	for i := len(t.Artifacts) - 1; i >= 0; i-- {
-		if text := displayTextFromParts(t.Artifacts[i].Parts); text != "" {
+		if text := displayTextFromSDKParts(t.Artifacts[i].Parts); text != "" {
 			return SendMessageResult{
-				ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"),
-				TaskID:         t.ID,
+				ConversationID: fallbackID(t.ContextID, string(t.ID), "local-a2a"),
+				TaskID:         string(t.ID),
 				Status:         status,
 				Text:           text,
 			}
 		}
 	}
 	return SendMessageResult{
-		ConversationID: fallbackID(t.ContextID, t.ID, "local-a2a"),
-		TaskID:         t.ID,
+		ConversationID: fallbackID(t.ContextID, string(t.ID), "local-a2a"),
+		TaskID:         string(t.ID),
 		Status:         status,
 		Text:           fmt.Sprintf("Agent task is %s.", status),
 	}
-}
-
-func textFromParts(parts []part) string {
-	var chunks []string
-	for _, item := range parts {
-		if item.Kind == "text" || item.Kind == "" {
-			if text := strings.TrimSpace(item.Text); text != "" {
-				chunks = append(chunks, text)
-			}
-		}
-	}
-	return strings.Join(chunks, "\n\n")
 }
 
 func fallbackID(candidates ...string) string {
@@ -449,14 +311,16 @@ func cleanMetadata(metadata map[string]any) map[string]any {
 	return cleaned
 }
 
-func boolPtr(value bool) *bool {
-	return &value
-}
-
-func newID() string {
-	var bytes [16]byte
-	if _, err := rand.Read(bytes[:]); err == nil {
-		return hex.EncodeToString(bytes[:])
+func mapError(err error) error {
+	if err == nil {
+		return nil
 	}
-	return strconv.FormatInt(time.Now().UnixNano(), 10)
+	var a2aErr *a2a.Error
+	if errors.As(err, &a2aErr) {
+		if a2aErr.Err != nil && strings.Contains(a2aErr.Err.Error(), "method not found") {
+			return &RPCError{Code: -32601}
+		}
+		return ErrAgentRPCFailure
+	}
+	return ErrAgentTransport
 }

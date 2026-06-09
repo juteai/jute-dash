@@ -3,6 +3,8 @@ package a2a
 import (
 	"regexp"
 	"strings"
+
+	"github.com/a2aproject/a2a-go/v2/a2a"
 )
 
 var hiddenReasoningBlocks = []*regexp.Regexp{
@@ -11,21 +13,6 @@ var hiddenReasoningBlocks = []*regexp.Regexp{
 	regexp.MustCompile(`(?is)<reasoning>.*?</reasoning>`),
 	regexp.MustCompile(`(?is)<scratchpad>.*?</scratchpad>`),
 	regexp.MustCompile("(?is)```(?:thinking|reasoning|scratchpad)\\s+.*?```"),
-}
-
-func displayTextFromMessage(msg message) string {
-	return displayTextFromParts(msg.Parts)
-}
-
-func displayTextFromOptionalMessage(msg *message) string {
-	if msg == nil {
-		return ""
-	}
-	return displayTextFromMessage(*msg)
-}
-
-func displayTextFromParts(parts []part) string {
-	return sanitizeDisplayText(textFromParts(parts))
 }
 
 func sanitizeDisplayText(text string) string {
@@ -88,4 +75,31 @@ func looksLikeReasoningParagraph(paragraph string) bool {
 		}
 	}
 	return signals >= 2
+}
+
+func displayTextFromSDKMessage(msg *a2a.Message) string {
+	if msg == nil {
+		return ""
+	}
+	return displayTextFromSDKParts(msg.Parts)
+}
+
+func displayTextFromOptionalSDKMessage(msg *a2a.Message) string {
+	return displayTextFromSDKMessage(msg)
+}
+
+func displayTextFromSDKParts(parts []*a2a.Part) string {
+	return sanitizeDisplayText(textFromSDKParts(parts))
+}
+
+func textFromSDKParts(parts []*a2a.Part) string {
+	var chunks []string
+	for _, item := range parts {
+		if item.Text() != "" {
+			if text := strings.TrimSpace(item.Text()); text != "" {
+				chunks = append(chunks, text)
+			}
+		}
+	}
+	return strings.Join(chunks, "\n\n")
 }
