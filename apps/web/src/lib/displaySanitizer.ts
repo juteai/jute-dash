@@ -20,7 +20,7 @@ const hiddenReasoningBlocks = [
   /<tool_response>[\s\S]*?<\/tool_response>/gi
 ];
 
-function looksLikeReasoningParagraph(paragraph: string): boolean {
+export function looksLikeReasoningParagraph(paragraph: string): boolean {
   const lower = paragraph.trim().toLowerCase();
   if (
     lower.startsWith('okay, the user') ||

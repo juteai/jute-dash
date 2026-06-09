@@ -1,255 +1,216 @@
-# ==============================================================================
-# Jute Dash - Local Development Configuration
-# ==============================================================================
-# This configuration file bootstraps Jute Dash for local-first assistant development.
-# It registers all 4 example agents and sets up a standard dashboard layout.
-
-# Household Details
 home:
-  name: Jute Local Dev
-
-# Local HTTP Server Configuration
+    name: Jute Local Dev
 server:
-  listen-address: 127.0.0.1:8787
-
-# Logging Configuration
+    listen-address: 127.0.0.1:8787
 log:
-  level: info
-  file-path: ""
-  max-size: 10
-  max-backups: 5
-  max-age: 3
-  compress: true
-
-# Model Context Protocol (MCP) Bridge Configuration
-# Configures Jute's HTTP-based MCP server for exporting Jute context to A2A agents.
+    level: info
+    file-path: ""
+    max-size: 10
+    max-backups: 5
+    max-age: 3
+    compress: true
 mcp:
-  enabled: true
-  transport: streamable-http
-  listen-address: 127.0.0.1:8790
-  path: /mcp
-  allow-lan: false
-  auth:
-    mode: none
-    env-token: JUTE_MCP_TOKEN
-
-# Agent-to-Agent (A2A) Compatibility Policy
+    enabled: true
+    transport: streamable-http
+    listen-address: 127.0.0.1:8790
+    path: /mcp
+    allow-lan: false
+    auth:
+        mode: none
+        env-token: JUTE_MCP_TOKEN
 a2a:
-  allowed-agent-card-urls: []
-  allow-loopback: true
-
-# Display and Theme Settings
+    allowed-agent-card-urls: []
+    allow-loopback: true
 display:
-  theme: system
-  color-mode: system
-  theme-id: jute-mono
-  density: comfortable
-  motion: full
-  background:
-    kind: dynamic
-    value: weather-ambient
-    fit: cover
-    position: center
-    overlay: none
-    properties:
-      max-opacity: 0.25
-      speed: 0.4
-  widget-chrome:
-    default: auto
-  accent-color: neutral
-  idle-mode: ambient
-
-# Voice Assistant Preferences
+    theme: system
+    color-mode: system
+    theme-id: jute-mono
+    density: comfortable
+    motion: full
+    background:
+        kind: dynamic
+        value: weather-ambient
+        fit: cover
+        position: center
+        overlay: none
+        properties:
+            max-opacity: 0.25
+            speed: 0.4
+    widget-chrome:
+        default: auto
+    accent-color: neutral
+    idle-mode: ambient
 voice:
-  enabled: false
-  muted-by-default: true
-  wake-word-model-id: ""
-  stt-provider-id: ""
-  tts-provider-id: ""
-  stt-model-id: ""
-  tts-model-id: ""
-  tts-voice-id: ""
-  preferred-agent-id: mock-agent   # Default to the lightweight Mock Agent
-  cloud-opt-in: false
-  command-providers-enabled: false
-  sensitive-output-policy: visual_only_sensitive
-  followup-window-seconds: 8
-  microphone-profile: ""
-
-# A2A Assistant Agents Registry
-# Registers all 4 example agents. You can run one or more of these agents locally,
-# and they will connect to Jute Hub using their respective endpoints.
+    enabled: false
+    muted-by-default: true
+    wake-word-model-id: ""
+    stt-provider-id: ""
+    tts-provider-id: ""
+    stt-model-id: ""
+    tts-model-id: ""
+    tts-voice-id: ""
+    preferred-agent-id: mock-agent
+    cloud-opt-in: false
+    command-providers-enabled: false
+    sensitive-output-policy: visual_only_sensitive
+    followup-window-seconds: 8
+    microphone-profile: ""
+dashboard:
+    widgets:
+        - id: date-time-widget
+          type: date-time
+          title: Clock
+          x: 0
+          "y": 0
+          w: 4
+          h: 2
+          min-w: 3
+          min-h: 1
+          size: small
+          visible: true
+          mode: ui
+          settings:
+            locale: en-GB
+            timezone: Europe/London
+        - id: weather-widget
+          type: weather
+          title: Local Weather
+          x: 8
+          "y": 0
+          w: 4
+          h: 2
+          min-w: 3
+          min-h: 1
+          size: small
+          visible: true
+          mode: ui
+          settings:
+            latitude: 56.462
+            location: Dundee
+            longitude: -2.9707
+            temperature-unit: celsius
+            wind-speed-unit: kmh
+        - id: assistant-chat
+          type: chat-history
+          title: Concierge Chat
+          x: 0
+          "y": 3
+          w: 4
+          h: 3
+          min-w: 3
+          min-h: 1
+          size: large
+          visible: true
+          mode: ui
+        - id: hacker-news
+          type: rss
+          title: Tech News
+          x: 8
+          "y": 3
+          w: 4
+          h: 3
+          min-w: 3
+          min-h: 1
+          size: large
+          visible: true
+          mode: ui
+          settings:
+            feeds:
+                - name: Hacker News
+                  url: https://news.ycombinator.com/rss
+            limit: 5
+        - id: stocks-watchlist
+          type: markets
+          title: Markets
+          x: 4
+          "y": 3
+          w: 4
+          h: 3
+          min-w: 3
+          min-h: 1
+          size: large
+          visible: true
+          mode: ui
+          settings:
+            tickers:
+                - AAPL
+                - GOOG
+                - symbol: BTC-USD
 agents:
-  # 1. Mock Agent (Deterministic, pure Go/stdlib, no model needed)
-  - id: mock-agent
-    name: Mock Agent
-    description: A deterministic mock A2A 1.0 test agent.
-    card-url: http://127.0.0.1:9696/.well-known/agent-card.json
-    endpoint-url: http://127.0.0.1:9696/a2a/invoke
-    protocol-binding: JSONRPC
-    enabled: true
-    capabilities:
-      - conversation
-      - mock-a2a
-      - dashboard-context
-    mcp-scopes:
-      - dashboard:read
-      - widgets:read
-      - skills:read
-      - skills:context_read
-      - skills:prompt_read
-      - skills:action_invoke
-
-  # 2. Kronk Agent (Local LLM using llama.cpp)
-  - id: kronk-agent
-    name: Kronk Agent
-    description: Local Kronk-backed A2A assistant.
-    card-url: http://127.0.0.1:9797/.well-known/agent-card.json
-    endpoint-url: http://127.0.0.1:9797/a2a/invoke
-    protocol-binding: JSONRPC
-    enabled: true
-    capabilities:
-      - conversation
-      - local-a2a
-      - kronk
-      - dashboard-context
-    mcp-scopes:
-      - dashboard:read
-      - widgets:read
-      - skills:read
-      - skills:context_read
-      - skills:prompt_read
-      - skills:action_invoke
-
-  # 3. Gemini Agent (Cloud LLM using Google Gemini API)
-  - id: gemini-agent
-    name: Gemini Agent
-    description: Cloud Gemini-backed A2A assistant.
-    card-url: http://127.0.0.1:9898/.well-known/agent-card.json
-    endpoint-url: http://127.0.0.1:9898/a2a/invoke
-    protocol-binding: JSONRPC
-    enabled: true
-    capabilities:
-      - conversation
-      - local-a2a
-      - gemini
-      - dashboard-context
-    mcp-scopes:
-      - dashboard:read
-      - widgets:read
-      - skills:read
-      - skills:context_read
-      - skills:prompt_read
-      - skills:action_invoke
-
-  # 4. Ollama Agent (Local LLM using Ollama API)
-  - id: ollama-agent
-    name: Ollama Agent
-    description: Local Ollama-backed A2A assistant.
-    card-url: http://127.0.0.1:9999/.well-known/agent-card.json
-    endpoint-url: http://127.0.0.1:9999/a2a/invoke
-    protocol-binding: JSONRPC
-    enabled: true
-    capabilities:
-      - conversation
-      - local-a2a
-      - ollama
-      - dashboard-context
-    mcp-scopes:
-      - dashboard:read
-      - widgets:read
-      - skills:read
-      - skills:context_read
-      - skills:prompt_read
-      - skills:action_invoke
-
+    - id: mock-agent
+      name: Mock Agent
+      description: A deterministic mock A2A 1.0 test agent.
+      card-url: http://127.0.0.1:9696/.well-known/agent-card.json
+      endpoint-url: http://127.0.0.1:9696/a2a/invoke
+      protocol-binding: JSONRPC
+      enabled: true
+      capabilities:
+        - conversation
+        - mock-a2a
+        - dashboard-context
+      mcp-scopes:
+        - dashboard:read
+        - widgets:read
+        - skills:read
+        - skills:context_read
+        - skills:prompt_read
+        - skills:action_invoke
+    - id: kronk-agent
+      name: Kronk Agent
+      description: Local Kronk-backed A2A assistant.
+      card-url: http://127.0.0.1:9797/.well-known/agent-card.json
+      endpoint-url: http://127.0.0.1:9797/a2a/invoke
+      protocol-binding: JSONRPC
+      enabled: true
+      capabilities:
+        - conversation
+        - local-a2a
+        - kronk
+        - dashboard-context
+      mcp-scopes:
+        - dashboard:read
+        - widgets:read
+        - skills:read
+        - skills:context_read
+        - skills:prompt_read
+        - skills:action_invoke
+    - id: gemini-agent
+      name: Gemini Agent
+      description: Cloud Gemini-backed A2A assistant.
+      card-url: http://127.0.0.1:9898/.well-known/agent-card.json
+      endpoint-url: http://127.0.0.1:9898/a2a/invoke
+      protocol-binding: JSONRPC
+      enabled: true
+      capabilities:
+        - conversation
+        - local-a2a
+        - gemini
+        - dashboard-context
+      mcp-scopes:
+        - dashboard:read
+        - widgets:read
+        - skills:read
+        - skills:context_read
+        - skills:prompt_read
+        - skills:action_invoke
+    - id: ollama-agent
+      name: Ollama Agent
+      description: Local Ollama-backed A2A assistant.
+      card-url: http://127.0.0.1:9999/.well-known/agent-card.json
+      endpoint-url: http://127.0.0.1:9999/a2a/invoke
+      protocol-binding: JSONRPC
+      enabled: true
+      capabilities:
+        - conversation
+        - local-a2a
+        - ollama
+        - dashboard-context
+      mcp-scopes:
+        - dashboard:read
+        - widgets:read
+        - skills:read
+        - skills:context_read
+        - skills:prompt_read
+        - skills:action_invoke
 rooms: []
 tiles: []
-
-# Dashboard Widget Layout
-# Defines the initial layout and settings of widgets on the dashboard.
-dashboard:
-  widgets:
-    - id: date-time-widget
-      type: date-time
-      title: Clock
-      x: 0
-      y: 0
-      w: 4
-      h: 2
-      min-w: 3
-      min-h: 1
-      size: small
-      visible: true
-      mode: ui
-      settings:
-        locale: en-GB
-        timezone: Europe/London
-
-    - id: weather-widget
-      type: weather
-      title: Local Weather
-      x: 8
-      y: 0
-      w: 4
-      h: 2
-      min-w: 3
-      min-h: 1
-      size: small
-      visible: true
-      mode: ui
-      settings:
-        latitude: 56.462
-        location: Dundee
-        longitude: -2.9707
-        temperature-unit: celsius
-        wind-speed-unit: kmh
-
-    - id: assistant-chat
-      type: chat-history
-      title: Concierge Chat
-      x: 0
-      y: 3
-      w: 4
-      h: 3
-      min-w: 3
-      min-h: 1
-      size: large
-      visible: true
-      mode: ui
-
-    - id: hacker-news
-      type: rss
-      title: Tech News
-      x: 8
-      y: 3
-      w: 4
-      h: 3
-      min-w: 3
-      min-h: 1
-      size: large
-      visible: true
-      mode: ui
-      settings:
-        feeds:
-          - name: Hacker News
-            url: https://news.ycombinator.com/rss
-        limit: 5
-
-    - id: stocks-watchlist
-      type: markets
-      title: Markets
-      x: 4
-      y: 3
-      w: 4
-      h: 3
-      min-w: 3
-      min-h: 1
-      size: large
-      visible: true
-      mode: ui
-      settings:
-        tickers:
-          - AAPL
-          - GOOG
-          - symbol: BTC-USD

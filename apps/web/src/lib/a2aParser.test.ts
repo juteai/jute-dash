@@ -329,5 +329,58 @@ describe('a2aParser unit tests', () => {
         city: 'Paris'
       });
     });
+
+    it('skips empty/whitespace-only reasoning steps', () => {
+      const tasks = [
+        {
+          id: 'task-1',
+          contextId: 'ctx-1',
+          status: {
+            state: TaskState.TASK_STATE_COMPLETED,
+            timestamp: '2026-06-08T15:00:00Z',
+            message: { parts: [] }
+          },
+          input: {
+            messageId: 'msg-user-1',
+            contextId: 'ctx-1',
+            role: Role.ROLE_USER,
+            parts: [{ content: { $case: 'text', value: 'Hello' } }]
+          },
+          history: [
+            {
+              messageId: 'msg-assistant-1',
+              contextId: 'ctx-1',
+              role: Role.ROLE_AGENT,
+              parts: [
+                {
+                  content: {
+                    $case: 'text',
+                    value: '\n  \n'
+                  },
+                  metadata: {
+                    adk_thought: true
+                  }
+                },
+                {
+                  content: {
+                    $case: 'text',
+                    value: 'Hello there'
+                  },
+                  metadata: undefined
+                }
+              ]
+            }
+          ],
+          extensions: []
+        }
+      ] as unknown as A2ATask[];
+
+      const detail = parseTasksToConversationDetail(tasks, 'ctx-1', 'agent-1');
+      const assistantMessage = detail.messages[1];
+
+      expect(assistantMessage.role).toBe('assistant');
+      expect(assistantMessage.content).toBe('Hello there');
+      expect(assistantMessage.interimSteps).toBeUndefined();
+    });
   });
 });

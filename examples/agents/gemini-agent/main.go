@@ -10,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/a2aproject/a2a-go/v2/a2asrv"
+	"github.com/a2aproject/a2a-go/v2/a2asrv/taskstore"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
@@ -90,11 +92,34 @@ func run() error {
 
 	config := &launcher.Config{
 		AgentLoader: agent.NewSingleLoader(a),
+		A2AOptions: []a2asrv.RequestHandlerOption{
+			a2asrv.WithTaskStore(taskstore.NewInMemory(&taskstore.InMemoryStoreConfig{
+				Authenticator: func(ctx context.Context) (string, error) {
+					return "local-user", nil
+				},
+			})),
+		},
 	}
+	writeTimeout := strings.TrimSpace(os.Getenv("A2A_WRITE_TIMEOUT"))
+	if writeTimeout == "" {
+		writeTimeout = "10m"
+	}
+	readTimeout := strings.TrimSpace(os.Getenv("A2A_READ_TIMEOUT"))
+	if readTimeout == "" {
+		readTimeout = "10m"
+	}
+
 	l := full.NewLauncher()
 	args := os.Args[1:]
 	if len(args) == 0 {
-		args = []string{"web", "a2a", "--port", "9898", "--a2a_agent_url", "http://localhost:9898"}
+		args = []string{
+			"web",
+			"--port", "9898",
+			"--write-timeout", writeTimeout,
+			"--read-timeout", readTimeout,
+			"a2a",
+			"--a2a_agent_url", "http://localhost:9898",
+		}
 	}
 	if err := l.Execute(ctx, config, args); err != nil {
 		return fmt.Errorf("launcher failed: %w", err)

@@ -82,7 +82,7 @@ func TestSelectInterfaceRejectsUnsupportedVersions(t *testing.T) {
 	}
 }
 
-func TestSelectInterfaceRejectsLegacyCardWithoutSupportedInterfaces(t *testing.T) {
+func TestSelectInterfaceAllowsFallbackForLegacyCardWithoutSupportedInterfaces(t *testing.T) {
 	card := AgentCard{
 		Name:               "Legacy Kronk Agent",
 		URL:                "http://127.0.0.1:9797/invoke",
@@ -90,8 +90,13 @@ func TestSelectInterfaceRejectsLegacyCardWithoutSupportedInterfaces(t *testing.T
 		Capabilities:       AgentCapabilities{Streaming: true},
 	}
 
-	if _, err := SelectInterface(card); err == nil {
-		t.Fatal("expected unsupported interface error")
+	selected, err := SelectInterface(card)
+	if err != nil {
+		t.Fatalf("SelectInterface() error = %v", err)
+	}
+	if selected.EndpointURL != "http://127.0.0.1:9797/invoke" || selected.ProtocolBinding != ProtocolJSONRPC ||
+		selected.ProtocolVersion != ProtocolVersion10 {
+		t.Fatalf("unexpected selected interface: %+v", selected)
 	}
 }
 

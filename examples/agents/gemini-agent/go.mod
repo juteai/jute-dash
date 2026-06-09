@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/modelcontextprotocol/go-sdk v1.6.0
-	google.golang.org/adk v1.3.0
+	google.golang.org/adk v1.4.0
 	google.golang.org/genai v1.57.0
 )
 

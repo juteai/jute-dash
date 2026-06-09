@@ -6,7 +6,7 @@ require (
 	github.com/ardanlabs/kronk v1.25.8
 	github.com/craigh33/adk-go-kronk v0.2.2
 	github.com/modelcontextprotocol/go-sdk v1.6.0
-	google.golang.org/adk v1.3.0
+	google.golang.org/adk v1.4.0
 	google.golang.org/genai v1.57.0
 )
 

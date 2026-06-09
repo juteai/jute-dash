@@ -1,39 +1,19 @@
 package a2a
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
+
+	"github.com/a2aproject/a2a-go/v2/a2a"
+	"github.com/a2aproject/a2a-go/v2/a2aclient"
 )
 
-var errStreamComplete = errors.New("a2a stream complete")
-
-type streamResponse struct {
-	Message        *message            `json:"message,omitempty"`
-	Task           *task               `json:"task,omitempty"`
-	StatusUpdate   *taskStatusUpdate   `json:"statusUpdate,omitempty"`
-	ArtifactUpdate *taskArtifactUpdate `json:"artifactUpdate,omitempty"`
-}
-
-type taskStatusUpdate struct {
-	TaskID    string     `json:"taskId,omitempty"`
-	ContextID string     `json:"contextId,omitempty"`
-	Status    taskStatus `json:"status,omitempty"`
-	Final     bool       `json:"final,omitempty"`
-}
-
-type taskArtifactUpdate struct {
-	TaskID    string   `json:"taskId,omitempty"`
-	ContextID string   `json:"contextId,omitempty"`
-	Artifact  artifact `json:"artifact,omitempty"`
-	Append    bool     `json:"append,omitempty"`
-	LastChunk bool     `json:"lastChunk,omitempty"`
-}
-
-func (c *JSONRPCClient) StreamMessage(ctx context.Context, req SendMessageRequest, handler StreamHandler) error {
+func (c *JSONRPCClient) StreamMessage(
+	ctx context.Context,
+	req SendMessageRequest,
+	handler StreamHandler,
+) error {
 	if req.ProtocolBinding != "" && req.ProtocolBinding != ProtocolJSONRPC {
 		return ErrUnsupportedProtocol
 	}
@@ -47,151 +27,109 @@ func (c *JSONRPCClient) StreamMessage(ctx context.Context, req SendMessageReques
 		return errors.New("a2a stream handler is required")
 	}
 
-	payload := newSendRequest(req, methodSendStreamingMessage)
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("encode a2a streaming request: %w", err)
-	}
-	httpReq, err := newHTTPRequest(ctx, req, body)
+	client, err := c.getClient(ctx, req.EndpointURL, req.ProtocolBinding, req.ProtocolVersion, 0)
 	if err != nil {
 		return err
 	}
-	httpReq.Header.Set("Accept", "text/event-stream")
 
-	httpClient := c.HTTPClient
-	if httpClient == nil {
-		httpClient = NewJSONRPCClient().HTTPClient
-	}
-	if httpClient.Timeout > 0 {
-		cloned := *httpClient
-		cloned.Timeout = 0
-		httpClient = &cloned
-	}
-	resp, err := httpClient.Do(httpReq)
-	if err != nil {
-		return ErrAgentTransport
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("%w: status %d", ErrAgentTransport, resp.StatusCode)
+	sdkMsg := a2a.NewMessage(a2a.MessageRoleUser, a2a.NewTextPart(req.Text))
+	sdkMsg.ContextID = req.ConversationID
+	sdkMsg.TaskID = a2a.TaskID(req.TaskID)
+	sdkMsg.Metadata = cleanMetadata(req.Metadata)
+
+	sdkReq := &a2a.SendMessageRequest{
+		Message: sdkMsg,
+		Config: &a2a.SendMessageConfig{
+			ReturnImmediately:   false,
+			AcceptedOutputModes: []string{"text/plain"},
+		},
 	}
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	var data strings.Builder
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			if err := handleSSEData(data.String(), handler); err != nil {
-				if errors.Is(err, errStreamComplete) {
-					return nil
-				}
-				return err
-			}
-			data.Reset()
+	params := make(a2aclient.ServiceParams)
+	if req.BearerToken != "" {
+		params.Append("Authorization", "Bearer "+req.BearerToken)
+	}
+	if req.ProtocolVersion != "" {
+		params.Append("A2A-Version", req.ProtocolVersion)
+	} else {
+		params.Append("A2A-Version", ProtocolVersion10)
+	}
+	if len(req.Extensions) > 0 {
+		params.Append("A2A-Extensions", strings.Join(req.Extensions, ","))
+	}
+	ctx = a2aclient.AttachServiceParams(ctx, params)
+
+	eventsSeq := client.SendStreamingMessage(ctx, sdkReq)
+
+	var streamErr error
+	for event, err := range eventsSeq {
+		if err != nil {
+			streamErr = mapError(err)
+			break
+		}
+
+		localEvent, ok := mapSDKEventToLocal(event)
+		if !ok {
 			continue
 		}
-		if strings.HasPrefix(line, "data:") {
-			if data.Len() > 0 {
-				data.WriteByte('\n')
-			}
-			data.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+
+		if err := handler(localEvent); err != nil {
+			streamErr = err
+			break
+		}
+
+		if localEvent.Terminal {
+			break
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("read a2a stream: %w", err)
-	}
-	if strings.TrimSpace(data.String()) != "" {
-		if err := handleSSEData(data.String(), handler); err != nil {
-			if errors.Is(err, errStreamComplete) {
-				return nil
-			}
-			return err
-		}
-	}
-	return nil
+
+	return streamErr
 }
 
-func handleSSEData(data string, handler StreamHandler) error {
-	data = strings.TrimSpace(data)
-	if data == "" || data == "[DONE]" {
-		return nil
-	}
-	var rpcResp jsonRPCResponse
-	if err := json.Unmarshal([]byte(data), &rpcResp); err != nil {
-		return fmt.Errorf("decode a2a stream event: %w", err)
-	}
-	if rpcResp.Error != nil {
-		return &RPCError{Code: rpcResp.Error.Code}
-	}
-	if len(rpcResp.Result) == 0 {
-		return nil
-	}
-	event, ok, err := extractStreamEvent(rpcResp.Result)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return nil
-	}
-	if err := handler(event); err != nil {
-		return err
-	}
-	if event.Terminal {
-		return errStreamComplete
-	}
-	return nil
-}
-
-func extractStreamEvent(raw json.RawMessage) (StreamEvent, bool, error) {
-	var response streamResponse
-	if err := json.Unmarshal(raw, &response); err != nil {
-		return StreamEvent{}, false, fmt.Errorf("decode a2a stream response: %w", err)
-	}
-	switch {
-	case response.Message != nil:
-		msg := *response.Message
+func mapSDKEventToLocal(event a2a.Event) (StreamEvent, bool) {
+	switch v := event.(type) {
+	case *a2a.Message:
 		return StreamEvent{
 			Kind:           "message",
-			ConversationID: msg.ContextID,
-			TaskID:         msg.TaskID,
+			ConversationID: v.ContextID,
+			TaskID:         string(v.TaskID),
 			Status:         "completed",
-			Text:           displayTextFromMessage(msg),
+			Text:           displayTextFromSDKMessage(v),
 			Terminal:       true,
-		}, true, nil
-	case response.Task != nil:
-		task := *response.Task
+		}, true
+	case *a2a.Task:
 		return StreamEvent{
 			Kind:           "task",
-			ConversationID: task.ContextID,
-			TaskID:         task.ID,
-			Status:         fallbackID(normalizeTaskState(task.Status.State), "working"),
-			Text:           displayTextFromOptionalMessage(task.Status.Message),
-			Terminal:       isTerminalTaskState(task.Status.State),
-		}, true, nil
-	case response.StatusUpdate != nil:
-		update := *response.StatusUpdate
+			ConversationID: v.ContextID,
+			TaskID:         string(v.ID),
+			Status:         fallbackID(normalizeTaskState(string(v.Status.State)), "working"),
+			Text:           displayTextFromOptionalSDKMessage(v.Status.Message),
+			Terminal:       isTerminalTaskState(string(v.Status.State)),
+		}, true
+	case *a2a.TaskStatusUpdateEvent:
 		return StreamEvent{
 			Kind:           "status",
-			ConversationID: update.ContextID,
-			TaskID:         update.TaskID,
-			Status:         fallbackID(normalizeTaskState(update.Status.State), "working"),
-			Text:           displayTextFromOptionalMessage(update.Status.Message),
-			Terminal:       update.Final || isTerminalTaskState(update.Status.State),
-		}, true, nil
-	case response.ArtifactUpdate != nil:
-		update := *response.ArtifactUpdate
+			ConversationID: v.ContextID,
+			TaskID:         string(v.TaskID),
+			Status:         fallbackID(normalizeTaskState(string(v.Status.State)), "working"),
+			Text:           displayTextFromOptionalSDKMessage(v.Status.Message),
+			Terminal:       isTerminalTaskState(string(v.Status.State)),
+		}, true
+	case *a2a.TaskArtifactUpdateEvent:
+		if v.Artifact == nil {
+			return StreamEvent{}, false
+		}
 		return StreamEvent{
 			Kind:           "artifact",
-			ConversationID: update.ContextID,
-			TaskID:         update.TaskID,
+			ConversationID: v.ContextID,
+			TaskID:         string(v.TaskID),
 			Status:         "working",
-			Text:           displayTextFromParts(update.Artifact.Parts),
-			Append:         update.Append,
+			Text:           displayTextFromSDKParts(v.Artifact.Parts),
+			Append:         v.Append,
 			Terminal:       false,
-		}, true, nil
+		}, true
 	default:
-		return StreamEvent{}, false, nil
+		return StreamEvent{}, false
 	}
 }
 

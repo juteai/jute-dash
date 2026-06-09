@@ -13,6 +13,7 @@ import {
   isReasoningArtifact,
   isStructuredArtifact,
   looksLikeToolInvocation,
+  looksLikeReasoningParagraph,
   textFromParts,
   textFromReasoningParts
 } from '$lib/displaySanitizer';
@@ -73,6 +74,45 @@ export function terminalTaskFailureMessage(status: string): string | undefined {
   }
 }
 
+function isFinalUserFacingPart(
+  part: A2APart,
+  parentIsReasoningArt: boolean
+): boolean {
+  if (part.metadata?.adk_thought === true) return false;
+  if (
+    part.metadata?.adk_type === 'function_call' ||
+    part.metadata?.adk_type === 'function_response'
+  )
+    return false;
+
+  const data = getPartData(part) as PartWithData['data'];
+  if (data && (data.name || data.id || data.response)) return false;
+
+  const text = getPartText(part);
+  if (!text) return false;
+
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  if (
+    trimmed.startsWith('<tool_call>') ||
+    trimmed.endsWith('</tool_call>') ||
+    trimmed.startsWith('<tool_response>') ||
+    trimmed.endsWith('</tool_response>') ||
+    trimmed.includes('<tool_call>') ||
+    trimmed.includes('<tool_response>') ||
+    looksLikeToolInvocation(trimmed)
+  ) {
+    return false;
+  }
+
+  if (parentIsReasoningArt && looksLikeReasoningParagraph(trimmed)) {
+    return false;
+  }
+
+  return true;
+}
+
 export function parseTasksToConversationDetail(
   tasks: A2ATask[],
   conversationId: string,
@@ -116,7 +156,7 @@ export function parseTasksToConversationDetail(
       );
       if (reasoningParts.length > 0) {
         const text = textFromReasoningParts(reasoningParts);
-        if (text) {
+        if (text && text.trim() !== '') {
           recordInterimSteps.push({
             id: `${record.id}:status-thought`,
             text,
@@ -127,32 +167,26 @@ export function parseTasksToConversationDetail(
     }
     for (const [index, artifact] of (record.artifacts ?? []).entries()) {
       const isReasoningArt = isReasoningArtifact(artifact);
-      const reasoningParts = isReasoningArt
-        ? (artifact.parts ?? []).filter((p) => {
-            if (p.metadata?.adk_thought === true) return true;
-            const pt = getPartText(p);
-            return (
-              !pt.includes('<tool_call>') &&
-              !pt.includes('<tool_response>') &&
-              !looksLikeToolInvocation(pt)
-            );
-          })
-        : (artifact.parts ?? []).filter(
-            (p) => p.metadata?.adk_thought === true
-          );
-      if (reasoningParts.length > 0) {
-        const text = textFromReasoningParts(reasoningParts);
-        if (text) {
-          recordInterimSteps.push({
-            id: `${record.id}:thought:${artifact.artifactId || index}`,
-            text,
-            status: 'completed'
-          });
-        }
-      }
-      for (const [pIdx, part] of (artifact.parts ?? []).entries()) {
-        if (part.metadata?.adk_thought === true) continue;
+      let count = 0;
+      let currentThoughtParts: A2APart[] = [];
 
+      const flushThought = () => {
+        if (currentThoughtParts.length > 0) {
+          const text = textFromReasoningParts(currentThoughtParts);
+          if (text && text.trim() !== '') {
+            recordInterimSteps.push({
+              id: isReasoningArt
+                ? `${record.id}:thought:${artifact.artifactId || index}${count > 0 ? `-${count}` : ''}`
+                : `${record.id}:thought:${artifact.artifactId || index}`,
+              text,
+              status: 'completed'
+            });
+          }
+          currentThoughtParts = [];
+        }
+      };
+
+      for (const [pIdx, part] of (artifact.parts ?? []).entries()) {
         const data = getPartData(part) as PartWithData['data'];
         const isFunctionCall =
           part.metadata?.adk_type === 'function_call' ||
@@ -160,6 +194,27 @@ export function parseTasksToConversationDetail(
         const isFunctionResponse =
           part.metadata?.adk_type === 'function_response' ||
           (data && data.response);
+
+        const pt = getPartText(part);
+        const isToolText =
+          looksLikeToolInvocation(pt) ||
+          pt.includes('<tool_call>') ||
+          pt.includes('<tool_response>');
+
+        const isPartReasoning =
+          part.metadata?.adk_thought === true ||
+          (isReasoningArt &&
+            !isToolText &&
+            !isFunctionCall &&
+            !isFunctionResponse &&
+            (pt.trim() === '' || looksLikeReasoningParagraph(pt)));
+
+        if (isPartReasoning) {
+          currentThoughtParts.push(part);
+          continue;
+        }
+
+        flushThought();
 
         if (isFunctionCall) {
           const toolName = data?.name || 'agent tool';
@@ -172,6 +227,7 @@ export function parseTasksToConversationDetail(
             status: 'completed',
             args: (data as any)?.args
           });
+          count++;
           continue;
         }
 
@@ -196,20 +252,16 @@ export function parseTasksToConversationDetail(
           continue;
         }
 
-        const text = getPartText(part);
-        if (
-          text &&
-          (text.includes('<tool_call>') || looksLikeToolInvocation(text))
-        ) {
+        if (isToolText) {
           const nameMatch =
-            text.match(/"name"\s*:\s*"([^"]+)"/) ||
-            text.match(/^([a-zA-Z_]\w*)\s*-\s*\{/);
+            pt.match(/"name"\s*:\s*"([^"]+)"/) ||
+            pt.match(/^([a-zA-Z_]\w*)\s*-\s*\{/);
           const toolName = nameMatch ? nameMatch[1] : 'agent tool';
           let args: any = undefined;
           try {
-            const jsonStart = text.indexOf('{');
+            const jsonStart = pt.indexOf('{');
             if (jsonStart > -1) {
-              args = JSON.parse(text.slice(jsonStart));
+              args = JSON.parse(pt.slice(jsonStart));
             }
           } catch {
             // ignore
@@ -220,8 +272,11 @@ export function parseTasksToConversationDetail(
             status: 'completed',
             args
           });
+          count++;
         }
       }
+
+      flushThought();
     }
 
     const history = (record.history ||
@@ -263,7 +318,7 @@ export function parseTasksToConversationDetail(
         for (const [idx, part] of msg.parts.entries()) {
           if (part.metadata?.adk_thought === true) {
             const text = textFromReasoningParts([part]);
-            if (text) {
+            if (text && text.trim() !== '') {
               messageThoughts.push({
                 id: `${msg.messageId || 'msg'}:thought:${idx}`,
                 text,
@@ -367,8 +422,14 @@ export function parseTasksToConversationDetail(
       });
     }
     for (const [index, artifact] of (record.artifacts ?? []).entries()) {
-      if (isReasoningArtifact(artifact)) {
-        continue;
+      const isReasoningArt = isReasoningArtifact(artifact);
+      if (isReasoningArt) {
+        const hasUserFacing = (artifact.parts ?? []).some((p) =>
+          isFinalUserFacingPart(p, true)
+        );
+        if (!hasUserFacing) {
+          continue;
+        }
       }
       const content = textFromParts(artifact.parts);
       const isStructured = isStructuredArtifact(artifact.parts);

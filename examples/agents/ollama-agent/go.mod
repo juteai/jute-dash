@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/craigh33/adk-go-ollama v0.2.28
 	github.com/modelcontextprotocol/go-sdk v1.6.0
-	google.golang.org/adk v1.3.0
+	google.golang.org/adk v1.4.0
 	google.golang.org/genai v1.59.0
 )
 
