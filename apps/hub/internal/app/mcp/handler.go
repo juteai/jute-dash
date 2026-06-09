@@ -357,7 +357,7 @@ func (h *Handler) callerForRequest(snapshot widgetskills.Snapshot, r *http.Reque
 	agentID := strings.TrimSpace(r.Header.Get(callerAgentHeader))
 	if agentID == "" {
 		if h.cfg.Auth.Mode == "none" {
-			return newCaller("", true, agents.AllMCPScopes()), nil
+			return newCaller("", true, agents.DefaultMCPReadScopes()), nil
 		}
 		return caller{}, unauthorized("mcp caller identity is required")
 	}

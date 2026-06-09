@@ -272,11 +272,12 @@ func mcpContextForTurn(ctx context.Context) JuteContext {
 	if mcpURL == "" {
 		mcpURL = "http://127.0.0.1:8790/mcp"
 	}
+	agentID := strings.TrimSpace(os.Getenv("JUTE_MCP_AGENT_ID"))
 
 	var initResult struct {
 		ProtocolVersion string `json:"protocolVersion"`
 	}
-	err := mcpCall(ctx, mcpURL, "initialize", map[string]any{
+	err := mcpCall(ctx, mcpURL, agentID, "initialize", map[string]any{
 		"protocolVersion": "2025-11-25",
 		"clientInfo": map[string]any{
 			"name":    "jute-dev-agent",
@@ -298,6 +299,7 @@ func mcpContextForTurn(ctx context.Context) JuteContext {
 	if err := mcpCall(
 		ctx,
 		mcpURL,
+		agentID,
 		"resources/read",
 		map[string]any{"uri": "jute://dashboard/current"},
 		&dashboardResult,
@@ -315,6 +317,7 @@ func mcpContextForTurn(ctx context.Context) JuteContext {
 	if err := mcpCall(
 		ctx,
 		mcpURL,
+		agentID,
 		"resources/read",
 		map[string]any{"uri": "jute://skills"},
 		&skillsResult,
@@ -353,7 +356,7 @@ func mcpContextForTurn(ctx context.Context) JuteContext {
 					} `json:"content"`
 					IsError bool `json:"isError"`
 				}
-				err := mcpCall(ctx, mcpURL, "tools/call", map[string]any{
+				err := mcpCall(ctx, mcpURL, agentID, "tools/call", map[string]any{
 					"name": "jute_skill_invoke_action",
 					"arguments": map[string]any{
 						"skillId":  "jute.weather.current",
@@ -379,7 +382,7 @@ func mcpContextForTurn(ctx context.Context) JuteContext {
 			} `json:"content"`
 		} `json:"messages"`
 	}
-	if err := mcpCall(ctx, mcpURL, "prompts/get", map[string]any{
+	if err := mcpCall(ctx, mcpURL, agentID, "prompts/get", map[string]any{
 		"name":      "jute_home_assistant_guidance",
 		"arguments": map[string]any{},
 	}, &promptResult); err == nil && len(promptResult.Messages) > 0 {
@@ -389,7 +392,7 @@ func mcpContextForTurn(ctx context.Context) JuteContext {
 	return summary
 }
 
-func mcpCall(ctx context.Context, mcpURL, method string, params any, result any) error {
+func mcpCall(ctx context.Context, mcpURL, agentID, method string, params any, result any) error {
 	payload := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      fmt.Sprintf("%d", time.Now().UnixNano()),
@@ -408,6 +411,9 @@ func mcpCall(ctx context.Context, mcpURL, method string, params any, result any)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	if agentID != "" {
+		req.Header.Set("X-Jute-Agent-ID", agentID)
+	}
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 	resp, err := httpClient.Do(req)
 	if err != nil {

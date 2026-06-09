@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -22,6 +23,20 @@ import (
 	"google.golang.org/adk/tool/mcptoolset"
 	"google.golang.org/genai"
 )
+
+// headerRoundTripper injects a fixed set of HTTP headers on every request.
+type headerRoundTripper struct {
+	base    http.RoundTripper
+	headers map[string]string
+}
+
+func (t *headerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	for k, v := range t.headers {
+		req.Header.Set(k, v)
+	}
+	return t.base.RoundTrip(req)
+}
 
 const (
 	defaultModelID = "gemini-2.5-flash"
@@ -60,10 +75,20 @@ func run() error {
 		return fmt.Errorf("failed to create Gemini model: %w", err)
 	}
 
-	log.Printf("Connecting to Jute MCP bridge: %s", mcpURL)
+	agentID := strings.TrimSpace(os.Getenv("JUTE_MCP_AGENT_ID"))
+
+	log.Printf("Connecting to Jute MCP bridge: %s (agent-id: %q)", mcpURL, agentID)
+	mcpHTTPClient := &http.Client{}
+	if agentID != "" {
+		mcpHTTPClient.Transport = &headerRoundTripper{
+			base:    http.DefaultTransport,
+			headers: map[string]string{"X-Jute-Agent-ID": agentID},
+		}
+	}
 	transport := &mcp.StreamableClientTransport{
 		Endpoint:             mcpURL,
 		DisableStandaloneSSE: true,
+		HTTPClient:           mcpHTTPClient,
 	}
 	mcpToolset, err := mcptoolset.New(mcptoolset.Config{
 		Transport: transport,
