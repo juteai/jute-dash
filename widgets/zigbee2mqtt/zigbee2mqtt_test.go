@@ -12,8 +12,9 @@ func TestZigbee2MQTTWidgetSettings(t *testing.T) {
 	}
 
 	raw := map[string]any{
-		"mqtt_url":      "mqtt://localhost:1883",
+		"mqtt_url":      "mock://test",
 		"mqtt_username": "my_user",
+		"instanceId":    "test-instance-z2m",
 	}
 	data, err := w.FetchData(context.Background(), raw)
 	if err != nil {
@@ -25,5 +26,16 @@ func TestZigbee2MQTTWidgetSettings(t *testing.T) {
 	}
 	if m["is_configured"] != true {
 		t.Errorf("expected is_configured to be true")
+	}
+
+	devices, ok := m["devices"].([]Device)
+	if !ok {
+		t.Fatalf("expected []Device, got %T", m["devices"])
+	}
+	if len(devices) != 1 {
+		t.Fatalf("expected 1 device, got %d", len(devices))
+	}
+	if devices[0].ID != "test_light" || devices[0].Type != "light" || !devices[0].State {
+		t.Errorf("unexpected device data: %+v", devices[0])
 	}
 }
