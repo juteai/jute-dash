@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -301,6 +302,7 @@ func newServer(
 	mux.HandleFunc("/api/widgets/smart-home/dispatch", server.handleSmartHomeDispatch)
 	mux.HandleFunc("/api/widgets/music-player/action", server.handleMusicPlayerAction)
 	mux.HandleFunc("/api/widgets/music-player/select", server.handleMusicPlayerSelect)
+	mux.HandleFunc("/api/widgets/philips-hue/register", server.handleHueRegister)
 
 	// Registrations
 	homestate.NewController(
@@ -1081,4 +1083,114 @@ func (s *Server) buildWidgetSkillsSnapshot(
 		Agents:      agentsList,
 		GeneratedAt: time.Now().UTC(),
 	}
+}
+
+type hueRegisterRequest struct {
+	InstanceID string `json:"instance_id"`
+	BridgeIP   string `json:"bridge_ip"`
+}
+
+func (s *Server) handleHueRegister(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		httphelper.WriteMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+
+	var req hueRegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
+		return
+	}
+
+	if req.InstanceID == "" || req.BridgeIP == "" {
+		httphelper.WriteError(w, http.StatusBadRequest, "missing instance_id or bridge_ip")
+		return
+	}
+
+	payload := map[string]any{
+		"devicetype": "jute_dash#local_hub",
+	}
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	url := fmt.Sprintf("http://%s/api", req.BridgeIP)
+	postReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	postReq.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(postReq)
+	if err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("failed to connect to bridge: %v", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	var responseList []map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&responseList); err != nil {
+		httphelper.WriteError(
+			w,
+			http.StatusInternalServerError,
+			fmt.Sprintf("failed to decode bridge response: %v", err),
+		)
+		return
+	}
+
+	if len(responseList) == 0 {
+		httphelper.WriteError(w, http.StatusInternalServerError, "empty response from bridge")
+		return
+	}
+
+	first := responseList[0]
+	if errMap, ok := first["error"].(map[string]any); ok {
+		desc, _ := errMap["description"].(string)
+		httphelper.WriteError(w, http.StatusBadRequest, fmt.Sprintf("bridge registration failed: %s", desc))
+		return
+	}
+
+	successMap, ok := first["success"].(map[string]any)
+	if !ok {
+		httphelper.WriteError(w, http.StatusInternalServerError, "invalid response from bridge")
+		return
+	}
+
+	username, _ := successMap["username"].(string)
+	if username == "" {
+		httphelper.WriteError(w, http.StatusInternalServerError, "no username returned from bridge")
+		return
+	}
+
+	layout, err := s.layoutStore.WidgetLayout(r.Context(), "")
+	if err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, "failed to load layout")
+		return
+	}
+
+	updated := false
+	for i, widget := range layout.Widgets {
+		if widget.ID == req.InstanceID {
+			if layout.Widgets[i].Settings == nil {
+				layout.Widgets[i].Settings = make(map[string]any)
+			}
+			layout.Widgets[i].Settings["username"] = username
+			layout.Widgets[i].Settings["bridge_ip"] = req.BridgeIP
+			updated = true
+			break
+		}
+	}
+
+	if updated {
+		if _, err := s.layoutStore.SaveWidgetLayout(r.Context(), layout); err != nil {
+			httphelper.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save layout: %v", err))
+			return
+		}
+	}
+
+	httphelper.WriteJSON(w, http.StatusOK, map[string]any{
+		"username": username,
+	})
 }
