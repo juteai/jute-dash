@@ -170,7 +170,14 @@ func HydrateWidgetLayout(ctx context.Context, layout WidgetLayout) WidgetLayout 
 		if widget.Overflow == "" {
 			widget.Overflow = provider.CatalogInfo().Overflow
 		}
-		data, err := provider.FetchData(ctx, widget.Settings)
+		settings := make(map[string]any)
+		if widget.Settings != nil {
+			for k, v := range widget.Settings {
+				settings[k] = v
+			}
+		}
+		settings["instanceId"] = widget.ID
+		data, err := provider.FetchData(ctx, settings)
 		if err == nil {
 			widget.Data = data
 		}

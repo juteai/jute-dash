@@ -4,8 +4,13 @@ import DateTimeWidget from './datetime/DateTimeWidget.svelte';
 import WeatherWidget from './weather/WeatherWidget.svelte';
 import RSSWidget from './rss/RSSWidget.svelte';
 import MarketsWidget from './markets/MarketsWidget.svelte';
+import SpotifyWidget from './spotify/SpotifyWidget.svelte';
+import AppleMusicWidget from './applemusic/AppleMusicWidget.svelte';
+import PhilipsHueWidget from './philipshue/PhilipsHueWidget.svelte';
+import Zigbee2MQTTWidget from './zigbee2mqtt/Zigbee2MQTTWidget.svelte';
 import { chatStore } from '$lib/chatStore';
 import { navigationStore } from '$lib/navigationStore';
+import { dispatchMusicPlayerAction } from '$lib/hubClient';
 import type {
   DashboardData,
   ChatMessage,
@@ -95,6 +100,91 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
           undefined,
           fetch
         );
+      }
+    })
+  },
+  'spotify': {
+    component: SpotifyWidget,
+    props: ({ widget, stale }) => ({
+      data: widget.data ?? {
+        is_configured: false,
+        track_title: 'Not Playing',
+        artist_name: 'Unknown',
+        is_playing: false,
+        volume: 50
+      },
+      stale,
+      dispatch: async (action: string, args: Record<string, any> = {}) => {
+        await dispatchMusicPlayerAction(fetch, {
+          instance_id: widget.id,
+          action,
+          arguments: args
+        });
+        const { hubStream } = await import('$lib/hubStream');
+        await hubStream.refreshAfterMutation();
+      }
+    })
+  },
+  'apple-music': {
+    component: AppleMusicWidget,
+    props: ({ widget, stale }) => ({
+      data: widget.data ?? {
+        is_configured: false,
+        track_title: 'Not Playing',
+        artist_name: 'Unknown',
+        is_playing: false
+      },
+      stale,
+      dispatch: async (action: string, args: Record<string, any> = {}) => {
+        await dispatchMusicPlayerAction(fetch, {
+          instance_id: widget.id,
+          action,
+          arguments: args
+        });
+        const { hubStream } = await import('$lib/hubStream');
+        await hubStream.refreshAfterMutation();
+      }
+    })
+  },
+  'philips-hue': {
+    component: PhilipsHueWidget,
+    props: ({ widget, stale }) => ({
+      data: widget.data ?? {
+        is_configured: false,
+        devices: []
+      },
+      stale,
+      dispatch: async (action: string, args: Record<string, any> = {}) => {
+        const { dispatchDeviceAction } = await import('$lib/hubClient');
+        await dispatchDeviceAction(fetch, {
+          instanceId: widget.id,
+          deviceId: args.device_id || '',
+          action: action,
+          value: args.state !== undefined ? args.state : args.value
+        });
+        const { hubStream } = await import('$lib/hubStream');
+        await hubStream.refreshAfterMutation();
+      }
+    })
+  },
+  'zigbee2mqtt': {
+    component: Zigbee2MQTTWidget,
+    props: ({ widget, stale }) => ({
+      data: widget.data ?? {
+        is_configured: false,
+        devices: []
+      },
+      stale,
+      dispatch: async (action: string, args: Record<string, any> = {}) => {
+        const { dispatchDeviceAction } = await import('$lib/hubClient');
+        await dispatchDeviceAction(fetch, {
+          instanceId: widget.id,
+          deviceId: args.device_id || '',
+          action: action,
+          value: args.state !== undefined ? args.state : args.value
+        });
+        const { hubStream } = await import('$lib/hubStream');
+        await hubStream.refreshAfterMutation();
       }
     })
   },

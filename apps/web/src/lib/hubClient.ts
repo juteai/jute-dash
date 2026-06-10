@@ -542,3 +542,48 @@ async function postVoiceControl(
   }
   return response.json() as Promise<VoiceStatus>;
 }
+
+export async function dispatchDeviceAction(
+  fetcher: typeof fetch,
+  payload: {
+    instanceId: string;
+    deviceId: string;
+    action: string;
+    value: unknown;
+  }
+): Promise<{ status: string; device: unknown }> {
+  const response = await fetcher(
+    `${API_BASE}/api/widgets/smart-home/dispatch`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Failed to control smart home device');
+  }
+  return response.json();
+}
+
+export async function dispatchMusicPlayerAction(
+  fetcher: typeof fetch,
+  payload: {
+    instance_id: string;
+    action: string;
+    arguments: Record<string, unknown>;
+  }
+): Promise<unknown> {
+  const response = await fetcher(
+    `${API_BASE}/api/widgets/music-player/action`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Failed to invoke music player action');
+  }
+  return response.json();
+}

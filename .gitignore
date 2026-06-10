@@ -30,3 +30,4 @@ examples/agents/gemini-agent/gemini-agent
 
 # AI Tooling
 .claude
+.agents

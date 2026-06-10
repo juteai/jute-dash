@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -22,6 +23,8 @@ import (
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/internal/pkg/httphelper"
 	"jute-dash/apps/hub/internal/pkg/registry"
+	"jute-dash/apps/hub/pkg/widgetskills"
+	"jute-dash/widgets"
 )
 
 type Server struct {
@@ -295,6 +298,9 @@ func newServer(
 	mux.HandleFunc("/healthz", server.handleHealth)
 	mux.HandleFunc("/api/v1/status", server.handleStatus)
 	mux.HandleFunc("/api/v1/config", server.handleConfig)
+	mux.HandleFunc("/api/widgets/smart-home/dispatch", server.handleSmartHomeDispatch)
+	mux.HandleFunc("/api/widgets/music-player/action", server.handleMusicPlayerAction)
+	mux.HandleFunc("/api/widgets/music-player/select", server.handleMusicPlayerSelect)
 
 	// Registrations
 	homestate.NewController(
@@ -645,4 +651,434 @@ func syncOnLoad(
 	}
 
 	return nil
+}
+
+type smartHomeDispatchRequest struct {
+	InstanceID  string `json:"instanceId"`
+	InstanceID2 string `json:"instance_id"`
+	DeviceID    string `json:"deviceId"`
+	Action      string `json:"action"`
+	Command     string `json:"command"`
+	Value       any    `json:"value"`
+}
+
+func (s *Server) handleSmartHomeDispatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		httphelper.WriteMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+
+	if r.Body == nil {
+		httphelper.WriteError(w, http.StatusBadRequest, "request body is required")
+		return
+	}
+
+	var req smartHomeDispatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
+		return
+	}
+
+	instID := req.InstanceID
+	if instID == "" {
+		instID = req.InstanceID2
+	}
+	if instID == "" {
+		instID = "smart-home-widget-1"
+	}
+
+	action := req.Action
+	if action == "" {
+		action = req.Command
+	}
+
+	if instID == "" || req.DeviceID == "" || action == "" {
+		httphelper.WriteError(w, http.StatusBadRequest, "missing required fields (instanceId, deviceId, action)")
+		return
+	}
+
+	// Validate action list
+	validActions := map[string]bool{
+		"turn_on":         true,
+		"turn_off":        true,
+		"toggle":          true,
+		"brightness":      true,
+		"set_brightness":  true,
+		"set_temperature": true,
+	}
+	if !validActions[action] {
+		httphelper.WriteError(w, http.StatusBadRequest, "invalid command action")
+		return
+	}
+
+	// Validate set_temperature range
+	if action == "set_temperature" && req.Value != nil {
+		if val, ok := req.Value.(float64); ok {
+			if val < 5.0 || val > 50.0 {
+				httphelper.WriteError(w, http.StatusBadRequest, "temperature value out of range (5-50)")
+				return
+			}
+		}
+	}
+
+	layout, err := s.layoutStore.WidgetLayout(r.Context(), "")
+	if err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, "failed to load widget layout")
+		return
+	}
+
+	kind := "zigbee2mqtt" // default fallback
+	for _, inst := range layout.Widgets {
+		if inst.ID == instID {
+			kind = inst.Kind
+			break
+		}
+	}
+
+	widget, exists := widgets.Get(kind)
+	if !exists {
+		httphelper.WriteError(w, http.StatusNotFound, fmt.Sprintf("widget kind %q not registered", kind))
+		return
+	}
+
+	actionWidget, ok := widget.(widgets.ActionWidget)
+	if !ok {
+		httphelper.WriteError(w, http.StatusBadRequest, fmt.Sprintf("widget kind %q does not support actions", kind))
+		return
+	}
+
+	snapshot := s.buildWidgetSkillsSnapshot(r.Context(), layout)
+
+	args := map[string]any{
+		"deviceId": req.DeviceID,
+		"action":   action,
+		"value":    req.Value,
+	}
+
+	res, err := actionWidget.InvokeAction(r.Context(), snapshot, instID, "control_device", args)
+	if err != nil {
+		if strings.Contains(err.Error(), "device not found") {
+			httphelper.WriteError(w, http.StatusNotFound, err.Error())
+		} else {
+			httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	_, _ = s.display.Notify("Device controlled successfully", "info")
+
+	httphelper.WriteJSON(w, http.StatusOK, res)
+}
+
+type musicPlayerActionRequest struct {
+	InstanceID  string         `json:"instance_id"`
+	InstanceID2 string         `json:"instanceId"`
+	Action      string         `json:"action"`
+	Client      string         `json:"client"`
+	Arguments   map[string]any `json:"arguments"`
+}
+
+func (s *Server) handleMusicPlayerAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		httphelper.WriteMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+
+	var raw map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
+		return
+	}
+
+	var req musicPlayerActionRequest
+	if val, ok := raw["instance_id"].(string); ok {
+		req.InstanceID = val
+	}
+	if val, ok := raw["instanceId"].(string); ok {
+		req.InstanceID2 = val
+	}
+	if val, ok := raw["action"].(string); ok {
+		req.Action = val
+	}
+	if val, ok := raw["client"].(string); ok {
+		req.Client = val
+	}
+	if args, ok := raw["arguments"].(map[string]any); ok {
+		req.Arguments = args
+	} else {
+		req.Arguments = make(map[string]any)
+	}
+
+	// Merge flat root values
+	for k, v := range raw {
+		if k != "instance_id" && k != "instanceId" && k != "action" && k != "client" && k != "arguments" {
+			req.Arguments[k] = v
+		}
+	}
+
+	if val, ok := raw["value"]; ok {
+		req.Arguments["value"] = val
+		req.Arguments["volume"] = val
+	}
+
+	if req.Action == "volume" {
+		req.Action = "set_volume"
+	}
+	if req.Action == "select" {
+		req.Action = "select_client"
+	}
+
+	instID := req.InstanceID
+	if instID == "" {
+		instID = req.InstanceID2
+	}
+	if instID == "" {
+		instID = "music-player-widget-1"
+	}
+
+	if instID == "" || req.Action == "" {
+		httphelper.WriteError(w, http.StatusBadRequest, "missing required fields (instance_id, action)")
+		return
+	}
+
+	layout, err := s.layoutStore.WidgetLayout(r.Context(), "")
+	if err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, "failed to load widget layout")
+		return
+	}
+
+	kind := "spotify" // default fallback
+	for _, inst := range layout.Widgets {
+		if inst.ID == instID {
+			kind = inst.Kind
+			break
+		}
+	}
+
+	widget, exists := widgets.Get(kind)
+	if !exists {
+		httphelper.WriteError(w, http.StatusNotFound, fmt.Sprintf("widget kind %q not registered", kind))
+		return
+	}
+
+	actionWidget, ok := widget.(widgets.ActionWidget)
+	if !ok {
+		httphelper.WriteError(w, http.StatusBadRequest, fmt.Sprintf("widget kind %q does not support actions", kind))
+		return
+	}
+
+	snapshot := s.buildWidgetSkillsSnapshot(r.Context(), layout)
+
+	if req.Client != "" {
+		_, errSelect := actionWidget.InvokeAction(
+			r.Context(),
+			snapshot,
+			instID,
+			"select_client",
+			map[string]any{"client": req.Client},
+		)
+		if errSelect != nil {
+			httphelper.WriteError(w, http.StatusBadRequest, errSelect.Error())
+			return
+		}
+	}
+
+	res, err := actionWidget.InvokeAction(r.Context(), snapshot, instID, req.Action, req.Arguments)
+	if err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "volume") ||
+			strings.Contains(errMsg, "client") ||
+			strings.Contains(errMsg, "action") ||
+			strings.Contains(errMsg, "arguments") {
+			httphelper.WriteError(w, http.StatusBadRequest, errMsg)
+		} else {
+			httphelper.WriteError(w, http.StatusInternalServerError, errMsg)
+		}
+		return
+	}
+
+	httphelper.WriteJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) handleMusicPlayerSelect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		httphelper.WriteMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	var req struct {
+		InstanceID  string `json:"instance_id"`
+		InstanceID2 string `json:"instanceId"`
+		Client      string `json:"client"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httphelper.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Client == "" {
+		httphelper.WriteError(w, http.StatusBadRequest, "Client cannot be empty")
+		return
+	}
+
+	if len(req.Client) > 256 || strings.Contains(req.Client, "../") {
+		httphelper.WriteError(w, http.StatusBadRequest, "Invalid client name")
+		return
+	}
+
+	instID := req.InstanceID
+	if instID == "" {
+		instID = req.InstanceID2
+	}
+	if instID == "" {
+		instID = "music-player-widget-1"
+	}
+
+	layout, err := s.layoutStore.WidgetLayout(r.Context(), "")
+	if err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, "failed to load widget layout")
+		return
+	}
+
+	kind := "spotify" // default fallback
+	for _, inst := range layout.Widgets {
+		if inst.ID == instID {
+			kind = inst.Kind
+			break
+		}
+	}
+
+	widget, exists := widgets.Get(kind)
+	if !exists {
+		httphelper.WriteError(w, http.StatusNotFound, fmt.Sprintf("widget kind %q not registered", kind))
+		return
+	}
+	actionWidget, ok := widget.(widgets.ActionWidget)
+	if !ok {
+		httphelper.WriteError(w, http.StatusBadRequest, fmt.Sprintf("widget kind %q does not support actions", kind))
+		return
+	}
+	snapshot := s.buildWidgetSkillsSnapshot(r.Context(), layout)
+	res, err := actionWidget.InvokeAction(
+		r.Context(),
+		snapshot,
+		instID,
+		"select_client",
+		map[string]any{"client": req.Client},
+	)
+	if err != nil {
+		httphelper.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httphelper.WriteJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) buildWidgetSkillsSnapshot(
+	ctx context.Context,
+	layout dashboard.WidgetLayout,
+) widgetskills.Snapshot {
+	cfg := s.cfg
+	if s.configPath != "" {
+		if loaded, err := config.LoadConfig(s.configPath); err == nil {
+			loaded.Server = s.cfg.Server
+			loaded.MCP = s.cfg.MCP
+			cfg = loaded
+		}
+	}
+
+	layout = dashboard.HydrateWidgetLayout(ctx, layout)
+
+	agentsList := []widgetskills.Agent{}
+	regAgents := s.agentsManager.List(ctx, false)
+	for _, agent := range regAgents {
+		agentsList = append(agentsList, widgetskills.Agent{
+			ID:              agent.ID,
+			Name:            agent.Name,
+			Description:     agent.Description,
+			ProtocolBinding: agent.ProtocolBinding,
+			Enabled:         agent.Enabled,
+			Capabilities:    append([]string(nil), agent.Capabilities...),
+			MCPScopes:       append([]string(nil), agent.MCPScopes...),
+			AuthConfigured:  agent.AuthConfigured,
+		})
+	}
+
+	timezone := "UTC"
+	locale := "en"
+	for _, w := range layout.Widgets {
+		if w.Kind == "date-time" {
+			if tzVal, ok := w.Settings["timezone"].(string); ok && tzVal != "" {
+				timezone = tzVal
+			}
+			if locVal, ok := w.Settings["locale"].(string); ok && locVal != "" {
+				locale = locVal
+			}
+			break
+		}
+	}
+
+	wsCfg := widgetskills.Config{}
+	wsCfg.Home.Locale = locale
+	wsCfg.Home.Timezone = timezone
+	wsCfg.Voice.PreferredAgentID = cfg.Voice.PreferredAgentID
+
+	rooms, err := s.settings.Rooms(ctx)
+	if err != nil {
+		rooms = cfg.Rooms
+	}
+	tiles, err := s.settings.Tiles(ctx)
+	if err != nil {
+		tiles = cfg.Tiles
+	}
+
+	wsRooms := make([]widgetskills.RoomConfig, len(rooms))
+	for i, r := range rooms {
+		wsRooms[i] = widgetskills.RoomConfig{
+			ID:      r.ID,
+			Name:    r.Name,
+			Summary: r.Summary,
+			Status:  r.Status,
+		}
+	}
+	wsCfg.Rooms = wsRooms
+
+	wsTiles := make([]widgetskills.TileConfig, len(tiles))
+	for i, t := range tiles {
+		wsTiles[i] = widgetskills.TileConfig{
+			ID:     t.ID,
+			Kind:   t.Kind,
+			Label:  t.Label,
+			Value:  t.Value,
+			Detail: t.Detail,
+		}
+	}
+	wsCfg.Tiles = wsTiles
+
+	wsWidgets := make([]widgetskills.WidgetInstance, len(layout.Widgets))
+	for i, w := range layout.Widgets {
+		wsWidgets[i] = widgetskills.WidgetInstance{
+			ID:       w.ID,
+			Kind:     w.Kind,
+			Title:    w.Title,
+			X:        w.X,
+			Y:        w.Y,
+			W:        w.W,
+			H:        w.H,
+			Visible:  w.Visible,
+			Mode:     w.Mode,
+			Size:     w.Size,
+			Settings: w.Settings,
+			Data:     w.Data,
+		}
+	}
+	wsLayout := widgetskills.WidgetLayout{
+		ProfileID: layout.ProfileID,
+		Widgets:   wsWidgets,
+	}
+
+	return widgetskills.Snapshot{
+		Config:      wsCfg,
+		Layout:      wsLayout,
+		Agents:      agentsList,
+		GeneratedAt: time.Now().UTC(),
+	}
 }

@@ -13,6 +13,7 @@ import (
 	_ "jute-dash/widgets/datetime"
 	_ "jute-dash/widgets/markets"
 	_ "jute-dash/widgets/rss"
+	_ "jute-dash/widgets/spotify"
 	_ "jute-dash/widgets/weather"
 )
 

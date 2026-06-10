@@ -130,17 +130,26 @@ The Go `Widget` interface exposes `CatalogInfo() WidgetCatalogItem`, which conta
 
 The schema is surfaced through the widget catalog API alongside the catalog metadata, and a single generic form renderer in the display builds the settings sheet from it. Frame-level settings (title, chrome, size, and `mode`) are common to all widgets and are not part of the per-widget schema.
 
+## Security and Persistence Constraints
+
+All widgets must adhere to the following security and storage rules:
+- **Secure Local SQLite Storage**: Widget configuration, device layouts, and integration details are stored in the local SQLite runtime database (`jute.db`) as household durable settings. They must not be stored in browser local storage or transient client-side stores.
+- **Credentials Redaction**: Sensitive integration credentials (such as API keys, client secrets, and auth tokens) must never be returned in plain text in public API config projections or exposed to A2A agents / MCP contexts. They must be redacted, masked, or replaced with secure references.
+- **No Direct Remote Calls**: Svelte components must not communicate directly with remote APIs or cloud systems. All external operations must go through the Go hub backend.
+
 ---
 
 ## Core Widgets
 
-Jute Dash ships with five built-in widgets:
+Jute Dash ships with seven built-in widgets:
 
 1. **Date & Time (`date-time`)**: Clock, date, timezone, and locale synchronization.
 2. **Weather (`weather`)**: Current apparent temperature, humidity, wind, and conditions using Open-Meteo.
 3. **Chat History (`chat-history`)**: Recent conversation turns, active A2A agent status, and a quick re-entry chat button.
 4. **RSS Feed (`rss`)**: headlines aggregator from custom RSS xml streams with background caching.
 5. **Markets (`markets`)**: Stock, commodity, or crypto tickers watchlist using Yahoo Finance.
+6. **Smart Home (`smart-home`)**: Local smart home device controls (lights, switches) and sensor status views (Zigbee2MQTT, Philips Hue).
+7. **Music Player (`music-player`)**: Control and monitor music playback across multiple music services like Spotify and Apple Music.
 
 ---
 

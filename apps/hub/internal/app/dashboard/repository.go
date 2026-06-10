@@ -480,6 +480,20 @@ func defaultWidgetInstances() []defaultWidgetInstance {
 			overflow: "scroll",
 			visible:  true,
 		},
+		{
+			id:       "spotify-widget-1",
+			kind:     "spotify",
+			title:    "Spotify",
+			x:        6,
+			y:        1,
+			w:        6,
+			h:        2,
+			minW:     4,
+			minH:     2,
+			size:     "wide",
+			overflow: "clip",
+			visible:  true,
+		},
 	}
 }
 

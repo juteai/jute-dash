@@ -69,7 +69,18 @@ Start with the architecture docs before making product changes:
 - Widget permissions must be explicit, user-visible, and revocable.
 - Agent-visible widget context, prompts, and actions must come from Widget Skills.
 - Widget-owned agent actions are invoked through the hub skill registry, not direct MCP-to-widget calls.
+- Store all durable widget settings in the local SQLite runtime database (`jute.db`), never in transient browser storage.
+- Never expose raw credentials, secrets, or sensitive household keys to A2A agents, MCP contexts, or public API projections; always redact them.
 - New widget contributions should follow [Widget Developer Guidelines](docs/developer/widget-guidelines.md).
+
+The core built-in widgets are:
+1. `date-time`: Clock, date, timezone, and locale synchronization.
+2. `weather`: Current apparent temperature, humidity, wind, and conditions using Open-Meteo.
+3. `chat-history`: Recent conversation turns, active A2A agent status, and quick re-entry.
+4. `rss`: Headlines aggregator from custom RSS XML streams with background caching.
+5. `markets`: Stock, commodity, or crypto tickers watchlist using Yahoo Finance.
+6. `smart-home`: Local smart home device controls (lights, switches) and sensor status views (Zigbee2MQTT, Philips Hue).
+7. `music-player`: Control and monitor music playback across multiple music services like Spotify and Apple Music.
 
 ## Visual Customization Rules
 

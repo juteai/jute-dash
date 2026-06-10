@@ -22,11 +22,15 @@ import (
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/pkg/widgetskills"
 
+	_ "jute-dash/widgets/applemusic"
 	_ "jute-dash/widgets/chathistory"
 	_ "jute-dash/widgets/datetime"
 	_ "jute-dash/widgets/markets"
+	_ "jute-dash/widgets/philipshue"
 	_ "jute-dash/widgets/rss"
+	_ "jute-dash/widgets/spotify"
 	_ "jute-dash/widgets/weather"
+	_ "jute-dash/widgets/zigbee2mqtt"
 )
 
 var version = "dev"
