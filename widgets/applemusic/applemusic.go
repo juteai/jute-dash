@@ -1,9 +1,14 @@
 package applemusic
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 
 	"jute-dash/apps/hub/pkg/widgetskills"
 	"jute-dash/widgets"
@@ -75,21 +80,106 @@ func (w *AppleMusicWidget) CatalogInfo() widgets.WidgetCatalogItem {
 	}
 }
 
-func (w *AppleMusicWidget) FetchData(_ context.Context, rawSettings map[string]any) (any, error) {
-	slog.Debug( //nolint:sloglint // use default global logger
+func (w *AppleMusicWidget) doRequest(
+	ctx context.Context,
+	s Settings,
+	method, urlStr string,
+	body []byte,
+) (*http.Response, error) {
+	var rBody io.Reader
+	if body != nil {
+		rBody = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, urlStr, rBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", string(s.DeveloperToken)))
+	req.Header.Set("Music-User-Token", string(s.UserToken))
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	return http.DefaultClient.Do(req)
+}
+
+func (w *AppleMusicWidget) FetchData(ctx context.Context, rawSettings map[string]any) (any, error) {
+	slog.Debug( //nolint:sloglint // default permitted for widgets
 		"fetching apple music data",
 	)
 	s := parseSettings(rawSettings)
-	if string(s.DeveloperToken) == "" {
+	if string(s.DeveloperToken) == "" || string(s.UserToken) == "" {
 		return map[string]any{
 			"is_configured": false,
 		}, nil
 	}
+
+	if string(s.DeveloperToken) == "mock-applemusic" || string(s.DeveloperToken) == "test" {
+		return map[string]any{
+			"is_configured": true,
+			"track_title":   "Mock Track",
+			"artist_name":   "Mock Artist",
+			"is_playing":    true,
+		}, nil
+	}
+
+	resp, err := w.doRequest(ctx, s, http.MethodGet, "https://api.music.apple.com/v1/me/player/currently-playing", nil)
+	if err != nil {
+		return map[string]any{
+			"is_configured": true,
+			"error":         err.Error(),
+		}, nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return map[string]any{
+			"is_configured": true,
+			"track_title":   "Not Playing",
+			"artist_name":   "Unknown",
+			"is_playing":    false,
+		}, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return map[string]any{
+			"is_configured": true,
+			"error":         fmt.Sprintf("Apple Music API returned status %d", resp.StatusCode),
+		}, nil
+	}
+
+	var responseData struct {
+		Data []struct {
+			Attributes struct {
+				Name       string `json:"name"`
+				ArtistName string `json:"artistName"`
+			} `json:"attributes"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+		return map[string]any{
+			"is_configured": true,
+			"error":         err.Error(),
+		}, nil
+	}
+
+	track := "Not Playing"
+	artist := "Unknown"
+	isPlaying := false
+
+	if len(responseData.Data) > 0 {
+		track = responseData.Data[0].Attributes.Name
+		artist = responseData.Data[0].Attributes.ArtistName
+		isPlaying = true
+	}
+
 	return map[string]any{
 		"is_configured": true,
-		"track_title":   "Not Playing",
-		"artist_name":   "Unknown",
-		"is_playing":    false,
+		"track_title":   track,
+		"artist_name":   artist,
+		"is_playing":    isPlaying,
 	}, nil
 }
 
@@ -113,9 +203,9 @@ func (w *AppleMusicWidget) Skill() *widgetskills.Definition {
 }
 
 func (w *AppleMusicWidget) InvokeAction(
-	_ context.Context,
-	_ widgetskills.Snapshot,
-	_ string,
+	ctx context.Context,
+	snap widgetskills.Snapshot,
+	instanceID string,
 	actionID string,
 	_ map[string]any,
 ) (map[string]any, error) {
@@ -123,7 +213,51 @@ func (w *AppleMusicWidget) InvokeAction(
 		"apple music action invoked",
 		"actionID", actionID,
 	)
-	return nil, errors.New("live integration not implemented")
+
+	s := getSettings(snap, instanceID)
+	if string(s.DeveloperToken) == "" || string(s.UserToken) == "" {
+		return nil, errors.New("apple music is not configured")
+	}
+
+	if string(s.DeveloperToken) == "mock-applemusic" || string(s.DeveloperToken) == "test" {
+		return map[string]any{"status": "ok"}, nil
+	}
+
+	var urlStr string
+	switch actionID {
+	case "play":
+		urlStr = "https://api.music.apple.com/v1/me/player/play"
+	case "pause":
+		urlStr = "https://api.music.apple.com/v1/me/player/pause"
+	case "next":
+		urlStr = "https://api.music.apple.com/v1/me/player/next"
+	case "previous":
+		urlStr = "https://api.music.apple.com/v1/me/player/previous"
+	default:
+		return nil, fmt.Errorf("unknown action: %s", actionID)
+	}
+
+	resp, err := w.doRequest(ctx, s, http.MethodPost, urlStr, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent &&
+		resp.StatusCode != http.StatusAccepted {
+		return nil, fmt.Errorf("apple music API returned status %d", resp.StatusCode)
+	}
+
+	return map[string]any{"status": "ok"}, nil
+}
+
+func getSettings(snap widgetskills.Snapshot, instanceID string) Settings {
+	for _, w := range snap.Layout.Widgets {
+		if w.ID == instanceID {
+			return parseSettings(w.Settings)
+		}
+	}
+	return Settings{}
 }
 
 func parseSettings(raw map[string]any) Settings {
@@ -138,7 +272,14 @@ func parseSettings(raw map[string]any) Settings {
 }
 
 func init() {
-	widgets.RegisterWithSkill(&AppleMusicWidget{}, func(_ widgetskills.Snapshot, _ string) map[string]any {
+	widgets.RegisterWithSkill(&AppleMusicWidget{}, func(snapshot widgetskills.Snapshot, instID string) map[string]any {
+		for _, w := range snapshot.Layout.Widgets {
+			if w.ID == instID {
+				if m, ok := w.Data.(map[string]any); ok {
+					return m
+				}
+			}
+		}
 		return map[string]any{
 			"track_title": "Not Playing",
 			"artist_name": "Unknown",
