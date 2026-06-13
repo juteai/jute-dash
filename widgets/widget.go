@@ -22,6 +22,33 @@ type WidgetCatalogItem struct {
 	ConnectionRequirements []ConnectionRequirement `json:"connectionRequirements,omitempty"`
 }
 
+type ConnectionFieldType string
+
+const (
+	ConnectionFieldString  ConnectionFieldType = "string"
+	ConnectionFieldNumber  ConnectionFieldType = "number"
+	ConnectionFieldBoolean ConnectionFieldType = "boolean"
+	ConnectionFieldEnum    ConnectionFieldType = "enum"
+)
+
+type ConnectionField struct {
+	ID       string              `json:"id"`
+	Type     ConnectionFieldType `json:"type"`
+	Label    string              `json:"label"`
+	Help     string              `json:"help,omitempty"`
+	Required bool                `json:"required"`
+	Secret   bool                `json:"secret"`
+	Default  any                 `json:"default,omitempty"`
+	Options  []string            `json:"options,omitempty"`
+}
+
+type AdapterConnectionKind struct {
+	Kind        string            `json:"kind"`
+	DisplayName string            `json:"displayName"`
+	Description string            `json:"description,omitempty"`
+	Fields      []ConnectionField `json:"fields"`
+}
+
 // SettingFieldType enumerates the settings field types the display can render.
 type SettingFieldType string
 
@@ -169,12 +196,13 @@ func PayloadData(data any) any {
 }
 
 type ConnectionRequirement struct {
-	Slot        string   `json:"slot"`
-	Kind        string   `json:"kind"`
-	DisplayName string   `json:"displayName"`
-	Description string   `json:"description,omitempty"`
-	Required    bool     `json:"required"`
-	SecretKeys  []string `json:"secretKeys,omitempty"`
+	Slot        string            `json:"slot"`
+	Kind        string            `json:"kind"`
+	DisplayName string            `json:"displayName"`
+	Description string            `json:"description,omitempty"`
+	Required    bool              `json:"required"`
+	SecretKeys  []string          `json:"secretKeys,omitempty"`
+	Fields      []ConnectionField `json:"fields,omitempty"`
 }
 
 type ResolvedConnection struct {
@@ -191,7 +219,12 @@ type ConnectionResolver interface {
 		ctx context.Context,
 		requirements []ConnectionRequirement,
 		refs map[string]string,
-	) (map[string]ResolvedConnection, map[string]RuntimePayload)
+	) ConnectionResolution
+}
+
+type ConnectionResolution struct {
+	Connections map[string]ResolvedConnection
+	Issue       *RuntimePayload
 }
 
 type RuntimeInput struct {

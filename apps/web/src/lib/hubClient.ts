@@ -14,6 +14,7 @@ import type {
   VoiceProvider,
   VoiceStatus,
   AdapterConnection,
+  AdapterConnectionKind,
   WidgetCatalogItem,
   WidgetLayout
 } from '$lib/types';
@@ -577,6 +578,16 @@ export async function getAdapterConnections(
     '/api/v1/settings/connections'
   );
   return response.connections ?? [];
+}
+
+export async function getAdapterConnectionKinds(
+  fetcher: typeof fetch
+): Promise<AdapterConnectionKind[]> {
+  const response = await getJSON<{ kinds: AdapterConnectionKind[] }>(
+    fetcher,
+    '/api/v1/settings/connection-kinds'
+  );
+  return response.kinds ?? [];
 }
 
 export async function saveAdapterConnection(

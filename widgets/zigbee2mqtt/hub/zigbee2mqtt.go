@@ -74,40 +74,39 @@ func (w *Zigbee2MQTTWidget) RequiredConnections() []widgets.ConnectionRequiremen
 		DisplayName: "Zigbee2MQTT Broker",
 		Description: "MQTT broker used by Zigbee2MQTT.",
 		Required:    true,
-		SecretKeys:  []string{"mqtt_password"},
+		Fields: []widgets.ConnectionField{
+			{
+				ID:       "mqtt_url",
+				Type:     widgets.ConnectionFieldString,
+				Label:    "MQTT broker URL",
+				Required: true,
+				Default:  "mqtt://localhost:1883",
+			},
+			{
+				ID:    "mqtt_username",
+				Type:  widgets.ConnectionFieldString,
+				Label: "MQTT username",
+			},
+			{
+				ID:     "mqtt_password",
+				Type:   widgets.ConnectionFieldString,
+				Label:  "MQTT password reference",
+				Secret: true,
+				Help:   "Optional secret reference such as env:MQTT_PASSWORD.",
+			},
+		},
 	}}
 }
 
-func (w *Zigbee2MQTTWidget) FetchData(_ context.Context, rawSettings map[string]any) (any, error) {
+func (w *Zigbee2MQTTWidget) FetchData(_ context.Context, _ map[string]any) (any, error) {
 	slog.Debug( //nolint:sloglint // use default global logger
 		"fetching zigbee2mqtt data",
 	)
-	s := parseSettings(rawSettings)
-	if s.MQTTURL == "" {
-		return widgets.Unavailable(
-			"connection.missing",
-			"Zigbee2MQTT broker needed",
-			"Choose a Zigbee2MQTT broker connection in settings.",
-		), nil
-	}
-
-	instanceID, _ := rawSettings["instanceId"].(string)
-	if instanceID == "" {
-		instanceID = "default-zigbee2mqtt"
-	}
-
-	mc, err := provider.GetOrCreateClient(providerSettings(s), instanceID)
-	if err != nil {
-		return widgets.Unavailable( //nolint:nilerr // provider error is mapped to a safe widget issue
-			"zigbee2mqtt.unavailable",
-			"Zigbee2MQTT unavailable",
-			"Jute could not reach the Zigbee2MQTT broker.",
-		), nil
-	}
-
-	return map[string]any{
-		"devices": mc.GetDevices(),
-	}, nil
+	return widgets.Unavailable(
+		"connection.missing",
+		"Zigbee2MQTT broker needed",
+		"Choose a Zigbee2MQTT broker connection in settings.",
+	), nil
 }
 
 func (w *Zigbee2MQTTWidget) FetchDataWithConnections(
@@ -178,50 +177,26 @@ func zigbeeAction(id, title, description string) widgetskills.Action {
 	}
 }
 
-func (w *Zigbee2MQTTWidget) InvokeAction(
-	_ context.Context,
-	_ widgetskills.Snapshot,
-	instanceID string,
-	actionID string,
-	arguments map[string]any,
-) (map[string]any, error) {
-	slog.Info( //nolint:sloglint // use default global logger
-		"zigbee2mqtt action invoked",
-		"actionID", actionID,
-	)
-
-	deviceID, _ := arguments["deviceId"].(string)
-	if deviceID == "" {
-		deviceID, _ = arguments["device_id"].(string)
-	}
-	subAction, _ := arguments["action"].(string)
-	if subAction == "" {
-		subAction = actionID
-	}
-
-	if deviceID == "" || subAction == "" {
-		return nil, errors.New("missing deviceId or action")
-	}
-	if err := provider.ApplyAction(instanceID, deviceID, subAction, arguments["value"]); err != nil {
-		return nil, err
-	}
-	return map[string]any{"status": "ok"}, nil
-}
-
 func (w *Zigbee2MQTTWidget) InvokeActionWithConnections(
 	ctx context.Context,
 	input widgets.ActionInput,
 ) (map[string]any, error) {
 	_, _ = w.FetchDataWithConnections(ctx, input.RuntimeInput)
-	args := map[string]any{
-		"deviceId": input.Arguments["deviceId"],
-		"action":   input.ActionID,
-		"value":    input.Arguments["value"],
+	slog.Info( //nolint:sloglint // use default global logger
+		"zigbee2mqtt action invoked",
+		"actionID", input.ActionID,
+	)
+	deviceID, _ := input.Arguments["deviceId"].(string)
+	if deviceID == "" {
+		deviceID, _ = input.Arguments["device_id"].(string)
 	}
-	if args["deviceId"] == nil {
-		args["deviceId"] = input.Arguments["device_id"]
+	if deviceID == "" {
+		return nil, errors.New("missing deviceId")
 	}
-	return w.InvokeAction(ctx, input.Snapshot, input.InstanceID, input.ActionID, args)
+	if err := provider.ApplyAction(input.InstanceID, deviceID, input.ActionID, input.Arguments["value"]); err != nil {
+		return nil, err
+	}
+	return map[string]any{"status": "ok"}, nil
 }
 
 func zigbeeSettingsFromConnection(connection widgets.ResolvedConnection) Settings {
@@ -234,22 +209,6 @@ func zigbeeSettingsFromConnection(connection widgets.ResolvedConnection) Setting
 	}
 	settings.MQTTPassword = SecretString(connection.Secrets["mqtt_password"])
 	return settings
-}
-
-func parseSettings(raw map[string]any) Settings {
-	s := Settings{
-		MQTTURL: "mqtt://localhost:1883",
-	}
-	if v, ok := raw["mqtt_url"].(string); ok && v != "" {
-		s.MQTTURL = v
-	}
-	if v, ok := raw["mqtt_username"].(string); ok {
-		s.MQTTUsername = v
-	}
-	if v, ok := raw["mqtt_password"].(string); ok {
-		s.MQTTPassword = SecretString(v)
-	}
-	return s
 }
 
 func providerSettings(settings Settings) provider.Settings {

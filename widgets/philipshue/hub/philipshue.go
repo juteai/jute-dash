@@ -35,6 +35,22 @@ func (w *PhilipsHueWidget) RequiredConnections() []widgets.ConnectionRequirement
 		Description: "Local Hue Bridge address and API username.",
 		Required:    true,
 		SecretKeys:  []string{"username"},
+		Fields: []widgets.ConnectionField{
+			{
+				ID:       "bridge_ip",
+				Type:     widgets.ConnectionFieldString,
+				Label:    "Bridge IP address",
+				Required: true,
+			},
+			{
+				ID:       "username",
+				Type:     widgets.ConnectionFieldString,
+				Label:    "Bridge username reference",
+				Required: true,
+				Secret:   true,
+				Help:     "Use a secret reference such as env:HUE_USERNAME.",
+			},
+		},
 	}}
 }
 

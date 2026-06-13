@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"jute-dash/apps/hub/internal/pkg/httphelper"
+	"jute-dash/widgets"
 )
 
 var errInvalidHouseholdSettings = errors.New("invalid household settings")
@@ -53,6 +54,7 @@ func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/settings/household", c.handleHouseholdSettings)
 	mux.HandleFunc("/api/v1/settings/rooms", c.handleRoomSettings)
 	mux.HandleFunc("/api/v1/settings/tiles", c.handleTileSettings)
+	mux.HandleFunc("/api/v1/settings/connection-kinds", c.handleConnectionKinds)
 	mux.HandleFunc("/api/v1/settings/connections", c.handleConnections)
 	mux.HandleFunc("/api/v1/home", c.handleHome)
 }
@@ -128,6 +130,10 @@ func (c *Controller) handleConnections(w http.ResponseWriter, r *http.Request) {
 			httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
 			return
 		}
+		if err := validateAdapterConnection(connection, widgets.AdapterConnectionKinds()); err != nil {
+			httphelper.WriteError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		saved, err := c.settings.SaveAdapterConnection(r.Context(), connection)
 		if err != nil {
 			httphelper.WriteError(w, http.StatusBadRequest, "adapter connection could not be saved")
@@ -136,6 +142,62 @@ func (c *Controller) handleConnections(w http.ResponseWriter, r *http.Request) {
 		httphelper.WriteJSON(w, http.StatusOK, saved)
 	default:
 		httphelper.WriteMethodNotAllowed(w, http.MethodGet+", "+http.MethodPost+", "+http.MethodPut)
+	}
+}
+
+func (c *Controller) handleConnectionKinds(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		httphelper.WriteMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	httphelper.WriteJSON(w, http.StatusOK, map[string]any{
+		"kinds": widgets.AdapterConnectionKinds(),
+	})
+}
+
+func validateAdapterConnection(
+	connection AdapterConnection,
+	kinds []widgets.AdapterConnectionKind,
+) error {
+	if strings.TrimSpace(connection.ID) == "" {
+		return fmt.Errorf("%w: adapter connection id is required", ErrInvalidSettings)
+	}
+	if strings.TrimSpace(connection.Kind) == "" {
+		return fmt.Errorf("%w: adapter connection kind is required", ErrInvalidSettings)
+	}
+	knownKinds := map[string]widgets.AdapterConnectionKind{}
+	for _, kind := range kinds {
+		knownKinds[kind.Kind] = kind
+	}
+	kind, ok := knownKinds[connection.Kind]
+	if !ok {
+		return nil
+	}
+	for _, field := range kind.Fields {
+		if !field.Required {
+			continue
+		}
+		if field.Secret {
+			if strings.TrimSpace(connection.SecretRefs[field.ID]) == "" {
+				return fmt.Errorf("%w: %s is required", ErrInvalidSettings, field.Label)
+			}
+			continue
+		}
+		if missingConnectionSetting(connection.Settings[field.ID]) {
+			return fmt.Errorf("%w: %s is required", ErrInvalidSettings, field.Label)
+		}
+	}
+	return nil
+}
+
+func missingConnectionSetting(value any) bool {
+	switch v := value.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(v) == ""
+	default:
+		return false
 	}
 }
 

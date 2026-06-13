@@ -2,7 +2,6 @@ package applemusic
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
 	"jute-dash/apps/hub/pkg/widgetskills"
@@ -71,36 +70,36 @@ func (w *AppleMusicWidget) RequiredConnections() []widgets.ConnectionRequirement
 		Description: "Apple Music developer and user token references.",
 		Required:    true,
 		SecretKeys:  []string{"developer_token", "user_token"},
+		Fields: []widgets.ConnectionField{
+			{
+				ID:       "developer_token",
+				Type:     widgets.ConnectionFieldString,
+				Label:    "Developer token reference",
+				Required: true,
+				Secret:   true,
+				Help:     "Use a secret reference such as env:APPLE_MUSIC_DEVELOPER_TOKEN.",
+			},
+			{
+				ID:       "user_token",
+				Type:     widgets.ConnectionFieldString,
+				Label:    "Music user token reference",
+				Required: true,
+				Secret:   true,
+				Help:     "Use a secret reference such as env:APPLE_MUSIC_USER_TOKEN.",
+			},
+		},
 	}}
 }
 
-func (w *AppleMusicWidget) FetchData(ctx context.Context, rawSettings map[string]any) (any, error) {
+func (w *AppleMusicWidget) FetchData(_ context.Context, _ map[string]any) (any, error) {
 	slog.Debug( //nolint:sloglint // default permitted for widgets
 		"fetching apple music data",
 	)
-	s := parseSettings(rawSettings)
-	if string(s.DeveloperToken) == "" || string(s.UserToken) == "" {
-		return widgets.Unavailable(
-			"connection.missing",
-			"Apple Music account needed",
-			"Choose an Apple Music Account connection in settings.",
-		), nil
-	}
-
-	playback, err := provider.NewClient(providerSettings(s)).FetchPlayback(ctx)
-	if err != nil {
-		return widgets.Unavailable( //nolint:nilerr // provider error is mapped to a safe widget issue
-			"apple_music.unavailable",
-			"Apple Music unavailable",
-			"Jute could not load Apple Music playback.",
-		), nil
-	}
-
-	return map[string]any{
-		"track_title": playback.TrackTitle,
-		"artist_name": playback.ArtistName,
-		"is_playing":  playback.IsPlaying,
-	}, nil
+	return widgets.Unavailable(
+		"connection.missing",
+		"Apple Music account needed",
+		"Choose an Apple Music Account connection in settings.",
+	), nil
 }
 
 func (w *AppleMusicWidget) FetchDataWithConnections(
@@ -115,25 +114,19 @@ func (w *AppleMusicWidget) FetchDataWithConnections(
 			"Choose an Apple Music Account connection in settings.",
 		), nil
 	}
-	data, err := w.FetchData(ctx, map[string]any{
-		"developer_token": string(settings.DeveloperToken),
-		"user_token":      string(settings.UserToken),
-	})
+	playback, err := provider.NewClient(providerSettings(settings)).FetchPlayback(ctx)
 	if err != nil {
-		return widgets.ErrorPayload( //nolint:nilerr // provider error is mapped to a safe widget issue
-			"apple_music.fetch_failed",
+		return widgets.Unavailable( //nolint:nilerr // provider error is mapped to a safe widget issue
+			"apple_music.unavailable",
 			"Apple Music unavailable",
 			"Jute could not load Apple Music playback.",
 		), nil
 	}
-	payload := widgets.NormalizePayload(data, nil)
-	if payload.Status != widgets.StatusOK {
-		return payload, nil
-	}
-	if m, ok := data.(map[string]any); ok {
-		return widgets.OK(m), nil
-	}
-	return widgets.OK(data), nil
+	return widgets.OK(map[string]any{
+		"track_title": playback.TrackTitle,
+		"artist_name": playback.ArtistName,
+		"is_playing":  playback.IsPlaying,
+	}), nil
 }
 
 func (w *AppleMusicWidget) Skill() *widgetskills.Definition {
@@ -175,34 +168,6 @@ func applePlaybackAction(id, title, description string) widgetskills.Action {
 	}
 }
 
-func (w *AppleMusicWidget) InvokeAction(
-	ctx context.Context,
-	snap widgetskills.Snapshot,
-	instanceID string,
-	actionID string,
-	_ map[string]any,
-) (map[string]any, error) {
-	slog.Info( //nolint:sloglint // use default global logger
-		"apple music action invoked",
-		"actionID", actionID,
-	)
-
-	s := getSettings(snap, instanceID)
-	if string(s.DeveloperToken) == "" || string(s.UserToken) == "" {
-		return nil, errors.New("apple music is not configured")
-	}
-
-	if string(s.DeveloperToken) == "mock-applemusic" || string(s.DeveloperToken) == "test" {
-		return map[string]any{"status": "ok"}, nil
-	}
-
-	if err := provider.NewClient(providerSettings(s)).ApplyAction(ctx, actionID); err != nil {
-		return nil, err
-	}
-
-	return map[string]any{"status": "ok"}, nil
-}
-
 func providerSettings(settings Settings) provider.Settings {
 	return provider.Settings{
 		DeveloperToken: string(settings.DeveloperToken),
@@ -215,23 +180,14 @@ func (w *AppleMusicWidget) InvokeActionWithConnections(
 	input widgets.ActionInput,
 ) (map[string]any, error) {
 	settings := appleMusicSettingsFromConnection(input.Connections["account"])
-	snap := input.Snapshot
-	snap.Layout.Widgets = append([]widgetskills.WidgetInstance(nil), snap.Layout.Widgets...)
-	found := false
-	for i := range snap.Layout.Widgets {
-		if snap.Layout.Widgets[i].ID == input.InstanceID {
-			snap.Layout.Widgets[i].Settings = map[string]any{
-				"developer_token": string(settings.DeveloperToken),
-				"user_token":      string(settings.UserToken),
-			}
-			found = true
-			break
-		}
+	slog.Info( //nolint:sloglint // use default global logger
+		"apple music action invoked",
+		"actionID", input.ActionID,
+	)
+	if err := provider.NewClient(providerSettings(settings)).ApplyAction(ctx, input.ActionID); err != nil {
+		return nil, err
 	}
-	if !found {
-		return nil, errors.New("widget instance not found")
-	}
-	return w.InvokeAction(ctx, snap, input.InstanceID, input.ActionID, input.Arguments)
+	return map[string]any{"status": "ok"}, nil
 }
 
 func appleMusicSettingsFromConnection(connection widgets.ResolvedConnection) Settings {
@@ -239,26 +195,6 @@ func appleMusicSettingsFromConnection(connection widgets.ResolvedConnection) Set
 		DeveloperToken: SecretString(connection.Secrets["developer_token"]),
 		UserToken:      SecretString(connection.Secrets["user_token"]),
 	}
-}
-
-func getSettings(snap widgetskills.Snapshot, instanceID string) Settings {
-	for _, w := range snap.Layout.Widgets {
-		if w.ID == instanceID {
-			return parseSettings(w.Settings)
-		}
-	}
-	return Settings{}
-}
-
-func parseSettings(raw map[string]any) Settings {
-	s := Settings{}
-	if v, ok := raw["developer_token"].(string); ok {
-		s.DeveloperToken = SecretString(v)
-	}
-	if v, ok := raw["user_token"].(string); ok {
-		s.UserToken = SecretString(v)
-	}
-	return s
 }
 
 func init() {

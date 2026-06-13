@@ -220,7 +220,7 @@ v1 secret references:
 - local token file references outside repo paths when explicitly configured;
 - auth configured booleans in public projections.
 
-Integration Widgets must use Adapter Connections for provider credentials. A Widget Instance stores `connectionRefs` such as `{ "bridge": "living-room-hue" }`; the referenced Adapter Connection stores non-secret adapter settings plus secret references such as `{ "username": "env:HUE_USERNAME" }`. The hub resolver is the only layer that turns those references into raw material for provider code.
+Integration Widgets must use Adapter Connections for provider credentials. A Widget Instance stores `connectionRefs` such as `{ "bridge": "living-room-hue" }`; the referenced Adapter Connection stores non-secret adapter settings plus secret references such as `{ "username": "env:HUE_USERNAME" }`. Connection kinds expose typed setup metadata through `/api/v1/settings/connection-kinds`, and the Settings `Connections` surface saves records as `settings` plus `secretRefs`. The hub resolver validates required fields and is the only layer that turns those references into raw material for provider code.
 
 Future secret storage:
 

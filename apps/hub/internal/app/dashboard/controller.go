@@ -48,67 +48,13 @@ func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/widgets/layout/reset", c.handleWidgetLayoutReset)
 }
 
-func convertSettingFields(fields []widgets.SettingField) []SettingField {
-	if fields == nil {
-		return nil
-	}
-	res := make([]SettingField, 0, len(fields))
-	for _, f := range fields {
-		res = append(res, SettingField{
-			ID:      f.ID,
-			Type:    SettingFieldType(f.Type),
-			Label:   f.Label,
-			Help:    f.Help,
-			Default: f.Default,
-			Options: f.Options,
-			Fields:  convertSettingFields(f.Fields),
-		})
-	}
-	return res
-}
-
-func convertConnectionRequirements(reqs []widgets.ConnectionRequirement) []ConnectionRequirement {
-	if reqs == nil {
-		return nil
-	}
-	res := make([]ConnectionRequirement, 0, len(reqs))
-	for _, req := range reqs {
-		res = append(res, ConnectionRequirement{
-			Slot:        req.Slot,
-			Kind:        req.Kind,
-			DisplayName: req.DisplayName,
-			Description: req.Description,
-			Required:    req.Required,
-			SecretKeys:  append([]string(nil), req.SecretKeys...),
-		})
-	}
-	return res
-}
-
 // RegisteredCatalog returns catalog metadata for every registered widget,
-// converted into the dashboard package's catalog item shape. This is the single
-// source the layout store uses for normalization, so all registered kinds
-// (including rss and markets) are known and share their authored defaults.
+// as the single source the layout store uses for normalization.
 func RegisteredCatalog() []WidgetCatalogItem {
 	items := widgets.List()
 	catalog := make([]WidgetCatalogItem, 0, len(items))
 	for _, it := range items {
-		info := it.CatalogInfo()
-		catalog = append(catalog, WidgetCatalogItem{
-			Kind:                   info.Kind,
-			Name:                   info.Name,
-			Description:            info.Description,
-			DefaultTitle:           info.DefaultTitle,
-			DefaultW:               info.DefaultW,
-			DefaultH:               info.DefaultH,
-			MinW:                   info.MinW,
-			MinH:                   info.MinH,
-			DefaultSize:            info.DefaultSize,
-			Overflow:               info.Overflow,
-			AllowMultiple:          info.AllowMultiple,
-			SettingsSchema:         convertSettingFields(info.SettingsSchema),
-			ConnectionRequirements: convertConnectionRequirements(info.ConnectionRequirements),
-		})
+		catalog = append(catalog, it.CatalogInfo())
 	}
 	return catalog
 }
@@ -217,31 +163,25 @@ func (h *Hydrator) HydrateWidgetLayout(ctx context.Context, layout WidgetLayout)
 
 		settings := cloneSettings(widget.Settings)
 		if connectionWidget, ok := provider.(widgets.ConnectionAwareWidget); ok {
-			connections := map[string]widgets.ResolvedConnection{}
-			issues := map[string]widgets.RuntimePayload{}
+			resolution := widgets.ConnectionResolution{
+				Connections: map[string]widgets.ResolvedConnection{},
+			}
 			if h.resolver != nil {
-				connections, issues = h.resolver.ResolveWidgetConnections(
+				resolution = h.resolver.ResolveWidgetConnections(
 					ctx,
 					connectionWidget.RequiredConnections(),
 					widget.ConnectionRefs,
 				)
 			}
-			handledByIssue := false
-			for _, req := range connectionWidget.RequiredConnections() {
-				if issue, ok := issues[req.Slot]; ok {
-					widget.Data = issue
-					handledByIssue = true
-					break
-				}
-			}
-			if handledByIssue {
+			if resolution.Issue != nil {
+				widget.Data = *resolution.Issue
 				continue
 			}
 			payload, err := connectionWidget.FetchDataWithConnections(ctx, widgets.RuntimeInput{
 				InstanceID:     widget.ID,
 				Settings:       settings,
 				ConnectionRefs: cloneConnectionRefs(widget.ConnectionRefs),
-				Connections:    connections,
+				Connections:    resolution.Connections,
 			})
 			widget.Data = widgets.NormalizePayload(payload, err)
 			continue

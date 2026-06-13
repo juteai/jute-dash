@@ -22,7 +22,7 @@ v1 secret handling:
 - never include raw secret values in public config endpoints;
 - redact secret references in logs where possible.
 
-Adapter Connections are the required credential boundary for Integration Widgets. Widget instances link to them with `connectionRefs`; widget settings remain non-secret. Resolved provider secrets may be passed to connection-aware Go widget code only inside the hub process and must not be written back to layouts, snapshots, display payloads, A2A context, MCP context, logs, or public config projections.
+Adapter Connections are the required credential boundary for Integration Widgets. Widget instances link to them with `connectionRefs`; widget settings remain non-secret. The hub validates typed connection setup fields and required secret references before provider code runs. Resolved provider secrets may be passed to connection-aware Go widget code only inside the hub process and must not be written back to layouts, snapshots, display payloads, A2A context, MCP context, logs, or public config projections.
 
 Future secret handling:
 

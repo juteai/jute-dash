@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"jute-dash/widgets"
 )
 
 var ErrInvalidLayout = errors.New("invalid widget layout")
@@ -90,52 +92,19 @@ type WidgetLayout struct {
 	Widgets   []WidgetInstance `json:"widgets"`
 }
 
-type SettingFieldType string
+type SettingFieldType = widgets.SettingFieldType
+type SettingField = widgets.SettingField
+type ConnectionRequirement = widgets.ConnectionRequirement
+type WidgetCatalogItem = widgets.WidgetCatalogItem
 
 const (
-	SettingString     SettingFieldType = "string"
-	SettingNumber     SettingFieldType = "number"
-	SettingBoolean    SettingFieldType = "boolean"
-	SettingEnum       SettingFieldType = "enum"
-	SettingStringList SettingFieldType = "string-list"
-	SettingObjectList SettingFieldType = "object-list"
+	SettingString     = widgets.SettingString
+	SettingNumber     = widgets.SettingNumber
+	SettingBoolean    = widgets.SettingBoolean
+	SettingEnum       = widgets.SettingEnum
+	SettingStringList = widgets.SettingStringList
+	SettingObjectList = widgets.SettingObjectList
 )
-
-type SettingField struct {
-	ID      string           `json:"id"`
-	Type    SettingFieldType `json:"type"`
-	Label   string           `json:"label"`
-	Help    string           `json:"help,omitempty"`
-	Default any              `json:"default,omitempty"`
-	Options []string         `json:"options,omitempty"`
-	Fields  []SettingField   `json:"fields,omitempty"`
-}
-
-type ConnectionRequirement struct {
-	Slot        string   `json:"slot"`
-	Kind        string   `json:"kind"`
-	DisplayName string   `json:"displayName"`
-	Description string   `json:"description,omitempty"`
-	Required    bool     `json:"required"`
-	SecretKeys  []string `json:"secretKeys,omitempty"`
-}
-
-// WidgetCatalogItem holds metadata of a widget kind.
-type WidgetCatalogItem struct {
-	Kind                   string                  `json:"kind"`
-	Name                   string                  `json:"name"`
-	Description            string                  `json:"description"`
-	DefaultTitle           string                  `json:"defaultTitle"`
-	DefaultW               int                     `json:"defaultW"`
-	DefaultH               int                     `json:"defaultH"`
-	MinW                   int                     `json:"minW"`
-	MinH                   int                     `json:"minH"`
-	DefaultSize            string                  `json:"defaultSize"`
-	Overflow               string                  `json:"overflow"`
-	AllowMultiple          bool                    `json:"allowMultiple"`
-	SettingsSchema         []SettingField          `json:"settingsSchema,omitempty"`
-	ConnectionRequirements []ConnectionRequirement `json:"connectionRequirements,omitempty"`
-}
 
 // WidgetInstance represents an active widget.
 type WidgetInstance struct {

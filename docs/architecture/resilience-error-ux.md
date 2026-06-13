@@ -156,7 +156,7 @@ Weather already includes `updatedAt` and `status`. Home, agent, voice, and Integ
 
 ## Widget Setup And Connection Issues
 
-Missing, disabled, mismatched, or unhealthy Adapter Connections are single-widget setup issues unless they affect a global flow. The display should show the issue inline in `WidgetFrame` and point the user to Settings `Connections` or the widget settings sheet.
+Missing, disabled, mismatched, incomplete, or unhealthy Adapter Connections are single-widget setup issues unless they affect a global flow. The hub resolver returns the first safe issue in declared requirement order, before provider runtime/action code runs. The display should show the issue inline in `WidgetFrame` and point the user to Settings `Connections` or the widget settings sheet.
 
 Recommended copy:
 

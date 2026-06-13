@@ -324,6 +324,27 @@ export type ConnectionRequirement = {
   description?: string;
   required: boolean;
   secretKeys?: string[];
+  fields?: ConnectionField[];
+};
+
+export type ConnectionFieldType = 'string' | 'number' | 'boolean' | 'enum';
+
+export type ConnectionField = {
+  id: string;
+  type: ConnectionFieldType | string;
+  label: string;
+  help?: string;
+  required: boolean;
+  secret: boolean;
+  default?: unknown;
+  options?: string[];
+};
+
+export type AdapterConnectionKind = {
+  kind: string;
+  displayName: string;
+  description?: string;
+  fields: ConnectionField[];
 };
 
 export type SettingFieldType =

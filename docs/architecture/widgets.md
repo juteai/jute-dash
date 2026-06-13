@@ -42,7 +42,8 @@ flowchart TD
         Catalog -.->|Generates Settings UI Form| ConfigSheet
 
         Scheduler[Background Runner] -->|10. Calls Cadence| GoWidget
-        Resolver[Connection Resolver] -->|Resolved adapter material| GoWidget
+        Resolver[Connection Resolver] -->|Validated resolved adapter material| GoWidget
+        ActionDispatcher[widgetactions Dispatcher] -->|Policy + resolved connections| GoWidget
         GoWidget -->|FetchData| ExtData["External API / Adapter"]
         GoWidget -->|Produces Normalized Payload| DB
     end
@@ -159,7 +160,7 @@ Integration Widgets declare required connection slots in catalog metadata:
 - `kind`: Adapter Connection kind, such as `spotify`, `apple-music`, `philips-hue`, or `zigbee2mqtt`;
 - `displayName` and `description`: safe setup copy for the display;
 - `required`: whether the widget can run without the connection;
-- `secretKeys`: names of secret references the hub must resolve before invoking the widget.
+- `fields`: typed setup fields rendered by Settings `Connections`. Each field declares `id`, `label`, `type`, `help`, `required`, `secret`, optional `default`, and optional enum values.
 
 Each widget instance stores:
 
@@ -170,9 +171,9 @@ Each widget instance stores:
 }
 ```
 
-`connectionRefs` is typed widget instance metadata, not widget settings. It maps declared slots to shared Adapter Connection IDs. Settings `Connections` owns creation and linking/setup flows; widget settings sheets only select the required shared connection for that instance.
+`connectionRefs` is typed widget instance metadata, not widget settings. It maps declared slots to shared Adapter Connection IDs. Settings `Connections` owns creation and linking/setup flows with typed fields for built-in connection kinds; widget settings sheets only select the required shared connection for that instance.
 
-The hub resolver returns adapter-scoped resolved material only to connection-aware Go widget code. Public API projections include connection IDs and safe connection metadata, never resolved secrets.
+The hub resolver validates required non-secret settings and required secret references before widget runtime or action code runs. It returns one resolution result: resolved adapter-scoped material plus the first safe issue in declared requirement order. Raw secret material is resolved only inside Hub process memory and is passed only to connection-aware Go widget code. Public API projections include connection IDs and safe connection metadata, never resolved secrets.
 
 ## Runtime Payloads
 
@@ -211,7 +212,7 @@ All widget actions use:
 POST /api/v1/widgets/{widgetInstanceId}/actions/{actionId}
 ```
 
-The dispatcher resolves the widget instance, Widget Skill action declaration, actor type, `connectionRefs`, resolved connection material, confirmation policy, and safe result/issue. Display, MCP, and agent action paths must share this dispatcher behavior.
+The Hub-owned `widgetactions` dispatcher resolves the widget instance, Widget Skill action declaration, actor type, `connectionRefs`, resolved connection material, confirmation policy, and safe result/issue. Display, MCP, and agent action paths must share this dispatcher behavior. `Server` handlers only parse HTTP and write responses; they do not own provider action policy.
 
 ## Security and Persistence Constraints
 
@@ -243,8 +244,8 @@ Jute Dash ships with first-class built-in widgets:
 
 To build a new widget:
 1. Create a folder `widgets/[name]/`.
-2. Implement your backend provider in `widgets/[name]/[name].go` under `package [name]`. Make sure it registers itself inside `init()`, and declare non-secret settings plus any required Adapter Connections in `CatalogInfo()`.
+2. Implement your backend provider in `widgets/[name]/hub` under `package [name]`. Make sure it registers itself inside `init()`, and declare non-secret settings plus any required Adapter Connections in `CatalogInfo()`.
 3. Add a blank import for your subpackage in `apps/hub/cmd/juted/main.go` to trigger auto-registration.
-4. Implement your frontend view in `widgets/[name]/[Name]Widget.svelte`.
+4. Implement your frontend view in `widgets/[name]/web/[Name]Widget.svelte`.
 5. Import and register your view inside [widget-registry.ts](file:///Users/craighutcheon/Repos/Other/jute-dash/widgets/widget-registry.ts).
 6. Document usage, settings schemas, and examples in a `README.md` file inside your widget folder.

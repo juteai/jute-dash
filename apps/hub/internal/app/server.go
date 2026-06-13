@@ -18,6 +18,7 @@ import (
 	"jute-dash/apps/hub/internal/app/filesync"
 	"jute-dash/apps/hub/internal/app/homestate"
 	"jute-dash/apps/hub/internal/app/voice"
+	"jute-dash/apps/hub/internal/app/widgetactions"
 	a2aclient "jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/internal/pkg/httphelper"
@@ -41,6 +42,7 @@ type Server struct {
 	display            *displayactions.Dispatcher
 	voiceDispatcher    *voice.Dispatcher
 	connectionResolver widgets.ConnectionResolver
+	actionDispatcher   *widgetactions.Dispatcher
 	turnRunner         *agents.Runner
 	handler            http.Handler
 	mu                 sync.Mutex
@@ -267,6 +269,12 @@ func newServer(
 		started:            time.Now().UTC(),
 		version:            version,
 	}
+	actionDispatcher := widgetactions.NewDispatcher(
+		activeLayoutStore,
+		connectionResolver,
+		server.buildWidgetSkillsSnapshot,
+	)
+	server.actionDispatcher = actionDispatcher
 
 	agents.SetEnvReader(os.Getenv)
 	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
@@ -690,19 +698,18 @@ func (s *Server) handleWidgetAction(w http.ResponseWriter, r *http.Request) {
 	if req.Actor == "" {
 		req.Actor = "display"
 	}
-	result, issue, status := s.dispatchWidgetAction(
-		r.Context(),
-		instanceID,
-		actionID,
-		req.Arguments,
-		req.Actor,
-		req.Confirmed,
-	)
-	if issue != nil {
-		httphelper.WriteJSON(w, status, map[string]any{"status": "error", "issue": issue})
+	result := s.actionDispatcher.Dispatch(r.Context(), widgetactions.Request{
+		WidgetInstanceID: instanceID,
+		ActionID:         actionID,
+		Arguments:        req.Arguments,
+		Actor:            req.Actor,
+		Confirmed:        req.Confirmed,
+	})
+	if result.Issue != nil {
+		httphelper.WriteJSON(w, result.HTTPStatus, map[string]any{"status": "error", "issue": result.Issue})
 		return
 	}
-	httphelper.WriteJSON(w, status, result)
+	httphelper.WriteJSON(w, result.HTTPStatus, result.Body)
 }
 
 func (s *Server) InvokeWidgetAction(
@@ -713,7 +720,7 @@ func (s *Server) InvokeWidgetAction(
 	actor string,
 	confirmed bool,
 ) (map[string]any, error) {
-	result, issue, _ := s.dispatchWidgetAction(
+	return s.actionDispatcher.InvokeWidgetAction(
 		ctx,
 		widgetInstanceID,
 		actionID,
@@ -721,10 +728,6 @@ func (s *Server) InvokeWidgetAction(
 		actor,
 		confirmed,
 	)
-	if issue != nil {
-		return map[string]any{"status": "error", "issue": issue}, nil
-	}
-	return result, nil
 }
 
 func parseWidgetActionPath(path string) (string, string, bool) {
@@ -740,157 +743,6 @@ func parseWidgetActionPath(path string) (string, string, bool) {
 	instanceID := strings.TrimSpace(parts[0])
 	actionID := strings.TrimSpace(parts[2])
 	return instanceID, actionID, instanceID != "" && actionID != ""
-}
-
-func (s *Server) dispatchWidgetAction(
-	ctx context.Context,
-	instanceID string,
-	actionID string,
-	arguments map[string]any,
-	actor string,
-	confirmed bool,
-) (map[string]any, *widgets.UserFacingIssue, int) {
-	layout, err := s.layoutStore.WidgetLayout(ctx, "")
-	if err != nil {
-		return nil, safeIssue(
-			"widget.layout_unavailable",
-			"Widget unavailable",
-			"Jute cannot load the widget layout.",
-			"error",
-		), http.StatusInternalServerError
-	}
-	var inst *dashboard.WidgetInstance
-	for i := range layout.Widgets {
-		if layout.Widgets[i].ID == instanceID {
-			inst = &layout.Widgets[i]
-			break
-		}
-	}
-	if inst == nil {
-		return nil, safeIssue(
-			"widget.not_found",
-			"Widget not found",
-			"This widget is no longer available.",
-			"warning",
-		), http.StatusNotFound
-	}
-	provider, exists := widgets.Get(inst.Kind)
-	if !exists {
-		return nil, safeIssue(
-			"widget.kind_not_registered",
-			"Widget unavailable",
-			"This widget is not available in the Hub.",
-			"warning",
-		), http.StatusNotFound
-	}
-	action, ok := findWidgetAction(provider, actionID)
-	if !ok {
-		return nil, safeIssue(
-			"widget.action_not_found",
-			"Action unavailable",
-			"This action is not supported by the widget.",
-			"warning",
-		), http.StatusBadRequest
-	}
-	if action.RequiresConfirmation && !confirmed {
-		return nil, safeIssue(
-			"widget.action_confirmation_required",
-			"Confirmation needed",
-			"Confirm this action before Jute runs it.",
-			"warning",
-		), http.StatusConflict
-	}
-	snapshot := s.buildWidgetSkillsSnapshot(ctx, layout)
-	if connectionWidget, ok := provider.(widgets.ConnectionAwareActionWidget); ok {
-		connections, issues := s.connectionResolver.ResolveWidgetConnections(
-			ctx,
-			connectionWidget.RequiredConnections(),
-			inst.ConnectionRefs,
-		)
-		for _, req := range connectionWidget.RequiredConnections() {
-			if issue, ok := issues[req.Slot]; ok {
-				return nil, issue.Issue, http.StatusBadRequest
-			}
-		}
-		result, err := connectionWidget.InvokeActionWithConnections(ctx, widgets.ActionInput{
-			RuntimeInput: widgets.RuntimeInput{
-				InstanceID:     inst.ID,
-				Settings:       cloneDashboardSettings(inst.Settings),
-				ConnectionRefs: cloneDashboardConnectionRefs(inst.ConnectionRefs),
-				Connections:    connections,
-			},
-			Snapshot:  snapshot,
-			ActionID:  actionID,
-			Arguments: arguments,
-			Actor:     actor,
-		})
-		if err != nil {
-			return nil, safeIssue(
-				"widget.action_failed",
-				"Action failed",
-				"Jute could not complete this widget action.",
-				"error",
-			), http.StatusInternalServerError
-		}
-		return result, nil, http.StatusOK
-	}
-	actionWidget, ok := provider.(widgets.ActionWidget)
-	if !ok {
-		return nil, safeIssue(
-			"widget.action_unsupported",
-			"Action unavailable",
-			"This widget does not support actions.",
-			"warning",
-		), http.StatusBadRequest
-	}
-	result, err := actionWidget.InvokeAction(ctx, snapshot, instanceID, actionID, arguments)
-	if err != nil {
-		return nil, safeIssue(
-			"widget.action_failed",
-			"Action failed",
-			"Jute could not complete this widget action.",
-			"error",
-		), http.StatusInternalServerError
-	}
-	return result, nil, http.StatusOK
-}
-
-func findWidgetAction(provider widgets.Widget, actionID string) (widgetskills.Action, bool) {
-	skill := provider.Skill()
-	if skill == nil {
-		return widgetskills.Action{}, false
-	}
-	for _, action := range skill.Actions {
-		if action.ID == actionID {
-			return action, true
-		}
-	}
-	return widgetskills.Action{}, false
-}
-
-func safeIssue(code, title, message, severity string) *widgets.UserFacingIssue {
-	return &widgets.UserFacingIssue{
-		Code:     code,
-		Severity: severity,
-		Title:    title,
-		Message:  message,
-	}
-}
-
-func cloneDashboardSettings(in map[string]any) map[string]any {
-	out := map[string]any{}
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func cloneDashboardConnectionRefs(in map[string]string) map[string]string {
-	out := map[string]string{}
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
 }
 
 func (s *Server) buildWidgetSkillsSnapshot(

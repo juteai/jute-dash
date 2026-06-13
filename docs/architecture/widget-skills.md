@@ -36,13 +36,13 @@ flowchart TD
 
     Bridge -->|Return resources / tools / prompts| Agent
 
-    Registry -->|Dispatch action| Dispatcher[Unified Widget Action Dispatcher]
+    Registry -->|Dispatch action| Dispatcher["Hub widgetactions Dispatcher"]
     Dispatcher -->|Resolve connection refs + policy| GoWidget
     GoWidget -->|InvokeAction| ActionExec[Provider action / trigger event]
     ActionExec -.->|Broadcast update| Svelte[Svelte Frontend Component]
 ```
 
-The compact A2A dashboard-context extension may include a summary of currently relevant Widget Skills, but full action invocation goes through MCP or a future hub-approved action API.
+The compact A2A dashboard-context extension may include a summary of currently relevant Widget Skills, but full action invocation goes through MCP, Display, or future Agent entry points that all call the same hub dispatcher.
 
 ## Skill Model
 
@@ -229,7 +229,7 @@ Prompt rules:
 - prompt text must not include secrets, hidden state, or private widget data;
 - prompts guide the agent but never grant permission.
 
-For third-party widgets, the manifest may declare prompt purpose and expected use, but the hub decides the final prompt content exposed to agents.
+For future manifest-backed widgets, a manifest may declare prompt purpose and expected use, but the hub will still decide the final prompt content exposed to agents.
 
 Required prompt fields:
 

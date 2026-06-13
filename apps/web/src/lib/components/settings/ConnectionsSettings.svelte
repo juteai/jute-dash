@@ -2,33 +2,38 @@
   import { onMount } from 'svelte';
   import { Plug, Plus, Save } from 'lucide-svelte';
   import Button from '$lib/components/ui/Button.svelte';
-  import { getAdapterConnections, saveAdapterConnection } from '$lib/hubClient';
+  import {
+    getAdapterConnectionKinds,
+    getAdapterConnections,
+    saveAdapterConnection
+  } from '$lib/hubClient';
   import { hubStream } from '$lib/hubStream';
-  import type { AdapterConnection } from '$lib/types';
-
-  const CONNECTION_KINDS = [
-    'philips-hue',
-    'zigbee2mqtt',
-    'spotify',
-    'apple-music'
-  ];
+  import type {
+    AdapterConnection,
+    AdapterConnectionKind,
+    ConnectionField
+  } from '$lib/types';
 
   let connections: AdapterConnection[] = [];
+  let connectionKinds: AdapterConnectionKind[] = [];
   let selectedId = '';
   let draft = blankConnection();
-  let settingsJSON = '{}';
-  let secretRefsJSON = '{}';
   let loading = false;
   let saving = false;
   let issue = '';
 
   $: selected = connections.find((connection) => connection.id === selectedId);
+  $: selectedKind = connectionKinds.find((kind) => kind.kind === draft.kind);
 
   onMount(() => {
     void load();
   });
 
-  function blankConnection(kind = 'philips-hue'): AdapterConnection {
+  function defaultKind(): string {
+    return connectionKinds[0]?.kind ?? 'philips-hue';
+  }
+
+  function blankConnection(kind = defaultKind()): AdapterConnection {
     return {
       id: '',
       kind,
@@ -43,11 +48,14 @@
     loading = true;
     issue = '';
     try {
-      connections = await getAdapterConnections(fetch);
+      [connectionKinds, connections] = await Promise.all([
+        getAdapterConnectionKinds(fetch),
+        getAdapterConnections(fetch)
+      ]);
       if (connections.length > 0) {
         selectConnection(connections[0]);
       } else {
-        newConnection();
+        newConnection(defaultKind());
       }
     } catch {
       issue = 'Connections could not be loaded.';
@@ -59,41 +67,62 @@
   function selectConnection(connection: AdapterConnection) {
     selectedId = connection.id;
     draft = structuredClone(connection);
-    settingsJSON = JSON.stringify(draft.settings ?? {}, null, 2);
-    secretRefsJSON = JSON.stringify(draft.secretRefs ?? {}, null, 2);
   }
 
-  function newConnection(kind = 'philips-hue') {
+  function newConnection(kind = defaultKind()) {
     selectedId = '';
     draft = blankConnection(kind);
-    settingsJSON = '{}';
-    secretRefsJSON = '{}';
     issue = '';
   }
 
-  function parseRecord(value: string, label: string): Record<string, unknown> {
-    const parsed = JSON.parse(value || '{}');
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error(`${label} must be a JSON object.`);
+  function changeKind(kind: string) {
+    draft = {
+      ...draft,
+      kind,
+      settings: {},
+      secretRefs: {}
+    };
+  }
+
+  function fieldValue(field: ConnectionField): unknown {
+    const source = field.secret ? draft.secretRefs : draft.settings;
+    const current = source?.[field.id];
+    if (current !== undefined) return current;
+    if (field.default !== undefined) return field.default;
+    if (field.type === 'boolean') return false;
+    return '';
+  }
+
+  function setFieldValue(field: ConnectionField, value: unknown) {
+    const key = field.secret ? 'secretRefs' : 'settings';
+    const next = { ...(draft[key] ?? {}) };
+    if (value === '' || value === undefined) {
+      delete next[field.id];
+    } else {
+      next[field.id] = value;
     }
-    return parsed as Record<string, unknown>;
+    draft = { ...draft, [key]: next };
+  }
+
+  function inputValue(event: Event, field: ConnectionField): unknown {
+    const input = event.currentTarget as HTMLInputElement | HTMLSelectElement;
+    if (field.type === 'number') {
+      return input.value === '' ? '' : Number(input.value);
+    }
+    if (field.type === 'boolean') {
+      return (input as HTMLInputElement).checked;
+    }
+    return input.value;
   }
 
   async function save() {
     saving = true;
     issue = '';
     try {
-      const settings = parseRecord(settingsJSON, 'Settings');
-      const secretRefs = parseRecord(
-        secretRefsJSON,
-        'Secret references'
-      ) as Record<string, string>;
       const saved = await saveAdapterConnection(fetch, {
         ...draft,
         id: draft.id.trim(),
-        name: draft.name.trim(),
-        settings,
-        secretRefs
+        name: draft.name.trim()
       });
       const others = connections.filter(
         (connection) => connection.id !== saved.id
@@ -164,9 +193,14 @@
 
     <label class="field">
       <span class="field-label">Kind</span>
-      <select class="text-input" bind:value={draft.kind}>
-        {#each CONNECTION_KINDS as kind (kind)}
-          <option value={kind}>{kind}</option>
+      <select
+        class="text-input"
+        value={draft.kind}
+        on:change={(event) =>
+          changeKind((event.currentTarget as HTMLSelectElement).value)}
+      >
+        {#each connectionKinds as kind (kind.kind)}
+          <option value={kind.kind}>{kind.displayName || kind.kind}</option>
         {/each}
       </select>
     </label>
@@ -181,21 +215,66 @@
       <span class="field-label">Enabled</span>
     </label>
 
-    <label class="field">
-      <span class="field-label">Settings JSON</span>
-      <textarea class="text-input json-input" bind:value={settingsJSON}
-      ></textarea>
-    </label>
-
-    <label class="field">
-      <span class="field-label">Secret references JSON</span>
-      <textarea class="text-input json-input" bind:value={secretRefsJSON}
-      ></textarea>
-      <span class="field-help"
-        >Use secret references such as {'{"username":"env:HUE_USERNAME"}'}; raw
-        secret values are not returned to widgets.</span
-      >
-    </label>
+    {#if selectedKind}
+      <div class="field-group">
+        <span class="field-label">{selectedKind.displayName}</span>
+        {#if selectedKind.description}
+          <span class="field-help">{selectedKind.description}</span>
+        {/if}
+        {#each selectedKind.fields as field (field.id)}
+          {#if field.type === 'boolean'}
+            <label class="field field-inline">
+              <input
+                type="checkbox"
+                checked={Boolean(fieldValue(field))}
+                on:change={(event) =>
+                  setFieldValue(field, inputValue(event, field))}
+              />
+              <span class="field-label">{field.label}</span>
+            </label>
+          {:else if field.type === 'enum'}
+            <label class="field">
+              <span class="field-label"
+                >{field.label}{field.required ? ' *' : ''}</span
+              >
+              <select
+                class="text-input"
+                value={fieldValue(field) as string}
+                required={field.required}
+                on:change={(event) =>
+                  setFieldValue(field, inputValue(event, field))}
+              >
+                <option value=""></option>
+                {#each field.options ?? [] as option (option)}
+                  <option value={option}>{option}</option>
+                {/each}
+              </select>
+              {#if field.help}<span class="field-help">{field.help}</span>{/if}
+            </label>
+          {:else}
+            <label class="field">
+              <span class="field-label"
+                >{field.label}{field.required ? ' *' : ''}</span
+              >
+              <input
+                class="text-input"
+                type={field.type === 'number' ? 'number' : 'text'}
+                value={fieldValue(field) as string | number}
+                required={field.required}
+                placeholder={field.secret ? 'env:SECRET_NAME' : ''}
+                on:input={(event) =>
+                  setFieldValue(field, inputValue(event, field))}
+              />
+              {#if field.help}<span class="field-help">{field.help}</span>{/if}
+            </label>
+          {/if}
+        {/each}
+      </div>
+    {:else}
+      <p class="settings-issue">
+        This Adapter Connection kind is not registered by a built-in Widget.
+      </p>
+    {/if}
 
     <div class="actions">
       <Button type="submit" disabled={saving}>
@@ -283,6 +362,12 @@
     align-items: center;
   }
 
+  .field-group {
+    display: grid;
+    gap: 10px;
+    padding-top: 4px;
+  }
+
   .field-label {
     color: var(--foreground);
     font-size: 0.82rem;
@@ -298,15 +383,6 @@
     color: var(--foreground);
     padding: 8px 10px;
     font: inherit;
-  }
-
-  .json-input {
-    min-height: 92px;
-    resize: vertical;
-    font-family:
-      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-      'Courier New', monospace;
-    font-size: 0.8rem;
   }
 
   .settings-issue {

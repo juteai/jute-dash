@@ -25,53 +25,51 @@ func (r *connectionResolver) ResolveWidgetConnections(
 	ctx context.Context,
 	requirements []widgets.ConnectionRequirement,
 	refs map[string]string,
-) (map[string]widgets.ResolvedConnection, map[string]widgets.RuntimePayload) {
+) widgets.ConnectionResolution {
 	connections := map[string]widgets.ResolvedConnection{}
-	issues := map[string]widgets.RuntimePayload{}
 	for _, req := range requirements {
 		ref := strings.TrimSpace(refs[req.Slot])
 		if ref == "" {
 			if req.Required {
-				issues[req.Slot] = widgets.Unavailable(
+				return widgets.ConnectionResolution{Connections: connections, Issue: issuePtr(widgets.Unavailable(
 					"connection.missing",
 					"Connection needed",
 					req.DisplayName+" is not connected yet.",
-				)
+				))}
 			}
 			continue
 		}
 		if r.store == nil {
-			issues[req.Slot] = widgets.Unavailable(
+			return widgets.ConnectionResolution{Connections: connections, Issue: issuePtr(widgets.Unavailable(
 				"connection.store_unavailable",
 				"Connection unavailable",
 				"Jute cannot read adapter connections right now.",
-			)
-			continue
+			))}
 		}
 		connection, err := r.store.AdapterConnection(ctx, ref)
 		if err != nil {
-			issues[req.Slot] = widgets.Unavailable(
+			return widgets.ConnectionResolution{Connections: connections, Issue: issuePtr(widgets.Unavailable(
 				"connection.not_found",
 				"Connection not found",
 				req.DisplayName+" is no longer available.",
-			)
-			continue
+			))}
 		}
 		if connection.Kind != req.Kind {
-			issues[req.Slot] = widgets.Unavailable(
+			return widgets.ConnectionResolution{Connections: connections, Issue: issuePtr(widgets.Unavailable(
 				"connection.kind_mismatch",
 				"Wrong connection type",
 				req.DisplayName+" uses a connection with the wrong type.",
-			)
-			continue
+			))}
 		}
 		if !connection.Enabled {
-			issues[req.Slot] = widgets.Unavailable(
+			return widgets.ConnectionResolution{Connections: connections, Issue: issuePtr(widgets.Unavailable(
 				"connection.disabled",
 				"Connection disabled",
 				req.DisplayName+" is disabled in settings.",
-			)
-			continue
+			))}
+		}
+		if issue := validateRequiredConnectionFields(req, connection); issue != nil {
+			return widgets.ConnectionResolution{Connections: connections, Issue: issue}
 		}
 		resolved := widgets.ResolvedConnection{
 			ID:       connection.ID,
@@ -84,21 +82,63 @@ func (r *connectionResolver) ResolveWidgetConnections(
 		for key, ref := range connection.SecretRefs {
 			value := resolveSecretRef(ref)
 			if value == "" {
-				issues[req.Slot] = widgets.Unavailable(
+				return widgets.ConnectionResolution{Connections: connections, Issue: issuePtr(widgets.Unavailable(
+					"connection.missing_credentials",
+					"Credentials unavailable",
+					req.DisplayName+" has missing credentials.",
+				))}
+			}
+			resolved.Secrets[key] = value
+		}
+		connections[req.Slot] = resolved
+	}
+	return widgets.ConnectionResolution{Connections: connections}
+}
+
+func validateRequiredConnectionFields(
+	req widgets.ConnectionRequirement,
+	connection homestate.AdapterConnection,
+) *widgets.RuntimePayload {
+	for _, field := range req.Fields {
+		if !field.Required {
+			continue
+		}
+		if field.Secret {
+			if strings.TrimSpace(connection.SecretRefs[field.ID]) == "" {
+				payload := widgets.Unavailable(
 					"connection.missing_credentials",
 					"Credentials unavailable",
 					req.DisplayName+" has missing credentials.",
 				)
-				break
+				return &payload
 			}
-			resolved.Secrets[key] = value
-		}
-		if _, hasIssue := issues[req.Slot]; hasIssue {
 			continue
 		}
-		connections[req.Slot] = resolved
+		if missingSetting(connection.Settings[field.ID]) {
+			payload := widgets.Unavailable(
+				"connection.missing_settings",
+				"Connection incomplete",
+				req.DisplayName+" is missing required setup details.",
+			)
+			return &payload
+		}
 	}
-	return connections, issues
+	return nil
+}
+
+func missingSetting(value any) bool {
+	switch v := value.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(v) == ""
+	default:
+		return false
+	}
+}
+
+func issuePtr(payload widgets.RuntimePayload) *widgets.RuntimePayload {
+	return &payload
 }
 
 func resolveSecretRef(ref string) string {
