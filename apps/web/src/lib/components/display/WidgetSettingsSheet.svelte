@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { X, Plus, Trash2 } from 'lucide-svelte';
+  import { X, Plus, RefreshCw, Trash2 } from 'lucide-svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import { getAdapterConnections } from '$lib/hubClient';
@@ -34,20 +34,25 @@
     widget.connectionRefs ?? {}
   );
   let connections: AdapterConnection[] = [];
+  let connectionOptionsBySlot: Record<string, AdapterConnection[]> = {};
   let connectionIssue = '';
+  let loadingConnections = false;
   $: chrome = (settings.chrome as string) || 'auto';
 
   $: schema = catalogItem?.settingsSchema ?? [];
   $: connectionRequirements = catalogItem?.connectionRequirements ?? [];
+  $: connectionOptionsBySlot = optionsByRequirement(
+    connectionRequirements,
+    connections
+  );
+  $: if (connections.length > 0 && connectionRequirements.length > 0) {
+    autoSelectConnections();
+  }
 
-  onMount(async () => {
-    if (connectionRequirements.length === 0) return;
-    try {
-      connections = await getAdapterConnections(fetch);
-      connectionIssue = '';
-    } catch {
-      connectionIssue = 'Connections are unavailable.';
-    }
+  onMount(() => {
+    window.addEventListener('focus', refreshConnections);
+    void refreshConnections();
+    return () => window.removeEventListener('focus', refreshConnections);
   });
 
   function defaultForField(field: SettingField): unknown {
@@ -77,8 +82,61 @@
     }
   }
 
-  function connectionsForKind(kind: string): AdapterConnection[] {
-    return connections.filter((connection) => connection.kind === kind);
+  function optionsByRequirement(
+    requirements: typeof connectionRequirements,
+    availableConnections: AdapterConnection[]
+  ): Record<string, AdapterConnection[]> {
+    return Object.fromEntries(
+      requirements.map((requirement) => {
+        const normalizedKind = requirement.kind.toLowerCase();
+        return [
+          requirement.slot,
+          availableConnections.filter(
+            (connection) =>
+              connection.enabled !== false &&
+              connection.kind.toLowerCase() === normalizedKind
+          )
+        ];
+      })
+    );
+  }
+
+  async function refreshConnections() {
+    loadingConnections = true;
+    try {
+      connections = await getAdapterConnections(fetch);
+      connectionIssue = '';
+      autoSelectConnections();
+    } catch {
+      connectionIssue = 'Connections are unavailable.';
+    } finally {
+      loadingConnections = false;
+    }
+  }
+
+  function autoSelectConnections() {
+    const next = { ...connectionRefs };
+    let changed = false;
+    for (const requirement of connectionRequirements) {
+      const matches = connectionOptionsBySlot[requirement.slot] ?? [];
+      const current = next[requirement.slot];
+      if (current && matches.some((connection) => connection.id === current)) {
+        continue;
+      }
+      if (matches.length === 1) {
+        next[requirement.slot] = matches[0].id;
+        changed = true;
+      } else if (
+        current &&
+        !matches.some((connection) => connection.id === current)
+      ) {
+        delete next[requirement.slot];
+        changed = true;
+      }
+    }
+    if (changed) {
+      connectionRefs = next;
+    }
   }
 
   function setConnectionRef(slot: string, id: string) {
@@ -332,7 +390,17 @@
 
     {#if connectionRequirements.length > 0}
       <section class="field-group">
-        <div class="group-title">Connections</div>
+        <div class="group-heading">
+          <div class="group-title">Connections</div>
+          <Button
+            size="sm"
+            variant="outline"
+            on:click={refreshConnections}
+            disabled={loadingConnections}
+          >
+            <RefreshCw size={15} /><span>Refresh</span>
+          </Button>
+        </div>
         {#if connectionIssue}
           <p class="sheet-issue">{connectionIssue}</p>
         {/if}
@@ -342,6 +410,8 @@
             <select
               class="text-input"
               value={connectionRefs[requirement.slot] ?? ''}
+              on:focus={refreshConnections}
+              on:pointerdown={refreshConnections}
               on:change={(e) =>
                 setConnectionRef(
                   requirement.slot,
@@ -351,12 +421,30 @@
               <option value="">
                 {requirement.required ? 'Choose connection' : 'No connection'}
               </option>
-              {#each connectionsForKind(requirement.kind) as connection (connection.id)}
+              {#each connectionOptionsBySlot[requirement.slot] ?? [] as connection (connection.id)}
                 <option value={connection.id}
                   >{connection.name || connection.id}</option
                 >
               {/each}
             </select>
+            {#if (connectionOptionsBySlot[requirement.slot]?.length ?? 0) === 1 && !connectionRefs[requirement.slot]}
+              <Button
+                size="sm"
+                variant="outline"
+                on:click={() => {
+                  const [connection] =
+                    connectionOptionsBySlot[requirement.slot] ?? [];
+                  if (connection)
+                    setConnectionRef(requirement.slot, connection.id);
+                }}
+              >
+                <Plus size={15} /><span>Use available connection</span>
+              </Button>
+            {:else if (connectionOptionsBySlot[requirement.slot]?.length ?? 0) === 0}
+              <span class="field-help">
+                No enabled {requirement.kind} connections found yet.
+              </span>
+            {/if}
             <span class="field-help">
               {requirement.description ||
                 `Uses a shared ${requirement.kind} Adapter Connection from Settings.`}
@@ -435,6 +523,12 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+  }
+  .group-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
   }
   .group-title {
     font-size: 0.72rem;

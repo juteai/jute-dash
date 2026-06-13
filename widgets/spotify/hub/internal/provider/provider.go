@@ -23,10 +23,11 @@ type Settings struct {
 }
 
 type Playback struct {
-	TrackTitle string `json:"track_title"`
-	ArtistName string `json:"artist_name"`
-	IsPlaying  bool   `json:"is_playing"`
-	Volume     int    `json:"volume"`
+	TrackTitle  string `json:"track_title"`
+	ArtistName  string `json:"artist_name"`
+	AlbumArtURL string `json:"album_art_url,omitempty"`
+	IsPlaying   bool   `json:"is_playing"`
+	Volume      int    `json:"volume"`
 }
 
 type Client struct {
@@ -40,10 +41,11 @@ func NewClient(settings Settings) Client {
 func (c Client) FetchPlayback(ctx context.Context) (Playback, error) {
 	if c.settings.ClientID == "mock-spotify" || c.settings.ClientID == "test" {
 		return Playback{
-			TrackTitle: "Mock Track",
-			ArtistName: "Mock Artist",
-			IsPlaying:  true,
-			Volume:     75,
+			TrackTitle:  "Mock Track",
+			ArtistName:  "Mock Artist",
+			AlbumArtURL: "https://example.test/mock-album.jpg",
+			IsPlaying:   true,
+			Volume:      75,
 		}, nil
 	}
 
@@ -76,6 +78,13 @@ func (c Client) FetchPlayback(ctx context.Context) (Playback, error) {
 			Artists []struct {
 				Name string `json:"name"`
 			} `json:"artists"`
+			Album struct {
+				Images []struct {
+					URL    string `json:"url"`
+					Height int    `json:"height"`
+					Width  int    `json:"width"`
+				} `json:"images"`
+			} `json:"album"`
 		} `json:"item"`
 	}
 
@@ -85,6 +94,7 @@ func (c Client) FetchPlayback(ctx context.Context) (Playback, error) {
 
 	track := "Not Playing"
 	artist := "Unknown"
+	albumArtURL := ""
 	if playerState.Item != nil {
 		track = playerState.Item.Name
 		var artistNames []string
@@ -94,14 +104,32 @@ func (c Client) FetchPlayback(ctx context.Context) (Playback, error) {
 		if len(artistNames) > 0 {
 			artist = strings.Join(artistNames, ", ")
 		}
+		albumArtURL = bestAlbumImage(playerState.Item.Album.Images)
 	}
 
 	return Playback{
-		TrackTitle: track,
-		ArtistName: artist,
-		IsPlaying:  playerState.IsPlaying,
-		Volume:     playerState.Device.VolumePercent,
+		TrackTitle:  track,
+		ArtistName:  artist,
+		AlbumArtURL: albumArtURL,
+		IsPlaying:   playerState.IsPlaying,
+		Volume:      playerState.Device.VolumePercent,
 	}, nil
+}
+
+func bestAlbumImage(images []struct {
+	URL    string `json:"url"`
+	Height int    `json:"height"`
+	Width  int    `json:"width"`
+}) string {
+	if len(images) == 0 {
+		return ""
+	}
+	for _, image := range images {
+		if strings.TrimSpace(image.URL) != "" && image.Width <= 320 && image.Height <= 320 {
+			return image.URL
+		}
+	}
+	return strings.TrimSpace(images[len(images)-1].URL)
 }
 
 func (c Client) ApplyAction(ctx context.Context, actionID string, arguments map[string]any) error {
@@ -111,11 +139,18 @@ func (c Client) ApplyAction(ctx context.Context, actionID string, arguments map[
 
 	var method, urlStr string
 	var body []byte
+	var err error
 
 	switch actionID {
 	case "play":
 		method = http.MethodPut
 		urlStr = "https://api.spotify.com/v1/me/player/play"
+		if uri, ok := stringArgument(arguments, "uri"); ok {
+			body, err = json.Marshal(map[string]any{"uris": []string{uri}})
+			if err != nil {
+				return err
+			}
+		}
 	case "pause":
 		method = http.MethodPut
 		urlStr = "https://api.spotify.com/v1/me/player/pause"
@@ -132,6 +167,21 @@ func (c Client) ApplyAction(ctx context.Context, actionID string, arguments map[
 		}
 		method = http.MethodPut
 		urlStr = fmt.Sprintf("https://api.spotify.com/v1/me/player/volume?volume_percent=%d", vol)
+	case "transfer_playback":
+		deviceID, ok := stringArgument(arguments, "device_id")
+		if !ok {
+			return errors.New("missing or invalid device_id parameter")
+		}
+		play, _ := boolArgument(arguments, "play")
+		method = http.MethodPut
+		urlStr = "https://api.spotify.com/v1/me/player"
+		body, err = json.Marshal(map[string]any{
+			"device_ids": []string{deviceID},
+			"play":       play,
+		})
+		if err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unknown action: %s", actionID)
 	}
@@ -149,6 +199,17 @@ func (c Client) ApplyAction(ctx context.Context, actionID string, arguments map[
 	return nil
 }
 
+func boolArgument(arguments map[string]any, key string) (bool, bool) {
+	value, ok := arguments[key].(bool)
+	return value, ok
+}
+
+func stringArgument(arguments map[string]any, key string) (string, bool) {
+	value, ok := arguments[key].(string)
+	value = strings.TrimSpace(value)
+	return value, ok && value != ""
+}
+
 func volumeArgument(arguments map[string]any) (int, error) {
 	if v, ok := arguments["volume"].(float64); ok {
 		return int(v), nil
@@ -160,7 +221,7 @@ func volumeArgument(arguments map[string]any) (int, error) {
 }
 
 func (c Client) refreshToken(ctx context.Context) (string, error) {
-	if c.settings.RefreshToken == "" || c.settings.ClientID == "" || c.settings.ClientSecret == "" {
+	if c.settings.RefreshToken == "" || c.settings.ClientID == "" {
 		return "", errors.New("missing credentials for refresh")
 	}
 
@@ -168,16 +229,19 @@ func (c Client) refreshToken(ctx context.Context) (string, error) {
 	data := url.Values{}
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", c.settings.RefreshToken)
+	data.Set("client_id", c.settings.ClientID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return "", err
 	}
 
-	authHeader := base64.StdEncoding.EncodeToString(
-		[]byte(fmt.Sprintf("%s:%s", c.settings.ClientID, c.settings.ClientSecret)),
-	)
-	req.Header.Set("Authorization", fmt.Sprintf("Basic %s", authHeader))
+	if c.settings.ClientSecret != "" {
+		authHeader := base64.StdEncoding.EncodeToString(
+			[]byte(fmt.Sprintf("%s:%s", c.settings.ClientID, c.settings.ClientSecret)),
+		)
+		req.Header.Set("Authorization", fmt.Sprintf("Basic %s", authHeader))
+	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)

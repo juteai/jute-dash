@@ -118,7 +118,7 @@ func run() error {
 	log.SetOutput(slog.NewLogLogger(logHandler, slog.LevelInfo).Writer())
 
 	displayActions := displayactions.NewDispatcher()
-	handler := app.NewServer(
+	handler := app.NewServerWithSecrets(
 		cfg,
 		version,
 		result.Setup,
@@ -127,6 +127,7 @@ func run() error {
 		runtimeStore.VoiceRepo,
 		*configPath,
 		displayActions,
+		runtimeStore.SecretVault,
 	)
 	logger.Info("jute data directory", "path", dataDir)
 

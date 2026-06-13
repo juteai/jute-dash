@@ -82,6 +82,7 @@ func TestEventsStreamDisplayActions(t *testing.T) {
 		nil,
 		"",
 		dispatcher,
+		nil,
 	)
 	ts := httptest.NewServer(handler)
 	defer ts.Close()

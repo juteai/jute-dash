@@ -186,7 +186,7 @@
 
 <style>
   :global(.settings-layer) {
-    position: absolute;
+    position: fixed;
     inset: 0;
     z-index: 30;
     display: grid;
@@ -200,7 +200,8 @@
     grid-template-rows: auto auto auto minmax(0, 1fr);
     gap: 12px;
     width: min(100%, 860px);
-    max-height: min(90vh, 760px);
+    height: min(90vh, 760px);
+    max-height: calc(100vh - 32px);
     overflow: hidden;
     border: 1px solid var(--border-strong);
     border-radius: 8px;
@@ -253,6 +254,7 @@
   }
 
   .settings-body {
+    display: grid;
     min-height: 0;
     overflow-y: auto;
     scrollbar-gutter: stable;
@@ -313,6 +315,7 @@
 
     .settings-panel {
       width: 100%;
+      height: calc(100vh - 16px);
       max-height: calc(100vh - 16px);
     }
 

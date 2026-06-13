@@ -42,7 +42,9 @@ type Server struct {
 	display            *displayactions.Dispatcher
 	voiceDispatcher    *voice.Dispatcher
 	connectionResolver widgets.ConnectionResolver
+	secretStore        secretStore
 	actionDispatcher   *widgetactions.Dispatcher
+	spotifyOAuth       *spotifyOAuthController
 	turnRunner         *agents.Runner
 	handler            http.Handler
 	mu                 sync.Mutex
@@ -95,7 +97,19 @@ type VoiceStatusSummary struct {
 
 func New(cfg config.Config, version string) http.Handler {
 	layout := dashboard.DefaultWidgetLayout()
-	return newServer(cfg, version, nil, homestate.SetupStatus{Complete: true}, layout, nil, nil, nil, "", nil)
+	return newServer(
+		cfg,
+		version,
+		nil,
+		homestate.SetupStatus{Complete: true},
+		layout,
+		nil,
+		nil,
+		nil,
+		"",
+		nil,
+		nil,
+	)
 }
 
 func NewWithSetupStatus(
@@ -112,7 +126,7 @@ func NewWithSetupStatusAndLayout(
 	setup homestate.SetupStatus,
 	layout dashboard.WidgetLayout,
 ) http.Handler {
-	return newServer(cfg, version, nil, setup, layout, nil, nil, nil, "", nil)
+	return newServer(cfg, version, nil, setup, layout, nil, nil, nil, "", nil, nil)
 }
 
 func NewWithMessageSender(
@@ -130,6 +144,7 @@ func NewWithMessageSender(
 		nil,
 		nil,
 		"",
+		nil,
 		nil,
 	)
 }
@@ -150,7 +165,51 @@ func NewServer(
 			layout = loaded
 		}
 	}
-	return newServer(cfg, version, nil, setup, layout, layoutStore, settingsStore, voiceStore, configPath, display)
+	return newServer(
+		cfg,
+		version,
+		nil,
+		setup,
+		layout,
+		layoutStore,
+		settingsStore,
+		voiceStore,
+		configPath,
+		display,
+		nil,
+	)
+}
+
+func NewServerWithSecrets(
+	cfg config.Config,
+	version string,
+	setup homestate.SetupStatus,
+	layoutStore dashboard.LayoutStore,
+	settingsStore homestate.SettingsStore,
+	voiceStore voice.Store,
+	configPath string,
+	display *displayactions.Dispatcher,
+	secrets secretStore,
+) *Server {
+	layout := dashboard.DefaultWidgetLayout()
+	if layoutStore != nil {
+		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
+			layout = loaded
+		}
+	}
+	return newServer(
+		cfg,
+		version,
+		nil,
+		setup,
+		layout,
+		layoutStore,
+		settingsStore,
+		voiceStore,
+		configPath,
+		display,
+		secrets,
+	)
 }
 
 func newServer(
@@ -164,6 +223,7 @@ func newServer(
 	voiceStore voice.Store,
 	configPath string,
 	display *displayactions.Dispatcher,
+	secretStore secretStore,
 ) *Server {
 	if messageSender == nil {
 		messageSender = a2aclient.NewJSONRPCClient()
@@ -249,7 +309,7 @@ func newServer(
 	agentsManager := agents.NewAgentManager(syncer, agentCards, configPath)
 
 	voiceDispatcher := voice.NewDispatcher()
-	connectionResolver := newConnectionResolver(activeSettingsStore)
+	connectionResolver := newConnectionResolver(activeSettingsStore, secretStore)
 
 	server := &Server{
 		cfg:                cfg,
@@ -266,6 +326,7 @@ func newServer(
 		display:            display,
 		voiceDispatcher:    voiceDispatcher,
 		connectionResolver: connectionResolver,
+		secretStore:        secretStore,
 		started:            time.Now().UTC(),
 		version:            version,
 	}
@@ -275,6 +336,7 @@ func newServer(
 		server.buildWidgetSkillsSnapshot,
 	)
 	server.actionDispatcher = actionDispatcher
+	server.spotifyOAuth = newSpotifyOAuthController(server)
 
 	agents.SetEnvReader(os.Getenv)
 	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
@@ -309,6 +371,9 @@ func newServer(
 	mux.HandleFunc("/healthz", server.handleHealth)
 	mux.HandleFunc("/api/v1/status", server.handleStatus)
 	mux.HandleFunc("/api/v1/config", server.handleConfig)
+	mux.HandleFunc("/api/v1/integrations/spotify/auth", server.spotifyOAuth.handleAuth)
+	mux.HandleFunc("/api/v1/integrations/spotify/callback", server.spotifyOAuth.handleCallback)
+	mux.HandleFunc("/api/v1/integrations/spotify/web-playback-token", server.spotifyOAuth.handleWebPlaybackToken)
 	mux.HandleFunc("/api/v1/widgets/", server.handleWidgetAction)
 
 	// Registrations

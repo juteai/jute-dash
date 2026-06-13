@@ -17,8 +17,10 @@
     AgentAvailability,
     ChatMessage,
     DashboardData,
+    UserFacingIssue,
     VoiceStatus,
-    WidgetCatalogItem
+    WidgetCatalogItem,
+    WidgetInstance
   } from '$lib/types';
 
   export let data: DashboardData;
@@ -39,6 +41,10 @@
   export let onSaveEdit: () => void = () => {};
   export let onCancelEdit: () => void = () => {};
   export let onResetLayout: () => void = () => {};
+  export let onIssueAction: (
+    issue: UserFacingIssue,
+    widget: WidgetInstance
+  ) => void = () => {};
 
   let showCatalog = false;
 
@@ -243,6 +249,7 @@
     {selectedAvailability}
     {focusedWidgetId}
     {onOpenChat}
+    {onIssueAction}
   />
 </section>
 

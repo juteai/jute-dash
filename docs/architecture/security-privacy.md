@@ -17,16 +17,21 @@ Secrets are never committed, displayed, or sent to widgets.
 
 v1 secret handling:
 
-- store references in config or SQLite, such as environment variable names;
+- store references in config or SQLite, such as environment variable names or `db:` secret-vault IDs;
+- store OAuth token material in the local SQLite secret vault encrypted with AES-GCM;
+- wrap the secret vault master key with the host OS credential store by default, with `JUTE_SECRET_KEY` available for CI, containers, and headless deployments without an interactive keyring;
 - read raw secret values only inside the hub;
 - never include raw secret values in public config endpoints;
 - redact secret references in logs where possible.
 
 Adapter Connections are the required credential boundary for Integration Widgets. Widget instances link to them with `connectionRefs`; widget settings remain non-secret. The hub validates typed connection setup fields and required secret references before provider code runs. Resolved provider secrets may be passed to connection-aware Go widget code only inside the hub process and must not be written back to layouts, snapshots, display payloads, A2A context, MCP context, logs, or public config projections.
 
+Spotify browser playback is the one v1 case where the local Display receives a raw provider access token. The token is served by the hub only from `/api/v1/integrations/spotify/web-playback-token`, only for a linked Spotify Adapter Connection, and only so Spotify's Web Playback SDK can create a browser player. The Display must keep that token in memory, must not store it in browser storage, and must not expose it to A2A agents, MCP tools, widget settings, config export, or logs.
+
+The OS credential store backend is platform-specific: macOS uses Keychain, Windows uses Credential Manager, and Linux can use Secret Service, KWallet, Pass, or KeyCtl depending on the desktop/session environment. If no OS credential store is available, operators must provide `JUTE_SECRET_KEY`; Jute should fail closed rather than store raw secrets.
+
 Future secret handling:
 
-- OS keyring;
 - OAuth device flow;
 - mTLS identities;
 - encrypted backup/export support.

@@ -30,6 +30,10 @@
   export let selectedAvailability: AgentAvailability = 'unknown';
   export let focusedWidgetId = '';
   export let onOpenChat: () => void = () => {};
+  export let onIssueAction: (
+    issue: UserFacingIssue,
+    widget: WidgetInstance
+  ) => void = () => {};
 
   let canvasEl: HTMLElement;
   let viewportWidth = 1280;
@@ -355,6 +359,7 @@
         overflow={(widget.overflow ?? 'clip') as 'clip' | 'scroll' | 'expand'}
         state={determineWidgetState(widget, stale)}
         issue={widgetIssue(widget)}
+        onIssueAction={(issue) => onIssueAction(issue, widget)}
         onMoveStart={(event) => startDrag(widget, 'move', event)}
         onResizeStart={(event, resizeMode) =>
           startDrag(

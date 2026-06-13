@@ -217,14 +217,20 @@ Secrets are never stored directly in YAML, JSON, or ordinary SQLite settings row
 v1 secret references:
 
 - environment variable names;
+- encrypted local secret-vault records referenced as `db:<secret-id>`;
 - local token file references outside repo paths when explicitly configured;
 - auth configured booleans in public projections.
 
-Integration Widgets must use Adapter Connections for provider credentials. A Widget Instance stores `connectionRefs` such as `{ "bridge": "living-room-hue" }`; the referenced Adapter Connection stores non-secret adapter settings plus secret references such as `{ "username": "env:HUE_USERNAME" }`. Connection kinds expose typed setup metadata through `/api/v1/settings/connection-kinds`, and the Settings `Connections` surface saves records as `settings` plus `secretRefs`. The hub resolver validates required fields and is the only layer that turns those references into raw material for provider code.
+Integration Widgets must use Adapter Connections for provider credentials. A Widget Instance stores `connectionRefs` such as `{ "bridge": "living-room-hue" }`; the referenced Adapter Connection stores non-secret adapter settings plus secret references such as `{ "username": "env:HUE_USERNAME" }` or `{ "access_token": "db:spotify/main/access_token" }`. Connection kinds expose typed setup metadata through `/api/v1/settings/connection-kinds`, and the Settings `Connections` surface saves records as `settings` plus `secretRefs`. The hub resolver validates required fields and is the only layer that turns those references into raw material for provider code.
+
+Spotify login uses Authorization Code with PKCE for local/self-hosted setup. A Spotify Adapter Connection may store a non-secret `client_id`, while access and refresh tokens are written as encrypted `db:` secret references by the hub. A Jute-managed Spotify app can be configured with `JUTE_SPOTIFY_CLIENT_ID`, allowing the connection record to omit `client_id`. The Display may request a short-lived Spotify access token from `/api/v1/integrations/spotify/web-playback-token` only to initialize Spotify's Web Playback SDK. That token is transient browser runtime material and must not be persisted in widget settings, YAML, exported config, A2A context, MCP context, or logs.
+
+The local secret vault stores encrypted blobs in SQLite and keeps the raw master key out of the database. By default the master key is generated and stored in the host OS credential store. `JUTE_SECRET_KEY` can provide the 32-byte master key for CI, containers, service users, and Linux environments without a usable desktop keyring. The environment override supports base64, hex, or raw 32-byte values.
+
+Supported desktop credential stores are host-dependent: macOS Keychain, Windows Credential Manager, and Linux Secret Service, KWallet, Pass, or KeyCtl. If none is available and `JUTE_SECRET_KEY` is unset, secret resolution fails and Integration Widgets report safe connection issues.
 
 Future secret storage:
 
-- OS keyring;
 - OAuth device flow records;
 - encrypted backup/export support.
 

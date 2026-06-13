@@ -13,12 +13,24 @@ type adapterConnectionStore interface {
 	AdapterConnection(ctx context.Context, id string) (homestate.AdapterConnection, error)
 }
 
-type connectionResolver struct {
-	store adapterConnectionStore
+type secretResolver interface {
+	Resolve(ctx context.Context, id string) (string, error)
 }
 
-func newConnectionResolver(store adapterConnectionStore) widgets.ConnectionResolver {
-	return &connectionResolver{store: store}
+type connectionResolver struct {
+	store   adapterConnectionStore
+	secrets secretResolver
+}
+
+func newConnectionResolver(
+	store adapterConnectionStore,
+	resolvers ...secretResolver,
+) widgets.ConnectionResolver {
+	var resolver secretResolver
+	if len(resolvers) > 0 {
+		resolver = resolvers[0]
+	}
+	return &connectionResolver{store: store, secrets: resolver}
 }
 
 func (r *connectionResolver) ResolveWidgetConnections(
@@ -71,6 +83,7 @@ func (r *connectionResolver) ResolveWidgetConnections(
 		if issue := validateRequiredConnectionFields(req, connection); issue != nil {
 			return widgets.ConnectionResolution{Connections: connections, Issue: issue}
 		}
+		requiredSecrets := requiredConnectionSecretFields(req)
 		resolved := widgets.ResolvedConnection{
 			ID:       connection.ID,
 			Kind:     connection.Kind,
@@ -80,8 +93,11 @@ func (r *connectionResolver) ResolveWidgetConnections(
 			Enabled:  connection.Enabled,
 		}
 		for key, ref := range connection.SecretRefs {
-			value := resolveSecretRef(ref)
+			value := r.resolveSecretRef(ctx, ref)
 			if value == "" {
+				if !requiredSecrets[key] {
+					continue
+				}
 				return widgets.ConnectionResolution{Connections: connections, Issue: issuePtr(widgets.Unavailable(
 					"connection.missing_credentials",
 					"Credentials unavailable",
@@ -93,6 +109,16 @@ func (r *connectionResolver) ResolveWidgetConnections(
 		connections[req.Slot] = resolved
 	}
 	return widgets.ConnectionResolution{Connections: connections}
+}
+
+func requiredConnectionSecretFields(req widgets.ConnectionRequirement) map[string]bool {
+	required := map[string]bool{}
+	for _, field := range req.Fields {
+		if field.Secret && field.Required {
+			required[field.ID] = true
+		}
+	}
+	return required
 }
 
 func validateRequiredConnectionFields(
@@ -141,13 +167,23 @@ func issuePtr(payload widgets.RuntimePayload) *widgets.RuntimePayload {
 	return &payload
 }
 
-func resolveSecretRef(ref string) string {
+func (r *connectionResolver) resolveSecretRef(ctx context.Context, ref string) string {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return ""
 	}
 	if strings.HasPrefix(ref, "env:") {
 		return os.Getenv(strings.TrimPrefix(ref, "env:"))
+	}
+	if strings.HasPrefix(ref, "db:") {
+		if r == nil || r.secrets == nil {
+			return ""
+		}
+		value, err := r.secrets.Resolve(ctx, strings.TrimPrefix(ref, "db:"))
+		if err != nil {
+			return ""
+		}
+		return value
 	}
 	return os.Getenv(ref)
 }

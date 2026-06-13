@@ -22,6 +22,16 @@ func (s fakeAdapterConnectionStore) AdapterConnection(
 	return connection, nil
 }
 
+type fakeSecretResolver map[string]string
+
+func (s fakeSecretResolver) Resolve(_ context.Context, id string) (string, error) {
+	value, ok := s[id]
+	if !ok {
+		return "", errors.New("not found")
+	}
+	return value, nil
+}
+
 func TestConnectionResolverReturnsFirstSafeIssue(t *testing.T) {
 	requirements := []widgets.ConnectionRequirement{
 		{
@@ -51,6 +61,50 @@ func TestConnectionResolverReturnsFirstSafeIssue(t *testing.T) {
 	}
 	if got := resolution.Issue.Issue.Code; got != "connection.missing" {
 		t.Fatalf("expected first requirement issue, got %q", got)
+	}
+}
+
+func TestConnectionResolverResolvesDBSecretRefs(t *testing.T) {
+	requirement := widgets.ConnectionRequirement{
+		Slot:        "account",
+		Kind:        "spotify",
+		DisplayName: "Spotify Account",
+		Required:    true,
+		Fields: []widgets.ConnectionField{
+			{ID: "client_id", Type: widgets.ConnectionFieldString, Label: "Client ID", Required: true},
+			{
+				ID:       "access_token",
+				Type:     widgets.ConnectionFieldString,
+				Label:    "Access token",
+				Required: true,
+				Secret:   true,
+			},
+		},
+	}
+	resolver := newConnectionResolver(
+		fakeAdapterConnectionStore{
+			"spotify-main": {
+				ID:         "spotify-main",
+				Kind:       "spotify",
+				Enabled:    true,
+				Settings:   map[string]any{"client_id": "client"},
+				SecretRefs: map[string]string{"access_token": "db:spotify/main/access_token"},
+			},
+		},
+		fakeSecretResolver{"spotify/main/access_token": "resolved-access-token"},
+	)
+
+	resolution := resolver.ResolveWidgetConnections(
+		context.Background(),
+		[]widgets.ConnectionRequirement{requirement},
+		map[string]string{"account": "spotify-main"},
+	)
+
+	if resolution.Issue != nil {
+		t.Fatalf("unexpected issue: %#v", resolution.Issue.Issue)
+	}
+	if got := resolution.Connections["account"].Secrets["access_token"]; got != "resolved-access-token" {
+		t.Fatalf("expected db secret to resolve, got %q", got)
 	}
 }
 
@@ -136,6 +190,22 @@ func TestConnectionResolverValidatesConnectionRecords(t *testing.T) {
 					Enabled:    true,
 					Settings:   map[string]any{"bridge_ip": "192.0.2.10"},
 					SecretRefs: map[string]string{"username": "env:HUE_USER"},
+				},
+			},
+			wantSecret: "resolved-user",
+		},
+		{
+			name: "optional secret ref missing",
+			store: fakeAdapterConnectionStore{
+				"hue": {
+					ID:       "hue",
+					Kind:     "philips-hue",
+					Enabled:  true,
+					Settings: map[string]any{"bridge_ip": "192.0.2.10"},
+					SecretRefs: map[string]string{
+						"username":         "env:HUE_USER",
+						"diagnostic_token": "env:MISSING_OPTIONAL_TOKEN",
+					},
 				},
 			},
 			wantSecret: "resolved-user",

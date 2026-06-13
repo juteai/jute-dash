@@ -25,10 +25,10 @@ func TestRegisteredCatalogUsesWidgetCatalogShape(t *testing.T) {
 	if requirement.Kind != "spotify" {
 		t.Fatalf("expected spotify connection kind, got %q", requirement.Kind)
 	}
-	if len(requirement.Fields) == 0 {
+	if len(requirement.Fields) < 2 {
 		t.Fatal("expected typed connection setup fields")
 	}
-	if requirement.Fields[0].ID != "client_id" {
+	if requirement.Fields[0].ID != "auth_type" || requirement.Fields[1].ID != "client_id" {
 		t.Fatalf("expected typed fields from root widget catalog shape, got %#v", requirement.Fields)
 	}
 }

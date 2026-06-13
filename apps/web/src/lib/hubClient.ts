@@ -606,3 +606,97 @@ export async function saveAdapterConnection(
   }
   return response.json() as Promise<AdapterConnection>;
 }
+
+export function spotifyAuthURL(
+  connectionId: string,
+  widgetInstanceId?: string,
+  returnUri?: string
+): string {
+  const params = new URLSearchParams({ connectionId });
+  if (widgetInstanceId) {
+    params.set('widgetInstanceId', widgetInstanceId);
+  }
+  if (returnUri) {
+    params.set('returnUri', returnUri);
+  }
+  return `${API_BASE}/api/v1/integrations/spotify/auth?${params.toString()}`;
+}
+
+export function spotifyOAuthRedirectURI(): string {
+  try {
+    const parsed = new URL(API_BASE);
+    if (parsed.hostname === 'localhost') {
+      parsed.hostname = '127.0.0.1';
+    }
+    return `${parsed.origin}/api/v1/integrations/spotify/callback`;
+  } catch {
+    return 'http://127.0.0.1:8787/api/v1/integrations/spotify/callback';
+  }
+}
+
+export async function completeSpotifyAuth(
+  fetcher: typeof fetch,
+  code: string,
+  state: string
+): Promise<{ status: string; connectionId?: string }> {
+  const params = new URLSearchParams({
+    code,
+    state,
+    response: 'json'
+  });
+  const response = await fetcher(
+    `${API_BASE}/api/v1/integrations/spotify/callback?${params.toString()}`,
+    {
+      headers: {
+        Accept: 'application/json'
+      }
+    }
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Spotify account could not be linked');
+  }
+  return response.json() as Promise<{ status: string; connectionId?: string }>;
+}
+
+export async function getSpotifyWebPlaybackToken(
+  fetcher: typeof fetch,
+  connectionId: string
+): Promise<{ accessToken: string; expiresAt?: number; scope?: string }> {
+  const params = new URLSearchParams({ connectionId });
+  const response = await fetcher(
+    `${API_BASE}/api/v1/integrations/spotify/web-playback-token?${params.toString()}`
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Spotify playback token is unavailable');
+  }
+  return response.json() as Promise<{
+    accessToken: string;
+    expiresAt?: number;
+    scope?: string;
+  }>;
+}
+
+export function spotifyCallbackParams(search: string): {
+  code: string;
+  state: string;
+} | null {
+  const params = new URLSearchParams(search);
+  const code = params.get('code');
+  const state = params.get('state');
+  if (!code || !state) return null;
+  return { code, state };
+}
+
+export function spotifyCallbackDisplayURL(
+  pathname: string,
+  search: string,
+  hash: string,
+  status: 'linked' | 'error'
+): string {
+  const params = new URLSearchParams(search);
+  params.delete('code');
+  params.delete('state');
+  params.set('spotify', status);
+  const nextQuery = params.toString();
+  return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash}`;
+}

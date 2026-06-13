@@ -218,7 +218,7 @@ The Hub-owned `widgetactions` dispatcher resolves the widget instance, Widget Sk
 
 All widgets must adhere to the following security and storage rules:
 - **Secure Local SQLite Storage**: Widget configuration, device layouts, and integration details are stored in the local SQLite runtime database (`jute.db`) as household durable settings. They must not be stored in browser local storage or transient client-side stores.
-- **Credentials Redaction**: Sensitive integration credentials (such as API keys, client secrets, and auth tokens) must never be returned in plain text in public API config projections or exposed to A2A agents / MCP contexts. They must be redacted, masked, or replaced with secure references.
+- **Credentials Redaction**: Sensitive integration credentials (such as API keys, client secrets, and auth tokens) must never be returned in plain text in public API config projections or exposed to A2A agents / MCP contexts. They must be redacted, masked, or replaced with secure references. Spotify browser playback may request a transient access token from the hub for the Web Playback SDK; that exception is Display-only runtime material and is not part of widget settings or agent context.
 - **Shared Connections**: Integration credentials are declared as Adapter Connection requirements and linked by `connectionRefs`; widgets must not write credential or token state directly into layout settings.
 - **No Direct Remote Calls**: Svelte components must not communicate directly with remote APIs or cloud systems. All external operations must go through the Go hub backend.
 
@@ -233,7 +233,7 @@ Jute Dash ships with first-class built-in widgets:
 3. **Chat History (`chat-history`)**: Recent conversation turns, active A2A agent status, and a quick re-entry chat button.
 4. **RSS Feed (`rss`)**: headlines aggregator from custom RSS xml streams with background caching.
 5. **Markets (`markets`)**: Stock, commodity, or crypto tickers watchlist using Yahoo Finance.
-6. **Spotify (`spotify`)**: Spotify playback state and controls through a shared Spotify Adapter Connection.
+6. **Spotify (`spotify`)**: Spotify login, browser playback activation, playback state, and controls through a shared Spotify Adapter Connection.
 7. **Apple Music (`apple-music`)**: Apple Music playback state and controls through a shared Apple Music Adapter Connection.
 8. **Philips Hue (`philips-hue`)**: Hue light state and low-risk controls through a shared Hue bridge Adapter Connection.
 9. **Zigbee2MQTT (`zigbee2mqtt`)**: Zigbee device state and low-risk controls through a shared MQTT broker Adapter Connection.

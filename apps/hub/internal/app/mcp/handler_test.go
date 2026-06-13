@@ -2,10 +2,16 @@ package mcp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"jute-dash/apps/hub/internal/app/agents"
+	"jute-dash/apps/hub/pkg/widgetskills"
+
+	_ "jute-dash/widgets/spotify/hub"
 )
 
 const testTokenEnv = "JUTE_MCP_TEST_TOKEN"
@@ -102,6 +108,42 @@ func TestHandlerInitializesAuthenticatedClient(t *testing.T) {
 	}
 }
 
+func TestHandlerInvokesSpotifyActionThroughDispatcher(t *testing.T) {
+	cfg := testMCPConfig(t)
+	dispatcher := &recordingActionDispatcher{
+		result: map[string]any{"status": "ok"},
+	}
+	handler := NewHandlerWithActions(
+		cfg,
+		"test-version",
+		staticSnapshotProvider{snapshot: spotifyActionSnapshot()},
+		nil,
+		dispatcher,
+	)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"jute_skill_invoke_action","arguments":{"skillId":"jute.spotify.control","widgetInstanceId":"spotify","actionId":"next"}}}`,
+	))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set(callerAgentHeader, "kronk-agent")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	response := decodeRPCResponse(t, rec)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if response.Error != nil {
+		t.Fatalf("unexpected RPC error: %+v", response.Error)
+	}
+	if dispatcher.widgetInstanceID != "spotify" || dispatcher.actionID != "next" || dispatcher.actor != "mcp" {
+		t.Fatalf("unexpected dispatched action: %+v", dispatcher)
+	}
+	if dispatcher.arguments["skillId"] != "jute.spotify.control" {
+		t.Fatalf("expected skillId argument to pass through, got %#v", dispatcher.arguments)
+	}
+}
+
 func testMCPConfig(t *testing.T) Config {
 	t.Helper()
 	t.Setenv(testTokenEnv, "test-token")
@@ -118,4 +160,70 @@ func decodeRPCResponse(t *testing.T, rec *httptest.ResponseRecorder) rpcResponse
 		t.Fatalf("decode RPC response: %v", err)
 	}
 	return response
+}
+
+type staticSnapshotProvider struct {
+	snapshot widgetskills.Snapshot
+}
+
+func (p staticSnapshotProvider) Snapshot(context.Context) (widgetskills.Snapshot, error) {
+	return p.snapshot, nil
+}
+
+type recordingActionDispatcher struct {
+	widgetInstanceID string
+	actionID         string
+	arguments        map[string]any
+	actor            string
+	confirmed        bool
+	result           map[string]any
+}
+
+func (d *recordingActionDispatcher) InvokeWidgetAction(
+	_ context.Context,
+	widgetInstanceID string,
+	actionID string,
+	arguments map[string]any,
+	actor string,
+	confirmed bool,
+) (map[string]any, error) {
+	d.widgetInstanceID = widgetInstanceID
+	d.actionID = actionID
+	d.arguments = arguments
+	d.actor = actor
+	d.confirmed = confirmed
+	return d.result, nil
+}
+
+func spotifyActionSnapshot() widgetskills.Snapshot {
+	return widgetskills.Snapshot{
+		Layout: widgetskills.WidgetLayout{
+			Widgets: []widgetskills.WidgetInstance{
+				{
+					ID:      "spotify",
+					Kind:    "spotify",
+					Title:   "Spotify",
+					Visible: true,
+					Size:    "wide",
+					Data: map[string]any{
+						"track_title": "Test Track",
+						"artist_name": "Test Artist",
+						"is_playing":  true,
+						"volume":      70,
+					},
+				},
+			},
+		},
+		Agents: []widgetskills.Agent{
+			{
+				ID:      "kronk-agent",
+				Enabled: true,
+				MCPScopes: []string{
+					agents.MCPScopeSkillsRead,
+					agents.MCPScopeSkillsContextRead,
+					agents.MCPScopeSkillsActionInvoke,
+				},
+			},
+		},
+	}
 }

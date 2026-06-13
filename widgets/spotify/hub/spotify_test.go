@@ -45,6 +45,9 @@ func TestSpotifyWidgetSettings(t *testing.T) {
 	if m["track_title"] != "Mock Track" {
 		t.Errorf("expected track title 'Mock Track', got %q", m["track_title"])
 	}
+	if m["album_art_url"] != "https://example.test/mock-album.jpg" {
+		t.Errorf("expected mock album art URL, got %q", m["album_art_url"])
+	}
 }
 
 func TestSpotifyWidgetActions(t *testing.T) {

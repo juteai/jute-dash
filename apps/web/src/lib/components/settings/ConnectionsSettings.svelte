@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { Plug, Plus, Save } from 'lucide-svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import { Copy, ExternalLink, Plug, Plus, Save } from 'lucide-svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import {
     getAdapterConnectionKinds,
     getAdapterConnections,
-    saveAdapterConnection
+    saveAdapterConnection,
+    spotifyAuthURL,
+    spotifyOAuthRedirectURI
   } from '$lib/hubClient';
   import { hubStream } from '$lib/hubStream';
   import type {
@@ -20,27 +22,104 @@
   let draft = blankConnection();
   let loading = false;
   let saving = false;
+  let linkingSpotify = false;
   let issue = '';
+  let spotifyRedirectUri = '';
+  let spotifyReturnUri = '';
+  let copiedRedirect = false;
+  let popupPoll: number | undefined;
 
   $: selected = connections.find((connection) => connection.id === selectedId);
   $: selectedKind = connectionKinds.find((kind) => kind.kind === draft.kind);
+  $: spotifyAuthType =
+    typeof draft.settings?.auth_type === 'string'
+      ? draft.settings.auth_type
+      : 'user_app_pkce';
+  $: spotifyClientId =
+    typeof draft.settings?.client_id === 'string'
+      ? draft.settings.client_id
+      : '';
+  $: spotifyClientSecretRef =
+    typeof draft.secretRefs?.client_secret === 'string'
+      ? draft.secretRefs.client_secret
+      : '';
+  $: spotifyStatus = spotifyConnectionStatus(draft);
 
   onMount(() => {
+    spotifyRedirectUri = spotifyOAuthRedirectURI();
+    spotifyReturnUri = window.location.origin;
+    window.addEventListener('message', handleAuthMessage);
     void load();
+    return () => {
+      window.removeEventListener('message', handleAuthMessage);
+      clearPopupPoll();
+    };
   });
+
+  onDestroy(clearPopupPoll);
 
   function defaultKind(): string {
     return connectionKinds[0]?.kind ?? 'philips-hue';
   }
 
   function blankConnection(kind = defaultKind()): AdapterConnection {
-    return {
+    return withKindDefaults({
       id: '',
       kind,
       name: '',
       settings: {},
       secretRefs: {},
       enabled: true
+    });
+  }
+
+  function withKindDefaults(connection: AdapterConnection): AdapterConnection {
+    if (connection.kind !== 'spotify') {
+      return connection;
+    }
+    return {
+      ...connection,
+      id: connection.id || 'spotify-main',
+      name: connection.name || 'Spotify'
+    };
+  }
+
+  function spotifyConnectionStatus(connection: AdapterConnection): {
+    label: string;
+    detail: string;
+    tone: 'success' | 'warning' | 'muted';
+  } {
+    if (connection.kind !== 'spotify') {
+      return {
+        label: connection.enabled ? 'Enabled' : 'Disabled',
+        detail: connection.enabled
+          ? 'This connection can be used by widgets.'
+          : 'This connection is saved but disabled.',
+        tone: connection.enabled ? 'success' : 'muted'
+      };
+    }
+    if (!connection.enabled) {
+      return {
+        label: 'Disabled',
+        detail: 'Enable this connection before widgets or agents can use it.',
+        tone: 'muted'
+      };
+    }
+    const hasAccessToken = Boolean(connection.secretRefs?.access_token);
+    const hasRefreshToken = Boolean(connection.secretRefs?.refresh_token);
+    if (hasAccessToken && hasRefreshToken) {
+      return {
+        label: 'Authenticated',
+        detail:
+          'Spotify is linked. Widgets and permitted agents can control playback through Jute.',
+        tone: 'success'
+      };
+    }
+    return {
+      label: 'Login required',
+      detail:
+        'Save this connection, then complete Login with Spotify to link playback.',
+      tone: 'warning'
     };
   }
 
@@ -76,12 +155,12 @@
   }
 
   function changeKind(kind: string) {
-    draft = {
+    draft = withKindDefaults({
       ...draft,
       kind,
       settings: {},
       secretRefs: {}
-    };
+    });
   }
 
   function fieldValue(field: ConnectionField): unknown {
@@ -104,6 +183,42 @@
     draft = { ...draft, [key]: next };
   }
 
+  function setSpotifyClientId(value: string) {
+    const settings = { ...(draft.settings ?? {}) };
+    if (value.trim() === '') {
+      delete settings.client_id;
+    } else {
+      settings.client_id = value.trim();
+    }
+    draft = { ...draft, settings };
+  }
+
+  function setSpotifyAuthType(value: string) {
+    const settings: Record<string, unknown> = {
+      ...(draft.settings ?? {}),
+      auth_type: value
+    };
+    const secretRefs = { ...(draft.secretRefs ?? {}) };
+    if (value === 'managed_app') {
+      delete settings.client_id;
+      delete secretRefs.client_secret;
+    }
+    if (value === 'user_app_pkce') {
+      delete secretRefs.client_secret;
+    }
+    draft = { ...draft, settings, secretRefs };
+  }
+
+  function setSpotifyClientSecretRef(value: string) {
+    const secretRefs = { ...(draft.secretRefs ?? {}) };
+    if (value.trim() === '') {
+      delete secretRefs.client_secret;
+    } else {
+      secretRefs.client_secret = value.trim();
+    }
+    draft = { ...draft, secretRefs };
+  }
+
   function inputValue(event: Event, field: ConnectionField): unknown {
     const input = event.currentTarget as HTMLInputElement | HTMLSelectElement;
     if (field.type === 'number') {
@@ -115,7 +230,9 @@
     return input.value;
   }
 
-  async function save() {
+  $: canLinkSpotify = draft.kind === 'spotify' && draft.id.trim().length > 0;
+
+  async function save(): Promise<AdapterConnection | undefined> {
     saving = true;
     issue = '';
     try {
@@ -132,11 +249,91 @@
       );
       selectConnection(saved);
       await hubStream.refreshAfterMutation(fetch);
+      return saved;
     } catch (err) {
       issue = err instanceof Error ? err.message : 'Connection was not saved.';
+      return undefined;
     } finally {
       saving = false;
     }
+  }
+
+  async function linkSpotify() {
+    linkingSpotify = true;
+    issue = '';
+    const saved = await save();
+    if (!saved) {
+      linkingSpotify = false;
+      return;
+    }
+    const authURL = spotifyAuthURL(saved.id, undefined, spotifyReturnUri);
+    const popup = window.open(
+      authURL,
+      'jute-spotify-auth',
+      'popup,width=520,height=760,noopener=false'
+    );
+    if (!popup) {
+      window.location.assign(authURL);
+      return;
+    }
+    popup.focus();
+    clearPopupPoll();
+    popupPoll = window.setInterval(() => {
+      if (popup.closed) {
+        clearPopupPoll();
+        linkingSpotify = false;
+        void refreshAfterSpotifyAuth();
+      }
+    }, 700);
+  }
+
+  function clearPopupPoll() {
+    if (popupPoll) {
+      window.clearInterval(popupPoll);
+      popupPoll = undefined;
+    }
+  }
+
+  async function refreshConnections() {
+    try {
+      connections = await getAdapterConnections(fetch);
+      const current = connections.find(
+        (connection) => connection.id === selectedId
+      );
+      if (current) {
+        selectConnection(current);
+      }
+      await hubStream.refreshAfterMutation(fetch);
+    } catch {
+      issue = 'Connections could not be refreshed.';
+    }
+  }
+
+  async function refreshAfterSpotifyAuth() {
+    await refreshConnections();
+    if (typeof window === 'undefined') return;
+    for (const delay of [750, 1750, 3500]) {
+      window.setTimeout(() => {
+        void refreshConnections();
+      }, delay);
+    }
+  }
+
+  function handleAuthMessage(event: MessageEvent) {
+    if (event.origin !== window.location.origin) return;
+    if (event.data?.type !== 'jute.spotify.linked') return;
+    clearPopupPoll();
+    linkingSpotify = false;
+    void refreshAfterSpotifyAuth();
+  }
+
+  async function copySpotifyRedirectUri() {
+    if (!spotifyRedirectUri) return;
+    await navigator.clipboard.writeText(spotifyRedirectUri);
+    copiedRedirect = true;
+    window.setTimeout(() => {
+      copiedRedirect = false;
+    }, 1600);
   }
 </script>
 
@@ -169,6 +366,16 @@
             <strong>{connection.name || connection.id}</strong>
             <small>{connection.kind}</small>
           </span>
+          {#if connection.kind === 'spotify'}
+            {@const status = spotifyConnectionStatus(connection)}
+            <span
+              class:status-pill--success={status.tone === 'success'}
+              class:status-pill--warning={status.tone === 'warning'}
+              class="status-pill"
+            >
+              {status.label}
+            </span>
+          {/if}
         </button>
       {/each}
     {/if}
@@ -215,7 +422,118 @@
       <span class="field-label">Enabled</span>
     </label>
 
-    {#if selectedKind}
+    {#if draft.kind === 'spotify'}
+      <div class="spotify-setup">
+        <div class="setup-card">
+          <div class="setup-card-heading">
+            <span class="field-label">Spotify login</span>
+            <span
+              class:status-pill--success={spotifyStatus.tone === 'success'}
+              class:status-pill--warning={spotifyStatus.tone === 'warning'}
+              class="status-pill"
+            >
+              {spotifyStatus.label}
+            </span>
+          </div>
+          <p>{spotifyStatus.detail}</p>
+          {#if spotifyStatus.tone !== 'success'}
+            <p>
+              Use Spotify OAuth. You do not need to paste access tokens, refresh
+              tokens, or a client secret.
+            </p>
+          {:else}
+            <p>
+              Use Login with Spotify again only if playback stops working or you
+              want to switch Spotify accounts.
+            </p>
+          {/if}
+        </div>
+
+        <label class="field">
+          <span class="field-label">Auth type</span>
+          <select
+            class="text-input"
+            value={spotifyAuthType}
+            on:change={(event) =>
+              setSpotifyAuthType(
+                (event.currentTarget as HTMLSelectElement).value
+              )}
+          >
+            <option value="managed_app">Jute managed app</option>
+            <option value="user_app_pkce">My Spotify app</option>
+            <option value="confidential_app">Advanced confidential app</option>
+          </select>
+          <span class="field-help">
+            Choose Jute managed app for no developer setup when this hub is
+            configured with one. Choose My Spotify app for local development: it
+            only needs a Client ID.
+          </span>
+        </label>
+
+        {#if spotifyAuthType !== 'managed_app'}
+          <label class="field">
+            <span class="field-label">Client ID</span>
+            <input
+              class="text-input"
+              type="text"
+              value={spotifyClientId}
+              autocomplete="off"
+              placeholder="Spotify Developer Client ID"
+              on:input={(event) =>
+                setSpotifyClientId(
+                  (event.currentTarget as HTMLInputElement).value
+                )}
+            />
+            <span class="field-help">
+              Required for this local/self-hosted setup unless the hub is
+              started with a managed Spotify app ID. A client secret is not
+              required.
+            </span>
+          </label>
+        {/if}
+
+        {#if spotifyAuthType === 'confidential_app'}
+          <label class="field">
+            <span class="field-label">Client secret reference</span>
+            <input
+              class="text-input"
+              type="text"
+              value={spotifyClientSecretRef}
+              autocomplete="off"
+              placeholder="env:SPOTIFY_CLIENT_SECRET"
+              on:input={(event) =>
+                setSpotifyClientSecretRef(
+                  (event.currentTarget as HTMLInputElement).value
+                )}
+            />
+            <span class="field-help">
+              Optional advanced mode. Store only a secret reference here, never
+              the raw client secret.
+            </span>
+          </label>
+        {/if}
+
+        <div class="setup-hint">
+          <div>
+            <span class="field-label">Spotify Redirect URI</span>
+            <code>{spotifyRedirectUri || 'https://localhost:5173'}</code>
+            <span class="field-help">
+              Add this exact URI in the Spotify Developer Dashboard. Spotify
+              requires the explicit loopback IP here; localhost is rejected.
+            </span>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            on:click={copySpotifyRedirectUri}
+          >
+            <Copy size={14} />
+            <span>{copiedRedirect ? 'Copied' : 'Copy'}</span>
+          </Button>
+        </div>
+      </div>
+    {:else if selectedKind}
       <div class="field-group">
         <span class="field-label">{selectedKind.displayName}</span>
         {#if selectedKind.description}
@@ -277,6 +595,23 @@
     {/if}
 
     <div class="actions">
+      {#if draft.kind === 'spotify'}
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!canLinkSpotify || saving || linkingSpotify}
+          on:click={linkSpotify}
+        >
+          <ExternalLink size={15} />
+          <span
+            >{linkingSpotify
+              ? 'Opening Spotify'
+              : spotifyStatus.tone === 'success'
+                ? 'Refresh Spotify login'
+                : 'Login with Spotify'}</span
+          >
+        </Button>
+      {/if}
       <Button type="submit" disabled={saving}>
         <Save size={15} /><span>{saving ? 'Saving' : 'Save'}</span>
       </Button>
@@ -289,6 +624,8 @@
     display: grid;
     grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
     gap: 14px;
+    height: 100%;
+    min-height: 0;
   }
 
   .connections-list,
@@ -296,6 +633,17 @@
     display: grid;
     align-content: start;
     gap: 10px;
+    min-height: 0;
+  }
+
+  .connections-list {
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+
+  .connection-editor {
+    overflow-y: auto;
+    padding-right: 4px;
   }
 
   .section-heading {
@@ -320,7 +668,7 @@
 
   .connection-row {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
     min-height: 46px;
@@ -368,6 +716,81 @@
     padding-top: 4px;
   }
 
+  .spotify-setup {
+    display: grid;
+    gap: 10px;
+  }
+
+  .setup-card {
+    display: grid;
+    gap: 5px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-muted);
+    padding: 10px;
+  }
+
+  .setup-card-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .setup-card p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 650;
+    line-height: 1.35;
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .status-pill--success {
+    border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+    background: color-mix(in srgb, var(--success) 10%, transparent);
+    color: var(--success);
+  }
+
+  .status-pill--warning {
+    border-color: color-mix(in srgb, var(--warning) 55%, var(--border));
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    color: var(--warning);
+  }
+
+  .setup-hint {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-muted);
+    padding: 10px;
+  }
+
+  .setup-hint code {
+    display: block;
+    overflow-wrap: anywhere;
+    color: var(--foreground);
+    font-size: 0.82rem;
+    font-weight: 750;
+  }
+
   .field-label {
     color: var(--foreground);
     font-size: 0.82rem;
@@ -393,8 +816,14 @@
   }
 
   .actions {
+    position: sticky;
+    bottom: 0;
     display: flex;
+    gap: 8px;
     justify-content: flex-end;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    padding-top: 10px;
   }
 
   @media (max-width: 720px) {
