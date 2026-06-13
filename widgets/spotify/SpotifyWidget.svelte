@@ -1,9 +1,7 @@
 <script lang="ts">
-  export let instanceId: string = '';
   export let data: any = {};
   export let dispatch: (action: string, args?: any) => Promise<any> = async () => {};
 
-  $: isConfigured = data?.is_configured ?? false;
   $: isPlaying = data?.is_playing ?? false;
   $: trackTitle = data?.track_title ?? 'Not Playing';
   $: artistName = data?.artist_name ?? 'Unknown';
@@ -25,36 +23,25 @@
     const vol = parseInt((e.target as HTMLInputElement).value, 10);
     await dispatch('set_volume', { volume: vol });
   }
-
-  function handleConnect() {
-    window.location.href = `/api/widgets/spotify/auth?instance_id=${instanceId}`;
-  }
 </script>
 
 <div class="widget-content">
-  {#if !isConfigured}
-    <div class="unconfigured">
-      <p class="title">Spotify</p>
-      <button class="connect-btn" on:click={handleConnect}>Connect Spotify</button>
+  <div class="player">
+    <div class="info">
+      <p class="track">{trackTitle}</p>
+      <p class="artist">{artistName}</p>
     </div>
-  {:else}
-    <div class="player">
-      <div class="info">
-        <p class="track">{trackTitle}</p>
-        <p class="artist">{artistName}</p>
-      </div>
-      <div class="controls">
-        <button on:click={handlePrevious}>⏮</button>
-        <button on:click={handlePlayPause}>{isPlaying ? '⏸' : '▶'}</button>
-        <button on:click={handleNext}>⏭</button>
-      </div>
-      <div class="vol-slider">
-        <span>🔈</span>
-        <input type="range" min="0" max="100" value={volume} on:change={handleVolume} />
-        <span>🔊</span>
-      </div>
+    <div class="controls">
+      <button on:click={handlePrevious}>⏮</button>
+      <button on:click={handlePlayPause}>{isPlaying ? '⏸' : '▶'}</button>
+      <button on:click={handleNext}>⏭</button>
     </div>
-  {/if}
+    <div class="vol-slider">
+      <span>🔈</span>
+      <input type="range" min="0" max="100" value={volume} on:change={handleVolume} />
+      <span>🔊</span>
+    </div>
+  </div>
 </div>
 
 <style>
@@ -64,21 +51,6 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-  }
-  .unconfigured {
-    text-align: center;
-  }
-  .title {
-    font-weight: bold;
-    margin-bottom: 8px;
-  }
-  .connect-btn {
-    padding: 6px 12px;
-    background: var(--foreground);
-    color: var(--inverse);
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
   }
   .player {
     display: flex;

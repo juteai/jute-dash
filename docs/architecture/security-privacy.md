@@ -22,6 +22,8 @@ v1 secret handling:
 - never include raw secret values in public config endpoints;
 - redact secret references in logs where possible.
 
+Adapter Connections are the required credential boundary for Integration Widgets. Widget instances link to them with `connectionRefs`; widget settings remain non-secret. Resolved provider secrets may be passed to connection-aware Go widget code only inside the hub process and must not be written back to layouts, snapshots, display payloads, A2A context, MCP context, logs, or public config projections.
+
 Future secret handling:
 
 - OS keyring;
@@ -67,6 +69,7 @@ Jute's widgets are compiled directly into the display application within Jute's 
 - Widgets do not access raw secrets, raw keys, or keys in local storage.
 - Widgets request and declare permissions in their Go/Svelte codebase.
 - Widgets declare their agent-facing capabilities through safe Widget Skills.
+- Integration Widgets declare Adapter Connection requirements instead of storing credentials or tokens in widget settings.
 
 ## Theme And Background Security
 
@@ -89,6 +92,8 @@ The hub builds A2A dashboard context from safe, declared data only.
 Never send:
 
 - raw credentials;
+- resolved Adapter Connection secrets;
+- secret references;
 - hidden widget state;
 - private widget fields;
 - raw smart-home payloads that include sensitive metadata;

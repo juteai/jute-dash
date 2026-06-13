@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"jute-dash/apps/hub/pkg/widgetskills"
+	"jute-dash/widgets"
 )
 
 func TestAppleMusicWidgetSettings(t *testing.T) {
@@ -13,51 +14,33 @@ func TestAppleMusicWidgetSettings(t *testing.T) {
 		t.Errorf("expected kind 'apple-music', got %q", w.Kind())
 	}
 
-	// 1. Completely unconfigured
-	rawEmpty := map[string]any{}
-	data, err := w.FetchData(context.Background(), rawEmpty)
+	data, err := w.FetchData(context.Background(), map[string]any{})
 	if err != nil {
 		t.Fatalf("FetchData empty failed: %v", err)
 	}
-	m, ok := data.(map[string]any)
+	payload, ok := data.(widgets.RuntimePayload)
 	if !ok {
-		t.Fatalf("expected map[string]any, got %T", data)
+		t.Fatalf("expected RuntimePayload, got %T", data)
 	}
-	if m["is_configured"] != false {
-		t.Errorf("expected is_configured to be false for empty settings")
+	if payload.Status != widgets.StatusUnavailable {
+		t.Errorf("expected unavailable status, got %q", payload.Status)
 	}
 
-	// 2. Partially configured (no user token)
-	rawPartial := map[string]any{
-		"developer_token": "my_dev_token",
-	}
-	data, err = w.FetchData(context.Background(), rawPartial)
-	if err != nil {
-		t.Fatalf("FetchData partial failed: %v", err)
-	}
-	m, ok = data.(map[string]any)
-	if !ok {
-		t.Fatalf("expected map[string]any, got %T", data)
-	}
-	if m["is_configured"] != false {
-		t.Errorf("expected is_configured to be false without user token")
-	}
-
-	// 3. Mock/Test mode (configured with mock)
-	rawMock := map[string]any{
-		"developer_token": "test",
-		"user_token":      "my_user_token",
-	}
-	data, err = w.FetchData(context.Background(), rawMock)
+	payload, err = w.FetchDataWithConnections(context.Background(), widgets.RuntimeInput{
+		InstanceID: "apple-music-1",
+		Connections: map[string]widgets.ResolvedConnection{
+			"account": appleMusicConnection(),
+		},
+	})
 	if err != nil {
 		t.Fatalf("FetchData mock failed: %v", err)
 	}
-	m, ok = data.(map[string]any)
-	if !ok {
-		t.Fatalf("expected map[string]any, got %T", data)
+	if payload.Status != widgets.StatusOK {
+		t.Fatalf("expected ok status, got %q", payload.Status)
 	}
-	if m["is_configured"] != true {
-		t.Errorf("expected is_configured to be true in mock mode")
+	m, ok := payload.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map data, got %T", payload.Data)
 	}
 	if m["track_title"] != "Mock Track" {
 		t.Errorf("expected track title 'Mock Track', got %q", m["track_title"])
@@ -67,17 +50,13 @@ func TestAppleMusicWidgetSettings(t *testing.T) {
 func TestAppleMusicWidgetActions(t *testing.T) {
 	w := NewWidget()
 
-	// Setup snapshot with a configured widget instance
 	snap := widgetskills.Snapshot{
 		Layout: widgetskills.WidgetLayout{
 			Widgets: []widgetskills.WidgetInstance{
 				{
-					ID:   "apple-music-1",
-					Kind: Kind,
-					Settings: map[string]any{
-						"developer_token": "test",
-						"user_token":      "user_token",
-					},
+					ID:             "apple-music-1",
+					Kind:           Kind,
+					ConnectionRefs: map[string]string{"account": "apple-test"},
 				},
 			},
 		},
@@ -86,13 +65,33 @@ func TestAppleMusicWidgetActions(t *testing.T) {
 	// Invoke actions in mock mode
 	actions := []string{"play", "pause", "next", "previous"}
 	for _, act := range actions {
-		res, err := w.InvokeAction(context.Background(), snap, "apple-music-1", act, nil)
+		res, err := w.InvokeActionWithConnections(context.Background(), widgets.ActionInput{
+			RuntimeInput: widgets.RuntimeInput{
+				InstanceID: "apple-music-1",
+				Connections: map[string]widgets.ResolvedConnection{
+					"account": appleMusicConnection(),
+				},
+			},
+			Snapshot: snap,
+			ActionID: act,
+		})
 		if err != nil {
 			t.Errorf("action %q failed: %v", act, err)
 		}
 		if res["status"] != "ok" {
 			t.Errorf("expected status 'ok', got %v", res["status"])
 		}
+	}
+}
+
+func appleMusicConnection() widgets.ResolvedConnection {
+	return widgets.ResolvedConnection{
+		ID:   "apple-test",
+		Kind: "apple-music",
+		Secrets: map[string]string{
+			"developer_token": "test",
+			"user_token":      "user_token",
+		},
 	}
 }
 

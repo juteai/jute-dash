@@ -62,18 +62,19 @@ func Project(_ context.Context, layout WidgetLayout) DashboardSnapshot {
 	wsWidgets := make([]widgetskills.WidgetInstance, len(layout.Widgets))
 	for i, w := range layout.Widgets {
 		wsWidgets[i] = widgetskills.WidgetInstance{
-			ID:       w.ID,
-			Kind:     w.Kind,
-			Title:    w.Title,
-			X:        w.X,
-			Y:        w.Y,
-			W:        w.W,
-			H:        w.H,
-			Visible:  w.Visible,
-			Mode:     w.Mode,
-			Size:     w.Size,
-			Settings: w.Settings,
-			Data:     w.Data,
+			ID:             w.ID,
+			Kind:           w.Kind,
+			Title:          w.Title,
+			X:              w.X,
+			Y:              w.Y,
+			W:              w.W,
+			H:              w.H,
+			Visible:        w.Visible,
+			Mode:           w.Mode,
+			Size:           w.Size,
+			Settings:       w.Settings,
+			ConnectionRefs: w.ConnectionRefs,
+			Data:           w.Data,
 		}
 	}
 	wsLayout := widgetskills.WidgetLayout{

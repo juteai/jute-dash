@@ -1,15 +1,10 @@
 package app
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,23 +27,25 @@ import (
 )
 
 type Server struct {
-	cfg             config.Config
-	agentsManager   *agents.AgentManager
-	messages        a2aclient.MessageSender
-	setup           homestate.SetupStatus
-	layout          dashboard.WidgetLayout
-	layoutStore     dashboard.LayoutStore
-	settings        homestate.SettingsStore
-	voice           voice.Config
-	voiceStore      voice.Store
-	configPath      string
-	syncer          filesync.Syncer
-	display         *displayactions.Dispatcher
-	voiceDispatcher *voice.Dispatcher
-	turnRunner      *agents.Runner
-	mu              sync.Mutex
-	started         time.Time
-	version         string
+	cfg                config.Config
+	agentsManager      *agents.AgentManager
+	messages           a2aclient.MessageSender
+	setup              homestate.SetupStatus
+	layout             dashboard.WidgetLayout
+	layoutStore        dashboard.LayoutStore
+	settings           homestate.SettingsStore
+	voice              voice.Config
+	voiceStore         voice.Store
+	configPath         string
+	syncer             filesync.Syncer
+	display            *displayactions.Dispatcher
+	voiceDispatcher    *voice.Dispatcher
+	connectionResolver widgets.ConnectionResolver
+	turnRunner         *agents.Runner
+	handler            http.Handler
+	mu                 sync.Mutex
+	started            time.Time
+	version            string
 }
 
 type HealthResponse struct {
@@ -144,7 +141,7 @@ func NewServer(
 	voiceStore voice.Store,
 	configPath string,
 	display *displayactions.Dispatcher,
-) http.Handler {
+) *Server {
 	layout := dashboard.DefaultWidgetLayout()
 	if layoutStore != nil {
 		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
@@ -165,7 +162,7 @@ func newServer(
 	voiceStore voice.Store,
 	configPath string,
 	display *displayactions.Dispatcher,
-) http.Handler {
+) *Server {
 	if messageSender == nil {
 		messageSender = a2aclient.NewJSONRPCClient()
 	}
@@ -173,35 +170,6 @@ func newServer(
 	activeLayoutStore := layoutStore
 	if activeLayoutStore == nil {
 		activeLayoutStore = dashboard.NewMemoryRepositoryWithLayout(layout)
-	}
-
-	//nolint:reassign // hook is designed to be set by the hub package
-	widgets.SaveSettingsHook = func(ctx context.Context, instanceID string, settings map[string]any) error {
-		if activeLayoutStore == nil {
-			return errors.New("layout store not initialized")
-		}
-		layout, err := activeLayoutStore.WidgetLayout(ctx, "")
-		if err != nil {
-			return err
-		}
-		updated := false
-		for i, widget := range layout.Widgets {
-			if widget.ID == instanceID {
-				if layout.Widgets[i].Settings == nil {
-					layout.Widgets[i].Settings = make(map[string]any)
-				}
-				for k, v := range settings {
-					layout.Widgets[i].Settings[k] = v
-				}
-				updated = true
-				break
-			}
-		}
-		if updated {
-			_, err = activeLayoutStore.SaveWidgetLayout(ctx, layout)
-			return err
-		}
-		return nil
 	}
 
 	activeVoiceStore := voiceStore
@@ -279,23 +247,25 @@ func newServer(
 	agentsManager := agents.NewAgentManager(syncer, agentCards, configPath)
 
 	voiceDispatcher := voice.NewDispatcher()
+	connectionResolver := newConnectionResolver(activeSettingsStore)
 
 	server := &Server{
-		cfg:             cfg,
-		agentsManager:   agentsManager,
-		messages:        messageSender,
-		setup:           setup,
-		layout:          layout,
-		layoutStore:     activeLayoutStore,
-		settings:        activeSettingsStore,
-		voice:           cfg.Voice,
-		voiceStore:      activeVoiceStore,
-		configPath:      configPath,
-		syncer:          syncer,
-		display:         display,
-		voiceDispatcher: voiceDispatcher,
-		started:         time.Now().UTC(),
-		version:         version,
+		cfg:                cfg,
+		agentsManager:      agentsManager,
+		messages:           messageSender,
+		setup:              setup,
+		layout:             layout,
+		layoutStore:        activeLayoutStore,
+		settings:           activeSettingsStore,
+		voice:              cfg.Voice,
+		voiceStore:         activeVoiceStore,
+		configPath:         configPath,
+		syncer:             syncer,
+		display:            display,
+		voiceDispatcher:    voiceDispatcher,
+		connectionResolver: connectionResolver,
+		started:            time.Now().UTC(),
+		version:            version,
 	}
 
 	agents.SetEnvReader(os.Getenv)
@@ -331,12 +301,7 @@ func newServer(
 	mux.HandleFunc("/healthz", server.handleHealth)
 	mux.HandleFunc("/api/v1/status", server.handleStatus)
 	mux.HandleFunc("/api/v1/config", server.handleConfig)
-	mux.HandleFunc("/api/widgets/smart-home/dispatch", server.handleSmartHomeDispatch)
-	mux.HandleFunc("/api/widgets/music-player/action", server.handleMusicPlayerAction)
-	mux.HandleFunc("/api/widgets/music-player/select", server.handleMusicPlayerSelect)
-	mux.HandleFunc("/api/widgets/philips-hue/register", server.handleHueRegister)
-	mux.HandleFunc("/api/widgets/spotify/auth", server.handleSpotifyAuth)
-	mux.HandleFunc("/api/widgets/spotify/callback", server.handleSpotifyCallback)
+	mux.HandleFunc("/api/v1/widgets/", server.handleWidgetAction)
 
 	// Registrations
 	homestate.NewController(
@@ -350,8 +315,9 @@ func newServer(
 		nil,
 	).RegisterRoutes(mux)
 
-	dashboard.NewController(
+	dashboard.NewControllerWithHydrator(
 		server.layoutStore,
+		dashboard.NewHydrator(server.connectionResolver),
 		func(saved dashboard.WidgetLayout) {
 			server.mu.Lock()
 			server.layout = saved
@@ -378,7 +344,12 @@ func newServer(
 	mux.Handle("/api/v1/events", broker)
 
 	handler := withCommonHeaders(withCORS(mux))
-	return RequestLogger(slog.Default() /*nolint:sloglint // use default global logger */)(handler)
+	server.handler = RequestLogger(slog.Default() /*nolint:sloglint // use default global logger */)(handler)
+	return server
+}
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.handler.ServeHTTP(w, r)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -464,19 +435,20 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		widgets := make([]dashboard.DashboardWidgetConfig, 0, len(layout.Widgets))
 		for _, w := range layout.Widgets {
 			widgets = append(widgets, dashboard.DashboardWidgetConfig{
-				ID:       w.ID,
-				Type:     w.Kind,
-				Title:    w.Title,
-				X:        w.X,
-				Y:        w.Y,
-				W:        w.W,
-				H:        w.H,
-				MinW:     w.MinW,
-				MinH:     w.MinH,
-				Size:     w.Size,
-				Visible:  w.Visible,
-				Mode:     w.Mode,
-				Settings: w.Settings,
+				ID:             w.ID,
+				Type:           w.Kind,
+				Title:          w.Title,
+				X:              w.X,
+				Y:              w.Y,
+				W:              w.W,
+				H:              w.H,
+				MinW:           w.MinW,
+				MinH:           w.MinH,
+				Size:           w.Size,
+				Visible:        w.Visible,
+				Mode:           w.Mode,
+				Settings:       w.Settings,
+				ConnectionRefs: w.ConnectionRefs,
 			})
 		}
 		dbConfig.Widgets = widgets
@@ -689,323 +661,236 @@ func syncOnLoad(
 	return nil
 }
 
-type smartHomeDispatchRequest struct {
-	InstanceID  string `json:"instanceId"`
-	InstanceID2 string `json:"instance_id"`
-	DeviceID    string `json:"deviceId"`
-	Action      string `json:"action"`
-	Command     string `json:"command"`
-	Value       any    `json:"value"`
+type widgetActionRequest struct {
+	Arguments map[string]any `json:"arguments"`
+	Actor     string         `json:"actor"`
+	Confirmed bool           `json:"confirmed"`
 }
 
-func (s *Server) handleSmartHomeDispatch(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleWidgetAction(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		httphelper.WriteMethodNotAllowed(w, http.MethodPost)
 		return
 	}
-
-	if r.Body == nil {
-		httphelper.WriteError(w, http.StatusBadRequest, "request body is required")
-		return
-	}
-
-	var req smartHomeDispatchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
-		return
-	}
-
-	instID := req.InstanceID
-	if instID == "" {
-		instID = req.InstanceID2
-	}
-	if instID == "" {
-		instID = "smart-home-widget-1"
-	}
-
-	action := req.Action
-	if action == "" {
-		action = req.Command
-	}
-
-	if instID == "" || req.DeviceID == "" || action == "" {
-		httphelper.WriteError(w, http.StatusBadRequest, "missing required fields (instanceId, deviceId, action)")
-		return
-	}
-
-	// Validate action list
-	validActions := map[string]bool{
-		"turn_on":         true,
-		"turn_off":        true,
-		"toggle":          true,
-		"brightness":      true,
-		"set_brightness":  true,
-		"set_temperature": true,
-	}
-	if !validActions[action] {
-		httphelper.WriteError(w, http.StatusBadRequest, "invalid command action")
-		return
-	}
-
-	// Validate set_temperature range
-	if action == "set_temperature" && req.Value != nil {
-		if val, ok := req.Value.(float64); ok {
-			if val < 5.0 || val > 50.0 {
-				httphelper.WriteError(w, http.StatusBadRequest, "temperature value out of range (5-50)")
-				return
-			}
-		}
-	}
-
-	layout, err := s.layoutStore.WidgetLayout(r.Context(), "")
-	if err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, "failed to load widget layout")
-		return
-	}
-
-	kind := "zigbee2mqtt" // default fallback
-	for _, inst := range layout.Widgets {
-		if inst.ID == instID {
-			kind = inst.Kind
-			break
-		}
-	}
-
-	widget, exists := widgets.Get(kind)
-	if !exists {
-		httphelper.WriteError(w, http.StatusNotFound, fmt.Sprintf("widget kind %q not registered", kind))
-		return
-	}
-
-	actionWidget, ok := widget.(widgets.ActionWidget)
+	instanceID, actionID, ok := parseWidgetActionPath(r.URL.Path)
 	if !ok {
-		httphelper.WriteError(w, http.StatusBadRequest, fmt.Sprintf("widget kind %q does not support actions", kind))
+		httphelper.WriteError(w, http.StatusNotFound, "widget action route not found")
 		return
 	}
-
-	snapshot := s.buildWidgetSkillsSnapshot(r.Context(), layout)
-
-	args := map[string]any{
-		"deviceId": req.DeviceID,
-		"action":   action,
-		"value":    req.Value,
-	}
-
-	res, err := actionWidget.InvokeAction(r.Context(), snapshot, instID, "control_device", args)
-	if err != nil {
-		if strings.Contains(err.Error(), "device not found") {
-			httphelper.WriteError(w, http.StatusNotFound, err.Error())
-		} else {
-			httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
-		}
-		return
-	}
-
-	_, _ = s.display.Notify("Device controlled successfully", "info")
-
-	httphelper.WriteJSON(w, http.StatusOK, res)
-}
-
-type musicPlayerActionRequest struct {
-	InstanceID  string         `json:"instance_id"`
-	InstanceID2 string         `json:"instanceId"`
-	Action      string         `json:"action"`
-	Client      string         `json:"client"`
-	Arguments   map[string]any `json:"arguments"`
-}
-
-func (s *Server) handleMusicPlayerAction(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		httphelper.WriteMethodNotAllowed(w, http.MethodPost)
-		return
-	}
-
-	var raw map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
-		httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
-		return
-	}
-
-	var req musicPlayerActionRequest
-	if val, ok := raw["instance_id"].(string); ok {
-		req.InstanceID = val
-	}
-	if val, ok := raw["instanceId"].(string); ok {
-		req.InstanceID2 = val
-	}
-	if val, ok := raw["action"].(string); ok {
-		req.Action = val
-	}
-	if val, ok := raw["client"].(string); ok {
-		req.Client = val
-	}
-	if args, ok := raw["arguments"].(map[string]any); ok {
-		req.Arguments = args
-	} else {
-		req.Arguments = make(map[string]any)
-	}
-
-	// Merge flat root values
-	for k, v := range raw {
-		if k != "instance_id" && k != "instanceId" && k != "action" && k != "client" && k != "arguments" {
-			req.Arguments[k] = v
-		}
-	}
-
-	if val, ok := raw["value"]; ok {
-		req.Arguments["value"] = val
-		req.Arguments["volume"] = val
-	}
-
-	if req.Action == "volume" {
-		req.Action = "set_volume"
-	}
-	if req.Action == "select" {
-		req.Action = "select_client"
-	}
-
-	instID := req.InstanceID
-	if instID == "" {
-		instID = req.InstanceID2
-	}
-	if instID == "" {
-		instID = "music-player-widget-1"
-	}
-
-	if instID == "" || req.Action == "" {
-		httphelper.WriteError(w, http.StatusBadRequest, "missing required fields (instance_id, action)")
-		return
-	}
-
-	layout, err := s.layoutStore.WidgetLayout(r.Context(), "")
-	if err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, "failed to load widget layout")
-		return
-	}
-
-	kind := "spotify" // default fallback
-	for _, inst := range layout.Widgets {
-		if inst.ID == instID {
-			kind = inst.Kind
-			break
-		}
-	}
-
-	widget, exists := widgets.Get(kind)
-	if !exists {
-		httphelper.WriteError(w, http.StatusNotFound, fmt.Sprintf("widget kind %q not registered", kind))
-		return
-	}
-
-	actionWidget, ok := widget.(widgets.ActionWidget)
-	if !ok {
-		httphelper.WriteError(w, http.StatusBadRequest, fmt.Sprintf("widget kind %q does not support actions", kind))
-		return
-	}
-
-	snapshot := s.buildWidgetSkillsSnapshot(r.Context(), layout)
-
-	if req.Client != "" {
-		_, errSelect := actionWidget.InvokeAction(
-			r.Context(),
-			snapshot,
-			instID,
-			"select_client",
-			map[string]any{"client": req.Client},
-		)
-		if errSelect != nil {
-			httphelper.WriteError(w, http.StatusBadRequest, errSelect.Error())
+	var req widgetActionRequest
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
 			return
 		}
 	}
-
-	res, err := actionWidget.InvokeAction(r.Context(), snapshot, instID, req.Action, req.Arguments)
-	if err != nil {
-		errMsg := err.Error()
-		if strings.Contains(errMsg, "volume") ||
-			strings.Contains(errMsg, "client") ||
-			strings.Contains(errMsg, "action") ||
-			strings.Contains(errMsg, "arguments") {
-			httphelper.WriteError(w, http.StatusBadRequest, errMsg)
-		} else {
-			httphelper.WriteError(w, http.StatusInternalServerError, errMsg)
-		}
+	if req.Arguments == nil {
+		req.Arguments = map[string]any{}
+	}
+	if req.Actor == "" {
+		req.Actor = "display"
+	}
+	result, issue, status := s.dispatchWidgetAction(
+		r.Context(),
+		instanceID,
+		actionID,
+		req.Arguments,
+		req.Actor,
+		req.Confirmed,
+	)
+	if issue != nil {
+		httphelper.WriteJSON(w, status, map[string]any{"status": "error", "issue": issue})
 		return
 	}
-
-	httphelper.WriteJSON(w, http.StatusOK, res)
+	httphelper.WriteJSON(w, status, result)
 }
 
-func (s *Server) handleMusicPlayerSelect(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		httphelper.WriteMethodNotAllowed(w, http.MethodPost)
-		return
+func (s *Server) InvokeWidgetAction(
+	ctx context.Context,
+	widgetInstanceID string,
+	actionID string,
+	arguments map[string]any,
+	actor string,
+	confirmed bool,
+) (map[string]any, error) {
+	result, issue, _ := s.dispatchWidgetAction(
+		ctx,
+		widgetInstanceID,
+		actionID,
+		arguments,
+		actor,
+		confirmed,
+	)
+	if issue != nil {
+		return map[string]any{"status": "error", "issue": issue}, nil
 	}
-	var req struct {
-		InstanceID  string `json:"instance_id"`
-		InstanceID2 string `json:"instanceId"`
-		Client      string `json:"client"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httphelper.WriteError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
+	return result, nil
+}
 
-	if req.Client == "" {
-		httphelper.WriteError(w, http.StatusBadRequest, "Client cannot be empty")
-		return
+func parseWidgetActionPath(path string) (string, string, bool) {
+	const prefix = "/api/v1/widgets/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", false
 	}
+	rest := strings.TrimPrefix(path, prefix)
+	parts := strings.Split(rest, "/")
+	if len(parts) != 3 || parts[1] != "actions" {
+		return "", "", false
+	}
+	instanceID := strings.TrimSpace(parts[0])
+	actionID := strings.TrimSpace(parts[2])
+	return instanceID, actionID, instanceID != "" && actionID != ""
+}
 
-	if len(req.Client) > 256 || strings.Contains(req.Client, "../") {
-		httphelper.WriteError(w, http.StatusBadRequest, "Invalid client name")
-		return
-	}
-
-	instID := req.InstanceID
-	if instID == "" {
-		instID = req.InstanceID2
-	}
-	if instID == "" {
-		instID = "music-player-widget-1"
-	}
-
-	layout, err := s.layoutStore.WidgetLayout(r.Context(), "")
+func (s *Server) dispatchWidgetAction(
+	ctx context.Context,
+	instanceID string,
+	actionID string,
+	arguments map[string]any,
+	actor string,
+	confirmed bool,
+) (map[string]any, *widgets.UserFacingIssue, int) {
+	layout, err := s.layoutStore.WidgetLayout(ctx, "")
 	if err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, "failed to load widget layout")
-		return
+		return nil, safeIssue(
+			"widget.layout_unavailable",
+			"Widget unavailable",
+			"Jute cannot load the widget layout.",
+			"error",
+		), http.StatusInternalServerError
 	}
-
-	kind := "spotify" // default fallback
-	for _, inst := range layout.Widgets {
-		if inst.ID == instID {
-			kind = inst.Kind
+	var inst *dashboard.WidgetInstance
+	for i := range layout.Widgets {
+		if layout.Widgets[i].ID == instanceID {
+			inst = &layout.Widgets[i]
 			break
 		}
 	}
-
-	widget, exists := widgets.Get(kind)
+	if inst == nil {
+		return nil, safeIssue(
+			"widget.not_found",
+			"Widget not found",
+			"This widget is no longer available.",
+			"warning",
+		), http.StatusNotFound
+	}
+	provider, exists := widgets.Get(inst.Kind)
 	if !exists {
-		httphelper.WriteError(w, http.StatusNotFound, fmt.Sprintf("widget kind %q not registered", kind))
-		return
+		return nil, safeIssue(
+			"widget.kind_not_registered",
+			"Widget unavailable",
+			"This widget is not available in the Hub.",
+			"warning",
+		), http.StatusNotFound
 	}
-	actionWidget, ok := widget.(widgets.ActionWidget)
+	action, ok := findWidgetAction(provider, actionID)
 	if !ok {
-		httphelper.WriteError(w, http.StatusBadRequest, fmt.Sprintf("widget kind %q does not support actions", kind))
-		return
+		return nil, safeIssue(
+			"widget.action_not_found",
+			"Action unavailable",
+			"This action is not supported by the widget.",
+			"warning",
+		), http.StatusBadRequest
 	}
-	snapshot := s.buildWidgetSkillsSnapshot(r.Context(), layout)
-	res, err := actionWidget.InvokeAction(
-		r.Context(),
-		snapshot,
-		instID,
-		"select_client",
-		map[string]any{"client": req.Client},
-	)
+	if action.RequiresConfirmation && !confirmed {
+		return nil, safeIssue(
+			"widget.action_confirmation_required",
+			"Confirmation needed",
+			"Confirm this action before Jute runs it.",
+			"warning",
+		), http.StatusConflict
+	}
+	snapshot := s.buildWidgetSkillsSnapshot(ctx, layout)
+	if connectionWidget, ok := provider.(widgets.ConnectionAwareActionWidget); ok {
+		connections, issues := s.connectionResolver.ResolveWidgetConnections(
+			ctx,
+			connectionWidget.RequiredConnections(),
+			inst.ConnectionRefs,
+		)
+		for _, req := range connectionWidget.RequiredConnections() {
+			if issue, ok := issues[req.Slot]; ok {
+				return nil, issue.Issue, http.StatusBadRequest
+			}
+		}
+		result, err := connectionWidget.InvokeActionWithConnections(ctx, widgets.ActionInput{
+			RuntimeInput: widgets.RuntimeInput{
+				InstanceID:     inst.ID,
+				Settings:       cloneDashboardSettings(inst.Settings),
+				ConnectionRefs: cloneDashboardConnectionRefs(inst.ConnectionRefs),
+				Connections:    connections,
+			},
+			Snapshot:  snapshot,
+			ActionID:  actionID,
+			Arguments: arguments,
+			Actor:     actor,
+		})
+		if err != nil {
+			return nil, safeIssue(
+				"widget.action_failed",
+				"Action failed",
+				"Jute could not complete this widget action.",
+				"error",
+			), http.StatusInternalServerError
+		}
+		return result, nil, http.StatusOK
+	}
+	actionWidget, ok := provider.(widgets.ActionWidget)
+	if !ok {
+		return nil, safeIssue(
+			"widget.action_unsupported",
+			"Action unavailable",
+			"This widget does not support actions.",
+			"warning",
+		), http.StatusBadRequest
+	}
+	result, err := actionWidget.InvokeAction(ctx, snapshot, instanceID, actionID, arguments)
 	if err != nil {
-		httphelper.WriteError(w, http.StatusBadRequest, err.Error())
-		return
+		return nil, safeIssue(
+			"widget.action_failed",
+			"Action failed",
+			"Jute could not complete this widget action.",
+			"error",
+		), http.StatusInternalServerError
 	}
-	httphelper.WriteJSON(w, http.StatusOK, res)
+	return result, nil, http.StatusOK
+}
+
+func findWidgetAction(provider widgets.Widget, actionID string) (widgetskills.Action, bool) {
+	skill := provider.Skill()
+	if skill == nil {
+		return widgetskills.Action{}, false
+	}
+	for _, action := range skill.Actions {
+		if action.ID == actionID {
+			return action, true
+		}
+	}
+	return widgetskills.Action{}, false
+}
+
+func safeIssue(code, title, message, severity string) *widgets.UserFacingIssue {
+	return &widgets.UserFacingIssue{
+		Code:     code,
+		Severity: severity,
+		Title:    title,
+		Message:  message,
+	}
+}
+
+func cloneDashboardSettings(in map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneDashboardConnectionRefs(in map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func (s *Server) buildWidgetSkillsSnapshot(
@@ -1021,7 +906,7 @@ func (s *Server) buildWidgetSkillsSnapshot(
 		}
 	}
 
-	layout = dashboard.HydrateWidgetLayout(ctx, layout)
+	layout = dashboard.NewHydrator(s.connectionResolver).HydrateWidgetLayout(ctx, layout)
 
 	agentsList := []widgetskills.Agent{}
 	regAgents := s.agentsManager.List(ctx, false)
@@ -1092,18 +977,19 @@ func (s *Server) buildWidgetSkillsSnapshot(
 	wsWidgets := make([]widgetskills.WidgetInstance, len(layout.Widgets))
 	for i, w := range layout.Widgets {
 		wsWidgets[i] = widgetskills.WidgetInstance{
-			ID:       w.ID,
-			Kind:     w.Kind,
-			Title:    w.Title,
-			X:        w.X,
-			Y:        w.Y,
-			W:        w.W,
-			H:        w.H,
-			Visible:  w.Visible,
-			Mode:     w.Mode,
-			Size:     w.Size,
-			Settings: w.Settings,
-			Data:     w.Data,
+			ID:             w.ID,
+			Kind:           w.Kind,
+			Title:          w.Title,
+			X:              w.X,
+			Y:              w.Y,
+			W:              w.W,
+			H:              w.H,
+			Visible:        w.Visible,
+			Mode:           w.Mode,
+			Size:           w.Size,
+			Settings:       w.Settings,
+			ConnectionRefs: w.ConnectionRefs,
+			Data:           w.Data,
 		}
 	}
 	wsLayout := widgetskills.WidgetLayout{
@@ -1117,261 +1003,4 @@ func (s *Server) buildWidgetSkillsSnapshot(
 		Agents:      agentsList,
 		GeneratedAt: time.Now().UTC(),
 	}
-}
-
-type hueRegisterRequest struct {
-	InstanceID string `json:"instance_id"`
-	BridgeIP   string `json:"bridge_ip"`
-}
-
-func (s *Server) handleHueRegister(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		httphelper.WriteMethodNotAllowed(w, http.MethodPost)
-		return
-	}
-
-	var req hueRegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
-		return
-	}
-
-	if req.InstanceID == "" || req.BridgeIP == "" {
-		httphelper.WriteError(w, http.StatusBadRequest, "missing instance_id or bridge_ip")
-		return
-	}
-
-	payload := map[string]any{
-		"devicetype": "jute_dash#local_hub",
-	}
-	bodyBytes, err := json.Marshal(payload)
-	if err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	url := fmt.Sprintf("http://%s/api", req.BridgeIP)
-	postReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(bodyBytes))
-	if err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	postReq.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(postReq)
-	if err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("failed to connect to bridge: %v", err))
-		return
-	}
-	defer resp.Body.Close()
-
-	var responseList []map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&responseList); err != nil {
-		httphelper.WriteError(
-			w,
-			http.StatusInternalServerError,
-			fmt.Sprintf("failed to decode bridge response: %v", err),
-		)
-		return
-	}
-
-	if len(responseList) == 0 {
-		httphelper.WriteError(w, http.StatusInternalServerError, "empty response from bridge")
-		return
-	}
-
-	first := responseList[0]
-	if errMap, ok := first["error"].(map[string]any); ok {
-		desc, _ := errMap["description"].(string)
-		httphelper.WriteError(w, http.StatusBadRequest, fmt.Sprintf("bridge registration failed: %s", desc))
-		return
-	}
-
-	successMap, ok := first["success"].(map[string]any)
-	if !ok {
-		httphelper.WriteError(w, http.StatusInternalServerError, "invalid response from bridge")
-		return
-	}
-
-	username, _ := successMap["username"].(string)
-	if username == "" {
-		httphelper.WriteError(w, http.StatusInternalServerError, "no username returned from bridge")
-		return
-	}
-
-	layout, err := s.layoutStore.WidgetLayout(r.Context(), "")
-	if err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, "failed to load layout")
-		return
-	}
-
-	updated := false
-	for i, widget := range layout.Widgets {
-		if widget.ID == req.InstanceID {
-			if layout.Widgets[i].Settings == nil {
-				layout.Widgets[i].Settings = make(map[string]any)
-			}
-			layout.Widgets[i].Settings["username"] = username
-			layout.Widgets[i].Settings["bridge_ip"] = req.BridgeIP
-			updated = true
-			break
-		}
-	}
-
-	if updated {
-		if _, err := s.layoutStore.SaveWidgetLayout(r.Context(), layout); err != nil {
-			httphelper.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save layout: %v", err))
-			return
-		}
-	}
-
-	httphelper.WriteJSON(w, http.StatusOK, map[string]any{
-		"username": username,
-	})
-}
-
-func (s *Server) handleSpotifyAuth(w http.ResponseWriter, r *http.Request) {
-	instanceID := r.URL.Query().Get("instance_id")
-	if instanceID == "" {
-		instanceID = "spotify-widget-1"
-	}
-
-	layout, err := s.layoutStore.WidgetLayout(r.Context(), "")
-	if err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, "failed to load widget layout")
-		return
-	}
-
-	var clientID string
-	for _, widget := range layout.Widgets {
-		if widget.ID == instanceID {
-			if cid, ok := widget.Settings["client_id"].(string); ok {
-				clientID = cid
-			}
-			break
-		}
-	}
-
-	if clientID == "" {
-		httphelper.WriteError(w, http.StatusBadRequest, "Spotify Client ID is not configured in widget settings")
-		return
-	}
-
-	redirectURI := "http://localhost:8787/api/widgets/spotify/callback"
-	authURL := fmt.Sprintf(
-		"https://accounts.spotify.com/authorize?client_id=%s&response_type=code&redirect_uri=%s"+
-			"&scope=user-read-playback-state%%20user-modify-playback-state&state=%s",
-		url.QueryEscape(clientID),
-		url.QueryEscape(redirectURI),
-		url.QueryEscape(instanceID),
-	)
-
-	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-}
-
-func (s *Server) handleSpotifyCallback(w http.ResponseWriter, r *http.Request) {
-	code := r.URL.Query().Get("code")
-	instanceID := r.URL.Query().Get("state")
-
-	if code == "" || instanceID == "" {
-		httphelper.WriteError(w, http.StatusBadRequest, "missing code or state in callback")
-		return
-	}
-
-	layout, err := s.layoutStore.WidgetLayout(r.Context(), "")
-	if err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, "failed to load layout")
-		return
-	}
-
-	var clientID, clientSecret string
-	for _, widget := range layout.Widgets {
-		if widget.ID == instanceID {
-			if cid, ok := widget.Settings["client_id"].(string); ok {
-				clientID = cid
-			}
-			if secret, ok := widget.Settings["client_secret"].(string); ok {
-				clientSecret = secret
-			}
-			break
-		}
-	}
-
-	if clientID == "" || clientSecret == "" {
-		httphelper.WriteError(w, http.StatusBadRequest, "Spotify credentials not found in settings")
-		return
-	}
-
-	redirectURI := "http://localhost:8787/api/widgets/spotify/callback"
-	tokenURL := "https://accounts.spotify.com/api/token" //nolint:gosec // URL is not a secret credential
-
-	data := url.Values{}
-	data.Set("grant_type", "authorization_code")
-	data.Set("code", code)
-	data.Set("redirect_uri", redirectURI)
-
-	req, err := http.NewRequestWithContext(
-		r.Context(),
-		http.MethodPost,
-		tokenURL,
-		strings.NewReader(data.Encode()),
-	)
-	if err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	authHeader := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", clientID, clientSecret)))
-	req.Header.Set("Authorization", fmt.Sprintf("Basic %s", authHeader))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errData map[string]any
-		_ = json.NewDecoder(resp.Body).Decode(&errData)
-		httphelper.WriteError(w, http.StatusBadRequest, fmt.Sprintf("Spotify returned error: %v", errData))
-		return
-	}
-
-	var tokenResp struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int64  `json:"expires_in"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	expiresAt := time.Now().Unix() + tokenResp.ExpiresIn
-
-	updated := false
-	for i, widget := range layout.Widgets {
-		if widget.ID == instanceID {
-			if layout.Widgets[i].Settings == nil {
-				layout.Widgets[i].Settings = make(map[string]any)
-			}
-			layout.Widgets[i].Settings["access_token"] = tokenResp.AccessToken
-			if tokenResp.RefreshToken != "" {
-				layout.Widgets[i].Settings["refresh_token"] = tokenResp.RefreshToken
-			}
-			layout.Widgets[i].Settings["expires_at"] = expiresAt
-			updated = true
-			break
-		}
-	}
-
-	if updated {
-		if _, err := s.layoutStore.SaveWidgetLayout(r.Context(), layout); err != nil {
-			httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
-
-	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }

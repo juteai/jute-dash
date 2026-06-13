@@ -52,32 +52,30 @@ func (w *AppleMusicWidget) Kind() string {
 
 func (w *AppleMusicWidget) CatalogInfo() widgets.WidgetCatalogItem {
 	return widgets.WidgetCatalogItem{
-		Kind:          Kind,
-		Name:          "Apple Music",
-		Description:   "Control playback and view track info from Apple Music.",
-		DefaultTitle:  "Apple Music",
-		DefaultW:      6,
-		DefaultH:      2,
-		MinW:          4,
-		MinH:          2,
-		DefaultSize:   "wide",
-		Overflow:      "clip",
-		AllowMultiple: false,
-		SettingsSchema: []widgets.SettingField{
-			{
-				ID:    "developer_token",
-				Type:  widgets.SettingString,
-				Label: "Developer Token",
-				Help:  "JWT Developer Token from Apple Developer Account.",
-			},
-			{
-				ID:    "user_token",
-				Type:  widgets.SettingString,
-				Label: "User Token",
-				Help:  "Music User Token from client-side StoreKit.",
-			},
-		},
+		Kind:                   Kind,
+		Name:                   "Apple Music",
+		Description:            "Control playback and view track info from Apple Music.",
+		DefaultTitle:           "Apple Music",
+		DefaultW:               6,
+		DefaultH:               2,
+		MinW:                   4,
+		MinH:                   2,
+		DefaultSize:            "wide",
+		Overflow:               "clip",
+		AllowMultiple:          false,
+		ConnectionRequirements: w.RequiredConnections(),
 	}
+}
+
+func (w *AppleMusicWidget) RequiredConnections() []widgets.ConnectionRequirement {
+	return []widgets.ConnectionRequirement{{
+		Slot:        "account",
+		Kind:        "apple-music",
+		DisplayName: "Apple Music Account",
+		Description: "Apple Music developer and user token references.",
+		Required:    true,
+		SecretKeys:  []string{"developer_token", "user_token"},
+	}}
 }
 
 func (w *AppleMusicWidget) doRequest(
@@ -110,43 +108,45 @@ func (w *AppleMusicWidget) FetchData(ctx context.Context, rawSettings map[string
 	)
 	s := parseSettings(rawSettings)
 	if string(s.DeveloperToken) == "" || string(s.UserToken) == "" {
-		return map[string]any{
-			"is_configured": false,
-		}, nil
+		return widgets.Unavailable(
+			"connection.missing",
+			"Apple Music account needed",
+			"Choose an Apple Music Account connection in settings.",
+		), nil
 	}
 
 	if string(s.DeveloperToken) == "mock-applemusic" || string(s.DeveloperToken) == "test" {
 		return map[string]any{
-			"is_configured": true,
-			"track_title":   "Mock Track",
-			"artist_name":   "Mock Artist",
-			"is_playing":    true,
+			"track_title": "Mock Track",
+			"artist_name": "Mock Artist",
+			"is_playing":  true,
 		}, nil
 	}
 
 	resp, err := w.doRequest(ctx, s, http.MethodGet, "https://api.music.apple.com/v1/me/player/currently-playing", nil)
 	if err != nil {
-		return map[string]any{
-			"is_configured": true,
-			"error":         err.Error(),
-		}, nil
+		return widgets.Unavailable(
+			"apple_music.unavailable",
+			"Apple Music unavailable",
+			"Jute could not reach Apple Music playback.",
+		), nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNoContent {
 		return map[string]any{
-			"is_configured": true,
-			"track_title":   "Not Playing",
-			"artist_name":   "Unknown",
-			"is_playing":    false,
+			"track_title": "Not Playing",
+			"artist_name": "Unknown",
+			"is_playing":  false,
 		}, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return map[string]any{
-			"is_configured": true,
-			"error":         fmt.Sprintf("Apple Music API returned status %d", resp.StatusCode),
-		}, nil
+		return widgets.Unavailable(
+			"apple_music.unavailable",
+			"Apple Music unavailable",
+			"Jute could not load Apple Music playback.",
+		), nil
 	}
 
 	var responseData struct {
@@ -159,10 +159,11 @@ func (w *AppleMusicWidget) FetchData(ctx context.Context, rawSettings map[string
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
-		return map[string]any{
-			"is_configured": true,
-			"error":         err.Error(),
-		}, nil
+		return widgets.Unavailable(
+			"apple_music.unavailable",
+			"Apple Music unavailable",
+			"Jute could not read Apple Music playback.",
+		), nil
 	}
 
 	track := "Not Playing"
@@ -176,11 +177,43 @@ func (w *AppleMusicWidget) FetchData(ctx context.Context, rawSettings map[string
 	}
 
 	return map[string]any{
-		"is_configured": true,
-		"track_title":   track,
-		"artist_name":   artist,
-		"is_playing":    isPlaying,
+		"track_title": track,
+		"artist_name": artist,
+		"is_playing":  isPlaying,
 	}, nil
+}
+
+func (w *AppleMusicWidget) FetchDataWithConnections(
+	ctx context.Context,
+	input widgets.RuntimeInput,
+) (widgets.RuntimePayload, error) {
+	settings := appleMusicSettingsFromConnection(input.Connections["account"])
+	if string(settings.DeveloperToken) == "" || string(settings.UserToken) == "" {
+		return widgets.Unavailable(
+			"connection.missing_credentials",
+			"Apple Music account needed",
+			"Choose an Apple Music Account connection in settings.",
+		), nil
+	}
+	data, err := w.FetchData(ctx, map[string]any{
+		"developer_token": string(settings.DeveloperToken),
+		"user_token":      string(settings.UserToken),
+	})
+	if err != nil {
+		return widgets.ErrorPayload( //nolint:nilerr // provider error is mapped to a safe widget issue
+			"apple_music.fetch_failed",
+			"Apple Music unavailable",
+			"Jute could not load Apple Music playback.",
+		), nil
+	}
+	payload := widgets.NormalizePayload(data, nil)
+	if payload.Status != widgets.StatusOK {
+		return payload, nil
+	}
+	if m, ok := data.(map[string]any); ok {
+		return widgets.OK(m), nil
+	}
+	return widgets.OK(data), nil
 }
 
 func (w *AppleMusicWidget) Skill() *widgetskills.Definition {
@@ -198,6 +231,26 @@ func (w *AppleMusicWidget) Skill() *widgetskills.Definition {
 		},
 		Actions: []widgetskills.Action{
 			widgetskills.ReadAction("status", "Get playback status", "Read current track and status."),
+			applePlaybackAction("play", "Play", "Start Apple Music playback."),
+			applePlaybackAction("pause", "Pause", "Pause Apple Music playback."),
+			applePlaybackAction("next", "Next track", "Skip to the next Apple Music track."),
+			applePlaybackAction("previous", "Previous track", "Return to the previous Apple Music track."),
+		},
+	}
+}
+
+func applePlaybackAction(id, title, description string) widgetskills.Action {
+	return widgetskills.Action{
+		ID:                   id,
+		Title:                title,
+		Description:          description,
+		SideEffect:           "home_action",
+		RequiresConfirmation: false,
+		InputSchema:          map[string]any{"type": "object", "additionalProperties": true},
+		OutputSchema: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"status": map[string]any{"type": "string"}},
+			"required":   []string{"status"},
 		},
 	}
 }
@@ -251,6 +304,37 @@ func (w *AppleMusicWidget) InvokeAction(
 	return map[string]any{"status": "ok"}, nil
 }
 
+func (w *AppleMusicWidget) InvokeActionWithConnections(
+	ctx context.Context,
+	input widgets.ActionInput,
+) (map[string]any, error) {
+	settings := appleMusicSettingsFromConnection(input.Connections["account"])
+	snap := input.Snapshot
+	snap.Layout.Widgets = append([]widgetskills.WidgetInstance(nil), snap.Layout.Widgets...)
+	found := false
+	for i := range snap.Layout.Widgets {
+		if snap.Layout.Widgets[i].ID == input.InstanceID {
+			snap.Layout.Widgets[i].Settings = map[string]any{
+				"developer_token": string(settings.DeveloperToken),
+				"user_token":      string(settings.UserToken),
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, errors.New("widget instance not found")
+	}
+	return w.InvokeAction(ctx, snap, input.InstanceID, input.ActionID, input.Arguments)
+}
+
+func appleMusicSettingsFromConnection(connection widgets.ResolvedConnection) Settings {
+	return Settings{
+		DeveloperToken: SecretString(connection.Secrets["developer_token"]),
+		UserToken:      SecretString(connection.Secrets["user_token"]),
+	}
+}
+
 func getSettings(snap widgetskills.Snapshot, instanceID string) Settings {
 	for _, w := range snap.Layout.Widgets {
 		if w.ID == instanceID {
@@ -275,7 +359,7 @@ func init() {
 	widgets.RegisterWithSkill(&AppleMusicWidget{}, func(snapshot widgetskills.Snapshot, instID string) map[string]any {
 		for _, w := range snapshot.Layout.Widgets {
 			if w.ID == instID {
-				if m, ok := w.Data.(map[string]any); ok {
+				if m, ok := widgets.PayloadData(w.Data).(map[string]any); ok {
 					return m
 				}
 			}

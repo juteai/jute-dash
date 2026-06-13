@@ -7,21 +7,20 @@ The Philips Hue widget allows local control of light states, brightness, and col
 - **Skill ID**: `jute.philipshue.control`
 - **Supported Sizes**: `wide` (6x2), with minimum size `wide` (4x2).
 
-## Settings Schema
-The widget configuration includes the following settings:
+## Connection Requirement
+The widget requires a shared Adapter Connection:
 
-| Setting ID | Type | Label | Description |
-|---|---|---|---|
-| `bridge_ip` | `string` | Bridge IP | The local IP address of your Philips Hue Bridge (e.g. `192.168.1.100`). |
-| `username` | `string` | Username (API Key) | The authorized API token for communication with the Bridge. |
+| Slot | Kind | Description |
+|---|---|---|
+| `bridge` | `philips-hue` | Hue bridge IP and username/API key secret reference. |
 
 ## Authentication Setup
 To link your Philips Hue Bridge:
-1. Input your local Bridge IP address.
-2. If you already have a Hue username/API key, paste it directly into the `username` field.
-3. Alternatively, press the physical link button on your Hue Bridge, then click the **Link Bridge** helper button in the settings panel to automatically register Jute and retrieve the token.
+1. Create or update a Philips Hue Adapter Connection in Settings `Connections`.
+2. Store the bridge IP as non-secret settings and the username/API key as a secret reference.
+3. Choose that shared connection from the Philips Hue widget settings sheet.
 
 ## Agent Capabilities & Actions
 Exposed actions for home assistant A2A and MCP agents:
 *   **Action `status`**: Lists the current connection status, all detected lights, and their state (on/off, brightness).
-*   **Action `control_device`**: Controls specific Hue light parameters (e.g., turn on/off or change brightness level).
+*   **Actions `toggle`, `turn_on`, `turn_off`, `set_brightness`**: Low-risk light controls through the hub widget action dispatcher.

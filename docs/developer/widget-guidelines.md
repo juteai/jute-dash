@@ -8,6 +8,14 @@ There are no sandboxed iframes, manifests, or postMessage message protocols. Eve
 
 ---
 
+## Collaboration Model
+
+Widgets should remain self-contained contributions for provider behavior, non-secret settings schema, Widget Skill declaration, Display view, docs, and tests. Shared runtime concerns belong to the hub: Adapter Connections, secret references, safe issue mapping, connection health, normalized runtime payloads, and action dispatch.
+
+This keeps fork-and-PR widget contribution practical without copying credential storage, setup, or policy code into every Integration Widget.
+
+---
+
 ## Widget Folder Structure
 
 Every widget lives in its own subdirectory under `/widgets/`:
@@ -35,13 +43,15 @@ type Widget interface {
 	CatalogInfo() WidgetCatalogItem
 
 	// FetchData gathers and aggregates the latest state/payload for this widget.
-	// It is passed the widget's custom settings from the YAML file.
+	// It is passed the widget's non-secret custom settings.
 	FetchData(ctx context.Context, settings map[string]any) (any, error)
 
 	// Skill returns the optional agent-facing skill metadata. Returns nil if visual-only.
 	Skill() *widgetskills.Definition
 }
 ```
+
+Simple widgets can implement only `Widget`. Integration Widgets that need credentials or provider accounts should also implement the optional connection-aware interfaces in `widgets/widget.go`, declare `ConnectionRequirements` in `CatalogInfo()`, and receive resolved connection material from the hub. Do not use widget settings for raw credentials, OAuth tokens, bridge users, API keys, or MQTT passwords.
 
 ### Self-Registration
 During `init()`, register your widget with the global registry. For widgets with agent-facing skills, use `RegisterWithSkill` to register both the widget and its skill context function:
@@ -110,6 +120,8 @@ Because widgets live outside the SvelteKit project directory (`apps/web`), Vite 
 
 Jute Dash automatically generates settings forms in the settings sheet UI using the widget's Go `CatalogInfo().SettingsSchema`. Developers do not need to write form markup.
 
+Settings schema fields are for non-secret per-instance configuration only. If a widget needs a provider account, bridge, broker, or other credential-backed setup, add a typed Adapter Connection requirement instead. The widget settings sheet links the widget instance's `connectionRefs` to shared Adapter Connections created in Settings `Connections`.
+
 ### Supported Field Types
 Map your configuration using the `SettingFieldType` enums defined in `widgets/widget.go`:
 - `SettingString` (`"string"`): Standard text input.
@@ -130,6 +142,8 @@ If your widget is agent-visible, define its `Skill()` return structure to declar
 - **Prompts**: Provide high-level guidance explaining the widget's purpose.
 
 *Note: Never expose secrets, OAuth credentials, raw database rows, or private metadata inside your widget's context fields.*
+
+Actions must be declared in the Widget Skill and invoked through the unified widget action dispatcher. Set `sideEffect` and `requiresConfirmation` deliberately; those fields drive policy for Display, MCP, and agent actors.
 
 ---
 
@@ -172,8 +186,8 @@ flowchart TD
         I -->|implements CatalogInfo| F
         I -->|FetchData| J["Data State Payload"]
         J -->|JSON REST API| C
-        K["Agent (A2A / MCP)"] -->|invokes action| L["widgetskills Registry"]
-        L -->|dispatches| M["ActionWidget (InvokeAction)"]
+        K["Agent (A2A / MCP)"] -->|invokes action| L["Unified Action Dispatcher"]
+        L -->|resolves refs + policy| M["Connection-Aware ActionWidget"]
         M -->|executes commands| I
     end
 ```
@@ -187,5 +201,6 @@ When contributing a new widget:
 2. **Dynamic Boot**: Blank import your package inside `apps/hub/cmd/juted/main.go`.
 3. **Dashboard Mapping**: Import and register the component and its props inside [widget-registry.ts](file:///Users/craighutcheon/Repos/Other/jute-dash/widgets/widget-registry.ts).
 4. **Documentation**: Write a `README.md` inside your widget folder detailing its kind, supported sizes, and custom settings schemas.
-5. **Visual Verification**: Check the widget in light and dark mode, and with at least `solid` and `smoked` widget chrome.
-6. **Quality Verification**: Run `make check` to verify Go compilation, backend package tests (`go test ./...`), and SvelteKit type checks (`make web-check`).
+5. **Connections**: For Integration Widgets, declare required Adapter Connections and test with resolved connection input rather than raw credential settings.
+6. **Visual Verification**: Check the widget in light and dark mode, and with at least `solid` and `smoked` widget chrome.
+7. **Quality Verification**: Run `make check` to verify Go compilation, backend package tests (`go test ./...`), and SvelteKit type checks (`make web-check`).

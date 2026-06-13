@@ -15,6 +15,8 @@ Widget frame styling, transparency, and background blending are host-owned displ
 
 Widgets also declare agent-facing capabilities through [Widget Skills](widget-skills.md). The hub uses this contract to expose widget capabilities through A2A dashboard context and the optional MCP Bridge.
 
+Integration Widgets such as Spotify, Apple Music, Philips Hue, and Zigbee2MQTT are connection-aware. They keep provider behavior self-contained, but credentials, shared connection records, secret resolution, health issues, normalized runtime payloads, and action dispatch are hub-owned concerns.
+
 The runtime widget architecture is illustrated below:
 
 ```mermaid
@@ -24,13 +26,14 @@ flowchart TD
         Grid -->|2. Renders| Frame[WidgetFrame.svelte]
         Frame -->|3. Loads component from| Registry[widgets/widget-registry.ts]
         Registry -->|4. Instantiates| SvelteComp["Widget View Component\n(e.g., WeatherWidget.svelte)"]
-        ConfigSheet[WidgetSettingsSheet.svelte] -->|5. Edits Settings| SvelteComp
+        ConfigSheet[WidgetSettingsSheet.svelte] -->|5. Edits Settings + Connection Refs| SvelteComp
     end
 
     subgraph Hub [Go Hub Backend]
         API[REST & Event API] -->|Hydrates JSON state| SvelteComp
         ConfigSheet -->|6. Saves config changes| API
         API -->|7. Updates| DB[(SQLite Runtime Store)]
+        Connections[Settings Connections] -->|Adapter Connections| DB
 
         DB -->|Loads Layouts & Settings| RegistryGo["Go Widget Registry\n(widgets/registry.go)"]
         RegistryGo -->|8. Instantiates| GoWidget["Go Widget Package\n(e.g., weather/weather.go)"]
@@ -39,8 +42,9 @@ flowchart TD
         Catalog -.->|Generates Settings UI Form| ConfigSheet
 
         Scheduler[Background Runner] -->|10. Calls Cadence| GoWidget
+        Resolver[Connection Resolver] -->|Resolved adapter material| GoWidget
         GoWidget -->|FetchData| ExtData["External API / Adapter"]
-        GoWidget -->|Produces Payload| DB
+        GoWidget -->|Produces Normalized Payload| DB
     end
 ```
 
@@ -98,6 +102,7 @@ The widget system is structured around three key contracts:
 - **Frame contract**: every widget renders inside a native Svelte `WidgetFrame` and obeys the dashboard grid layout, sizing coordinates (`x`, `y`, `w`, `h`) on the 12-column base grid, and edit-mode rules from [Display UX](display-ux.md).
 - **Visual contract**: every widget uses theme tokens and supports the host's `solid`, `clear`, `smoked`, `frosted`, or `auto` widget chrome modes from [Visual Customization](visual-customization.md).
 - **Backend contract**: widgets implement the `Widget` Go interface in `widgets/widget.go` to provide static metadata, a settings schema, fetching and caching logic, and agent-facing skills.
+- **Connection contract**: Integration Widgets optionally declare `ConnectionRequirement` records and implement connection-aware runtime/action interfaces. The hub resolves their `connectionRefs` before widget code runs.
 - **Agent contract**: widgets expose agent-facing context, prompts, and actions through [Widget Skills](widget-skills.md).
 
 ---
@@ -130,26 +135,93 @@ The Go `Widget` interface exposes `CatalogInfo() WidgetCatalogItem`, which conta
 
 The schema is surfaced through the widget catalog API alongside the catalog metadata, and a single generic form renderer in the display builds the settings sheet from it. Frame-level settings (title, chrome, size, and `mode`) are common to all widgets and are not part of the per-widget schema.
 
+Widget `settings` are non-secret per-instance display/configuration values only. Credentials, tokens, bridge users, broker passwords, OAuth material, and other sensitive provider setup values belong to shared Adapter Connections.
+
+## Adapter Connections
+
+Integration Widgets declare required connection slots in catalog metadata:
+
+- `slot`: local name used by the widget, such as `account`, `bridge`, or `broker`;
+- `kind`: Adapter Connection kind, such as `spotify`, `apple-music`, `philips-hue`, or `zigbee2mqtt`;
+- `displayName` and `description`: safe setup copy for the display;
+- `required`: whether the widget can run without the connection;
+- `secretKeys`: names of secret references the hub must resolve before invoking the widget.
+
+Each widget instance stores:
+
+```json
+{
+  "settings": { "chrome": "auto" },
+  "connectionRefs": { "account": "living-room-spotify" }
+}
+```
+
+`connectionRefs` is typed widget instance metadata, not widget settings. It maps declared slots to shared Adapter Connection IDs. Settings `Connections` owns creation and linking/setup flows; widget settings sheets only select the required shared connection for that instance.
+
+The hub resolver returns adapter-scoped resolved material only to connection-aware Go widget code. Public API projections include connection IDs and safe connection metadata, never resolved secrets.
+
+## Runtime Payloads
+
+Hydrated widget data uses a normalized payload shape:
+
+```json
+{
+  "status": "ok",
+  "updatedAt": "2026-06-13T12:00:00Z",
+  "data": {}
+}
+```
+
+When a widget cannot render useful provider data, the hub/widget returns:
+
+```json
+{
+  "status": "unavailable",
+  "issue": {
+    "code": "connection.missing",
+    "severity": "warning",
+    "title": "Connection needed",
+    "message": "Choose a shared Adapter Connection for this widget.",
+    "action": { "label": "Open settings", "target": "settings" }
+  }
+}
+```
+
+The display renders `issue.title`, `issue.message`, and any safe action in `WidgetFrame`. Widgets should not emit ad hoc `is_configured` or raw `error` payload fields.
+
+## Actions
+
+All widget actions use:
+
+```text
+POST /api/v1/widgets/{widgetInstanceId}/actions/{actionId}
+```
+
+The dispatcher resolves the widget instance, Widget Skill action declaration, actor type, `connectionRefs`, resolved connection material, confirmation policy, and safe result/issue. Display, MCP, and agent action paths must share this dispatcher behavior.
+
 ## Security and Persistence Constraints
 
 All widgets must adhere to the following security and storage rules:
 - **Secure Local SQLite Storage**: Widget configuration, device layouts, and integration details are stored in the local SQLite runtime database (`jute.db`) as household durable settings. They must not be stored in browser local storage or transient client-side stores.
 - **Credentials Redaction**: Sensitive integration credentials (such as API keys, client secrets, and auth tokens) must never be returned in plain text in public API config projections or exposed to A2A agents / MCP contexts. They must be redacted, masked, or replaced with secure references.
+- **Shared Connections**: Integration credentials are declared as Adapter Connection requirements and linked by `connectionRefs`; widgets must not write credential or token state directly into layout settings.
 - **No Direct Remote Calls**: Svelte components must not communicate directly with remote APIs or cloud systems. All external operations must go through the Go hub backend.
 
 ---
 
 ## Core Widgets
 
-Jute Dash ships with seven built-in widgets:
+Jute Dash ships with first-class built-in widgets:
 
 1. **Date & Time (`date-time`)**: Clock, date, timezone, and locale synchronization.
 2. **Weather (`weather`)**: Current apparent temperature, humidity, wind, and conditions using Open-Meteo.
 3. **Chat History (`chat-history`)**: Recent conversation turns, active A2A agent status, and a quick re-entry chat button.
 4. **RSS Feed (`rss`)**: headlines aggregator from custom RSS xml streams with background caching.
 5. **Markets (`markets`)**: Stock, commodity, or crypto tickers watchlist using Yahoo Finance.
-6. **Smart Home (`smart-home`)**: Local smart home device controls (lights, switches) and sensor status views (Zigbee2MQTT, Philips Hue).
-7. **Music Player (`music-player`)**: Control and monitor music playback across multiple music services like Spotify and Apple Music.
+6. **Spotify (`spotify`)**: Spotify playback state and controls through a shared Spotify Adapter Connection.
+7. **Apple Music (`apple-music`)**: Apple Music playback state and controls through a shared Apple Music Adapter Connection.
+8. **Philips Hue (`philips-hue`)**: Hue light state and low-risk controls through a shared Hue bridge Adapter Connection.
+9. **Zigbee2MQTT (`zigbee2mqtt`)**: Zigbee device state and low-risk controls through a shared MQTT broker Adapter Connection.
 
 ---
 
@@ -157,7 +229,7 @@ Jute Dash ships with seven built-in widgets:
 
 To build a new widget:
 1. Create a folder `widgets/[name]/`.
-2. Implement your backend provider in `widgets/[name]/[name].go` under `package [name]`. Make sure it registers itself inside `init()`, and declare a `SettingsSchema()` so the widget is configurable from the UI.
+2. Implement your backend provider in `widgets/[name]/[name].go` under `package [name]`. Make sure it registers itself inside `init()`, and declare non-secret settings plus any required Adapter Connections in `CatalogInfo()`.
 3. Add a blank import for your subpackage in `apps/hub/cmd/juted/main.go` to trigger auto-registration.
 4. Implement your frontend view in `widgets/[name]/[Name]Widget.svelte`.
 5. Import and register your view inside [widget-registry.ts](file:///Users/craighutcheon/Repos/Other/jute-dash/widgets/widget-registry.ts).

@@ -19,12 +19,25 @@ type LayoutStore interface {
 
 type Controller struct {
 	layoutStore LayoutStore
+	hydrator    *Hydrator
 	onUpdate    func(WidgetLayout)
 }
 
 func NewController(store LayoutStore, onUpdate func(WidgetLayout)) *Controller {
+	return NewControllerWithHydrator(store, NewHydrator(nil), onUpdate)
+}
+
+func NewControllerWithHydrator(
+	store LayoutStore,
+	hydrator *Hydrator,
+	onUpdate func(WidgetLayout),
+) *Controller {
+	if hydrator == nil {
+		hydrator = NewHydrator(nil)
+	}
 	return &Controller{
 		layoutStore: store,
+		hydrator:    hydrator,
 		onUpdate:    onUpdate,
 	}
 }
@@ -54,6 +67,24 @@ func convertSettingFields(fields []widgets.SettingField) []SettingField {
 	return res
 }
 
+func convertConnectionRequirements(reqs []widgets.ConnectionRequirement) []ConnectionRequirement {
+	if reqs == nil {
+		return nil
+	}
+	res := make([]ConnectionRequirement, 0, len(reqs))
+	for _, req := range reqs {
+		res = append(res, ConnectionRequirement{
+			Slot:        req.Slot,
+			Kind:        req.Kind,
+			DisplayName: req.DisplayName,
+			Description: req.Description,
+			Required:    req.Required,
+			SecretKeys:  append([]string(nil), req.SecretKeys...),
+		})
+	}
+	return res
+}
+
 // RegisteredCatalog returns catalog metadata for every registered widget,
 // converted into the dashboard package's catalog item shape. This is the single
 // source the layout store uses for normalization, so all registered kinds
@@ -64,18 +95,19 @@ func RegisteredCatalog() []WidgetCatalogItem {
 	for _, it := range items {
 		info := it.CatalogInfo()
 		catalog = append(catalog, WidgetCatalogItem{
-			Kind:           info.Kind,
-			Name:           info.Name,
-			Description:    info.Description,
-			DefaultTitle:   info.DefaultTitle,
-			DefaultW:       info.DefaultW,
-			DefaultH:       info.DefaultH,
-			MinW:           info.MinW,
-			MinH:           info.MinH,
-			DefaultSize:    info.DefaultSize,
-			Overflow:       info.Overflow,
-			AllowMultiple:  info.AllowMultiple,
-			SettingsSchema: convertSettingFields(info.SettingsSchema),
+			Kind:                   info.Kind,
+			Name:                   info.Name,
+			Description:            info.Description,
+			DefaultTitle:           info.DefaultTitle,
+			DefaultW:               info.DefaultW,
+			DefaultH:               info.DefaultH,
+			MinW:                   info.MinW,
+			MinH:                   info.MinH,
+			DefaultSize:            info.DefaultSize,
+			Overflow:               info.Overflow,
+			AllowMultiple:          info.AllowMultiple,
+			SettingsSchema:         convertSettingFields(info.SettingsSchema),
+			ConnectionRequirements: convertConnectionRequirements(info.ConnectionRequirements),
 		})
 	}
 	return catalog
@@ -105,7 +137,7 @@ func (c *Controller) handleWidgetLayout(w http.ResponseWriter, r *http.Request) 
 			httphelper.WriteError(w, http.StatusInternalServerError, "widget layout is unavailable")
 			return
 		}
-		hydrated := HydrateWidgetLayout(r.Context(), layout)
+		hydrated := c.hydrator.HydrateWidgetLayout(r.Context(), layout)
 		httphelper.WriteJSON(w, http.StatusOK, hydrated)
 	case http.MethodPut:
 		var layout WidgetLayout
@@ -158,6 +190,18 @@ func (c *Controller) handleWidgetLayoutReset(w http.ResponseWriter, r *http.Requ
 
 // HydrateWidgetLayout fills in widget data and overflow properties dynamically.
 func HydrateWidgetLayout(ctx context.Context, layout WidgetLayout) WidgetLayout {
+	return NewHydrator(nil).HydrateWidgetLayout(ctx, layout)
+}
+
+type Hydrator struct {
+	resolver widgets.ConnectionResolver
+}
+
+func NewHydrator(resolver widgets.ConnectionResolver) *Hydrator {
+	return &Hydrator{resolver: resolver}
+}
+
+func (h *Hydrator) HydrateWidgetLayout(ctx context.Context, layout WidgetLayout) WidgetLayout {
 	for i := range layout.Widgets {
 		widget := &layout.Widgets[i]
 		if !widget.Visible {
@@ -170,17 +214,57 @@ func HydrateWidgetLayout(ctx context.Context, layout WidgetLayout) WidgetLayout 
 		if widget.Overflow == "" {
 			widget.Overflow = provider.CatalogInfo().Overflow
 		}
-		settings := make(map[string]any)
-		if widget.Settings != nil {
-			for k, v := range widget.Settings {
-				settings[k] = v
+
+		settings := cloneSettings(widget.Settings)
+		if connectionWidget, ok := provider.(widgets.ConnectionAwareWidget); ok {
+			connections := map[string]widgets.ResolvedConnection{}
+			issues := map[string]widgets.RuntimePayload{}
+			if h.resolver != nil {
+				connections, issues = h.resolver.ResolveWidgetConnections(
+					ctx,
+					connectionWidget.RequiredConnections(),
+					widget.ConnectionRefs,
+				)
 			}
+			handledByIssue := false
+			for _, req := range connectionWidget.RequiredConnections() {
+				if issue, ok := issues[req.Slot]; ok {
+					widget.Data = issue
+					handledByIssue = true
+					break
+				}
+			}
+			if handledByIssue {
+				continue
+			}
+			payload, err := connectionWidget.FetchDataWithConnections(ctx, widgets.RuntimeInput{
+				InstanceID:     widget.ID,
+				Settings:       settings,
+				ConnectionRefs: cloneConnectionRefs(widget.ConnectionRefs),
+				Connections:    connections,
+			})
+			widget.Data = widgets.NormalizePayload(payload, err)
+			continue
 		}
 		settings["instanceId"] = widget.ID
 		data, err := provider.FetchData(ctx, settings)
-		if err == nil {
-			widget.Data = data
-		}
+		widget.Data = widgets.NormalizePayload(data, err)
 	}
 	return layout
+}
+
+func cloneSettings(in map[string]any) map[string]any {
+	out := make(map[string]any)
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneConnectionRefs(in map[string]string) map[string]string {
+	out := make(map[string]string)
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }

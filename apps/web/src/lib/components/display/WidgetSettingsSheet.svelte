@@ -1,8 +1,11 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { X, Plus, Trash2 } from 'lucide-svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
+  import { getAdapterConnections } from '$lib/hubClient';
   import type {
+    AdapterConnection,
     SettingField,
     WidgetCatalogItem,
     WidgetInstance,
@@ -15,6 +18,7 @@
   export let onSave: (patch: {
     title: string;
     settings: Record<string, unknown>;
+    connectionRefs: Record<string, string>;
     mode: WidgetMode;
   }) => void = () => {};
 
@@ -26,9 +30,25 @@
   let settings: Record<string, unknown> = structuredClone(
     widget.settings ?? {}
   );
+  let connectionRefs: Record<string, string> = structuredClone(
+    widget.connectionRefs ?? {}
+  );
+  let connections: AdapterConnection[] = [];
+  let connectionIssue = '';
   $: chrome = (settings.chrome as string) || 'auto';
 
   $: schema = catalogItem?.settingsSchema ?? [];
+  $: connectionRequirements = catalogItem?.connectionRequirements ?? [];
+
+  onMount(async () => {
+    if (connectionRequirements.length === 0) return;
+    try {
+      connections = await getAdapterConnections(fetch);
+      connectionIssue = '';
+    } catch {
+      connectionIssue = 'Connections are unavailable.';
+    }
+  });
 
   function defaultForField(field: SettingField): unknown {
     if (field.type === 'string-list') return [];
@@ -55,6 +75,20 @@
     } else {
       setValue('chrome', value);
     }
+  }
+
+  function connectionsForKind(kind: string): AdapterConnection[] {
+    return connections.filter((connection) => connection.kind === kind);
+  }
+
+  function setConnectionRef(slot: string, id: string) {
+    const next = { ...connectionRefs };
+    if (id) {
+      next[slot] = id;
+    } else {
+      delete next[slot];
+    }
+    connectionRefs = next;
   }
 
   // string-list helpers
@@ -106,7 +140,12 @@
   }
 
   function commit() {
-    onSave({ title: title.trim() || widget.title, settings, mode });
+    onSave({
+      title: title.trim() || widget.title,
+      settings,
+      connectionRefs,
+      mode
+    });
     onClose();
   }
 </script>
@@ -290,6 +329,42 @@
         {/each}
       </section>
     {/if}
+
+    {#if connectionRequirements.length > 0}
+      <section class="field-group">
+        <div class="group-title">Connections</div>
+        {#if connectionIssue}
+          <p class="sheet-issue">{connectionIssue}</p>
+        {/if}
+        {#each connectionRequirements as requirement (requirement.slot)}
+          <label class="field">
+            <span class="field-label">{requirement.displayName}</span>
+            <select
+              class="text-input"
+              value={connectionRefs[requirement.slot] ?? ''}
+              on:change={(e) =>
+                setConnectionRef(
+                  requirement.slot,
+                  (e.target as HTMLSelectElement).value
+                )}
+            >
+              <option value="">
+                {requirement.required ? 'Choose connection' : 'No connection'}
+              </option>
+              {#each connectionsForKind(requirement.kind) as connection (connection.id)}
+                <option value={connection.id}
+                  >{connection.name || connection.id}</option
+                >
+              {/each}
+            </select>
+            <span class="field-help">
+              {requirement.description ||
+                `Uses a shared ${requirement.kind} Adapter Connection from Settings.`}
+            </span>
+          </label>
+        {/each}
+      </section>
+    {/if}
   </div>
 
   <footer class="sheet-footer">
@@ -421,5 +496,12 @@
     gap: 10px;
     padding: 14px 20px;
     border-top: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  }
+
+  .sheet-issue {
+    margin: 0;
+    color: var(--danger, #ef4444);
+    font-size: 0.82rem;
+    font-weight: 700;
   }
 </style>

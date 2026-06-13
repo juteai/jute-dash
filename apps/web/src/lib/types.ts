@@ -314,6 +314,16 @@ export type WidgetCatalogItem = {
   overflow: 'clip' | 'scroll' | 'expand' | string;
   allowMultiple: boolean;
   settingsSchema?: SettingField[];
+  connectionRequirements?: ConnectionRequirement[];
+};
+
+export type ConnectionRequirement = {
+  slot: string;
+  kind: string;
+  displayName: string;
+  description?: string;
+  required: boolean;
+  secretKeys?: string[];
 };
 
 export type SettingFieldType =
@@ -350,8 +360,33 @@ export type WidgetInstance = {
   overflow?: 'clip' | 'scroll' | 'expand' | string;
   mode?: WidgetMode | string;
   settings: Record<string, unknown>;
+  connectionRefs?: Record<string, string>;
   visible: boolean;
   data?: unknown;
+};
+
+export type WidgetRuntimePayload = {
+  status:
+    | 'ok'
+    | 'loading'
+    | 'empty'
+    | 'unavailable'
+    | 'error'
+    | 'permission_required'
+    | 'stale'
+    | string;
+  issue?: UserFacingIssue;
+  updatedAt?: string;
+  data?: unknown;
+};
+
+export type AdapterConnection = {
+  id: string;
+  kind: string;
+  name: string;
+  settings: Record<string, unknown>;
+  secretRefs?: Record<string, string>;
+  enabled: boolean;
 };
 
 export type ChatState =

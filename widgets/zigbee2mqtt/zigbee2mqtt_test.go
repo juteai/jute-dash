@@ -3,6 +3,8 @@ package zigbee2mqtt
 import (
 	"context"
 	"testing"
+
+	"jute-dash/widgets"
 )
 
 func TestZigbee2MQTTWidgetSettings(t *testing.T) {
@@ -11,23 +13,29 @@ func TestZigbee2MQTTWidgetSettings(t *testing.T) {
 		t.Errorf("expected kind 'zigbee2mqtt', got %q", w.Kind())
 	}
 
-	raw := map[string]any{
-		"mqtt_url":      "mock://test",
-		"mqtt_username": "my_user",
-		"instanceId":    "test-instance-z2m",
-	}
-	data, err := w.FetchData(context.Background(), raw)
+	data, err := w.FetchDataWithConnections(context.Background(), widgets.RuntimeInput{
+		InstanceID: "test-instance-z2m",
+		Connections: map[string]widgets.ResolvedConnection{
+			"broker": {
+				ID:   "z2m-test",
+				Kind: "zigbee2mqtt",
+				Settings: map[string]any{
+					"mqtt_url":      "mock://test",
+					"mqtt_username": "my_user",
+				},
+			},
+		},
+	})
 	if err != nil {
 		t.Fatalf("FetchData failed: %v", err)
 	}
-	m, ok := data.(map[string]any)
+	if data.Status != widgets.StatusOK {
+		t.Fatalf("expected ok payload, got %q", data.Status)
+	}
+	m, ok := data.Data.(map[string]any)
 	if !ok {
-		t.Fatalf("expected map[string]any, got %T", data)
+		t.Fatalf("expected map data, got %T", data.Data)
 	}
-	if m["is_configured"] != true {
-		t.Errorf("expected is_configured to be true")
-	}
-
 	devices, ok := m["devices"].([]Device)
 	if !ok {
 		t.Fatalf("expected []Device, got %T", m["devices"])

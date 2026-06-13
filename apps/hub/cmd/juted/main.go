@@ -141,7 +141,10 @@ func run() error {
 			store:      runtimeStore,
 		}
 		mcpMux := http.NewServeMux()
-		mcpMux.Handle(cfg.MCP.Path, mcp.NewHandler(cfg.MCP, version, mcpProvider, displayActions))
+		mcpMux.Handle(
+			cfg.MCP.Path,
+			mcp.NewHandlerWithActions(cfg.MCP, version, mcpProvider, displayActions, handler),
+		)
 		mcpServer = &http.Server{
 			Addr:              cfg.MCP.ListenAddress,
 			Handler:           mcpMux,
@@ -295,18 +298,19 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 	wsWidgets := make([]widgetskills.WidgetInstance, len(layout.Widgets))
 	for i, w := range layout.Widgets {
 		wsWidgets[i] = widgetskills.WidgetInstance{
-			ID:       w.ID,
-			Kind:     w.Kind,
-			Title:    w.Title,
-			X:        w.X,
-			Y:        w.Y,
-			W:        w.W,
-			H:        w.H,
-			Visible:  w.Visible,
-			Mode:     w.Mode,
-			Size:     w.Size,
-			Settings: w.Settings,
-			Data:     w.Data,
+			ID:             w.ID,
+			Kind:           w.Kind,
+			Title:          w.Title,
+			X:              w.X,
+			Y:              w.Y,
+			W:              w.W,
+			H:              w.H,
+			Visible:        w.Visible,
+			Mode:           w.Mode,
+			Size:           w.Size,
+			Settings:       w.Settings,
+			ConnectionRefs: w.ConnectionRefs,
+			Data:           w.Data,
 		}
 	}
 	wsLayout := widgetskills.WidgetLayout{

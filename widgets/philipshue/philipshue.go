@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"sort"
+	"time"
 
 	"jute-dash/apps/hub/pkg/widgetskills"
 	"jute-dash/widgets"
@@ -18,27 +18,6 @@ const (
 	Kind    = "philips-hue"
 	SkillID = "jute.philipshue.control"
 )
-
-type SecretString string
-
-func (s SecretString) LogValue() slog.Value {
-	if s == "" {
-		return slog.StringValue("")
-	}
-	return slog.StringValue("[redacted]")
-}
-
-type Settings struct {
-	BridgeIP string
-	Username SecretString
-}
-
-func (s Settings) LogValue() slog.Value {
-	return slog.GroupValue(
-		slog.String("bridge_ip", s.BridgeIP),
-		slog.Any("username", s.Username),
-	)
-}
 
 type HueLightState struct {
 	On        bool `json:"on"`
@@ -55,7 +34,7 @@ type HueLight struct {
 type Device struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
-	Type  string `json:"type"` // "light"
+	Type  string `json:"type"`
 	State bool   `json:"state"`
 	Value string `json:"value"`
 }
@@ -70,119 +49,120 @@ func (w *PhilipsHueWidget) Kind() string {
 	return Kind
 }
 
+func (w *PhilipsHueWidget) RequiredConnections() []widgets.ConnectionRequirement {
+	return []widgets.ConnectionRequirement{{
+		Slot:        "bridge",
+		Kind:        "philips-hue",
+		DisplayName: "Philips Hue Bridge",
+		Description: "Local Hue Bridge address and API username.",
+		Required:    true,
+		SecretKeys:  []string{"username"},
+	}}
+}
+
 func (w *PhilipsHueWidget) CatalogInfo() widgets.WidgetCatalogItem {
 	return widgets.WidgetCatalogItem{
-		Kind:          Kind,
-		Name:          "Philips Hue",
-		Description:   "Control local smart lights connected to a Philips Hue Bridge.",
-		DefaultTitle:  "Hue Lights",
-		DefaultW:      6,
-		DefaultH:      2,
-		MinW:          4,
-		MinH:          2,
-		DefaultSize:   "wide",
-		Overflow:      "clip",
-		AllowMultiple: false,
-		SettingsSchema: []widgets.SettingField{
-			{
-				ID:    "bridge_ip",
-				Type:  widgets.SettingString,
-				Label: "Bridge IP",
-				Help:  "Local IP address of the Philips Hue Bridge.",
-			},
-			{
-				ID:    "username",
-				Type:  widgets.SettingString,
-				Label: "Username (API Key)",
-				Help:  "Authorized API Username.",
-			},
-		},
+		Kind:                   Kind,
+		Name:                   "Philips Hue",
+		Description:            "Control local smart lights connected to a Philips Hue Bridge.",
+		DefaultTitle:           "Hue Lights",
+		DefaultW:               6,
+		DefaultH:               2,
+		MinW:                   4,
+		MinH:                   2,
+		DefaultSize:            "wide",
+		Overflow:               "clip",
+		AllowMultiple:          false,
+		ConnectionRequirements: w.RequiredConnections(),
 	}
 }
 
-func (w *PhilipsHueWidget) FetchData(ctx context.Context, rawSettings map[string]any) (any, error) {
-	slog.Debug( //nolint:sloglint // use default global logger
-		"fetching philips hue data",
-	)
-	s := parseSettings(rawSettings)
-	if s.BridgeIP == "" || string(s.Username) == "" {
-		return map[string]any{
-			"is_configured": false,
-			"bridge_ip":     s.BridgeIP,
-		}, nil
-	}
+func (w *PhilipsHueWidget) FetchData(_ context.Context, _ map[string]any) (any, error) {
+	return widgets.Unavailable(
+		"connection.missing",
+		"Connection needed",
+		"Choose a Philips Hue Bridge connection in settings.",
+	), nil
+}
 
-	if s.BridgeIP == "mock-bridge" || s.BridgeIP == "test" {
-		return map[string]any{
-			"is_configured": true,
-			"devices": []Device{
-				{
-					ID:    "1",
-					Name:  "Living Room Light",
-					Type:  "light",
-					State: true,
-					Value: "50%",
-				},
-			},
-		}, nil
+func (w *PhilipsHueWidget) FetchDataWithConnections(
+	ctx context.Context,
+	input widgets.RuntimeInput,
+) (widgets.RuntimePayload, error) {
+	bridge, ok := input.Connections["bridge"]
+	if !ok {
+		return widgets.Unavailable(
+			"connection.missing",
+			"Connection needed",
+			"Choose a Philips Hue Bridge connection in settings.",
+		), nil
 	}
+	bridgeIP, _ := bridge.Settings["bridge_ip"].(string)
+	username := bridge.Secrets["username"]
+	if bridgeIP == "" || username == "" {
+		return widgets.Unavailable(
+			"connection.missing_credentials",
+			"Bridge credentials unavailable",
+			"Update the Philips Hue Bridge connection in settings.",
+		), nil
+	}
+	if bridgeIP == "mock-bridge" || bridgeIP == "test" {
+		return widgets.OK(map[string]any{"devices": []Device{{
+			ID:    "1",
+			Name:  "Living Room Light",
+			Type:  "light",
+			State: true,
+			Value: "50%",
+		}}}), nil
+	}
+	devices, err := fetchLights(ctx, bridgeIP, username)
+	if err != nil {
+		return widgets.Unavailable( //nolint:nilerr // provider error is mapped to a safe widget issue
+			"hue.bridge_unavailable",
+			"Hue Bridge unavailable",
+			"Jute cannot reach the Philips Hue Bridge.",
+		), nil
+	}
+	return widgets.RuntimePayload{
+		Status:    widgets.StatusOK,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		Data:      map[string]any{"devices": devices},
+	}, nil
+}
 
-	url := fmt.Sprintf("http://%s/api/%s/lights", s.BridgeIP, string(s.Username))
+func fetchLights(ctx context.Context, bridgeIP, username string) ([]Device, error) {
+	url := fmt.Sprintf("http://%s/api/%s/lights", bridgeIP, username)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return map[string]any{
-			"is_configured": true,
-			"error":         err.Error(),
-			"devices":       []any{},
-		}, nil
+		return nil, err
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return map[string]any{
-			"is_configured": true,
-			"error":         err.Error(),
-			"devices":       []any{},
-		}, nil
+		return nil, err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		return map[string]any{
-			"is_configured": true,
-			"error":         fmt.Sprintf("Hue bridge returned status %d", resp.StatusCode),
-			"devices":       []any{},
-		}, nil
+		return nil, fmt.Errorf("hue bridge returned status %d", resp.StatusCode)
 	}
-
 	var rawLights map[string]HueLight
 	if err := json.NewDecoder(resp.Body).Decode(&rawLights); err != nil {
-		return map[string]any{
-			"is_configured": true,
-			"error":         err.Error(),
-			"devices":       []any{},
-		}, nil
+		return nil, err
 	}
-
 	devices := []Device{}
-	for id, l := range rawLights {
-		briPct := int(float64(l.State.Bri) / 254.0 * 100.0)
+	for id, light := range rawLights {
+		briPct := int(float64(light.State.Bri) / 254.0 * 100.0)
 		devices = append(devices, Device{
 			ID:    id,
-			Name:  l.Name,
+			Name:  light.Name,
 			Type:  "light",
-			State: l.State.On,
+			State: light.State.On,
 			Value: fmt.Sprintf("%d%%", briPct),
 		})
 	}
-
 	sort.Slice(devices, func(i, j int) bool {
 		return devices[i].ID < devices[j].ID
 	})
-
-	return map[string]any{
-		"is_configured": true,
-		"devices":       devices,
-	}, nil
+	return devices, nil
 }
 
 func (w *PhilipsHueWidget) Skill() *widgetskills.Definition {
@@ -198,43 +178,98 @@ func (w *PhilipsHueWidget) Skill() *widgetskills.Definition {
 		},
 		Actions: []widgetskills.Action{
 			widgetskills.ReadAction("status", "Get lights status", "List Philips Hue lights and states."),
+			homeAction("toggle", "Toggle light", "Toggle a Philips Hue light."),
+			homeAction("turn_on", "Turn light on", "Turn a Philips Hue light on."),
+			homeAction("turn_off", "Turn light off", "Turn a Philips Hue light off."),
+			homeAction("set_brightness", "Set brightness", "Set Philips Hue light brightness."),
 		},
 	}
 }
 
-func (w *PhilipsHueWidget) InvokeAction(
+func homeAction(id, title, description string) widgetskills.Action {
+	return widgetskills.Action{
+		ID:                   id,
+		Title:                title,
+		Description:          description,
+		SideEffect:           "home_action",
+		RequiresConfirmation: false,
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"deviceId": map[string]any{"type": "string"},
+				"value":    map[string]any{},
+			},
+			"required":             []string{"deviceId"},
+			"additionalProperties": true,
+		},
+		OutputSchema: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"status": map[string]any{"type": "string"}},
+			"required":   []string{"status"},
+		},
+	}
+}
+
+func (w *PhilipsHueWidget) InvokeActionWithConnections(
 	ctx context.Context,
-	snap widgetskills.Snapshot,
-	instanceID string,
-	actionID string,
-	arguments map[string]any,
+	input widgets.ActionInput,
 ) (map[string]any, error) {
-	slog.Info( //nolint:sloglint // use default global logger
-		"philips hue action invoked",
-		"actionID", actionID,
-	)
-
-	deviceID, _ := arguments["deviceId"].(string)
-	subAction, _ := arguments["action"].(string)
-	val := arguments["value"]
-
-	if deviceID == "" || subAction == "" {
-		return nil, errors.New("missing deviceId or action")
+	deviceID, _ := input.Arguments["deviceId"].(string)
+	if deviceID == "" {
+		deviceID, _ = input.Arguments["device_id"].(string)
 	}
-
-	s := getSettings(snap, instanceID)
-	if s.BridgeIP == "" || string(s.Username) == "" {
-		return nil, errors.New("philips hue is not configured")
+	if deviceID == "" {
+		return nil, errors.New("deviceId is required")
 	}
-
-	if s.BridgeIP == "mock-bridge" || s.BridgeIP == "test" {
+	bridge, ok := input.Connections["bridge"]
+	if !ok {
+		return nil, errors.New("philips hue bridge connection is missing")
+	}
+	bridgeIP, _ := bridge.Settings["bridge_ip"].(string)
+	username := bridge.Secrets["username"]
+	if bridgeIP == "" || username == "" {
+		return nil, errors.New("philips hue bridge credentials are missing")
+	}
+	if bridgeIP == "mock-bridge" || bridgeIP == "test" {
 		return map[string]any{"status": "ok"}, nil
 	}
+	payload, err := huePayload(ctx, bridgeIP, username, deviceID, input.ActionID, input.Arguments["value"])
+	if err != nil {
+		return nil, err
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	putURL := fmt.Sprintf("http://%s/api/%s/lights/%s/state", bridgeIP, username, deviceID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, putURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("bridge returned status %d", resp.StatusCode)
+	}
+	return map[string]any{"status": "ok"}, nil
+}
 
-	var targetState bool
-	switch subAction {
+func huePayload(
+	ctx context.Context,
+	bridgeIP string,
+	username string,
+	deviceID string,
+	actionID string,
+	value any,
+) (map[string]any, error) {
+	payload := map[string]any{}
+	switch actionID {
 	case "toggle":
-		url := fmt.Sprintf("http://%s/api/%s/lights/%s", s.BridgeIP, string(s.Username), deviceID)
+		url := fmt.Sprintf("http://%s/api/%s/lights/%s", bridgeIP, username, deviceID)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, err
@@ -248,76 +283,36 @@ func (w *PhilipsHueWidget) InvokeAction(
 		if err := json.NewDecoder(resp.Body).Decode(&light); err != nil {
 			return nil, err
 		}
-		targetState = !light.State.On
+		payload["on"] = !light.State.On
 	case "turn_on":
-		targetState = true
+		payload["on"] = true
 	case "turn_off":
-		targetState = false
-	default:
-		// For set_brightness/brightness, let's preserve current power state or assume ON
-		targetState = true
-	}
-
-	payload := map[string]any{
-		"on": targetState,
-	}
-
-	if subAction == "brightness" || subAction == "set_brightness" {
-		if b, ok := val.(float64); ok {
+		payload["on"] = false
+	case "set_brightness":
+		payload["on"] = true
+		switch b := value.(type) {
+		case float64:
 			payload["bri"] = int(b / 100.0 * 254.0)
-		} else if b, ok := val.(int); ok {
+		case int:
 			payload["bri"] = int(float64(b) / 100.0 * 254.0)
+		default:
+			return nil, errors.New("brightness value is required")
 		}
+	default:
+		return nil, fmt.Errorf("unknown action: %s", actionID)
 	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-
-	putURL := fmt.Sprintf("http://%s/api/%s/lights/%s/state", s.BridgeIP, string(s.Username), deviceID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, putURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("bridge returned status %d", resp.StatusCode)
-	}
-
-	return map[string]any{"status": "ok"}, nil
-}
-
-func getSettings(snap widgetskills.Snapshot, instanceID string) Settings {
-	for _, w := range snap.Layout.Widgets {
-		if w.ID == instanceID {
-			return parseSettings(w.Settings)
-		}
-	}
-	return Settings{}
-}
-
-func parseSettings(raw map[string]any) Settings {
-	s := Settings{}
-	if v, ok := raw["bridge_ip"].(string); ok {
-		s.BridgeIP = v
-	}
-	if v, ok := raw["username"].(string); ok {
-		s.Username = SecretString(v)
-	}
-	return s
+	return payload, nil
 }
 
 func init() {
-	widgets.RegisterWithSkill(&PhilipsHueWidget{}, func(_ widgetskills.Snapshot, _ string) map[string]any {
-		return map[string]any{
-			"devices": []any{},
+	widgets.RegisterWithSkill(&PhilipsHueWidget{}, func(snapshot widgetskills.Snapshot, instID string) map[string]any {
+		for _, widget := range snapshot.Layout.Widgets {
+			if widget.ID == instID {
+				if data, ok := widgets.PayloadData(widget.Data).(map[string]any); ok {
+					return data
+				}
+			}
 		}
+		return map[string]any{"devices": []any{}}
 	})
 }

@@ -87,6 +87,12 @@ func (r *Repository) WidgetLayout(ctx context.Context, profileID string) (Widget
 				return WidgetLayout{}, fmt.Errorf("decode widget settings for %s: %w", widget.ID, err)
 			}
 		}
+		widget.ConnectionRefs = map[string]string{}
+		if strings.TrimSpace(w.ConnectionRefsJSON) != "" {
+			if err := json.Unmarshal([]byte(w.ConnectionRefsJSON), &widget.ConnectionRefs); err != nil {
+				return WidgetLayout{}, fmt.Errorf("decode widget connection refs for %s: %w", widget.ID, err)
+			}
+		}
 		if item, ok := r.catalog[widget.Kind]; ok {
 			widget.Overflow = item.Overflow
 		}
@@ -127,24 +133,29 @@ func (r *Repository) SaveWidgetLayout(ctx context.Context, layout WidgetLayout) 
 			if err != nil {
 				return fmt.Errorf("encode widget settings for %s: %w", widget.ID, err)
 			}
+			connectionRefsJSON, err := jsonString(widget.ConnectionRefs)
+			if err != nil {
+				return fmt.Errorf("encode widget connection refs for %s: %w", widget.ID, err)
+			}
 			wDB := WidgetInstanceDB{
-				ID:              widget.ID,
-				Kind:            widget.Kind,
-				Title:           widget.Title,
-				LayoutProfileID: normalized.ProfileID,
-				X:               widget.X,
-				Y:               widget.Y,
-				W:               widget.W,
-				H:               widget.H,
-				MinW:            widget.MinW,
-				MinH:            widget.MinH,
-				Size:            widget.Size,
-				Mode:            normalizeMode(widget.Mode),
-				SettingsJSON:    settingsJSON,
-				Visible:         boolToInt(widget.Visible),
-				SortOrder:       i,
-				CreatedAt:       now,
-				UpdatedAt:       now,
+				ID:                 widget.ID,
+				Kind:               widget.Kind,
+				Title:              widget.Title,
+				LayoutProfileID:    normalized.ProfileID,
+				X:                  widget.X,
+				Y:                  widget.Y,
+				W:                  widget.W,
+				H:                  widget.H,
+				MinW:               widget.MinW,
+				MinH:               widget.MinH,
+				Size:               widget.Size,
+				Mode:               normalizeMode(widget.Mode),
+				SettingsJSON:       settingsJSON,
+				ConnectionRefsJSON: connectionRefsJSON,
+				Visible:            boolToInt(widget.Visible),
+				SortOrder:          i,
+				CreatedAt:          now,
+				UpdatedAt:          now,
 			}
 			if err := tx.Create(&wDB).Error; err != nil {
 				return fmt.Errorf("save widget %s: %w", widget.ID, err)
@@ -233,9 +244,19 @@ func NormalizeWidgetLayout(layout WidgetLayout, catalog map[string]WidgetCatalog
 		if widget.Settings == nil {
 			widget.Settings = map[string]any{}
 		}
+		if widget.ConnectionRefs == nil {
+			widget.ConnectionRefs = map[string]string{}
+		}
 		if _, err := json.Marshal(widget.Settings); err != nil {
 			return WidgetLayout{}, fmt.Errorf(
 				"%w: widget %s settings are not JSON serializable",
+				ErrInvalidLayout,
+				widget.ID,
+			)
+		}
+		if _, err := json.Marshal(widget.ConnectionRefs); err != nil {
+			return WidgetLayout{}, fmt.Errorf(
+				"%w: widget %s connection refs are not JSON serializable",
 				ErrInvalidLayout,
 				widget.ID,
 			)
@@ -273,19 +294,20 @@ func WidgetLayoutFromDashboardConfig(
 			}
 		}
 		layout.Widgets = append(layout.Widgets, WidgetInstance{
-			ID:       w.ID,
-			Kind:     w.Type,
-			Title:    w.Title,
-			X:        x,
-			Y:        w.Y,
-			W:        width,
-			H:        w.H,
-			MinW:     minW,
-			MinH:     w.MinH,
-			Size:     w.Size,
-			Mode:     normalizeMode(w.Mode),
-			Settings: w.Settings,
-			Visible:  w.Visible,
+			ID:             w.ID,
+			Kind:           w.Type,
+			Title:          w.Title,
+			X:              x,
+			Y:              w.Y,
+			W:              width,
+			H:              w.H,
+			MinW:           minW,
+			MinH:           w.MinH,
+			Size:           w.Size,
+			Mode:           normalizeMode(w.Mode),
+			Settings:       w.Settings,
+			ConnectionRefs: w.ConnectionRefs,
+			Visible:        w.Visible,
 		})
 	}
 	return NormalizeWidgetLayout(layout, catalog)
@@ -320,20 +342,21 @@ func DefaultWidgetLayout() WidgetLayout {
 	}
 	for _, widget := range widgets {
 		layout.Widgets = append(layout.Widgets, WidgetInstance{
-			ID:       widget.id,
-			Kind:     widget.kind,
-			Title:    widget.title,
-			X:        widget.x,
-			Y:        widget.y,
-			W:        widget.w,
-			H:        widget.h,
-			MinW:     widget.minW,
-			MinH:     widget.minH,
-			Size:     widget.size,
-			Overflow: widget.overflow,
-			Mode:     WidgetModeUI,
-			Settings: map[string]any{},
-			Visible:  widget.visible,
+			ID:             widget.id,
+			Kind:           widget.kind,
+			Title:          widget.title,
+			X:              widget.x,
+			Y:              widget.y,
+			W:              widget.w,
+			H:              widget.h,
+			MinW:           widget.minW,
+			MinH:           widget.minH,
+			Size:           widget.size,
+			Overflow:       widget.overflow,
+			Mode:           WidgetModeUI,
+			Settings:       map[string]any{},
+			ConnectionRefs: map[string]string{},
+			Visible:        widget.visible,
 		})
 	}
 	return layout

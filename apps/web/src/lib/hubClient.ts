@@ -13,6 +13,7 @@ import type {
   UserFacingIssue,
   VoiceProvider,
   VoiceStatus,
+  AdapterConnection,
   WidgetCatalogItem,
   WidgetLayout
 } from '$lib/types';
@@ -543,47 +544,54 @@ async function postVoiceControl(
   return response.json() as Promise<VoiceStatus>;
 }
 
-export async function dispatchDeviceAction(
+export async function dispatchWidgetAction(
   fetcher: typeof fetch,
-  payload: {
-    instanceId: string;
-    deviceId: string;
-    action: string;
-    value: unknown;
-  }
-): Promise<{ status: string; device: unknown }> {
+  instanceId: string,
+  actionId: string,
+  argumentsPayload: Record<string, unknown> = {},
+  confirmed = false
+): Promise<unknown> {
   const response = await fetcher(
-    `${API_BASE}/api/widgets/smart-home/dispatch`,
+    `${API_BASE}/api/v1/widgets/${encodeURIComponent(instanceId)}/actions/${encodeURIComponent(actionId)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        actor: 'display',
+        confirmed,
+        arguments: argumentsPayload
+      })
     }
   );
   if (!response.ok) {
-    throw await hubError(response, 'Failed to control smart home device');
+    throw await hubError(response, 'Failed to invoke widget action');
   }
   return response.json();
 }
 
-export async function dispatchMusicPlayerAction(
-  fetcher: typeof fetch,
-  payload: {
-    instance_id: string;
-    action: string;
-    arguments: Record<string, unknown>;
-  }
-): Promise<unknown> {
-  const response = await fetcher(
-    `${API_BASE}/api/widgets/music-player/action`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }
+export async function getAdapterConnections(
+  fetcher: typeof fetch
+): Promise<AdapterConnection[]> {
+  const response = await getJSON<{ connections: AdapterConnection[] }>(
+    fetcher,
+    '/api/v1/settings/connections'
   );
+  return response.connections ?? [];
+}
+
+export async function saveAdapterConnection(
+  fetcher: typeof fetch,
+  connection: AdapterConnection
+): Promise<AdapterConnection> {
+  const response = await fetcher(`${API_BASE}/api/v1/settings/connections`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(connection)
+  });
   if (!response.ok) {
-    throw await hubError(response, 'Failed to invoke music player action');
+    throw await hubError(response, 'Jute API request failed');
   }
-  return response.json();
+  return response.json() as Promise<AdapterConnection>;
 }

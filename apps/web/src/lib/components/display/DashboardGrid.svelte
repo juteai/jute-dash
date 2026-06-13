@@ -18,6 +18,7 @@
     AgentAvailability,
     ChatMessage,
     DashboardData,
+    UserFacingIssue,
     WidgetInstance
   } from '$lib/types';
 
@@ -158,6 +159,10 @@
       return 'permission_required';
     }
     return 'ok';
+  }
+
+  function widgetIssue(widget: WidgetInstance) {
+    return (widget.data as { issue?: UserFacingIssue } | undefined)?.issue;
   }
 
   function startDrag(
@@ -349,6 +354,7 @@
         chrome={resolveWidgetChrome(widget, data.config.display)}
         overflow={(widget.overflow ?? 'clip') as 'clip' | 'scroll' | 'expand'}
         state={determineWidgetState(widget, stale)}
+        issue={widgetIssue(widget)}
         onMoveStart={(event) => startDrag(widget, 'move', event)}
         onResizeStart={(event, resizeMode) =>
           startDrag(

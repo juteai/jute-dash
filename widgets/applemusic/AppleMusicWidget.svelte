@@ -2,7 +2,6 @@
   export let data: any = {};
   export let dispatch: (action: string, args?: any) => Promise<any> = async () => {};
 
-  $: isConfigured = data?.is_configured ?? false;
   $: isPlaying = data?.is_playing ?? false;
   $: trackTitle = data?.track_title ?? 'Not Playing';
   $: artistName = data?.artist_name ?? 'Unknown';
@@ -17,23 +16,16 @@
 </script>
 
 <div class="widget-content">
-  {#if !isConfigured}
-    <div class="unconfigured">
-      <p class="title">Apple Music</p>
-      <button class="connect-btn" on:click={() => dispatch('connect')}>Connect Apple Music</button>
+  <div class="player">
+    <div class="info">
+      <p class="track">{trackTitle}</p>
+      <p class="artist">{artistName}</p>
     </div>
-  {:else}
-    <div class="player">
-      <div class="info">
-        <p class="track">{trackTitle}</p>
-        <p class="artist">{artistName}</p>
-      </div>
-      <div class="controls">
-        <button on:click={handlePlayPause}>{isPlaying ? '⏸' : '▶'}</button>
-        <button on:click={handleNext}>⏭</button>
-      </div>
+    <div class="controls">
+      <button on:click={handlePlayPause}>{isPlaying ? '⏸' : '▶'}</button>
+      <button on:click={handleNext}>⏭</button>
     </div>
-  {/if}
+  </div>
 </div>
 
 <style>
@@ -43,21 +35,6 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-  }
-  .unconfigured {
-    text-align: center;
-  }
-  .title {
-    font-weight: bold;
-    margin-bottom: 8px;
-  }
-  .connect-btn {
-    padding: 6px 12px;
-    background: var(--foreground);
-    color: var(--inverse);
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
   }
   .player {
     display: flex;

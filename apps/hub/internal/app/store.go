@@ -511,19 +511,20 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 		widgets := make([]dashboard.DashboardWidgetConfig, 0, len(layout.Widgets))
 		for _, w := range layout.Widgets {
 			widgets = append(widgets, dashboard.DashboardWidgetConfig{
-				ID:       w.ID,
-				Type:     w.Kind,
-				Title:    w.Title,
-				X:        w.X,
-				Y:        w.Y,
-				W:        w.W,
-				H:        w.H,
-				MinW:     w.MinW,
-				MinH:     w.MinH,
-				Size:     w.Size,
-				Visible:  w.Visible,
-				Mode:     w.Mode,
-				Settings: w.Settings,
+				ID:             w.ID,
+				Type:           w.Kind,
+				Title:          w.Title,
+				X:              w.X,
+				Y:              w.Y,
+				W:              w.W,
+				H:              w.H,
+				MinW:           w.MinW,
+				MinH:           w.MinH,
+				Size:           w.Size,
+				Visible:        w.Visible,
+				Mode:           w.Mode,
+				Settings:       w.Settings,
+				ConnectionRefs: w.ConnectionRefs,
 			})
 		}
 		cfg.Dashboard.Widgets = widgets

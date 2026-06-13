@@ -6,7 +6,7 @@
     ShieldAlert,
     Inbox
   } from 'lucide-svelte';
-  import type { WidgetInstance } from '$lib/types';
+  import type { UserFacingIssue, WidgetInstance } from '$lib/types';
   import { cn } from '$lib/utils';
 
   export let widget: WidgetInstance;
@@ -14,6 +14,7 @@
   export let focused = false;
   export let chrome = 'solid';
   export let overflow: 'clip' | 'scroll' | 'expand' = 'clip';
+  export let issue: UserFacingIssue | undefined;
   export let state:
     | 'ok'
     | 'loading'
@@ -31,7 +32,8 @@
   export { className as class };
 
   $: stateDetails =
-    {
+    issue ??
+    ({
       loading: { title: 'Loading', message: 'Checking for updates...' },
       empty: { title: 'No Data', message: 'Nothing to display yet.' },
       unavailable: {
@@ -53,7 +55,8 @@
         | 'unavailable'
         | 'error'
         | 'permission_required'
-    ] || null;
+    ] ||
+      null);
 </script>
 
 <section

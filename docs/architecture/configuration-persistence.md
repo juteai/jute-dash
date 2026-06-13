@@ -185,7 +185,9 @@ Before adding a new setting, classify it as one of:
 
 Classification of the new display/widget settings:
 
-- widget instance `mode` (`ui`/`headless`), widget settings values, and the 12-column layout are `household durable` (SQLite truth, YAML bootstrap/export);
+- widget instance `mode` (`ui`/`headless`), non-secret widget settings values, `connectionRefs`, and the 12-column layout are `household durable` (SQLite truth, YAML bootstrap/export);
+- Adapter Connections are `household durable` records shared across widget instances;
+- Adapter Connection `secretRefs` are `secret reference` values. The hub may resolve them into raw provider material in process memory, but public APIs, YAML/JSON export, widget snapshots, A2A context, and MCP resources expose references or redacted availability only;
 - a widget's settings schema is part of its `install record` / built-in widget metadata (surfaced via the catalog), not a per-home setting;
 - the background reference and slideshow configuration (image references, interval, fit, overlay) are `household durable`;
 - uploaded background image binaries are `local media assets`.
@@ -217,6 +219,8 @@ v1 secret references:
 - environment variable names;
 - local token file references outside repo paths when explicitly configured;
 - auth configured booleans in public projections.
+
+Integration Widgets must use Adapter Connections for provider credentials. A Widget Instance stores `connectionRefs` such as `{ "bridge": "living-room-hue" }`; the referenced Adapter Connection stores non-secret adapter settings plus secret references such as `{ "username": "env:HUE_USERNAME" }`. The hub resolver is the only layer that turns those references into raw material for provider code.
 
 Future secret storage:
 

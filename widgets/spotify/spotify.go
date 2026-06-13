@@ -64,32 +64,30 @@ func (w *SpotifyWidget) Kind() string {
 
 func (w *SpotifyWidget) CatalogInfo() widgets.WidgetCatalogItem {
 	return widgets.WidgetCatalogItem{
-		Kind:          Kind,
-		Name:          "Spotify",
-		Description:   "Control playback and view track info from Spotify.",
-		DefaultTitle:  "Spotify",
-		DefaultW:      6,
-		DefaultH:      2,
-		MinW:          4,
-		MinH:          2,
-		DefaultSize:   "wide",
-		Overflow:      "clip",
-		AllowMultiple: false,
-		SettingsSchema: []widgets.SettingField{
-			{
-				ID:    "client_id",
-				Type:  widgets.SettingString,
-				Label: "Client ID",
-				Help:  "Spotify Developer Client ID.",
-			},
-			{
-				ID:    "client_secret",
-				Type:  widgets.SettingString,
-				Label: "Client Secret",
-				Help:  "Spotify Developer Client Secret.",
-			},
-		},
+		Kind:                   Kind,
+		Name:                   "Spotify",
+		Description:            "Control playback and view track info from Spotify.",
+		DefaultTitle:           "Spotify",
+		DefaultW:               6,
+		DefaultH:               2,
+		MinW:                   4,
+		MinH:                   2,
+		DefaultSize:            "wide",
+		Overflow:               "clip",
+		AllowMultiple:          false,
+		ConnectionRequirements: w.RequiredConnections(),
 	}
+}
+
+func (w *SpotifyWidget) RequiredConnections() []widgets.ConnectionRequirement {
+	return []widgets.ConnectionRequirement{{
+		Slot:        "account",
+		Kind:        "spotify",
+		DisplayName: "Spotify Account",
+		Description: "Spotify Web API client and OAuth token material.",
+		Required:    true,
+		SecretKeys:  []string{"client_secret", "access_token", "refresh_token"},
+	}}
 }
 
 func (w *SpotifyWidget) refreshToken(ctx context.Context, s Settings) (string, error) {
@@ -138,15 +136,7 @@ func (w *SpotifyWidget) refreshToken(ctx context.Context, s Settings) (string, e
 		newSettings["refresh_token"] = tokenResp.RefreshToken
 	}
 
-	if widgets.SaveSettingsHook != nil && s.InstanceID != "" {
-		if err := widgets.SaveSettingsHook(ctx, s.InstanceID, newSettings); err != nil {
-			slog.Error( //nolint:sloglint // global slog permitted for widgets
-				"failed to save refreshed spotify settings",
-				"error",
-				err,
-			)
-		}
-	}
+	_ = newSettings
 
 	return tokenResp.AccessToken, nil
 }
@@ -216,51 +206,55 @@ func (w *SpotifyWidget) FetchData(ctx context.Context, rawSettings map[string]an
 	)
 	s := parseSettings(rawSettings)
 	if s.ClientID == "" || string(s.ClientSecret) == "" {
-		return map[string]any{
-			"is_configured": false,
-		}, nil
+		return widgets.Unavailable(
+			"connection.missing",
+			"Spotify account needed",
+			"Choose a Spotify Account connection in settings.",
+		), nil
 	}
 
 	if string(s.AccessToken) == "" {
-		return map[string]any{
-			"is_configured": false,
-		}, nil
+		return widgets.Unavailable(
+			"connection.missing_credentials",
+			"Spotify account needed",
+			"Choose a Spotify Account connection with an access token.",
+		), nil
 	}
 
 	if s.ClientID == "mock-spotify" || s.ClientID == "test" {
 		return map[string]any{
-			"is_configured": true,
-			"track_title":   "Mock Track",
-			"artist_name":   "Mock Artist",
-			"is_playing":    true,
-			"volume":        75,
+			"track_title": "Mock Track",
+			"artist_name": "Mock Artist",
+			"is_playing":  true,
+			"volume":      75,
 		}, nil
 	}
 
 	resp, err := w.doRequest(ctx, s, http.MethodGet, "https://api.spotify.com/v1/me/player", nil)
 	if err != nil {
-		return map[string]any{
-			"is_configured": true,
-			"error":         err.Error(),
-		}, nil
+		return widgets.Unavailable(
+			"spotify.unavailable",
+			"Spotify unavailable",
+			"Jute could not reach Spotify playback.",
+		), nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNoContent {
 		return map[string]any{
-			"is_configured": true,
-			"track_title":   "Not Playing",
-			"artist_name":   "Unknown",
-			"is_playing":    false,
-			"volume":        50,
+			"track_title": "Not Playing",
+			"artist_name": "Unknown",
+			"is_playing":  false,
+			"volume":      50,
 		}, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return map[string]any{
-			"is_configured": true,
-			"error":         fmt.Sprintf("Spotify API returned status %d", resp.StatusCode),
-		}, nil
+		return widgets.Unavailable(
+			"spotify.unavailable",
+			"Spotify unavailable",
+			"Jute could not load Spotify playback.",
+		), nil
 	}
 
 	var playerState struct {
@@ -277,10 +271,11 @@ func (w *SpotifyWidget) FetchData(ctx context.Context, rawSettings map[string]an
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&playerState); err != nil {
-		return map[string]any{
-			"is_configured": true,
-			"error":         err.Error(),
-		}, nil
+		return widgets.Unavailable(
+			"spotify.unavailable",
+			"Spotify unavailable",
+			"Jute could not read Spotify playback.",
+		), nil
 	}
 
 	track := "Not Playing"
@@ -297,12 +292,48 @@ func (w *SpotifyWidget) FetchData(ctx context.Context, rawSettings map[string]an
 	}
 
 	return map[string]any{
-		"is_configured": true,
-		"track_title":   track,
-		"artist_name":   artist,
-		"is_playing":    playerState.IsPlaying,
-		"volume":        playerState.Device.VolumePercent,
+		"track_title": track,
+		"artist_name": artist,
+		"is_playing":  playerState.IsPlaying,
+		"volume":      playerState.Device.VolumePercent,
 	}, nil
+}
+
+func (w *SpotifyWidget) FetchDataWithConnections(
+	ctx context.Context,
+	input widgets.RuntimeInput,
+) (widgets.RuntimePayload, error) {
+	settings := spotifySettingsFromConnection(input.Connections["account"])
+	if settings.ClientID == "" || string(settings.AccessToken) == "" {
+		return widgets.Unavailable(
+			"connection.missing_credentials",
+			"Spotify account needed",
+			"Choose a Spotify Account connection in settings.",
+		), nil
+	}
+	data, err := w.FetchData(ctx, map[string]any{
+		"client_id":     settings.ClientID,
+		"client_secret": string(settings.ClientSecret),
+		"access_token":  string(settings.AccessToken),
+		"refresh_token": string(settings.RefreshToken),
+		"expires_at":    settings.ExpiresAt,
+		"instanceId":    input.InstanceID,
+	})
+	if err != nil {
+		return widgets.ErrorPayload( //nolint:nilerr // provider error is mapped to a safe widget issue
+			"spotify.fetch_failed",
+			"Spotify unavailable",
+			"Jute could not load Spotify playback.",
+		), nil
+	}
+	payload := widgets.NormalizePayload(data, nil)
+	if payload.Status != widgets.StatusOK {
+		return payload, nil
+	}
+	if m, ok := data.(map[string]any); ok {
+		return widgets.OK(m), nil
+	}
+	return widgets.OK(data), nil
 }
 
 func (w *SpotifyWidget) Skill() *widgetskills.Definition {
@@ -321,6 +352,30 @@ func (w *SpotifyWidget) Skill() *widgetskills.Definition {
 		},
 		Actions: []widgetskills.Action{
 			widgetskills.ReadAction("status", "Get playback status", "Read current track and status."),
+			playbackAction("play", "Play", "Start Spotify playback."),
+			playbackAction("pause", "Pause", "Pause Spotify playback."),
+			playbackAction("next", "Next track", "Skip to the next Spotify track."),
+			playbackAction("previous", "Previous track", "Return to the previous Spotify track."),
+			playbackAction("set_volume", "Set volume", "Set Spotify player volume."),
+		},
+	}
+}
+
+func playbackAction(id, title, description string) widgetskills.Action {
+	return widgetskills.Action{
+		ID:                   id,
+		Title:                title,
+		Description:          description,
+		SideEffect:           "home_action",
+		RequiresConfirmation: false,
+		InputSchema: map[string]any{
+			"type":                 "object",
+			"additionalProperties": true,
+		},
+		OutputSchema: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"status": map[string]any{"type": "string"}},
+			"required":   []string{"status"},
 		},
 	}
 }
@@ -391,6 +446,49 @@ func (w *SpotifyWidget) InvokeAction(
 	return map[string]any{"status": "ok"}, nil
 }
 
+func (w *SpotifyWidget) InvokeActionWithConnections(
+	ctx context.Context,
+	input widgets.ActionInput,
+) (map[string]any, error) {
+	settings := spotifySettingsFromConnection(input.Connections["account"])
+	snap := input.Snapshot
+	snap.Layout.Widgets = append([]widgetskills.WidgetInstance(nil), snap.Layout.Widgets...)
+	found := false
+	for i := range snap.Layout.Widgets {
+		if snap.Layout.Widgets[i].ID == input.InstanceID {
+			snap.Layout.Widgets[i].Settings = map[string]any{
+				"client_id":     settings.ClientID,
+				"client_secret": string(settings.ClientSecret),
+				"access_token":  string(settings.AccessToken),
+				"refresh_token": string(settings.RefreshToken),
+				"expires_at":    settings.ExpiresAt,
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, errors.New("widget instance not found")
+	}
+	return w.InvokeAction(ctx, snap, input.InstanceID, input.ActionID, input.Arguments)
+}
+
+func spotifySettingsFromConnection(connection widgets.ResolvedConnection) Settings {
+	settings := Settings{}
+	if v, ok := connection.Settings["client_id"].(string); ok {
+		settings.ClientID = v
+	}
+	settings.ClientSecret = SecretString(connection.Secrets["client_secret"])
+	settings.AccessToken = SecretString(connection.Secrets["access_token"])
+	settings.RefreshToken = SecretString(connection.Secrets["refresh_token"])
+	if v, ok := connection.Settings["expires_at"].(int64); ok {
+		settings.ExpiresAt = v
+	} else if v, ok := connection.Settings["expires_at"].(float64); ok {
+		settings.ExpiresAt = int64(v)
+	}
+	return settings
+}
+
 func getSettings(snap widgetskills.Snapshot, instanceID string) Settings {
 	for _, w := range snap.Layout.Widgets {
 		if w.ID == instanceID {
@@ -429,7 +527,7 @@ func init() {
 	widgets.RegisterWithSkill(&SpotifyWidget{}, func(snapshot widgetskills.Snapshot, instID string) map[string]any {
 		for _, w := range snapshot.Layout.Widgets {
 			if w.ID == instID {
-				if m, ok := w.Data.(map[string]any); ok {
+				if m, ok := widgets.PayloadData(w.Data).(map[string]any); ok {
 					return m
 				}
 			}

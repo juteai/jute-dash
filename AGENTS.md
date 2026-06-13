@@ -79,8 +79,10 @@ The core built-in widgets are:
 3. `chat-history`: Recent conversation turns, active A2A agent status, and quick re-entry.
 4. `rss`: Headlines aggregator from custom RSS XML streams with background caching.
 5. `markets`: Stock, commodity, or crypto tickers watchlist using Yahoo Finance.
-6. `smart-home`: Local smart home device controls (lights, switches) and sensor status views (Zigbee2MQTT, Philips Hue).
-7. `music-player`: Control and monitor music playback across multiple music services like Spotify and Apple Music.
+6. `spotify`: Spotify playback state and controls through a shared Adapter Connection.
+7. `apple-music`: Apple Music playback state and controls through a shared Adapter Connection.
+8. `philips-hue`: Philips Hue light state and controls through a shared Adapter Connection.
+9. `zigbee2mqtt`: Zigbee2MQTT device state and controls through a shared Adapter Connection.
 
 ## Visual Customization Rules
 

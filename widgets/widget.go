@@ -3,21 +3,23 @@ package widgets
 import (
 	"context"
 	"jute-dash/apps/hub/pkg/widgetskills"
+	"time"
 )
 
 type WidgetCatalogItem struct {
-	Kind           string         `json:"kind"`
-	Name           string         `json:"name"`
-	Description    string         `json:"description"`
-	DefaultTitle   string         `json:"defaultTitle"`
-	DefaultW       int            `json:"defaultW"`
-	DefaultH       int            `json:"defaultH"`
-	MinW           int            `json:"minW"`
-	MinH           int            `json:"minH"`
-	DefaultSize    string         `json:"defaultSize"`
-	Overflow       string         `json:"overflow"`
-	AllowMultiple  bool           `json:"allowMultiple"`
-	SettingsSchema []SettingField `json:"settingsSchema,omitempty"`
+	Kind                   string                  `json:"kind"`
+	Name                   string                  `json:"name"`
+	Description            string                  `json:"description"`
+	DefaultTitle           string                  `json:"defaultTitle"`
+	DefaultW               int                     `json:"defaultW"`
+	DefaultH               int                     `json:"defaultH"`
+	MinW                   int                     `json:"minW"`
+	MinH                   int                     `json:"minH"`
+	DefaultSize            string                  `json:"defaultSize"`
+	Overflow               string                  `json:"overflow"`
+	AllowMultiple          bool                    `json:"allowMultiple"`
+	SettingsSchema         []SettingField          `json:"settingsSchema,omitempty"`
+	ConnectionRequirements []ConnectionRequirement `json:"connectionRequirements,omitempty"`
 }
 
 // SettingFieldType enumerates the settings field types the display can render.
@@ -57,4 +59,164 @@ type Widget interface {
 
 	// Skill returns the optional agent-facing skill metadata. Returns nil if visual-only.
 	Skill() *widgetskills.Definition
+}
+
+type UserFacingIssue struct {
+	Code     string       `json:"code"`
+	Severity string       `json:"severity"`
+	Title    string       `json:"title"`
+	Message  string       `json:"message"`
+	Action   *IssueAction `json:"action,omitempty"`
+}
+
+type IssueAction struct {
+	Label  string `json:"label"`
+	Target string `json:"target"`
+}
+
+type RuntimePayload struct {
+	Status    string           `json:"status"`
+	Issue     *UserFacingIssue `json:"issue,omitempty"`
+	UpdatedAt string           `json:"updatedAt,omitempty"`
+	Data      any              `json:"data,omitempty"`
+}
+
+const (
+	StatusOK                 = "ok"
+	StatusLoading            = "loading"
+	StatusEmpty              = "empty"
+	StatusUnavailable        = "unavailable"
+	StatusError              = "error"
+	StatusPermissionRequired = "permission_required"
+	StatusStale              = "stale"
+)
+
+func OK(data any) RuntimePayload {
+	return RuntimePayload{
+		Status:    StatusOK,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		Data:      data,
+	}
+}
+
+func Empty(title, message string) RuntimePayload {
+	return RuntimePayload{
+		Status: StatusEmpty,
+		Issue: &UserFacingIssue{
+			Code:     "widget.empty",
+			Severity: "info",
+			Title:    title,
+			Message:  message,
+		},
+	}
+}
+
+func Unavailable(code, title, message string) RuntimePayload {
+	return RuntimePayload{
+		Status: StatusUnavailable,
+		Issue: &UserFacingIssue{
+			Code:     code,
+			Severity: "warning",
+			Title:    title,
+			Message:  message,
+			Action:   &IssueAction{Label: "Open settings", Target: "settings"},
+		},
+	}
+}
+
+func ErrorPayload(code, title, message string) RuntimePayload {
+	return RuntimePayload{
+		Status: StatusError,
+		Issue: &UserFacingIssue{
+			Code:     code,
+			Severity: "error",
+			Title:    title,
+			Message:  message,
+		},
+	}
+}
+
+func NormalizePayload(data any, err error) RuntimePayload {
+	if err != nil {
+		return ErrorPayload("widget.fetch_failed", "Widget unavailable", "Jute could not load this widget.")
+	}
+	if payload, ok := data.(RuntimePayload); ok {
+		return payload
+	}
+	if payload, ok := data.(*RuntimePayload); ok && payload != nil {
+		return *payload
+	}
+	return OK(data)
+}
+
+func PayloadData(data any) any {
+	switch payload := data.(type) {
+	case RuntimePayload:
+		return payload.Data
+	case *RuntimePayload:
+		if payload == nil {
+			return nil
+		}
+		return payload.Data
+	case map[string]any:
+		if _, hasStatus := payload["status"]; hasStatus {
+			if inner, ok := payload["data"]; ok {
+				return inner
+			}
+		}
+	}
+	return data
+}
+
+type ConnectionRequirement struct {
+	Slot        string   `json:"slot"`
+	Kind        string   `json:"kind"`
+	DisplayName string   `json:"displayName"`
+	Description string   `json:"description,omitempty"`
+	Required    bool     `json:"required"`
+	SecretKeys  []string `json:"secretKeys,omitempty"`
+}
+
+type ResolvedConnection struct {
+	ID       string
+	Kind     string
+	Name     string
+	Settings map[string]any
+	Secrets  map[string]string
+	Enabled  bool
+}
+
+type ConnectionResolver interface {
+	ResolveWidgetConnections(
+		ctx context.Context,
+		requirements []ConnectionRequirement,
+		refs map[string]string,
+	) (map[string]ResolvedConnection, map[string]RuntimePayload)
+}
+
+type RuntimeInput struct {
+	InstanceID     string
+	Settings       map[string]any
+	ConnectionRefs map[string]string
+	Connections    map[string]ResolvedConnection
+}
+
+type ActionInput struct {
+	RuntimeInput
+
+	Snapshot  widgetskills.Snapshot
+	ActionID  string
+	Arguments map[string]any
+	Actor     string
+}
+
+type ConnectionAwareWidget interface {
+	Widget
+	RequiredConnections() []ConnectionRequirement
+	FetchDataWithConnections(ctx context.Context, input RuntimeInput) (RuntimePayload, error)
+}
+
+type ConnectionAwareActionWidget interface {
+	ConnectionAwareWidget
+	InvokeActionWithConnections(ctx context.Context, input ActionInput) (map[string]any, error)
 }

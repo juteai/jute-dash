@@ -10,7 +10,7 @@ import PhilipsHueWidget from './philipshue/PhilipsHueWidget.svelte';
 import Zigbee2MQTTWidget from './zigbee2mqtt/Zigbee2MQTTWidget.svelte';
 import { chatStore } from '$lib/chatStore';
 import { navigationStore } from '$lib/navigationStore';
-import { dispatchMusicPlayerAction } from '$lib/hubClient';
+import { dispatchWidgetAction } from '$lib/hubClient';
 import type {
   DashboardData,
   ChatMessage,
@@ -18,6 +18,14 @@ import type {
   AgentAvailability,
   WidgetInstance
 } from '$lib/types';
+
+function widgetPayload(widget: WidgetInstance): any {
+  const payload = widget.data as { data?: unknown; status?: string } | undefined;
+  if (payload && 'data' in payload) {
+    return payload.data;
+  }
+  return widget.data;
+}
 
 export interface WidgetRegistryEntry {
   component: any;
@@ -48,7 +56,7 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   weather: {
     component: WeatherWidget,
     props: ({ widget, stale }) => ({
-      weather: widget.data ?? {
+      weather: widgetPayload(widget) ?? {
         locationName: 'Not configured',
         temperature: null,
         temperatureUnit: 'celsius',
@@ -72,7 +80,7 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   rss: {
     component: RSSWidget,
     props: ({ widget, stale, data }) => ({
-      data: widget.data,
+      data: widgetPayload(widget),
       stale,
       onQueryAgent: async (title: string, link: string) => {
         navigationStore.openChat();
@@ -89,7 +97,7 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   markets: {
     component: MarketsWidget,
     props: ({ widget, stale, data }) => ({
-      data: widget.data,
+      data: widgetPayload(widget),
       stale,
       onQueryAgent: async (symbol: string) => {
         navigationStore.openChat();
@@ -106,9 +114,7 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   'spotify': {
     component: SpotifyWidget,
     props: ({ widget, stale }) => ({
-      instanceId: widget.id,
-      data: widget.data ?? {
-        is_configured: false,
+      data: widgetPayload(widget) ?? {
         track_title: 'Not Playing',
         artist_name: 'Unknown',
         is_playing: false,
@@ -116,11 +122,7 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
       },
       stale,
       dispatch: async (action: string, args: Record<string, any> = {}) => {
-        await dispatchMusicPlayerAction(fetch, {
-          instance_id: widget.id,
-          action,
-          arguments: args
-        });
+        await dispatchWidgetAction(fetch, widget.id, action, args);
         const { hubStream } = await import('$lib/hubStream');
         await hubStream.refreshAfterMutation();
       }
@@ -130,19 +132,14 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
     component: AppleMusicWidget,
     props: ({ widget, stale }) => ({
       instanceId: widget.id,
-      data: widget.data ?? {
-        is_configured: false,
+      data: widgetPayload(widget) ?? {
         track_title: 'Not Playing',
         artist_name: 'Unknown',
         is_playing: false
       },
       stale,
       dispatch: async (action: string, args: Record<string, any> = {}) => {
-        await dispatchMusicPlayerAction(fetch, {
-          instance_id: widget.id,
-          action,
-          arguments: args
-        });
+        await dispatchWidgetAction(fetch, widget.id, action, args);
         const { hubStream } = await import('$lib/hubStream');
         await hubStream.refreshAfterMutation();
       }
@@ -152,17 +149,13 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
     component: PhilipsHueWidget,
     props: ({ widget, stale }) => ({
       instanceId: widget.id,
-      data: widget.data ?? {
-        is_configured: false,
+      data: widgetPayload(widget) ?? {
         devices: []
       },
       stale,
       dispatch: async (action: string, args: Record<string, any> = {}) => {
-        const { dispatchDeviceAction } = await import('$lib/hubClient');
-        await dispatchDeviceAction(fetch, {
-          instanceId: widget.id,
-          deviceId: args.device_id || '',
-          action: action,
+        await dispatchWidgetAction(fetch, widget.id, action, {
+          deviceId: args.device_id || args.deviceId || '',
           value: args.state !== undefined ? args.state : args.value
         });
         const { hubStream } = await import('$lib/hubStream');
@@ -173,17 +166,13 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   'zigbee2mqtt': {
     component: Zigbee2MQTTWidget,
     props: ({ widget, stale }) => ({
-      data: widget.data ?? {
-        is_configured: false,
+      data: widgetPayload(widget) ?? {
         devices: []
       },
       stale,
       dispatch: async (action: string, args: Record<string, any> = {}) => {
-        const { dispatchDeviceAction } = await import('$lib/hubClient');
-        await dispatchDeviceAction(fetch, {
-          instanceId: widget.id,
-          deviceId: args.device_id || '',
-          action: action,
+        await dispatchWidgetAction(fetch, widget.id, action, {
+          deviceId: args.device_id || args.deviceId || '',
           value: args.state !== undefined ? args.state : args.value
         });
         const { hubStream } = await import('$lib/hubStream');

@@ -31,6 +31,7 @@
     | 'household'
     | 'rooms'
     | 'tiles'
+    | 'connections'
     | 'agents'
     | 'mcp'
     | 'voice'

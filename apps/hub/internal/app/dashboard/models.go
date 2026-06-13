@@ -66,19 +66,20 @@ type DashboardConfig struct {
 
 // DashboardWidgetConfig represents basic bootstrap placement config.
 type DashboardWidgetConfig struct {
-	ID       string         `json:"id"                 yaml:"id"`
-	Type     string         `json:"type"               yaml:"type"`
-	Title    string         `json:"title"              yaml:"title"`
-	X        int            `json:"x"                  yaml:"x"`
-	Y        int            `json:"y"                  yaml:"y"`
-	W        int            `json:"w"                  yaml:"w"`
-	H        int            `json:"h"                  yaml:"h"`
-	MinW     int            `json:"minW,omitempty"     yaml:"min-w,omitempty"`
-	MinH     int            `json:"minH,omitempty"     yaml:"min-h,omitempty"`
-	Size     string         `json:"size,omitempty"     yaml:"size,omitempty"`
-	Visible  bool           `json:"visible"            yaml:"visible"`
-	Mode     string         `json:"mode,omitempty"     yaml:"mode,omitempty"`
-	Settings map[string]any `json:"settings,omitempty" yaml:"settings,omitempty"`
+	ID             string            `json:"id"                       yaml:"id"`
+	Type           string            `json:"type"                     yaml:"type"`
+	Title          string            `json:"title"                    yaml:"title"`
+	X              int               `json:"x"                        yaml:"x"`
+	Y              int               `json:"y"                        yaml:"y"`
+	W              int               `json:"w"                        yaml:"w"`
+	H              int               `json:"h"                        yaml:"h"`
+	MinW           int               `json:"minW,omitempty"           yaml:"min-w,omitempty"`
+	MinH           int               `json:"minH,omitempty"           yaml:"min-h,omitempty"`
+	Size           string            `json:"size,omitempty"           yaml:"size,omitempty"`
+	Visible        bool              `json:"visible"                  yaml:"visible"`
+	Mode           string            `json:"mode,omitempty"           yaml:"mode,omitempty"`
+	Settings       map[string]any    `json:"settings,omitempty"       yaml:"settings,omitempty"`
+	ConnectionRefs map[string]string `json:"connectionRefs,omitempty" yaml:"connection-refs,omitempty"`
 }
 
 // Domain Models
@@ -110,39 +111,50 @@ type SettingField struct {
 	Fields  []SettingField   `json:"fields,omitempty"`
 }
 
+type ConnectionRequirement struct {
+	Slot        string   `json:"slot"`
+	Kind        string   `json:"kind"`
+	DisplayName string   `json:"displayName"`
+	Description string   `json:"description,omitempty"`
+	Required    bool     `json:"required"`
+	SecretKeys  []string `json:"secretKeys,omitempty"`
+}
+
 // WidgetCatalogItem holds metadata of a widget kind.
 type WidgetCatalogItem struct {
-	Kind           string         `json:"kind"`
-	Name           string         `json:"name"`
-	Description    string         `json:"description"`
-	DefaultTitle   string         `json:"defaultTitle"`
-	DefaultW       int            `json:"defaultW"`
-	DefaultH       int            `json:"defaultH"`
-	MinW           int            `json:"minW"`
-	MinH           int            `json:"minH"`
-	DefaultSize    string         `json:"defaultSize"`
-	Overflow       string         `json:"overflow"`
-	AllowMultiple  bool           `json:"allowMultiple"`
-	SettingsSchema []SettingField `json:"settingsSchema,omitempty"`
+	Kind                   string                  `json:"kind"`
+	Name                   string                  `json:"name"`
+	Description            string                  `json:"description"`
+	DefaultTitle           string                  `json:"defaultTitle"`
+	DefaultW               int                     `json:"defaultW"`
+	DefaultH               int                     `json:"defaultH"`
+	MinW                   int                     `json:"minW"`
+	MinH                   int                     `json:"minH"`
+	DefaultSize            string                  `json:"defaultSize"`
+	Overflow               string                  `json:"overflow"`
+	AllowMultiple          bool                    `json:"allowMultiple"`
+	SettingsSchema         []SettingField          `json:"settingsSchema,omitempty"`
+	ConnectionRequirements []ConnectionRequirement `json:"connectionRequirements,omitempty"`
 }
 
 // WidgetInstance represents an active widget.
 type WidgetInstance struct {
-	ID       string         `json:"id"`
-	Kind     string         `json:"kind"`
-	Title    string         `json:"title"`
-	X        int            `json:"x"`
-	Y        int            `json:"y"`
-	W        int            `json:"w"`
-	H        int            `json:"h"`
-	MinW     int            `json:"minW"`
-	MinH     int            `json:"minH"`
-	Size     string         `json:"size"`
-	Overflow string         `json:"overflow"`
-	Mode     string         `json:"mode"`
-	Settings map[string]any `json:"settings"`
-	Visible  bool           `json:"visible"`
-	Data     any            `json:"data,omitempty"`
+	ID             string            `json:"id"`
+	Kind           string            `json:"kind"`
+	Title          string            `json:"title"`
+	X              int               `json:"x"`
+	Y              int               `json:"y"`
+	W              int               `json:"w"`
+	H              int               `json:"h"`
+	MinW           int               `json:"minW"`
+	MinH           int               `json:"minH"`
+	Size           string            `json:"size"`
+	Overflow       string            `json:"overflow"`
+	Mode           string            `json:"mode"`
+	Settings       map[string]any    `json:"settings"`
+	ConnectionRefs map[string]string `json:"connectionRefs,omitempty"`
+	Visible        bool              `json:"visible"`
+	Data           any               `json:"data,omitempty"`
 }
 
 // GORM DB Models
@@ -161,23 +173,24 @@ func (WidgetPackDB) TableName() string {
 }
 
 type WidgetInstanceDB struct {
-	ID              string `gorm:"primaryKey;column:id"`
-	Kind            string `gorm:"column:kind"`
-	Title           string `gorm:"column:title"`
-	LayoutProfileID string `gorm:"column:layout_profile_id"`
-	X               int    `gorm:"column:x"`
-	Y               int    `gorm:"column:y"`
-	W               int    `gorm:"column:w"`
-	H               int    `gorm:"column:h"`
-	MinW            int    `gorm:"column:min_w"`
-	MinH            int    `gorm:"column:min_h"`
-	Size            string `gorm:"column:size"`
-	Mode            string `gorm:"column:mode;default:'ui'"`
-	SettingsJSON    string `gorm:"column:settings_json"`
-	Visible         int    `gorm:"column:visible"`
-	SortOrder       int    `gorm:"column:sort_order"`
-	CreatedAt       string `gorm:"column:created_at"`
-	UpdatedAt       string `gorm:"column:updated_at"`
+	ID                 string `gorm:"primaryKey;column:id"`
+	Kind               string `gorm:"column:kind"`
+	Title              string `gorm:"column:title"`
+	LayoutProfileID    string `gorm:"column:layout_profile_id"`
+	X                  int    `gorm:"column:x"`
+	Y                  int    `gorm:"column:y"`
+	W                  int    `gorm:"column:w"`
+	H                  int    `gorm:"column:h"`
+	MinW               int    `gorm:"column:min_w"`
+	MinH               int    `gorm:"column:min_h"`
+	Size               string `gorm:"column:size"`
+	Mode               string `gorm:"column:mode;default:'ui'"`
+	SettingsJSON       string `gorm:"column:settings_json"`
+	ConnectionRefsJSON string `gorm:"column:connection_refs_json"`
+	Visible            int    `gorm:"column:visible"`
+	SortOrder          int    `gorm:"column:sort_order"`
+	CreatedAt          string `gorm:"column:created_at"`
+	UpdatedAt          string `gorm:"column:updated_at"`
 }
 
 func (WidgetInstanceDB) TableName() string {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"jute-dash/apps/hub/pkg/widgetskills"
+	"jute-dash/widgets"
 )
 
 func TestSpotifyWidgetSettings(t *testing.T) {
@@ -13,53 +14,33 @@ func TestSpotifyWidgetSettings(t *testing.T) {
 		t.Errorf("expected kind 'spotify', got %q", w.Kind())
 	}
 
-	// 1. Completely unconfigured
-	rawEmpty := map[string]any{}
-	data, err := w.FetchData(context.Background(), rawEmpty)
+	data, err := w.FetchData(context.Background(), map[string]any{})
 	if err != nil {
 		t.Fatalf("FetchData empty failed: %v", err)
 	}
-	m, ok := data.(map[string]any)
+	payload, ok := data.(widgets.RuntimePayload)
 	if !ok {
-		t.Fatalf("expected map[string]any, got %T", data)
+		t.Fatalf("expected RuntimePayload, got %T", data)
 	}
-	if m["is_configured"] != false {
-		t.Errorf("expected is_configured to be false for empty settings")
+	if payload.Status != widgets.StatusUnavailable {
+		t.Errorf("expected unavailable status, got %q", payload.Status)
 	}
 
-	// 2. Partially configured (no access token)
-	rawPartial := map[string]any{
-		"client_id":     "my_client_id",
-		"client_secret": "my_client_secret",
-	}
-	data, err = w.FetchData(context.Background(), rawPartial)
-	if err != nil {
-		t.Fatalf("FetchData partial failed: %v", err)
-	}
-	m, ok = data.(map[string]any)
-	if !ok {
-		t.Fatalf("expected map[string]any, got %T", data)
-	}
-	if m["is_configured"] != false {
-		t.Errorf("expected is_configured to be false without access token")
-	}
-
-	// 3. Mock/Test mode (configured with mock)
-	rawMock := map[string]any{
-		"client_id":     "test",
-		"client_secret": "my_client_secret",
-		"access_token":  "my_access_token",
-	}
-	data, err = w.FetchData(context.Background(), rawMock)
+	payload, err = w.FetchDataWithConnections(context.Background(), widgets.RuntimeInput{
+		InstanceID: "spotify-1",
+		Connections: map[string]widgets.ResolvedConnection{
+			"account": spotifyConnection(),
+		},
+	})
 	if err != nil {
 		t.Fatalf("FetchData mock failed: %v", err)
 	}
-	m, ok = data.(map[string]any)
-	if !ok {
-		t.Fatalf("expected map[string]any, got %T", data)
+	if payload.Status != widgets.StatusOK {
+		t.Fatalf("expected ok status, got %q", payload.Status)
 	}
-	if m["is_configured"] != true {
-		t.Errorf("expected is_configured to be true in mock mode")
+	m, ok := payload.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map data, got %T", payload.Data)
 	}
 	if m["track_title"] != "Mock Track" {
 		t.Errorf("expected track title 'Mock Track', got %q", m["track_title"])
@@ -69,18 +50,13 @@ func TestSpotifyWidgetSettings(t *testing.T) {
 func TestSpotifyWidgetActions(t *testing.T) {
 	w := NewWidget()
 
-	// Setup snapshot with a configured widget instance
 	snap := widgetskills.Snapshot{
 		Layout: widgetskills.WidgetLayout{
 			Widgets: []widgetskills.WidgetInstance{
 				{
-					ID:   "spotify-1",
-					Kind: Kind,
-					Settings: map[string]any{
-						"client_id":     "test",
-						"client_secret": "secret",
-						"access_token":  "token",
-					},
+					ID:             "spotify-1",
+					Kind:           Kind,
+					ConnectionRefs: map[string]string{"account": "spotify-test"},
 				},
 			},
 		},
@@ -89,7 +65,16 @@ func TestSpotifyWidgetActions(t *testing.T) {
 	// Invoke actions in mock mode
 	actions := []string{"play", "pause", "next", "previous"}
 	for _, act := range actions {
-		res, err := w.InvokeAction(context.Background(), snap, "spotify-1", act, nil)
+		res, err := w.InvokeActionWithConnections(context.Background(), widgets.ActionInput{
+			RuntimeInput: widgets.RuntimeInput{
+				InstanceID: "spotify-1",
+				Connections: map[string]widgets.ResolvedConnection{
+					"account": spotifyConnection(),
+				},
+			},
+			Snapshot: snap,
+			ActionID: act,
+		})
 		if err != nil {
 			t.Errorf("action %q failed: %v", act, err)
 		}
@@ -99,14 +84,37 @@ func TestSpotifyWidgetActions(t *testing.T) {
 	}
 
 	// Set volume
-	res, err := w.InvokeAction(context.Background(), snap, "spotify-1", "set_volume", map[string]any{
-		"volume": 80,
+	res, err := w.InvokeActionWithConnections(context.Background(), widgets.ActionInput{
+		RuntimeInput: widgets.RuntimeInput{
+			InstanceID: "spotify-1",
+			Connections: map[string]widgets.ResolvedConnection{
+				"account": spotifyConnection(),
+			},
+		},
+		Snapshot:  snap,
+		ActionID:  "set_volume",
+		Arguments: map[string]any{"volume": 80},
 	})
 	if err != nil {
 		t.Errorf("set_volume failed: %v", err)
 	}
 	if res["status"] != "ok" {
 		t.Errorf("expected status 'ok', got %v", res["status"])
+	}
+}
+
+func spotifyConnection() widgets.ResolvedConnection {
+	return widgets.ResolvedConnection{
+		ID:   "spotify-test",
+		Kind: "spotify",
+		Settings: map[string]any{
+			"client_id": "test",
+		},
+		Secrets: map[string]string{
+			"client_secret": "secret",
+			"access_token":  "token",
+			"refresh_token": "refresh",
+		},
 	}
 }
 

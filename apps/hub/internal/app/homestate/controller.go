@@ -22,6 +22,9 @@ type SettingsStore interface {
 	SaveRooms(ctx context.Context, rooms []RoomConfig) ([]RoomConfig, error)
 	Tiles(ctx context.Context) ([]TileConfig, error)
 	SaveTiles(ctx context.Context, tiles []TileConfig) ([]TileConfig, error)
+	AdapterConnections(ctx context.Context) ([]AdapterConnection, error)
+	AdapterConnection(ctx context.Context, id string) (AdapterConnection, error)
+	SaveAdapterConnection(ctx context.Context, connection AdapterConnection) (AdapterConnection, error)
 }
 
 type Controller struct {
@@ -50,6 +53,7 @@ func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/settings/household", c.handleHouseholdSettings)
 	mux.HandleFunc("/api/v1/settings/rooms", c.handleRoomSettings)
 	mux.HandleFunc("/api/v1/settings/tiles", c.handleTileSettings)
+	mux.HandleFunc("/api/v1/settings/connections", c.handleConnections)
 	mux.HandleFunc("/api/v1/home", c.handleHome)
 }
 
@@ -106,6 +110,32 @@ func (c *Controller) handleHouseholdSettings(w http.ResponseWriter, r *http.Requ
 		httphelper.WriteJSON(w, http.StatusOK, saved)
 	default:
 		httphelper.WriteMethodNotAllowed(w, http.MethodGet+", "+http.MethodPatch)
+	}
+}
+
+func (c *Controller) handleConnections(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		connections, err := c.settings.AdapterConnections(r.Context())
+		if err != nil {
+			httphelper.WriteError(w, http.StatusInternalServerError, "adapter connections are unavailable")
+			return
+		}
+		httphelper.WriteJSON(w, http.StatusOK, map[string]any{"connections": connections})
+	case http.MethodPut, http.MethodPost:
+		var connection AdapterConnection
+		if err := json.NewDecoder(r.Body).Decode(&connection); err != nil {
+			httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
+			return
+		}
+		saved, err := c.settings.SaveAdapterConnection(r.Context(), connection)
+		if err != nil {
+			httphelper.WriteError(w, http.StatusBadRequest, "adapter connection could not be saved")
+			return
+		}
+		httphelper.WriteJSON(w, http.StatusOK, saved)
+	default:
+		httphelper.WriteMethodNotAllowed(w, http.MethodGet+", "+http.MethodPost+", "+http.MethodPut)
 	}
 }
 
