@@ -8,11 +8,11 @@ Themes are data-only. Do not add JavaScript, HTML, runtime hooks, remote imports
 
 Architecture details live in [Visual Customization](../architecture/visual-customization.md).
 
-Bundled starter themes are `jute-mono`, `solarized`, `ayu`, `one-dark`, `gruvbox`, `dracula`, `catppuccin`, `nord`, `tokyo-night`, `kanagawa`, `monokai`, `material`, `github`, and `everforest`. Until runtime Theme Pack loading lands, new theme contributions must also be added to the display token registry in `apps/web/src/lib/themes.ts` and to the hub allow-list in `apps/hub/internal/app/config/config.go`.
+Bundled starter themes are `jute-mono`, `solarized`, `ayu`, `one-dark`, `gruvbox`, `dracula`, `catppuccin`, `nord`, `tokyo-night`, `kanagawa`, `monokai`, `material`, `github`, and `everforest`. The Display reads Theme Pack token data from `themes/[theme-id]/theme.json`; new bundled themes must also be allowed by the hub display config validation.
 
 ## Folder Structure
 
-Theme Packs should use this planned shape:
+Theme Packs use this shape:
 
 ```text
 themes/
@@ -24,7 +24,7 @@ themes/
       dashboard-dark.png
 ```
 
-`theme.json` is the source of truth for tokens. `README.md` explains the intent, accessibility notes, and supported modes.
+`theme.json` is the source of truth for Display tokens. `README.md` explains the intent, accessibility notes, and supported modes.
 
 ## Manifest Requirements
 
@@ -37,7 +37,7 @@ Each `theme.json` must declare:
 - `author`;
 - `supportedModes`: `light`, `dark`, or both;
 - `accessibility`: contrast and motion notes;
-- `tokens`: all required token groups.
+- `modes`: `light` and/or `dark` token maps using the stable Display token names.
 
 Required token groups are defined in [Visual Customization](../architecture/visual-customization.md).
 
@@ -92,8 +92,8 @@ Before contributing a theme, verify:
 
 1. Add `themes/[theme-id]/theme.json`.
 2. Add a theme README with intent, supported modes, and accessibility notes.
-3. Include dashboard, settings, chat, and widget screenshots or documented smoke results.
+3. Include dashboard, settings, chat, and widget screenshots or documented smoke results, including `solid` and `smoked` widget chrome.
 4. Update examples only if the theme should be demonstrated by a harness.
-5. Run `make check`.
+5. Run `make check` and `cd apps/web && npm run test:browser` when Display theme behavior changes.
 
 Theme submissions should not modify widget behavior, hub behavior, A2A behavior, MCP tools, or voice behavior.

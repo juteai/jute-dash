@@ -1,55 +1,78 @@
 <script lang="ts">
-  import { Cloud, CloudFog, CloudRain, CloudSnow, CloudSun, Moon, Sun, Wind, Sunrise, Sunset } from 'lucide-svelte';
-  import type { WeatherState } from '$lib/types';
+  import {
+    Cloud,
+    CloudFog,
+    CloudRain,
+    CloudSnow,
+    CloudSun,
+    Moon,
+    Sun,
+    Wind,
+    Sunrise,
+    Sunset,
+  } from "lucide-svelte";
+  import {
+    WidgetListItem,
+    WidgetMeta,
+    WidgetStack,
+    WidgetValue,
+    WidgetValueRow,
+  } from "$lib/components/widget-content";
+  import type { WeatherState } from "$lib/types";
 
   export let weather: WeatherState;
   export let stale = false;
 
-  $: temperature = weather.temperature === null ? '—' : `${Math.round(weather.temperature)}${unitLabel(weather.temperatureUnit)}`;
-  $: apparent = weather.apparentTemperature === null
-    ? '—'
-    : `${Math.round(weather.apparentTemperature)}${unitLabel(weather.temperatureUnit)}`;
-  $: wind = weather.windSpeed === null
-    ? '—'
-    : `${Math.round(weather.windSpeed)} ${windUnitLabel(weather.windSpeedUnit)}`;
+  $: temperature =
+    weather.temperature === null
+      ? "—"
+      : `${Math.round(weather.temperature)}${unitLabel(weather.temperatureUnit)}`;
+  $: apparent =
+    weather.apparentTemperature === null
+      ? "—"
+      : `${Math.round(weather.apparentTemperature)}${unitLabel(weather.temperatureUnit)}`;
+  $: wind =
+    weather.windSpeed === null
+      ? "—"
+      : `${Math.round(weather.windSpeed)} ${windUnitLabel(weather.windSpeedUnit)}`;
 
   function unitLabel(unit: string) {
-    if (unit === 'fahrenheit') {
-      return '°F';
+    if (unit === "fahrenheit") {
+      return "°F";
     }
-    return '°C';
+    return "°C";
   }
 
   function windUnitLabel(unit: string) {
-    if (unit === 'mph') {
-      return 'mph';
+    if (unit === "mph") {
+      return "mph";
     }
-    if (unit === 'ms') {
-      return 'm/s';
+    if (unit === "ms") {
+      return "m/s";
     }
-    if (unit === 'kn') {
-      return 'kn';
+    if (unit === "kn") {
+      return "kn";
     }
-    return 'km/h';
+    return "km/h";
   }
 
   function formatTime(isoStr: string) {
-    if (!isoStr) return '';
+    if (!isoStr) return "";
     try {
       const date = new Date(isoStr);
-      if (isNaN(date.getTime())) return '';
+      if (isNaN(date.getTime())) return "";
       return new Intl.DateTimeFormat(undefined, {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
       }).format(date);
     } catch {
-      return '';
+      return "";
     }
   }
 </script>
 
-<div class:widget-stale={stale} class="weather-widget">
+<WidgetStack {stale}>
   <div class="weather-primary">
     <div>
       <div class="weather-location">{weather.locationName}</div>
@@ -57,17 +80,17 @@
     </div>
 
     <div class="weather-icon" aria-hidden="true">
-      {#if weather.icon === 'sun'}
+      {#if weather.icon === "sun"}
         <Sun size={42} />
-      {:else if weather.icon === 'moon'}
+      {:else if weather.icon === "moon"}
         <Moon size={42} />
-      {:else if weather.icon === 'rain'}
+      {:else if weather.icon === "rain"}
         <CloudRain size={42} />
-      {:else if weather.icon === 'snow'}
+      {:else if weather.icon === "snow"}
         <CloudSnow size={42} />
-      {:else if weather.icon === 'fog'}
+      {:else if weather.icon === "fog"}
         <CloudFog size={42} />
-      {:else if weather.icon === 'cloud-sun'}
+      {:else if weather.icon === "cloud-sun"}
         <CloudSun size={42} />
       {:else}
         <Cloud size={42} />
@@ -77,23 +100,20 @@
 
   <div class="weather-temp">{temperature}</div>
 
-  <div class="weather-meta">
-    <span class="meta-item">
-      <span class="meta-label">Feels Like</span>
-      <span class="meta-val">{apparent}</span>
-    </span>
-    <span class="meta-item">
-      <span class="meta-label">Humidity</span>
-      <span class="meta-val">{weather.humidity === null ? '—' : `${weather.humidity}%`}</span>
-    </span>
-    <span class="meta-item">
-      <span class="meta-label">Wind</span>
-      <span class="meta-val"><Wind size={13} /> {wind}</span>
-    </span>
-  </div>
+  <WidgetValueRow columns={3}>
+    <WidgetValue label="Feels Like" value={apparent} />
+    <WidgetValue
+      label="Humidity"
+      value={weather.humidity === null ? "—" : `${weather.humidity}%`}
+    />
+    <WidgetValue label="Wind" value={wind}>
+      <Wind size={13} />
+      {wind}
+    </WidgetValue>
+  </WidgetValueRow>
 
   {#if weather.sunrise || weather.sunset}
-    <div class="weather-sun-info">
+    <WidgetListItem>
       {#if weather.sunrise}
         <span class="sun-time-item">
           <Sunrise size={15} class="sun-icon-up" />
@@ -108,27 +128,20 @@
           <span class="sun-val">{formatTime(weather.sunset)}</span>
         </span>
       {/if}
-    </div>
+    </WidgetListItem>
   {/if}
 
   <div class="weather-footer">
     <span class="weather-source">Provider: {weather.source}</span>
     {#if stale}
-      <span class="weather-stale-text">stale</span>
+      <WidgetMeta separator={false}
+        ><span class="weather-stale-text">stale</span></WidgetMeta
+      >
     {/if}
   </div>
-</div>
+</WidgetStack>
 
 <style>
-  .weather-widget {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    width: 100%;
-    gap: clamp(8px, 2.5cqmin, 14px);
-    user-select: none;
-  }
-
   .weather-primary {
     display: flex;
     align-items: flex-start;
@@ -165,54 +178,6 @@
     font-weight: 800;
     line-height: 1;
     color: var(--foreground);
-    letter-spacing: -0.02em;
-  }
-
-  .weather-meta {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: clamp(6px, 1.5cqmin, 12px);
-    border-top: 1px dashed var(--border);
-    border-bottom: 1px dashed var(--border);
-    padding: clamp(6px, 2cqmin, 10px) 0;
-  }
-
-  .meta-item {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .meta-label {
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-  }
-
-  .meta-val {
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--foreground);
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .meta-val :global(svg) {
-    color: var(--muted);
-    flex-shrink: 0;
-  }
-
-  .weather-sun-info {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    background: var(--surface-muted, rgba(255, 255, 255, 0.01));
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: clamp(6px, 1.8cqmin, 10px) clamp(8px, 2.2cqmin, 12px);
   }
 
   .sun-time-item {
@@ -254,9 +219,5 @@
 
   .weather-stale-text {
     color: var(--warning);
-  }
-
-  .widget-stale {
-    opacity: 0.64;
   }
 </style>

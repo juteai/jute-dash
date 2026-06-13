@@ -1,41 +1,58 @@
 <script lang="ts">
-  import PlaybackControls from './components/PlaybackControls.svelte';
-  import TrackSummary from './components/TrackSummary.svelte';
+  import {
+    MediaControls,
+    MediaSummary,
+  } from "$lib/components/integration-controls";
+  import WidgetStack from "$lib/components/widget-content/WidgetStack.svelte";
 
   export let data: any = {};
-  export let dispatch: (action: string, args?: any) => Promise<any> = async () => {};
+  export let dispatch: (
+    action: string,
+    args?: any,
+  ) => Promise<any> = async () => {};
+  export let stale = false;
+
+  let busy = false;
 
   $: isPlaying = data?.is_playing ?? false;
-  $: trackTitle = data?.track_title ?? 'Not Playing';
-  $: artistName = data?.artist_name ?? 'Unknown';
+  $: trackTitle = data?.track_title ?? "Not Playing";
+  $: artistName = data?.artist_name ?? "Unknown";
+
+  async function runAction(action: string) {
+    if (busy || stale) {
+      return;
+    }
+    busy = true;
+    try {
+      await dispatch(action);
+    } finally {
+      busy = false;
+    }
+  }
 
   async function handlePlayPause() {
-    await dispatch(isPlaying ? 'pause' : 'play');
+    await runAction(isPlaying ? "pause" : "play");
   }
 
   async function handleNext() {
-    await dispatch('next');
+    await runAction("next");
   }
 </script>
 
-<div class="widget-content">
-  <div class="player">
-    <TrackSummary title={trackTitle} artist={artistName} />
-    <PlaybackControls {isPlaying} onPlayPause={handlePlayPause} onNext={handleNext} />
-  </div>
-</div>
+<WidgetStack {stale} class="media-widget">
+  <MediaSummary title={trackTitle} subtitle={artistName} />
+  <MediaControls
+    {isPlaying}
+    showPrevious={false}
+    disabled={busy || stale}
+    onPlayPause={handlePlayPause}
+    onNext={handleNext}
+  />
+</WidgetStack>
 
 <style>
-  .widget-content {
-    padding: 12px;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
+  :global(.media-widget) {
     justify-content: center;
-  }
-  .player {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    padding: clamp(4px, 2cqmin, 8px);
   }
 </style>

@@ -1,26 +1,35 @@
 <script lang="ts">
-  import { Rss } from 'lucide-svelte';
+  import { Rss } from "lucide-svelte";
+  import {
+    WidgetEmptyState,
+    WidgetList,
+    WidgetListItem,
+    WidgetMeta,
+    WidgetSectionHeader,
+    WidgetStack,
+  } from "$lib/components/widget-content";
 
   export let data: any = null;
   export let stale = false;
-  export let onQueryAgent: ((title: string, link: string) => void) | undefined = undefined;
+  export let onQueryAgent: ((title: string, link: string) => void) | undefined =
+    undefined;
 
   $: feeds = Array.isArray(data) ? data : [];
 
   function getDomain(urlStr: string): string {
-    if (!urlStr) return '';
+    if (!urlStr) return "";
     try {
-      return new URL(urlStr).hostname.replace(/^www\./, '');
+      return new URL(urlStr).hostname.replace(/^www\./, "");
     } catch {
-      return '';
+      return "";
     }
   }
 
   function formatRelativeTime(dateStr: string): string {
-    if (!dateStr) return '';
+    if (!dateStr) return "";
     try {
       const parsed = Date.parse(dateStr);
-      if (isNaN(parsed)) return '';
+      if (isNaN(parsed)) return "";
       const now = Date.now();
       const diffMs = now - parsed;
       const diffSec = Math.floor(diffMs / 1000);
@@ -29,7 +38,7 @@
       const diffDay = Math.floor(diffHour / 24);
 
       if (diffSec < 60) {
-        return 'just now';
+        return "just now";
       } else if (diffMin < 60) {
         return `${diffMin}m ago`;
       } else if (diffHour < 24) {
@@ -38,187 +47,71 @@
         return `${diffDay}d ago`;
       }
     } catch {
-      return '';
+      return "";
     }
   }
 </script>
 
-<div class="rss-widget" class:stale>
+<WidgetStack {stale} gap="loose">
   {#if feeds.length === 0}
-    <div class="rss-empty">
-      <Rss class="empty-icon" size={32} />
-      <span>No feeds configured</span>
-    </div>
+    <WidgetEmptyState message="No feeds configured">
+      <Rss slot="icon" size={32} />
+    </WidgetEmptyState>
   {:else}
-    <div class="feeds-list">
+    <WidgetList gap="loose">
       {#each feeds as feed}
-        <div class="feed-section">
-          <div class="feed-header">
-            <Rss class="feed-icon" size={14} />
-            <h4 class="feed-title">{feed.feedName}</h4>
-          </div>
-          <div class="feed-articles">
+        <section class="feed-section">
+          <WidgetSectionHeader title={feed.feedName}>
+            <Rss slot="icon" size={14} />
+          </WidgetSectionHeader>
+          <div class="feed-items">
             {#each feed.items || [] as item}
-              <button
-                type="button"
-                class="article-item"
-                class:article-item--clickable={!!onQueryAgent}
+              <WidgetListItem
+                direction="column"
+                clickable={!!onQueryAgent}
                 on:click={() => onQueryAgent?.(item.title, item.link)}
                 disabled={stale}
               >
                 <span class="article-title">{item.title}</span>
-                <span class="article-meta">
+                <WidgetMeta>
                   {#if getDomain(item.link)}
-                    <span class="article-domain">{getDomain(item.link)}</span>
-                  {/if}
-                  {#if getDomain(item.link) && formatRelativeTime(item.pubDate)}
-                    <span class="meta-separator">&middot;</span>
+                    <span>{getDomain(item.link)}</span>
                   {/if}
                   {#if formatRelativeTime(item.pubDate)}
-                    <span class="article-time">{formatRelativeTime(item.pubDate)}</span>
+                    <span>{formatRelativeTime(item.pubDate)}</span>
                   {/if}
-                </span>
-              </button>
+                </WidgetMeta>
+              </WidgetListItem>
             {:else}
               <div class="rss-no-data">No articles found</div>
             {/each}
           </div>
-        </div>
+        </section>
       {/each}
-    </div>
+    </WidgetList>
   {/if}
-</div>
+</WidgetStack>
 
 <style>
-  .rss-widget {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    width: 100%;
-    overflow: hidden;
-  }
-
-  .stale {
-    opacity: 0.6;
-    pointer-events: none;
-  }
-
-  .rss-empty {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    color: var(--muted);
-    padding: clamp(8px, 4cqmin, 16px);
-  }
-
-  :global(.rss-widget .empty-icon) {
-    margin-bottom: 8px;
-    opacity: 0.3;
-  }
-
-  .rss-empty span {
-    font-size: var(--widget-body-size);
-  }
-
-  .feeds-list {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: clamp(12px, 4cqmin, 20px);
-    padding-right: 4px;
-    user-select: none;
-  }
-
   .feed-section {
     display: flex;
     flex-direction: column;
     gap: clamp(6px, 2cqmin, 10px);
   }
 
-  .feed-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 4px;
-  }
-
-  :global(.rss-widget .feed-icon) {
-    color: var(--muted);
-    opacity: 0.8;
-  }
-
-  .feed-title {
-    margin: 0;
-    font-size: clamp(0.65rem, 4cqmin, 0.8rem);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--muted);
-  }
-
-  .feed-articles {
+  .feed-items {
     display: flex;
     flex-direction: column;
     gap: clamp(6px, 2.5cqmin, 12px);
   }
 
-  .article-item {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    padding: clamp(8px, 3cqmin, 12px);
-    border-radius: 8px;
-    background: var(--surface-muted);
-    border: 1px solid var(--border);
-    transition: all 0.2s ease;
-    text-align: left;
-    width: 100%;
-    color: inherit;
-    font: inherit;
-  }
-
-  .article-item--clickable {
-    cursor: pointer;
-  }
-
-  .article-item--clickable:hover:not(:disabled) {
-    transform: scale(1.01);
-    border-color: var(--border-strong);
-    background: var(--surface-strong);
-  }
-
-  .article-item:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: -1px;
-  }
-
   .article-title {
+    display: block;
+    width: 100%;
     font-size: var(--widget-body-size);
     font-weight: 500;
     line-height: 1.4;
     color: var(--foreground);
-    transition: color 0.2s ease;
-  }
-
-  .article-item--clickable:hover .article-title {
-    color: var(--active);
-  }
-
-  .article-meta {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: clamp(0.6rem, 4cqmin, 0.75rem);
-    color: var(--muted);
-  }
-
-  .meta-separator {
-    opacity: 0.5;
   }
 
   .rss-no-data {
@@ -227,15 +120,7 @@
     font-style: italic;
   }
 
-  :global(.widget-frame--medium) .rss-widget {
-    font-size: var(--widget-body-size);
-  }
-
-  :global(.widget-frame--medium) .rss-widget h4 {
-    font-size: 0.72rem;
-  }
-
-  :global(.widget-frame--medium) .rss-widget .article-title {
-    font-size: 0.85rem;
+  :global(.widget-list-item--clickable:hover) .article-title {
+    color: var(--active);
   }
 </style>

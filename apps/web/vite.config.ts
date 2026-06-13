@@ -4,6 +4,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   plugins: [sveltekit()],
   test: {
+    include: ['src/**/*.test.ts'],
+    exclude: ['e2e/**', 'node_modules/**', '.svelte-kit/**', 'coverage/**'],
     coverage: {
       provider: 'v8',
       include: [
@@ -28,7 +30,7 @@ export default defineConfig({
   },
   server: {
     fs: {
-      allow: ['../../widgets', '.']
+      allow: ['../../widgets', '../../themes', '.']
     }
   }
 });
