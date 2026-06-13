@@ -23,16 +23,21 @@ Every widget lives in its own subdirectory under `/widgets/`:
 ```text
 widgets/
   [name]/
-    [name].go                 # Backend Go provider
-    [Name]Widget.svelte       # Frontend Svelte view component
-    README.md                 # Usage documentation and settings schema
+    README.md
+    hub/
+      [name].go               # Widget catalog/runtime/skill entrypoint
+      internal/
+        provider/             # Private provider clients and DTOs, if needed
+    web/
+      [Name]Widget.svelte     # Frontend Svelte view component
+      components/             # Widget-private Svelte components, if needed
 ```
 
 ---
 
 ## 1. Backend Implementation (Go)
 
-Your Go file must define a package named after the widget's kind (e.g. `package weather` in `widgets/weather/weather.go`) and implement the `Widget` interface defined in `widgets/widget.go`:
+Your Hub package must be named after the widget's kind (e.g. `package weather` in `widgets/weather/hub/weather.go`) and implement the `Widget` interface defined in `widgets/widget.go`:
 
 ```go
 type Widget interface {
@@ -67,11 +72,11 @@ func init() {
 ```
 
 ### Server Instantiation (Blank Imports)
-To trigger the widget's `init()` block, add a blank import for your subpackage inside Jute's main entrypoint [main.go](file:///Users/craighutcheon/Repos/Other/jute-dash/apps/hub/cmd/juted/main.go):
+To trigger the widget's `init()` block, add a blank import for your Hub package inside Jute's main entrypoint [main.go](file:///Users/craighutcheon/Repos/Other/jute-dash/apps/hub/cmd/juted/main.go):
 
 ```go
 import (
-	_ "jute-dash/widgets/mywidget"
+	_ "jute-dash/widgets/mywidget/hub"
 )
 ```
 This guarantees dynamic registration upon server boot while preventing Go circular import cycles.
@@ -80,7 +85,7 @@ This guarantees dynamic registration upon server boot while preventing Go circul
 
 ## 2. Frontend Implementation & Svelte Registry
 
-Your Svelte view must be named `[Name]Widget.svelte` (e.g. `WeatherWidget.svelte`).
+Your Svelte view must live under `web/` and be named `[Name]Widget.svelte` (e.g. `widgets/weather/web/WeatherWidget.svelte`).
 
 ### Svelte Widget Registry
 Rather than manually hardcoding components in layouts, all widgets must register their frontend component and prop mapper inside [widget-registry.ts](file:///Users/craighutcheon/Repos/Other/jute-dash/widgets/widget-registry.ts). Each entry maps the widget `kind` to a Svelte component and a `props` mapping function:
@@ -105,10 +110,10 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
 The prop builder receives the database `widget` instance (containing `widget.settings` and `widget.data` payload), a `stale` boolean, and the global chat states.
 
 ### Path Alias Resolution
-To import your Svelte view inside the registry, use the `$widgets` path alias which points to the repository root:
+To import your Svelte view inside the registry, use the `$widgets` path alias and the widget `web/` path:
 
 ```typescript
-import MyWidget from '$widgets/mywidget/MyWidget.svelte';
+import MyWidget from '$widgets/mywidget/web/MyWidget.svelte';
 ```
 
 ### Vite File System Permissions

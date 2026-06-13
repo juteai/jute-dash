@@ -1,17 +1,13 @@
 package applemusic
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 
 	"jute-dash/apps/hub/pkg/widgetskills"
 	"jute-dash/widgets"
+	"jute-dash/widgets/applemusic/hub/internal/provider"
 )
 
 const (
@@ -78,30 +74,6 @@ func (w *AppleMusicWidget) RequiredConnections() []widgets.ConnectionRequirement
 	}}
 }
 
-func (w *AppleMusicWidget) doRequest(
-	ctx context.Context,
-	s Settings,
-	method, urlStr string,
-	body []byte,
-) (*http.Response, error) {
-	var rBody io.Reader
-	if body != nil {
-		rBody = bytes.NewReader(body)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, urlStr, rBody)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", string(s.DeveloperToken)))
-	req.Header.Set("Music-User-Token", string(s.UserToken))
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	return http.DefaultClient.Do(req)
-}
-
 func (w *AppleMusicWidget) FetchData(ctx context.Context, rawSettings map[string]any) (any, error) {
 	slog.Debug( //nolint:sloglint // default permitted for widgets
 		"fetching apple music data",
@@ -115,71 +87,19 @@ func (w *AppleMusicWidget) FetchData(ctx context.Context, rawSettings map[string
 		), nil
 	}
 
-	if string(s.DeveloperToken) == "mock-applemusic" || string(s.DeveloperToken) == "test" {
-		return map[string]any{
-			"track_title": "Mock Track",
-			"artist_name": "Mock Artist",
-			"is_playing":  true,
-		}, nil
-	}
-
-	resp, err := w.doRequest(ctx, s, http.MethodGet, "https://api.music.apple.com/v1/me/player/currently-playing", nil)
+	playback, err := provider.NewClient(providerSettings(s)).FetchPlayback(ctx)
 	if err != nil {
-		return widgets.Unavailable(
-			"apple_music.unavailable",
-			"Apple Music unavailable",
-			"Jute could not reach Apple Music playback.",
-		), nil
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNoContent {
-		return map[string]any{
-			"track_title": "Not Playing",
-			"artist_name": "Unknown",
-			"is_playing":  false,
-		}, nil
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return widgets.Unavailable(
+		return widgets.Unavailable( //nolint:nilerr // provider error is mapped to a safe widget issue
 			"apple_music.unavailable",
 			"Apple Music unavailable",
 			"Jute could not load Apple Music playback.",
 		), nil
 	}
 
-	var responseData struct {
-		Data []struct {
-			Attributes struct {
-				Name       string `json:"name"`
-				ArtistName string `json:"artistName"`
-			} `json:"attributes"`
-		} `json:"data"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
-		return widgets.Unavailable(
-			"apple_music.unavailable",
-			"Apple Music unavailable",
-			"Jute could not read Apple Music playback.",
-		), nil
-	}
-
-	track := "Not Playing"
-	artist := "Unknown"
-	isPlaying := false
-
-	if len(responseData.Data) > 0 {
-		track = responseData.Data[0].Attributes.Name
-		artist = responseData.Data[0].Attributes.ArtistName
-		isPlaying = true
-	}
-
 	return map[string]any{
-		"track_title": track,
-		"artist_name": artist,
-		"is_playing":  isPlaying,
+		"track_title": playback.TrackTitle,
+		"artist_name": playback.ArtistName,
+		"is_playing":  playback.IsPlaying,
 	}, nil
 }
 
@@ -276,32 +196,18 @@ func (w *AppleMusicWidget) InvokeAction(
 		return map[string]any{"status": "ok"}, nil
 	}
 
-	var urlStr string
-	switch actionID {
-	case "play":
-		urlStr = "https://api.music.apple.com/v1/me/player/play"
-	case "pause":
-		urlStr = "https://api.music.apple.com/v1/me/player/pause"
-	case "next":
-		urlStr = "https://api.music.apple.com/v1/me/player/next"
-	case "previous":
-		urlStr = "https://api.music.apple.com/v1/me/player/previous"
-	default:
-		return nil, fmt.Errorf("unknown action: %s", actionID)
-	}
-
-	resp, err := w.doRequest(ctx, s, http.MethodPost, urlStr, nil)
-	if err != nil {
+	if err := provider.NewClient(providerSettings(s)).ApplyAction(ctx, actionID); err != nil {
 		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent &&
-		resp.StatusCode != http.StatusAccepted {
-		return nil, fmt.Errorf("apple music API returned status %d", resp.StatusCode)
 	}
 
 	return map[string]any{"status": "ok"}, nil
+}
+
+func providerSettings(settings Settings) provider.Settings {
+	return provider.Settings{
+		DeveloperToken: string(settings.DeveloperToken),
+		UserToken:      string(settings.UserToken),
+	}
 }
 
 func (w *AppleMusicWidget) InvokeActionWithConnections(

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import PlaybackControls from './components/PlaybackControls.svelte';
+  import TrackSummary from './components/TrackSummary.svelte';
+
   export let data: any = {};
   export let dispatch: (action: string, args?: any) => Promise<any> = async () => {};
 
@@ -17,14 +20,8 @@
 
 <div class="widget-content">
   <div class="player">
-    <div class="info">
-      <p class="track">{trackTitle}</p>
-      <p class="artist">{artistName}</p>
-    </div>
-    <div class="controls">
-      <button on:click={handlePlayPause}>{isPlaying ? '⏸' : '▶'}</button>
-      <button on:click={handleNext}>⏭</button>
-    </div>
+    <TrackSummary title={trackTitle} artist={artistName} />
+    <PlaybackControls {isPlaying} onPlayPause={handlePlayPause} onNext={handleNext} />
   </div>
 </div>
 
@@ -40,25 +37,5 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-  }
-  .track {
-    font-weight: bold;
-    font-size: 0.9rem;
-  }
-  .artist {
-    color: var(--muted);
-    font-size: 0.8rem;
-  }
-  .controls {
-    display: flex;
-    gap: 16px;
-    justify-content: center;
-  }
-  .controls button {
-    background: none;
-    border: none;
-    font-size: 1.2rem;
-    cursor: pointer;
-    color: var(--foreground);
   }
 </style>

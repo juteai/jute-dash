@@ -65,7 +65,7 @@ Start with the architecture docs before making product changes:
 
 - All widgets are native Svelte components contributed to `widgets/` via fork and PR.
 - All widgets must render inside the standard `WidgetFrame` contract defined by Display UX.
-- Each widget declares its identity, settings schema, and optional agent skill in `widget.yaml`.
+- Each widget declares its identity, settings schema, connection requirements, and optional agent skill in its `widgets/{kind}/hub` Go package. Widget manifests are future work, not a current runtime contract.
 - Widget permissions must be explicit, user-visible, and revocable.
 - Agent-visible widget context, prompts, and actions must come from Widget Skills.
 - Widget-owned agent actions are invoked through the hub skill registry, not direct MCP-to-widget calls.

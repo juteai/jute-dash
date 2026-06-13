@@ -55,23 +55,37 @@ flowchart TD
 All widgets live in the unified **monorepo widgets library** under the root `widgets/` directory.
 
 Each widget occupies its own self-contained subfolder containing:
-1. A **Go provider** (`[kind].go`, e.g., `widgets/rss/rss.go`) representing the back-end data aggregator and skill definitions under a subpackage (e.g. `package rss`).
-2. A **Svelte view** (`[Name]Widget.svelte`, e.g., `widgets/rss/RSSWidget.svelte`) rendering the front-end interface.
+1. A **Hub package** (`hub/`, e.g., `widgets/rss/hub`) representing catalog metadata, settings schema, runtime fetching, connection requirements, actions, and skill definitions under a package named for the widget kind.
+2. Optional **private provider code** (`hub/internal/provider/`) for remote APIs, local adapter protocols, token refresh, MQTT clients, and provider DTOs that should not become shared Hub contracts.
+3. A **Svelte view** (`web/[Name]Widget.svelte`, e.g., `widgets/rss/web/RSSWidget.svelte`) rendering the front-end interface. Larger widgets may keep widget-private Svelte components under `web/components/`.
 
 ```text
 widgets/
   datetime/
-    datetime.go
-    DateTimeWidget.svelte
+    hub/
+      datetime.go
+    web/
+      DateTimeWidget.svelte
   rss/
-    rss.go
-    RSSWidget.svelte
+    hub/
+      rss.go
+    web/
+      RSSWidget.svelte
+  spotify/
+    hub/
+      spotify.go
+      internal/
+        provider/
+          provider.go
+    web/
+      SpotifyWidget.svelte
+      components/
 ```
 
 ### Svelte Resolution ($widgets alias)
 Frontend imports resolve outside the Vite project root via the `$widgets` path alias:
 ```typescript
-import RSSWidget from '$widgets/rss/RSSWidget.svelte';
+import RSSWidget from '$widgets/rss/web/RSSWidget.svelte';
 ```
 Vite file system permissions are proactively granted inside `apps/web/vite.config.ts` via `server.fs.allow`.
 
@@ -81,11 +95,11 @@ Backend packages self-register with Jute's catalog and dynamic skill registries 
 To maintain clean and acyclic Go package dependencies (since subpackages import the root `widgets` package to register), all package blank imports are consolidated inside [main.go](file:///Users/craig/Repos/jute-dash/apps/hub/cmd/juted/main.go):
 ```go
 import (
-	_ "jute-dash/widgets/chathistory"
-	_ "jute-dash/widgets/datetime"
-	_ "jute-dash/widgets/markets"
-	_ "jute-dash/widgets/rss"
-	_ "jute-dash/widgets/weather"
+	_ "jute-dash/widgets/chathistory/hub"
+	_ "jute-dash/widgets/datetime/hub"
+	_ "jute-dash/widgets/markets/hub"
+	_ "jute-dash/widgets/rss/hub"
+	_ "jute-dash/widgets/weather/hub"
 )
 ```
 This guarantees that any server context automatically compiles and loads all widgets.

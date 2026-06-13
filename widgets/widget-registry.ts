@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import ChatHistoryWidget from './chathistory/ChatHistoryWidget.svelte';
-import DateTimeWidget from './datetime/DateTimeWidget.svelte';
-import WeatherWidget from './weather/WeatherWidget.svelte';
-import RSSWidget from './rss/RSSWidget.svelte';
-import MarketsWidget from './markets/MarketsWidget.svelte';
-import SpotifyWidget from './spotify/SpotifyWidget.svelte';
-import AppleMusicWidget from './applemusic/AppleMusicWidget.svelte';
-import PhilipsHueWidget from './philipshue/PhilipsHueWidget.svelte';
-import Zigbee2MQTTWidget from './zigbee2mqtt/Zigbee2MQTTWidget.svelte';
+import ChatHistoryWidget from './chathistory/web/ChatHistoryWidget.svelte';
+import DateTimeWidget from './datetime/web/DateTimeWidget.svelte';
+import WeatherWidget from './weather/web/WeatherWidget.svelte';
+import RSSWidget from './rss/web/RSSWidget.svelte';
+import MarketsWidget from './markets/web/MarketsWidget.svelte';
+import SpotifyWidget from './spotify/web/SpotifyWidget.svelte';
+import AppleMusicWidget from './applemusic/web/AppleMusicWidget.svelte';
+import PhilipsHueWidget from './philipshue/web/PhilipsHueWidget.svelte';
+import Zigbee2MQTTWidget from './zigbee2mqtt/web/Zigbee2MQTTWidget.svelte';
 import { chatStore } from '$lib/chatStore';
 import { navigationStore } from '$lib/navigationStore';
 import { dispatchWidgetAction } from '$lib/hubClient';
