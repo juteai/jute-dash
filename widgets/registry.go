@@ -18,6 +18,8 @@ type ActionWidget interface {
 	) (map[string]any, error)
 }
 
+var SaveSettingsHook func(ctx context.Context, instanceID string, settings map[string]any) error
+
 var (
 	registryMu sync.RWMutex
 	instances  = make(map[string]Widget)

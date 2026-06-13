@@ -3,10 +3,13 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -172,6 +175,35 @@ func newServer(
 		activeLayoutStore = dashboard.NewMemoryRepositoryWithLayout(layout)
 	}
 
+	//nolint:reassign // hook is designed to be set by the hub package
+	widgets.SaveSettingsHook = func(ctx context.Context, instanceID string, settings map[string]any) error {
+		if activeLayoutStore == nil {
+			return errors.New("layout store not initialized")
+		}
+		layout, err := activeLayoutStore.WidgetLayout(ctx, "")
+		if err != nil {
+			return err
+		}
+		updated := false
+		for i, widget := range layout.Widgets {
+			if widget.ID == instanceID {
+				if layout.Widgets[i].Settings == nil {
+					layout.Widgets[i].Settings = make(map[string]any)
+				}
+				for k, v := range settings {
+					layout.Widgets[i].Settings[k] = v
+				}
+				updated = true
+				break
+			}
+		}
+		if updated {
+			_, err = activeLayoutStore.SaveWidgetLayout(ctx, layout)
+			return err
+		}
+		return nil
+	}
+
 	activeVoiceStore := voiceStore
 	if activeVoiceStore == nil {
 		activeVoiceStore = voice.NewMemoryRepositoryFromConfig(cfg.Voice)
@@ -303,6 +335,8 @@ func newServer(
 	mux.HandleFunc("/api/widgets/music-player/action", server.handleMusicPlayerAction)
 	mux.HandleFunc("/api/widgets/music-player/select", server.handleMusicPlayerSelect)
 	mux.HandleFunc("/api/widgets/philips-hue/register", server.handleHueRegister)
+	mux.HandleFunc("/api/widgets/spotify/auth", server.handleSpotifyAuth)
+	mux.HandleFunc("/api/widgets/spotify/callback", server.handleSpotifyCallback)
 
 	// Registrations
 	homestate.NewController(
@@ -1193,4 +1227,151 @@ func (s *Server) handleHueRegister(w http.ResponseWriter, r *http.Request) {
 	httphelper.WriteJSON(w, http.StatusOK, map[string]any{
 		"username": username,
 	})
+}
+
+func (s *Server) handleSpotifyAuth(w http.ResponseWriter, r *http.Request) {
+	instanceID := r.URL.Query().Get("instance_id")
+	if instanceID == "" {
+		instanceID = "spotify-widget-1"
+	}
+
+	layout, err := s.layoutStore.WidgetLayout(r.Context(), "")
+	if err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, "failed to load widget layout")
+		return
+	}
+
+	var clientID string
+	for _, widget := range layout.Widgets {
+		if widget.ID == instanceID {
+			if cid, ok := widget.Settings["client_id"].(string); ok {
+				clientID = cid
+			}
+			break
+		}
+	}
+
+	if clientID == "" {
+		httphelper.WriteError(w, http.StatusBadRequest, "Spotify Client ID is not configured in widget settings")
+		return
+	}
+
+	redirectURI := "http://localhost:8787/api/widgets/spotify/callback"
+	authURL := fmt.Sprintf(
+		"https://accounts.spotify.com/authorize?client_id=%s&response_type=code&redirect_uri=%s"+
+			"&scope=user-read-playback-state%%20user-modify-playback-state&state=%s",
+		url.QueryEscape(clientID),
+		url.QueryEscape(redirectURI),
+		url.QueryEscape(instanceID),
+	)
+
+	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+}
+
+func (s *Server) handleSpotifyCallback(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	instanceID := r.URL.Query().Get("state")
+
+	if code == "" || instanceID == "" {
+		httphelper.WriteError(w, http.StatusBadRequest, "missing code or state in callback")
+		return
+	}
+
+	layout, err := s.layoutStore.WidgetLayout(r.Context(), "")
+	if err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, "failed to load layout")
+		return
+	}
+
+	var clientID, clientSecret string
+	for _, widget := range layout.Widgets {
+		if widget.ID == instanceID {
+			if cid, ok := widget.Settings["client_id"].(string); ok {
+				clientID = cid
+			}
+			if secret, ok := widget.Settings["client_secret"].(string); ok {
+				clientSecret = secret
+			}
+			break
+		}
+	}
+
+	if clientID == "" || clientSecret == "" {
+		httphelper.WriteError(w, http.StatusBadRequest, "Spotify credentials not found in settings")
+		return
+	}
+
+	redirectURI := "http://localhost:8787/api/widgets/spotify/callback"
+	tokenURL := "https://accounts.spotify.com/api/token" //nolint:gosec // URL is not a secret credential
+
+	data := url.Values{}
+	data.Set("grant_type", "authorization_code")
+	data.Set("code", code)
+	data.Set("redirect_uri", redirectURI)
+
+	req, err := http.NewRequestWithContext(
+		r.Context(),
+		http.MethodPost,
+		tokenURL,
+		strings.NewReader(data.Encode()),
+	)
+	if err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	authHeader := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", clientID, clientSecret)))
+	req.Header.Set("Authorization", fmt.Sprintf("Basic %s", authHeader))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errData map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&errData)
+		httphelper.WriteError(w, http.StatusBadRequest, fmt.Sprintf("Spotify returned error: %v", errData))
+		return
+	}
+
+	var tokenResp struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int64  `json:"expires_in"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	expiresAt := time.Now().Unix() + tokenResp.ExpiresIn
+
+	updated := false
+	for i, widget := range layout.Widgets {
+		if widget.ID == instanceID {
+			if layout.Widgets[i].Settings == nil {
+				layout.Widgets[i].Settings = make(map[string]any)
+			}
+			layout.Widgets[i].Settings["access_token"] = tokenResp.AccessToken
+			if tokenResp.RefreshToken != "" {
+				layout.Widgets[i].Settings["refresh_token"] = tokenResp.RefreshToken
+			}
+			layout.Widgets[i].Settings["expires_at"] = expiresAt
+			updated = true
+			break
+		}
+	}
+
+	if updated {
+		if _, err := s.layoutStore.SaveWidgetLayout(r.Context(), layout); err != nil {
+			httphelper.WriteError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
