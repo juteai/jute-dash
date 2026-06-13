@@ -1,4 +1,5 @@
 <script lang="ts">
+  export let instanceId: string = '';
   export let data: any = {};
   export let dispatch: (action: string, args?: any) => Promise<any> = async () => {};
 
@@ -24,13 +25,17 @@
     const vol = parseInt((e.target as HTMLInputElement).value, 10);
     await dispatch('set_volume', { volume: vol });
   }
+
+  function handleConnect() {
+    window.location.href = `/api/widgets/spotify/auth?instance_id=${instanceId}`;
+  }
 </script>
 
 <div class="widget-content">
   {#if !isConfigured}
     <div class="unconfigured">
       <p class="title">Spotify</p>
-      <button class="connect-btn" on:click={() => dispatch('connect')}>Connect Spotify</button>
+      <button class="connect-btn" on:click={handleConnect}>Connect Spotify</button>
     </div>
   {:else}
     <div class="player">

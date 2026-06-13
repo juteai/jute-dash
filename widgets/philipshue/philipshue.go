@@ -108,6 +108,7 @@ func (w *PhilipsHueWidget) FetchData(ctx context.Context, rawSettings map[string
 	if s.BridgeIP == "" || string(s.Username) == "" {
 		return map[string]any{
 			"is_configured": false,
+			"bridge_ip":     s.BridgeIP,
 		}, nil
 	}
 

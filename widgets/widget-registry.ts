@@ -106,6 +106,7 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   'spotify': {
     component: SpotifyWidget,
     props: ({ widget, stale }) => ({
+      instanceId: widget.id,
       data: widget.data ?? {
         is_configured: false,
         track_title: 'Not Playing',
@@ -128,6 +129,7 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   'apple-music': {
     component: AppleMusicWidget,
     props: ({ widget, stale }) => ({
+      instanceId: widget.id,
       data: widget.data ?? {
         is_configured: false,
         track_title: 'Not Playing',
@@ -149,6 +151,7 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   'philips-hue': {
     component: PhilipsHueWidget,
     props: ({ widget, stale }) => ({
+      instanceId: widget.id,
       data: widget.data ?? {
         is_configured: false,
         devices: []
