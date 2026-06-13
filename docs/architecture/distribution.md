@@ -52,12 +52,14 @@ Raspberry Pi support targets 64-bit Raspberry Pi OS first.
 
 ### Local Development
 
-Run hub and display separately for fast iteration:
+Run the local stack for fast iteration:
 
 ```sh
-go run ./cmd/juted -config examples/config/local/config.yaml
-cd apps/web && npm run dev
+cd examples/config/local
+make run
 ```
+
+The local stack serves the development display at `https://localhost:5173` for browser APIs that require a secure context. Spotify OAuth uses the hub callback `http://127.0.0.1:8787/api/v1/integrations/spotify/callback` because Spotify requires explicit loopback IP redirect URIs for local HTTP callbacks and rejects `localhost`. Plain HTTP remains available through `make run-http` from `examples/config/local` for non-OAuth UI testing.
 
 ### Single Binary
 

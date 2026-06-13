@@ -78,18 +78,19 @@ type Config struct {
 }
 
 type WidgetInstance struct {
-	ID       string         `json:"id"`
-	Kind     string         `json:"kind"`
-	Title    string         `json:"title"`
-	X        int            `json:"x"`
-	Y        int            `json:"y"`
-	W        int            `json:"w"`
-	H        int            `json:"h"`
-	Visible  bool           `json:"visible"`
-	Mode     string         `json:"mode,omitempty"`
-	Size     string         `json:"size"`
-	Settings map[string]any `json:"settings"`
-	Data     any            `json:"data,omitempty"`
+	ID             string            `json:"id"`
+	Kind           string            `json:"kind"`
+	Title          string            `json:"title"`
+	X              int               `json:"x"`
+	Y              int               `json:"y"`
+	W              int               `json:"w"`
+	H              int               `json:"h"`
+	Visible        bool              `json:"visible"`
+	Mode           string            `json:"mode,omitempty"`
+	Size           string            `json:"size"`
+	Settings       map[string]any    `json:"settings"`
+	ConnectionRefs map[string]string `json:"connectionRefs,omitempty"`
+	Data           any               `json:"data,omitempty"`
 }
 
 // rendersTile reports whether a present widget instance draws a visible tile.

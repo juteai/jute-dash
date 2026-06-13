@@ -13,9 +13,10 @@ import (
 
 // RouteContext encapsulates context and Jute-specific display dependencies for MCP handlers.
 type RouteContext struct {
-	Context  context.Context
-	Snapshot widgetskills.Snapshot
-	Display  DisplayActions
+	Context          context.Context
+	Snapshot         widgetskills.Snapshot
+	Display          DisplayActions
+	ActionDispatcher WidgetActionDispatcher
 }
 
 // ResourceRoute defines the interface for an MCP resource route.
@@ -329,12 +330,30 @@ func (juteSkillInvokeActionTool) InputSchema() map[string]any {
 	}, []string{"skillId", "actionId"})
 }
 func (juteSkillInvokeActionTool) Call(ctx RouteContext, args map[string]any) (any, error) {
+	skillID := stringArg(args, "skillId")
+	widgetID := stringArg(args, "widgetInstanceId")
+	actionID := stringArg(args, "actionId")
+	if ctx.ActionDispatcher != nil {
+		skill, err := widgetskills.FindSkill(ctx.Snapshot, skillID, widgetID)
+		if err != nil {
+			return nil, err
+		}
+		confirmed, _ := args["confirmed"].(bool)
+		return ctx.ActionDispatcher.InvokeWidgetAction(
+			ctx.Context,
+			skill.WidgetInstanceID,
+			actionID,
+			args,
+			"mcp",
+			confirmed,
+		)
+	}
 	return widgetskills.InvokeAction(
 		ctx.Context,
 		ctx.Snapshot,
-		stringArg(args, "skillId"),
-		stringArg(args, "widgetInstanceId"),
-		stringArg(args, "actionId"),
+		skillID,
+		widgetID,
+		actionID,
 		args,
 	)
 }

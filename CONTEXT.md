@@ -47,12 +47,12 @@ A specific placement of a Widget on the Dashboard, with its own position, settin
 _Avoid_: widget slot, tile instance
 
 **Widget Skill**:
-The agent-facing capability declaration for a Widget. Defined statically in the widget's `widget.yaml` manifest. Describes what context the Widget exposes, what actions the Hub can perform on its behalf, and what prompts help an Agent use it. The Hub reads Widget Skill manifests at startup and surfaces them through the MCP Bridge.
+The agent-facing capability declaration for a Widget. Currently defined statically in the widget's Go package under `widgets/{kind}/hub` by returning a `*widgetskills.Definition` from `Skill()`. Describes what context the Widget exposes, what actions the Hub can perform on its behalf, and what prompts help an Agent use it. The Hub reads registered Widget Skill declarations at startup and surfaces them through the MCP Bridge.
 _Avoid_: widget capability, widget tool, widget plugin
 
-**`widget.yaml`**:
-The manifest file for a Widget, committed alongside its Svelte source in `widgets/`. Contains identity, settings schema, and the Widget Skill declaration (`agentSkill`).
-_Avoid_: widget.json, widget manifest (use `widget.yaml`)
+**Widget Declaration**:
+The current runtime declaration of a Widget's identity, settings schema, Adapter Connection requirements, and optional Widget Skill. It lives in Go under `widgets/{kind}/hub`; manifest files such as `widget.yaml` are future work, not the current source of truth.
+_Avoid_: widget.yaml (when describing current runtime behavior), widget.json
 
 ### Themes and customization
 

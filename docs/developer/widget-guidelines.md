@@ -8,6 +8,14 @@ There are no sandboxed iframes, manifests, or postMessage message protocols. Eve
 
 ---
 
+## Collaboration Model
+
+Widgets should remain self-contained contributions for provider behavior, non-secret settings schema, Widget Skill declaration, Display view, docs, and tests. Shared runtime concerns belong to the hub: Adapter Connections, secret references, safe issue mapping, connection health, normalized runtime payloads, and action dispatch.
+
+This keeps fork-and-PR widget contribution practical without copying credential storage, setup, or policy code into every Integration Widget.
+
+---
+
 ## Widget Folder Structure
 
 Every widget lives in its own subdirectory under `/widgets/`:
@@ -15,16 +23,21 @@ Every widget lives in its own subdirectory under `/widgets/`:
 ```text
 widgets/
   [name]/
-    [name].go                 # Backend Go provider
-    [Name]Widget.svelte       # Frontend Svelte view component
-    README.md                 # Usage documentation and settings schema
+    README.md
+    hub/
+      [name].go               # Widget catalog/runtime/skill entrypoint
+      internal/
+        provider/             # Private provider clients and DTOs, if needed
+    web/
+      [Name]Widget.svelte     # Frontend Svelte view component
+      components/             # Widget-private Svelte components, if needed
 ```
 
 ---
 
 ## 1. Backend Implementation (Go)
 
-Your Go file must define a package named after the widget's kind (e.g. `package weather` in `widgets/weather/weather.go`) and implement the `Widget` interface defined in `widgets/widget.go`:
+Your Hub package must be named after the widget's kind (e.g. `package weather` in `widgets/weather/hub/weather.go`) and implement the `Widget` interface defined in `widgets/widget.go`:
 
 ```go
 type Widget interface {
@@ -35,13 +48,15 @@ type Widget interface {
 	CatalogInfo() WidgetCatalogItem
 
 	// FetchData gathers and aggregates the latest state/payload for this widget.
-	// It is passed the widget's custom settings from the YAML file.
+	// It is passed the widget's non-secret custom settings.
 	FetchData(ctx context.Context, settings map[string]any) (any, error)
 
 	// Skill returns the optional agent-facing skill metadata. Returns nil if visual-only.
 	Skill() *widgetskills.Definition
 }
 ```
+
+Simple widgets can implement only `Widget`. Integration Widgets that need credentials or provider accounts should also implement the optional connection-aware interfaces in `widgets/widget.go`, declare typed `ConnectionRequirements` in `CatalogInfo()`, and receive resolved connection material from the hub. Do not use widget settings for raw credentials, OAuth tokens, bridge users, API keys, or MQTT passwords.
 
 ### Self-Registration
 During `init()`, register your widget with the global registry. For widgets with agent-facing skills, use `RegisterWithSkill` to register both the widget and its skill context function:
@@ -57,11 +72,11 @@ func init() {
 ```
 
 ### Server Instantiation (Blank Imports)
-To trigger the widget's `init()` block, add a blank import for your subpackage inside Jute's main entrypoint [main.go](file:///Users/craighutcheon/Repos/Other/jute-dash/apps/hub/cmd/juted/main.go):
+To trigger the widget's `init()` block, add a blank import for your Hub package inside Jute's main entrypoint [main.go](file:///Users/craighutcheon/Repos/Other/jute-dash/apps/hub/cmd/juted/main.go):
 
 ```go
 import (
-	_ "jute-dash/widgets/mywidget"
+	_ "jute-dash/widgets/mywidget/hub"
 )
 ```
 This guarantees dynamic registration upon server boot while preventing Go circular import cycles.
@@ -70,7 +85,7 @@ This guarantees dynamic registration upon server boot while preventing Go circul
 
 ## 2. Frontend Implementation & Svelte Registry
 
-Your Svelte view must be named `[Name]Widget.svelte` (e.g. `WeatherWidget.svelte`).
+Your Svelte view must live under `web/` and be named `[Name]Widget.svelte` (e.g. `widgets/weather/web/WeatherWidget.svelte`).
 
 ### Svelte Widget Registry
 Rather than manually hardcoding components in layouts, all widgets must register their frontend component and prop mapper inside [widget-registry.ts](file:///Users/craighutcheon/Repos/Other/jute-dash/widgets/widget-registry.ts). Each entry maps the widget `kind` to a Svelte component and a `props` mapping function:
@@ -95,10 +110,10 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
 The prop builder receives the database `widget` instance (containing `widget.settings` and `widget.data` payload), a `stale` boolean, and the global chat states.
 
 ### Path Alias Resolution
-To import your Svelte view inside the registry, use the `$widgets` path alias which points to the repository root:
+To import your Svelte view inside the registry, use the `$widgets` path alias and the widget `web/` path:
 
 ```typescript
-import MyWidget from '$widgets/mywidget/MyWidget.svelte';
+import MyWidget from '$widgets/mywidget/web/MyWidget.svelte';
 ```
 
 ### Vite File System Permissions
@@ -109,6 +124,19 @@ Because widgets live outside the SvelteKit project directory (`apps/web`), Vite 
 ## 3. Widget Settings Generation
 
 Jute Dash automatically generates settings forms in the settings sheet UI using the widget's Go `CatalogInfo().SettingsSchema`. Developers do not need to write form markup.
+
+Settings schema fields are for non-secret per-instance configuration only. If a widget needs a provider account, bridge, broker, or other credential-backed setup, add a typed Adapter Connection requirement instead. The widget settings sheet links the widget instance's `connectionRefs` to shared Adapter Connections created in Settings `Connections`.
+
+### Adapter Connection Fields
+
+Connection requirements may include typed setup fields for Settings `Connections`:
+
+- non-secret fields such as `bridge_ip`, `client_id`, or `mqtt_url` go in Adapter Connection `settings`;
+- secret fields such as `username`, `access_token`, or `mqtt_password` go in Adapter Connection `secretRefs`;
+- `required` is authoritative and is validated by the hub resolver before widget runtime/action code runs;
+- optional secret references may be omitted, but if a reference is present it must resolve successfully inside the hub.
+
+Resolved secret material exists only in Hub memory. Integration Widgets receive it through `FetchDataWithConnections` and `InvokeActionWithConnections`; they must not copy it into widget settings, snapshots, display payloads, logs, A2A context, MCP context, or public config projections.
 
 ### Supported Field Types
 Map your configuration using the `SettingFieldType` enums defined in `widgets/widget.go`:
@@ -131,10 +159,14 @@ If your widget is agent-visible, define its `Skill()` return structure to declar
 
 *Note: Never expose secrets, OAuth credentials, raw database rows, or private metadata inside your widget's context fields.*
 
+Actions must be declared in the Widget Skill and invoked through the unified widget action dispatcher. Set `sideEffect` and `requiresConfirmation` deliberately; those fields drive policy for Display, MCP, and agent actors.
+
 ---
 
 ## 5. UI & Styling Guidelines
 
+- **Shared Widget Primitives First**: Use the Display-owned primitives in `apps/web/src/lib/components/widget-content/` for common widget structure before writing custom CSS. Lists, list items, empty states, section headers, meta rows, badges, action buttons, and value rows should come from these primitives unless the widget has a genuinely unique visualization.
+- **Shared Integration Controls**: Integration Widgets should use `apps/web/src/lib/components/integration-controls/` for media controls, volume controls, device lists, toggles, and sensor values. Provider-specific Svelte should map payloads and actions into those Display controls rather than restyling controls locally.
 - **Theme Compliance & CSS Variables**: Use Jute Theme Pack tokens rather than hardcoded hex colors. Widgets inherit the display root's CSS custom properties down the DOM cascade. You should use the following inherited variables inside your Svelte `<style>` blocks:
   - `var(--foreground)`: Default text color.
   - `var(--muted)`: Secondary/de-emphasized text color.
@@ -148,6 +180,7 @@ If your widget is agent-visible, define its `Skill()` return structure to declar
 - **Widget Chrome**: Design for `solid`, `clear`, `smoked`, `frosted`, and `auto` host chrome modes. Do not assume an opaque widget background.
 - **Hover Micro-Animations**: Use smooth CSS transitions (`transition-all`, `hover:scale-[1.01]`) to make interactions feel premium and responsive.
 - **Grids & Layouts**: Design the Svelte component to fit cleanly inside the standard `WidgetFrame` at all supported grid sizes. Expose a clean empty or loading state when data is unavailable.
+- **Visual Smoke Coverage**: New or changed widget visuals should remain legible in the browser smoke harness at `/__visual__` across light/dark mode, `solid`/`smoked` chrome, desktop/phone widths, and ok/empty/stale/unavailable states.
 
 Visual customization rules are defined in [Visual Customization](../architecture/visual-customization.md). Widgets should leave frame background, transparency, blur, border, and background blending to `WidgetFrame`.
 
@@ -167,13 +200,13 @@ flowchart TD
     end
 
     subgraph Go Hub Backend
-        G[SQLite DB] -->|stores layouts & settings| H["Widget Registry (widgets/registry.go)"]
+    G[SQLite DB] -->|stores layouts, settings, connection refs| H["Widget Registry (widgets/registry.go)"]
         H -->|instantiates| I["Go Widget Code"]
         I -->|implements CatalogInfo| F
         I -->|FetchData| J["Data State Payload"]
         J -->|JSON REST API| C
-        K["Agent (A2A / MCP)"] -->|invokes action| L["widgetskills Registry"]
-        L -->|dispatches| M["ActionWidget (InvokeAction)"]
+        K["Agent (A2A / MCP)"] -->|invokes action| L["Unified Action Dispatcher"]
+        L -->|resolves refs + policy| M["Connection-Aware ActionWidget"]
         M -->|executes commands| I
     end
 ```
@@ -183,9 +216,10 @@ flowchart TD
 ## Contribution Checklist
 
 When contributing a new widget:
-1. **Directory**: Create `widgets/[name]/` containing `[name].go` and `[Name]Widget.svelte`.
+1. **Directory**: Create `widgets/[name]/` containing `hub/`, `web/`, and a README. Put private provider code under `hub/internal/provider/` when needed.
 2. **Dynamic Boot**: Blank import your package inside `apps/hub/cmd/juted/main.go`.
 3. **Dashboard Mapping**: Import and register the component and its props inside [widget-registry.ts](file:///Users/craighutcheon/Repos/Other/jute-dash/widgets/widget-registry.ts).
 4. **Documentation**: Write a `README.md` inside your widget folder detailing its kind, supported sizes, and custom settings schemas.
-5. **Visual Verification**: Check the widget in light and dark mode, and with at least `solid` and `smoked` widget chrome.
-6. **Quality Verification**: Run `make check` to verify Go compilation, backend package tests (`go test ./...`), and SvelteKit type checks (`make web-check`).
+5. **Connections**: For Integration Widgets, declare required Adapter Connections and test with resolved connection input rather than raw credential settings.
+6. **Visual Verification**: Run the browser smoke suite or manually check the `/__visual__` harness in light and dark mode, and with at least `solid` and `smoked` widget chrome.
+7. **Quality Verification**: Run `make check` to verify Go compilation, backend package tests (`go test ./...`), and SvelteKit type checks (`make web-check`).

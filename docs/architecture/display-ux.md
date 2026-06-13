@@ -111,6 +111,7 @@ Initial sections:
 - `Household`: home name, timezone, locale, theme, weather enablement, location, coordinates, and units;
 - `Rooms`: editable room IDs, names, summaries, and simple status text;
 - `Tiles`: editable dashboard tile IDs, kinds, labels, values, and details;
+- `Connections`: shared Adapter Connections for Integration Widgets, including non-secret adapter settings and secret references;
 - `Agents`: add an agent by Agent Card URL, enable or disable agents, remove agents, and refresh Agent Cards;
 - `MCP`: read-only bridge status and startup configuration summary;
 - `Voice`: read-only voice/provider status until provider selection is implemented;
@@ -152,6 +153,7 @@ Persisted widget layout fields (all coordinates are on the **12-column base grid
 - `size`: named size such as `small`, `medium`, `wide`, or `large`;
 - `mode`: `ui` (renders a tile) or `headless` (no tile; still fetches data and feeds the agent — see [Widgets](widgets.md));
 - `settings`: non-secret widget settings;
+- `connectionRefs`: typed references from declared widget connection slots to shared Adapter Connection IDs;
 - `visible`: whether the widget instance exists on the current profile (a removed widget sets `visible: false`; this is distinct from `mode`).
 
 Layouts stored before the 12-column grid (4-column coordinates) are migrated on load by scaling `x`/`w` ×3.
@@ -208,7 +210,7 @@ Edit mode UI:
 
 - direct manipulation is primary: drag a tile to move, drag its corner to resize, snapping to the 12-column base grid;
 - per-tile controls collapse into a single overflow (⋯) menu offering Configure, Make headless / Restore to dashboard, and Remove — not a cluster of always-visible buttons;
-- Configure opens the schema-driven widget settings sheet (see [Widgets](widgets.md)); it includes frame settings (title, chrome, size) and the `ui`/`headless` toggle;
+- Configure opens the schema-driven widget settings sheet (see [Widgets](widgets.md)); it includes frame settings (title, chrome, size), the `ui`/`headless` toggle, non-secret widget settings, and connection selectors for declared Adapter Connection requirements;
 - headless instances do not appear on the grid; edit mode shows a **headless tray** listing them as chips for configure/restore/remove;
 - arrow/size keyboard nudges remain available as a focus-visible accessibility fallback, not as always-visible buttons;
 - show a subtle grid overlay;

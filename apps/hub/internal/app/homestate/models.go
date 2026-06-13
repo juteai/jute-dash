@@ -149,6 +149,17 @@ func (AdapterConnectionDB) TableName() string {
 	return "adapter_connections"
 }
 
+type AdapterConnection struct {
+	ID         string            `json:"id"`
+	Kind       string            `json:"kind"`
+	Name       string            `json:"name"`
+	Settings   map[string]any    `json:"settings"`
+	SecretRefs map[string]string `json:"secretRefs,omitempty"`
+	Enabled    bool              `json:"enabled"`
+	CreatedAt  string            `json:"createdAt,omitempty"`
+	UpdatedAt  string            `json:"updatedAt,omitempty"`
+}
+
 type SettingAuditLogDB struct {
 	ID           uint   `gorm:"primaryKey;autoIncrement;column:id"`
 	Actor        string `gorm:"column:actor"`

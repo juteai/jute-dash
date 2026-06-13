@@ -177,13 +177,15 @@ function createLayoutStore() {
     saveWidgetConfig: (patch: {
       title: string;
       settings: Record<string, unknown>;
+      connectionRefs: Record<string, string>;
       mode: 'ui' | 'headless';
     }) => {
       update((s) => {
         if (!s.draftLayout || !s.configuringWidgetId) return s;
         let next = editorUpdateWidget(s.draftLayout, s.configuringWidgetId, {
           title: patch.title,
-          settings: patch.settings
+          settings: patch.settings,
+          connectionRefs: patch.connectionRefs
         });
         next = editorSetWidgetMode(next, s.configuringWidgetId, patch.mode);
         return {

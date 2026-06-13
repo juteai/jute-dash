@@ -49,12 +49,24 @@ type DisplayActions interface {
 	FocusWidget(widgetInstanceID, reason string) (displayactions.FocusWidget, error)
 }
 
+type WidgetActionDispatcher interface {
+	InvokeWidgetAction(
+		ctx context.Context,
+		widgetInstanceID string,
+		actionID string,
+		arguments map[string]any,
+		actor string,
+		confirmed bool,
+	) (map[string]any, error)
+}
+
 type Handler struct {
 	cfg     Config
 	version string
 
-	provider SnapshotProvider
-	display  DisplayActions
+	provider         SnapshotProvider
+	display          DisplayActions
+	actionDispatcher WidgetActionDispatcher
 }
 
 func NewHandler(
@@ -68,6 +80,22 @@ func NewHandler(
 		actionSink = display[0]
 	}
 	return &Handler{cfg: cfg, version: version, provider: provider, display: actionSink}
+}
+
+func NewHandlerWithActions(
+	cfg Config,
+	version string,
+	provider SnapshotProvider,
+	display DisplayActions,
+	actionDispatcher WidgetActionDispatcher,
+) http.Handler {
+	return &Handler{
+		cfg:              cfg,
+		version:          version,
+		provider:         provider,
+		display:          display,
+		actionDispatcher: actionDispatcher,
+	}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -217,9 +245,10 @@ func (h *Handler) readResource(ctx context.Context, r *http.Request, uri string)
 				return nil, missingScope(route.Scope())
 			}
 			routeCtx := RouteContext{
-				Context:  ctx,
-				Snapshot: snapshot,
-				Display:  h.display,
+				Context:          ctx,
+				Snapshot:         snapshot,
+				Display:          h.display,
+				ActionDispatcher: h.actionDispatcher,
 			}
 			val, err := route.Read(routeCtx, uri)
 			if err != nil {
@@ -261,9 +290,10 @@ func (h *Handler) callTool(ctx context.Context, r *http.Request, req toolCallPar
 				return nil, missingScope(route.Scope())
 			}
 			routeCtx := RouteContext{
-				Context:  ctx,
-				Snapshot: snapshot,
-				Display:  h.display,
+				Context:          ctx,
+				Snapshot:         snapshot,
+				Display:          h.display,
+				ActionDispatcher: h.actionDispatcher,
 			}
 			val, err := route.Call(routeCtx, req.Arguments)
 			if err != nil {
@@ -312,9 +342,10 @@ func (h *Handler) getPrompt(
 				return nil, missingScope(route.Scope())
 			}
 			routeCtx := RouteContext{
-				Context:  ctx,
-				Snapshot: snapshot,
-				Display:  h.display,
+				Context:          ctx,
+				Snapshot:         snapshot,
+				Display:          h.display,
+				ActionDispatcher: h.actionDispatcher,
 			}
 			text, err := route.Get(routeCtx, name, arguments)
 			if err != nil {

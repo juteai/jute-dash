@@ -42,7 +42,7 @@ func TestInitializeMigratesAndSeedsEmptyDB(t *testing.T) {
 	assertCount(t, st, "household_settings", 1)
 	assertCount(t, st, "device_profiles", 1)
 	assertCount(t, st, "layout_profiles", 1)
-	assertCount(t, st, "widget_instances", 3)
+	assertCount(t, st, "widget_instances", 4)
 	assertCount(t, st, "voice_settings", 1)
 
 	cfg := result.Config.(config.Config)
@@ -413,10 +413,10 @@ func TestWidgetLayoutReturnsSeededWidgets(t *testing.T) {
 	if layout.ProfileID != defaultLayoutProfileID {
 		t.Fatalf("unexpected profile ID: %q", layout.ProfileID)
 	}
-	if len(layout.Widgets) != 3 {
-		t.Fatalf("expected 3 widgets, got %+v", layout.Widgets)
+	if len(layout.Widgets) != 4 {
+		t.Fatalf("expected 4 widgets, got %+v", layout.Widgets)
 	}
-	wantKinds := []string{"date-time", "weather", "chat-history"}
+	wantKinds := []string{"date-time", "weather", "chat-history", "spotify"}
 	for i, want := range wantKinds {
 		if layout.Widgets[i].Kind != want {
 			t.Fatalf("widget %d kind = %q, want %q", i, layout.Widgets[i].Kind, want)
@@ -555,7 +555,7 @@ func TestResetWidgetLayoutRestoresDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResetWidgetLayout() error = %v", err)
 	}
-	if len(reset.Widgets) != 3 || !reset.Widgets[0].Visible || reset.Widgets[0].X != 0 {
+	if len(reset.Widgets) != 4 || !reset.Widgets[0].Visible || reset.Widgets[0].X != 0 {
 		t.Fatalf("unexpected reset layout: %+v", reset)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"jute-dash/apps/hub/internal/app/dashboard"
 	"jute-dash/apps/hub/internal/app/filesync"
 	"jute-dash/apps/hub/internal/app/homestate"
+	"jute-dash/apps/hub/internal/app/secrets"
 	"jute-dash/apps/hub/internal/app/voice"
 	"jute-dash/apps/hub/internal/pkg/database"
 
@@ -32,6 +33,7 @@ type Store struct {
 	syncer        filesync.Syncer
 	DashboardRepo *dashboard.Repository
 	HomestateRepo *homestate.Repository
+	SecretVault   *secrets.Vault
 	VoiceRepo     *voice.Repository
 }
 
@@ -47,6 +49,7 @@ func Open(dbPath string, log *slog.Logger) (*Store, error) {
 	s.DashboardRepo.SetConfigStore(s)
 	s.HomestateRepo = homestate.NewRepository(s.DB())
 	s.HomestateRepo.SetOnSave(s.triggerSync)
+	s.SecretVault = secrets.NewVault(s.DB(), secrets.NewKeyringMasterKeyProvider())
 	s.VoiceRepo = voice.NewRepository(s.DB())
 	return s, nil
 }
@@ -175,6 +178,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 		&voice.ProviderPackDB{},
 		&voice.SettingsDB{},
 		&homestate.AdapterConnectionDB{},
+		&secrets.SecretDB{},
 		&homestate.SettingAuditLogDB{},
 		&appMetaDB{},
 	); err != nil {
@@ -344,24 +348,26 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 		}
 
 		for i, widget := range layout.Widgets {
+			connectionRefsJSON := mustJSONString(widget.ConnectionRefs)
 			wDB := dashboard.WidgetInstanceDB{
-				ID:              widget.ID,
-				Kind:            widget.Kind,
-				Title:           widget.Title,
-				LayoutProfileID: homestate.DefaultLayoutProfileID,
-				X:               widget.X,
-				Y:               widget.Y,
-				W:               widget.W,
-				H:               widget.H,
-				MinW:            widget.MinW,
-				MinH:            widget.MinH,
-				Size:            widget.Size,
-				Mode:            widget.Mode,
-				SettingsJSON:    mustJSONString(widget.Settings),
-				Visible:         boolToInt(widget.Visible),
-				SortOrder:       i,
-				CreatedAt:       now,
-				UpdatedAt:       now,
+				ID:                 widget.ID,
+				Kind:               widget.Kind,
+				Title:              widget.Title,
+				LayoutProfileID:    homestate.DefaultLayoutProfileID,
+				X:                  widget.X,
+				Y:                  widget.Y,
+				W:                  widget.W,
+				H:                  widget.H,
+				MinW:               widget.MinW,
+				MinH:               widget.MinH,
+				Size:               widget.Size,
+				Mode:               widget.Mode,
+				SettingsJSON:       mustJSONString(widget.Settings),
+				ConnectionRefsJSON: connectionRefsJSON,
+				Visible:            boolToInt(widget.Visible),
+				SortOrder:          i,
+				CreatedAt:          now,
+				UpdatedAt:          now,
 			}
 			if err := tx.Create(&wDB).Error; err != nil {
 				return fmt.Errorf("seed widget %s: %w", widget.ID, err)
@@ -511,19 +517,20 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 		widgets := make([]dashboard.DashboardWidgetConfig, 0, len(layout.Widgets))
 		for _, w := range layout.Widgets {
 			widgets = append(widgets, dashboard.DashboardWidgetConfig{
-				ID:       w.ID,
-				Type:     w.Kind,
-				Title:    w.Title,
-				X:        w.X,
-				Y:        w.Y,
-				W:        w.W,
-				H:        w.H,
-				MinW:     w.MinW,
-				MinH:     w.MinH,
-				Size:     w.Size,
-				Visible:  w.Visible,
-				Mode:     w.Mode,
-				Settings: w.Settings,
+				ID:             w.ID,
+				Type:           w.Kind,
+				Title:          w.Title,
+				X:              w.X,
+				Y:              w.Y,
+				W:              w.W,
+				H:              w.H,
+				MinW:           w.MinW,
+				MinH:           w.MinH,
+				Size:           w.Size,
+				Visible:        w.Visible,
+				Mode:           w.Mode,
+				Settings:       w.Settings,
+				ConnectionRefs: w.ConnectionRefs,
 			})
 		}
 		cfg.Dashboard.Widgets = widgets

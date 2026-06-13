@@ -84,6 +84,7 @@ export function clampWidget(widget: WidgetInstance): void {
   widget.size = sizeFromDimensions(widget.w, widget.h);
   widget.mode = widget.mode === 'headless' ? 'headless' : 'ui';
   widget.settings = widget.settings ?? {};
+  widget.connectionRefs = widget.connectionRefs ?? {};
 }
 
 export function packLayout(layout: WidgetLayout, activeId = ''): WidgetLayout {
@@ -183,6 +184,7 @@ export function addWidget(
       size: item.defaultSize,
       mode,
       settings: {},
+      connectionRefs: {},
       visible: true
     };
     next.widgets = [...next.widgets, widget];
@@ -335,7 +337,9 @@ export function setWidgetMode(
 export function updateWidget(
   layout: WidgetLayout,
   widgetId: string,
-  patch: Partial<Pick<WidgetInstance, 'title' | 'settings' | 'mode'>>
+  patch: Partial<
+    Pick<WidgetInstance, 'title' | 'settings' | 'connectionRefs' | 'mode'>
+  >
 ): WidgetLayout {
   const next = cloneLayout(layout);
   const widget = next.widgets.find((item) => item.id === widgetId);
@@ -347,6 +351,9 @@ export function updateWidget(
   }
   if (patch.settings !== undefined) {
     widget.settings = patch.settings;
+  }
+  if (patch.connectionRefs !== undefined) {
+    widget.connectionRefs = patch.connectionRefs;
   }
   if (patch.mode !== undefined) {
     widget.mode = patch.mode;

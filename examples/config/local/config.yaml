@@ -61,7 +61,7 @@ dashboard:
           type: date-time
           title: Clock
           x: 0
-          "y": 0
+          'y': 0
           w: 4
           h: 2
           min-w: 3
@@ -76,7 +76,7 @@ dashboard:
           type: weather
           title: Local Weather
           x: 8
-          "y": 0
+          'y': 0
           w: 4
           h: 2
           min-w: 3
@@ -93,8 +93,8 @@ dashboard:
         - id: assistant-chat
           type: chat-history
           title: Concierge Chat
-          x: 0
-          "y": 3
+          x: 8
+          'y': 6
           w: 4
           h: 3
           min-w: 3
@@ -105,8 +105,8 @@ dashboard:
         - id: hacker-news
           type: rss
           title: Tech News
-          x: 8
-          "y": 3
+          x: 4
+          'y': 6
           w: 4
           h: 3
           min-w: 3
@@ -122,8 +122,8 @@ dashboard:
         - id: stocks-watchlist
           type: markets
           title: Markets
-          x: 4
-          "y": 3
+          x: 0
+          'y': 6
           w: 4
           h: 3
           min-w: 3
@@ -136,6 +136,18 @@ dashboard:
                 - AAPL
                 - GOOG
                 - symbol: BTC-USD
+        - id: spotify
+          type: spotify
+          title: Spotify
+          x: 0
+          'y': 4
+          w: 6
+          h: 2
+          min-w: 4
+          min-h: 2
+          size: medium
+          visible: true
+          mode: ui
 agents:
     - id: mock-agent
       name: Mock Agent

@@ -218,7 +218,7 @@ func weatherContext(snapshot widgetskills.Snapshot, instanceID string) map[strin
 		if widget.ID != instanceID {
 			continue
 		}
-		switch state := widget.Data.(type) {
+		switch state := widgets.PayloadData(widget.Data).(type) {
 		case State:
 			return weatherStateContext(state)
 		case map[string]any:

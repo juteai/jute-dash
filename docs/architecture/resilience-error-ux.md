@@ -150,7 +150,22 @@ Minimum display behavior:
 - avoid showing stale data as if it were live;
 - keep stale styling subtle and readable.
 
-Weather already includes `updatedAt` and `status`. Future home, agent, voice, and widget payloads should follow the same pattern.
+Hydrated widget payloads use `{ status, issue?, updatedAt?, data? }`. `WidgetFrame` renders `issue.title`, `issue.message`, and safe issue actions when present. Provider-specific raw errors, stack traces, credential names, full URLs, and secret references must be mapped to safe issue codes and copy before reaching the display.
+
+Weather already includes `updatedAt` and `status`. Home, agent, voice, and Integration Widget payloads should follow the same pattern.
+
+## Widget Setup And Connection Issues
+
+Missing, disabled, mismatched, incomplete, or unhealthy Adapter Connections are single-widget setup issues unless they affect a global flow. The hub resolver returns the first safe issue in declared requirement order, before provider runtime/action code runs. The display should show the issue inline in `WidgetFrame` and point the user to Settings `Connections` or the widget settings sheet.
+
+Recommended copy:
+
+```text
+Connection needed
+Choose a shared Adapter Connection for this widget.
+```
+
+The display must not infer setup state from ad hoc provider fields such as `is_configured`. The normalized `status` and safe `issue` are authoritative.
 
 ## Agent Availability
 

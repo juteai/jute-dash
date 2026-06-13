@@ -80,7 +80,7 @@ The first bundled Theme Packs are:
 - `github`: GitHub-inspired practical light and dark modes;
 - `everforest`: Everforest-inspired soft green and warm neutral light and dark modes.
 
-These themes are repo data under `themes/[theme-id]/`. The Svelte display currently ships a matching built-in token registry for these IDs; future work can replace that with generated or runtime-loaded Theme Pack tokens.
+These themes are repo data under `themes/[theme-id]/`. The Svelte display reads the bundled Theme Pack JSON files and converts their mode tokens into Display CSS custom properties, falling back to `jute-mono` for unknown themes, missing modes, or missing tokens.
 
 ## Display Configuration
 
@@ -200,11 +200,12 @@ Widget authors may declare preferred or unsupported chrome modes in their widget
 
 ## Token Application
 
-The display app should apply Theme Packs by converting theme tokens into CSS custom properties at the display root.
+The display app applies Theme Packs by converting `themes/[theme-id]/theme.json` mode tokens into CSS custom properties at the display root.
 
 Rules:
 
 - all components consume stable CSS variables, not hard-coded theme IDs;
+- Theme Pack JSON is the Display token source; duplicated hard-coded token registries are avoided;
 - `WidgetFrame` owns widget chrome classes and background blending;
 - chat, settings, modals, banners, and widget frames share the same token source;
 - reduced motion and high contrast are applied globally before widget-specific styling;

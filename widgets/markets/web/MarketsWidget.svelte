@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { TrendingUp, TrendingDown, DollarSign } from 'lucide-svelte';
+  import { TrendingUp, TrendingDown, DollarSign } from "lucide-svelte";
+  import {
+    WidgetEmptyState,
+    WidgetList,
+    WidgetListItem,
+    WidgetStack,
+  } from "$lib/components/widget-content";
 
   export let data: any = null;
   export let stale = false;
@@ -8,36 +14,34 @@
   $: tickers = Array.isArray(data) ? data : [];
 
   function formatPrice(price: number, currency: string) {
-    if (price == null) return '—';
-    const formatter = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency || 'USD',
+    if (price == null) return "—";
+    const formatter = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency || "USD",
       minimumFractionDigits: price < 10 ? 4 : 2,
-      maximumFractionDigits: price < 10 ? 4 : 2
+      maximumFractionDigits: price < 10 ? 4 : 2,
     });
     return formatter.format(price);
   }
 
   function formatPercent(pct: number) {
-    if (pct == null) return '0.00%';
-    const prefix = pct >= 0 ? '+' : '';
+    if (pct == null) return "0.00%";
+    const prefix = pct >= 0 ? "+" : "";
     return `${prefix}${pct.toFixed(2)}%`;
   }
 </script>
 
-<div class="markets-widget" class:stale>
+<WidgetStack {stale}>
   {#if tickers.length === 0}
-    <div class="markets-empty">
-      <DollarSign class="empty-icon" size={32} />
-      <span>No tickers configured</span>
-    </div>
+    <WidgetEmptyState message="No tickers configured">
+      <DollarSign slot="icon" size={32} />
+    </WidgetEmptyState>
   {:else}
-    <div class="tickers-list">
+    <WidgetList>
       {#each tickers as ticker}
-        <button
-          type="button"
+        <WidgetListItem
           class="ticker-item"
-          class:ticker-item--clickable={!!onQueryAgent}
+          clickable={!!onQueryAgent}
           on:click={() => onQueryAgent?.(ticker.symbol)}
           disabled={stale}
         >
@@ -70,85 +74,19 @@
               {/if}
             </div>
           </div>
-        </button>
+        </WidgetListItem>
       {:else}
         <div class="markets-no-data">No tickers loaded</div>
       {/each}
-    </div>
+    </WidgetList>
   {/if}
-</div>
+</WidgetStack>
 
 <style>
-  .markets-widget {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    width: 100%;
-    overflow: hidden;
-  }
-
-  .stale {
-    opacity: 0.6;
-    pointer-events: none;
-  }
-
-  .markets-empty {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    color: var(--muted);
-    padding: clamp(8px, 4cqmin, 16px);
-  }
-
-  :global(.markets-widget .empty-icon) {
-    margin-bottom: 8px;
-    opacity: 0.3;
-  }
-
-  .markets-empty span {
-    font-size: var(--widget-body-size);
-  }
-
-  .tickers-list {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: clamp(6px, 3cqmin, 12px);
-    padding-right: 4px;
-    user-select: none;
-  }
-
-  .ticker-item {
+  :global(.ticker-item) {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: clamp(6px, 3cqmin, 10px);
-    border-radius: 8px;
-    background: var(--surface-muted);
-    border: 1px solid var(--border);
-    transition: all 0.2s ease;
-    text-align: left;
-    width: 100%;
-    color: inherit;
-    font: inherit;
-  }
-
-  .ticker-item--clickable {
-    cursor: pointer;
-  }
-
-  .ticker-item--clickable:hover:not(:disabled) {
-    transform: scale(1.01);
-    border-color: var(--border-strong);
-    background: var(--surface-strong);
-  }
-
-  .ticker-item:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: -1px;
   }
 
   .ticker-info {
@@ -226,17 +164,5 @@
     font-size: clamp(0.6rem, 4cqmin, 0.75rem);
     color: var(--muted);
     font-style: italic;
-  }
-
-  :global(.widget-frame--medium) .markets-widget {
-    font-size: var(--widget-body-size);
-  }
-
-  :global(.widget-frame--medium) .markets-widget :global(.text-xs) {
-    font-size: 0.72rem;
-  }
-
-  :global(.widget-frame--medium) .markets-widget :global(.text-sm) {
-    font-size: 0.85rem;
   }
 </style>

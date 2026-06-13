@@ -288,6 +288,19 @@ func ApplyDefaults(cfg *Config) {
 				Size:    "medium",
 				Visible: true,
 			},
+			{
+				ID:      "spotify-widget-1",
+				Type:    "spotify",
+				Title:   "Spotify",
+				X:       6,
+				Y:       1,
+				W:       6,
+				H:       2,
+				MinW:    4,
+				MinH:    2,
+				Size:    "wide",
+				Visible: true,
+			},
 		}
 	}
 	for i := range cfg.Agents {

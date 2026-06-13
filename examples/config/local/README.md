@@ -17,6 +17,18 @@ To run the Hub and the web dashboard without starting any agent:
 make run
 ```
 
+The local stack serves the dashboard over HTTPS by default at:
+
+```text
+https://localhost:5173
+```
+
+The browser may ask you to accept the local self-signed certificate the first time. This default supports local OAuth flows such as Spotify without extra setup. For non-OAuth UI testing over plain HTTP, run:
+
+```sh
+make run-http
+```
+
 ### Running with a Specific Agent
 Each target starts the local Jute stack and launches the respective agent module from `examples/agents/` in parallel:
 
