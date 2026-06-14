@@ -1,5 +1,7 @@
 # Specification - Live Integrations (Spotify, Apple Music, Philips Hue, Zigbee2MQTT)
 
+> Historical planning artifact. Superseded by [ADR 0003](../../adr/0003-connection-aware-integration-widgets.md), [Widgets](../../architecture/widgets.md), [Widget Skills](../../architecture/widget-skills.md), and [Widget Developer Guidelines](../../developer/widget-guidelines.md). Do not treat the paths, credential-through-settings examples, aggregate widget language, or legacy payload shapes below as current runtime architecture.
+
 This specification outlines the technical design for introducing real, functional backend integrations for the four modular widgets (`spotify`, `apple-music`, `philips-hue`, `zigbee2mqtt`), replacing the temporary stubs.
 
 ---

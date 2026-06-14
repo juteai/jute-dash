@@ -188,7 +188,7 @@ func (d *Dispatcher) InvokeWidgetAction(
 
 func findWidget(layout dashboard.WidgetLayout, instanceID string) *dashboard.WidgetInstance {
 	for i := range layout.Widgets {
-		if layout.Widgets[i].ID == instanceID {
+		if layout.Widgets[i].ID == instanceID && layout.Widgets[i].Visible {
 			return &layout.Widgets[i]
 		}
 	}

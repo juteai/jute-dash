@@ -1,5 +1,7 @@
 # Modular Widgets (Spotify, Apple Music, Philips Hue, Zigbee2MQTT) Implementation Plan
 
+> Historical planning artifact. Superseded by [ADR 0003](../../adr/0003-connection-aware-integration-widgets.md), [Widgets](../../architecture/widgets.md), [Widget Skills](../../architecture/widget-skills.md), and [Widget Developer Guidelines](../../developer/widget-guidelines.md). Do not treat the paths, credential-through-settings examples, aggregate widget language, or legacy payload shapes below as current runtime architecture.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Cleanly decompose monolithic widgets into four dedicated integrations (Spotify, Apple Music, Philips Hue, and Zigbee2MQTT) while removing all previous mock/simulation code from both the hub and the Svelte frontend views.

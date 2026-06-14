@@ -137,6 +137,19 @@ func TestDispatcherValidatesActionRequests(t *testing.T) {
 			wantIssue:  "widget.not_found",
 		},
 		{
+			name: "removed instance",
+			dispatcher: NewDispatcher(fakeLayoutStore{layout: dashboard.WidgetLayout{
+				Widgets: []dashboard.WidgetInstance{{
+					ID:      "widget-1",
+					Kind:    testWidgetKind,
+					Visible: false,
+				}},
+			}}, successResolver, nil),
+			request:    Request{WidgetInstanceID: "widget-1", ActionID: "do"},
+			wantStatus: http.StatusNotFound,
+			wantIssue:  "widget.not_found",
+		},
+		{
 			name:       "missing action",
 			dispatcher: NewDispatcher(fakeLayoutStore{layout: layout}, successResolver, nil),
 			request:    Request{WidgetInstanceID: "widget-1", ActionID: "missing"},

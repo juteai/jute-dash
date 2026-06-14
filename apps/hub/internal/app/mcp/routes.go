@@ -325,14 +325,14 @@ type juteSkillInvokeActionTool struct{}
 func (juteSkillInvokeActionTool) Name() string  { return "jute_skill_invoke_action" }
 func (juteSkillInvokeActionTool) Title() string { return "Invoke Widget Skill Action" }
 func (juteSkillInvokeActionTool) Description() string {
-	return "Invoke an exact declared Widget Skill action through the hub. Call jute_skill_list first; do not invent generic skill IDs such as music_player."
+	return "Invoke an exact declared Widget Skill action through the hub. Call jute_skill_list first; do not invent generic skill IDs such as music_player, stocks, shares, or market_prices."
 }
 func (juteSkillInvokeActionTool) Scope() string { return agents.MCPScopeSkillsActionInvoke }
 func (juteSkillInvokeActionTool) InputSchema() map[string]any {
 	return objectSchema(map[string]any{
 		"skillId": map[string]any{
 			"type":        "string",
-			"description": "Exact Widget Skill ID returned by jute_skill_list, for example jute.spotify.control.",
+			"description": "Exact Widget Skill ID returned by jute_skill_list, for example jute.spotify.control or jute.markets.current.",
 		},
 		"widgetInstanceId": map[string]any{
 			"type":        "string",

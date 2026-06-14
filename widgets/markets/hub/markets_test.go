@@ -160,6 +160,12 @@ func TestMarketsWidget_SkillDeclaresNaturalMarketActions(t *testing.T) {
 	if actions["query_share"].Title != "Query share price" {
 		t.Fatalf("unexpected query_share action: %+v", actions["query_share"])
 	}
+	if len(skill.Prompts) != 1 || skill.Prompts[0].ID != "market_price_lookup" {
+		t.Fatalf("expected market price lookup prompt, got %+v", skill.Prompts)
+	}
+	if !strings.Contains(skill.Prompts[0].Purpose, "do not invent symbols") {
+		t.Fatalf("expected prompt to guide safe market lookups, got %q", skill.Prompts[0].Purpose)
+	}
 }
 
 func TestMarketsWidget_ParseSettings(t *testing.T) {

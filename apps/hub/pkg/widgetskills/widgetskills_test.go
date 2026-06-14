@@ -42,6 +42,22 @@ func TestHiddenWidgetsAreOmitted(t *testing.T) {
 	}
 }
 
+func TestHeadlessWidgetsExposeSkillsWithoutVisibleWidgetTiles(t *testing.T) {
+	registerTestSkill()
+	snapshot := testSnapshot()
+	snapshot.Layout.Widgets[0].Mode = "headless"
+
+	skills := Available(snapshot)
+	visible := VisibleWidgetsSnapshot(snapshot)
+
+	if len(skills) != 1 || skills[0].WidgetInstanceID != "test-widget" {
+		t.Fatalf("headless widget should still expose its skill, got %+v", skills)
+	}
+	if len(visible.Widgets) != 0 {
+		t.Fatalf("headless widget should not render a visible tile, got %+v", visible.Widgets)
+	}
+}
+
 func TestSkillContextUsesRegisteredContext(t *testing.T) {
 	registerTestSkill()
 
@@ -188,6 +204,23 @@ func TestWidgetSkillsDoesNotHardCodeBuiltInWidgets(t *testing.T) {
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("widgetskills.go should stay generic; found forbidden reference %q", forbidden)
+		}
+	}
+}
+
+func TestHomeAssistantGuidanceRoutesMarketRequestsThroughWidgetSkills(t *testing.T) {
+	guidance := HomeAssistantGuidance()
+	for _, want := range []string{
+		"stocks, shares, crypto, commodities, or market-price requests",
+		"jute_skill_list",
+		"visible Markets Widget Skill",
+		"query_stock",
+		"query_share",
+		"query_crypto",
+		"query_ticker",
+	} {
+		if !strings.Contains(guidance, want) {
+			t.Fatalf("expected market guidance to contain %q, got %q", want, guidance)
 		}
 	}
 }

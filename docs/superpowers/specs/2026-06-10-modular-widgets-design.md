@@ -1,5 +1,7 @@
 # Design Spec: Modular Widgets Integration (Spotify, Apple Music, Philips Hue, Zigbee2MQTT)
 
+> Historical planning artifact. Superseded by [ADR 0003](../../adr/0003-connection-aware-integration-widgets.md), [Widgets](../../architecture/widgets.md), [Widget Skills](../../architecture/widget-skills.md), and [Widget Developer Guidelines](../../developer/widget-guidelines.md). Do not treat the paths, credential-through-settings examples, aggregate widget language, or legacy payload shapes below as current runtime architecture.
+
 We are refactoring the monolithic `music-player` and `smart-home` widgets into four dedicated, specific widgets. This maximizes modularity, keeps settings schemas highly focused, and simplifies backend API calls.
 
 ## Directory & File Refactoring

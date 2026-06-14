@@ -256,4 +256,4 @@ Jute Dash acts as a secure firewall between home data and remote agents.
 
 * **Loopback Bindings:** By default, all local services (including the Hub API and the MCP bridge) bind to `127.0.0.1`.
 * **Redaction Rules:** Raw Go errors, database stack traces, token strings, credentials, secret references, and full remote URLs containing query parameters must **never** be exposed in the client DOM or user-facing logs.
-* **A2A Context Redaction:** Only authorized and safe dashboard widgets, layouts, and settings mapped explicitly by `widget.yaml` manifests may be packaged and sent to conversation agents.
+* **A2A Context Redaction:** Only authorized and safe dashboard widgets, layouts, and settings mapped explicitly by Hub-owned Widget Skill declarations may be packaged and sent to conversation agents. Widget manifests such as `widget.yaml` are future work, not the current runtime contract.

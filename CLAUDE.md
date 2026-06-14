@@ -67,7 +67,7 @@ Key docs:
 ## Widget Rules
 
 - All widgets are native Svelte components contributed to `widgets/` via fork and PR.
-- Each widget declares its identity, settings schema, and optional agent-facing skill in `widget.yaml`.
+- Each widget declares its identity, settings schema, Adapter Connection requirements, and optional agent-facing skill in its `widgets/{kind}/hub` Go package. Widget manifests such as `widget.yaml` are future work, not the current runtime contract.
 - Expose agent context, prompts, and actions only through Widget Skills.
 - Invoke widget-owned agent actions through the hub skill registry, not direct MCP-to-widget calls.
 - Keep permissions explicit and revocable.

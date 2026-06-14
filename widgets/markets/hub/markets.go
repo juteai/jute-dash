@@ -267,6 +267,13 @@ func (w *MarketsWidget) Skill() *widgetskills.Definition {
 				"Query Yahoo Finance for detailed price and quote information of a cryptocurrency ticker symbol such as BTC-USD or ETH-USD.",
 			),
 		},
+		Prompts: []widgetskills.Prompt{
+			{
+				ID:      "market_price_lookup",
+				Title:   "Look up market prices",
+				Purpose: "For stock, share, crypto, commodity, or ticker questions, list visible Widget Skills, choose this Markets widget instance, then invoke a declared query action with the user's ticker symbol. Use widget context for the current watchlist and do not invent symbols, prices, or aggregate stock-market skill IDs.",
+			},
+		},
 		SupportedWidgetSizes: []string{"medium", "wide", "large"},
 	}
 }
