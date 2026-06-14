@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -19,9 +22,20 @@ import (
 
 type RSSWidget struct {
 	client   *http.Client
+	resolver hostResolver
 	cacheMu  sync.Mutex
 	cache    map[string]rssCacheEntry
 	cacheTTL time.Duration
+}
+
+type hostResolver interface {
+	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
+}
+
+type defaultHostResolver struct{}
+
+func (defaultHostResolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error) {
+	return net.DefaultResolver.LookupIPAddr(ctx, host)
 }
 
 type rssCacheEntry struct {
@@ -158,12 +172,17 @@ func (w *RSSWidget) FetchData(ctx context.Context, raw map[string]any) (any, err
 		}
 		w.cacheMu.Unlock()
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
+		safeFeedURL, err := w.safeFetchURL(ctx, feedURL)
 		if err != nil {
 			continue
 		}
 
-		resp, err := w.client.Do(req)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, safeFeedURL, nil)
+		if err != nil {
+			continue
+		}
+
+		resp, err := w.safeHTTPClient(w.client).Do(req)
 		if err != nil {
 			continue
 		}
@@ -315,7 +334,16 @@ func (w *RSSWidget) InvokeAction(
 		return nil, errors.New("query parameter is required")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	articleURL, err := w.resolveArticleURL(ctx, snapshot, instanceID, url)
+	if err != nil {
+		return nil, err
+	}
+	safeArticleURL, err := w.safeFetchURL(ctx, articleURL)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, safeArticleURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -325,7 +353,7 @@ func (w *RSSWidget) InvokeAction(
 	if w.client == nil {
 		w.client = &http.Client{Timeout: 4 * time.Second}
 	}
-	client := w.client
+	client := w.safeHTTPClient(w.client)
 	w.cacheMu.Unlock()
 
 	resp, err := client.Do(req)
@@ -355,10 +383,203 @@ func (w *RSSWidget) InvokeAction(
 
 	return map[string]any{
 		"status":    "completed",
-		"title":     "Article content from " + url,
+		"title":     "Article content from " + articleURL,
 		"content":   cleanedText,
 		"updatedAt": time.Now().UTC().Format(time.RFC3339Nano),
 	}, nil
+}
+
+func (w *RSSWidget) resolveArticleURL(
+	ctx context.Context,
+	snapshot widgetskills.Snapshot,
+	instanceID string,
+	requestedURL string,
+) (string, error) {
+	requestedURL = strings.TrimSpace(requestedURL)
+	if requestedURL == "" {
+		return "", errors.New("url parameter is required")
+	}
+
+	for _, widget := range snapshot.Layout.Widgets {
+		if widget.ID != instanceID {
+			continue
+		}
+
+		for _, link := range articleLinksFromData(widget.Data) {
+			if articleURLsMatch(link, requestedURL) {
+				return link, nil
+			}
+		}
+
+		data, err := w.FetchData(ctx, widget.Settings)
+		if err != nil {
+			return "", err
+		}
+		for _, link := range articleLinksFromData(data) {
+			if articleURLsMatch(link, requestedURL) {
+				return link, nil
+			}
+		}
+		return "", errors.New("article URL is not available from this RSS widget")
+	}
+	return "", errors.New("widget instance not found")
+}
+
+func articleLinksFromData(data any) []string {
+	switch typed := data.(type) {
+	case []RSSFeedResult:
+		links := make([]string, 0)
+		for _, feed := range typed {
+			for _, item := range feed.Items {
+				if strings.TrimSpace(item.Link) != "" {
+					links = append(links, item.Link)
+				}
+			}
+		}
+		return links
+	case []any:
+		links := make([]string, 0)
+		for _, feed := range typed {
+			links = append(links, articleLinksFromFeedMap(feed)...)
+		}
+		return links
+	case []map[string]any:
+		links := make([]string, 0)
+		for _, feed := range typed {
+			links = append(links, articleLinksFromFeedMap(feed)...)
+		}
+		return links
+	default:
+		return nil
+	}
+}
+
+func articleLinksFromFeedMap(feed any) []string {
+	feedMap, ok := feed.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	switch items := feedMap["items"].(type) {
+	case []any:
+		links := make([]string, 0, len(items))
+		for _, item := range items {
+			if link := articleLinkFromItemMap(item); link != "" {
+				links = append(links, link)
+			}
+		}
+		return links
+	case []map[string]any:
+		links := make([]string, 0, len(items))
+		for _, item := range items {
+			if link := articleLinkFromItemMap(item); link != "" {
+				links = append(links, link)
+			}
+		}
+		return links
+	default:
+		return nil
+	}
+}
+
+func articleLinkFromItemMap(item any) string {
+	itemMap, ok := item.(map[string]any)
+	if !ok {
+		return ""
+	}
+	link, _ := itemMap["link"].(string)
+	return strings.TrimSpace(link)
+}
+
+func articleURLsMatch(candidate string, requested string) bool {
+	return strings.TrimSpace(candidate) == strings.TrimSpace(requested)
+}
+
+func (w *RSSWidget) safeFetchURL(ctx context.Context, rawURL string) (string, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return "", errors.New("url is required")
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid url: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", errors.New("url must use http or https")
+	}
+	if parsed.User != nil {
+		return "", errors.New("url must not include credentials")
+	}
+
+	host := parsed.Hostname()
+	if host == "" {
+		return "", errors.New("url host is required")
+	}
+	if strings.Contains(host, "%") {
+		return "", errors.New("url host must not include an IPv6 zone")
+	}
+
+	if ip, err := netip.ParseAddr(host); err == nil {
+		if !isSafeOutboundIP(ip) {
+			return "", errors.New("url resolves to a restricted network")
+		}
+		return parsed.String(), nil
+	}
+
+	resolved, err := w.hostResolver().LookupIPAddr(ctx, host)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve url host: %w", err)
+	}
+	if len(resolved) == 0 {
+		return "", errors.New("url host did not resolve")
+	}
+
+	for _, resolvedIP := range resolved {
+		addr, ok := netip.AddrFromSlice(resolvedIP.IP)
+		if !ok || !isSafeOutboundIP(addr.Unmap()) {
+			return "", errors.New("url resolves to a restricted network")
+		}
+	}
+
+	return parsed.String(), nil
+}
+
+func (w *RSSWidget) hostResolver() hostResolver {
+	if w.resolver != nil {
+		return w.resolver
+	}
+	return defaultHostResolver{}
+}
+
+func isSafeOutboundIP(ip netip.Addr) bool {
+	return ip.IsValid() &&
+		ip.IsGlobalUnicast() &&
+		!ip.IsPrivate() &&
+		!ip.IsLoopback() &&
+		!ip.IsLinkLocalUnicast() &&
+		!ip.IsLinkLocalMulticast() &&
+		!ip.IsMulticast() &&
+		!ip.IsUnspecified()
+}
+
+func (w *RSSWidget) safeHTTPClient(client *http.Client) *http.Client {
+	if client == nil {
+		client = &http.Client{Timeout: 4 * time.Second}
+	}
+
+	safeClient := *client
+	previousRedirectPolicy := safeClient.CheckRedirect
+	safeClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if _, err := w.safeFetchURL(req.Context(), req.URL.String()); err != nil {
+			return err
+		}
+		if previousRedirectPolicy != nil {
+			return previousRedirectPolicy(req, via)
+		}
+		return nil
+	}
+	return &safeClient
 }
 
 func (w *RSSWidget) invokeRefresh(

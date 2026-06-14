@@ -3,7 +3,9 @@ package rss
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -16,6 +18,47 @@ type mockRoundTripper func(req *http.Request) (*http.Response, error)
 
 func (f mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+type staticHostResolver map[string][]string
+
+func (r staticHostResolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error) {
+	ips, ok := r[host]
+	if !ok {
+		return nil, &net.DNSError{Err: "no such host", Name: host}
+	}
+	resolved := make([]net.IPAddr, 0, len(ips))
+	for _, ip := range ips {
+		resolved = append(resolved, net.IPAddr{IP: net.ParseIP(ip)})
+	}
+	return resolved, nil
+}
+
+func publicResolverFor(hosts ...string) staticHostResolver {
+	resolver := staticHostResolver{}
+	for _, host := range hosts {
+		resolver[host] = []string{"93.184.216.34"}
+	}
+	return resolver
+}
+
+func rssSnapshotWithArticle(link string) widgetskills.Snapshot {
+	return widgetskills.Snapshot{
+		Layout: widgetskills.WidgetLayout{
+			Widgets: []widgetskills.WidgetInstance{{
+				ID:      "inst1",
+				Kind:    "rss",
+				Visible: true,
+				Data: []RSSFeedResult{{
+					FeedName: "Example",
+					Items: []RSSItemResult{{
+						Title: "Example article",
+						Link:  link,
+					}},
+				}},
+			}},
+		},
+	}
 }
 
 func TestRSSWidget_FetchData(t *testing.T) {
@@ -41,6 +84,7 @@ func TestRSSWidget_FetchData(t *testing.T) {
 
 	w := &RSSWidget{
 		client:   client,
+		resolver: publicResolverFor("example.com"),
 		cache:    make(map[string]rssCacheEntry),
 		cacheTTL: 5 * time.Minute,
 	}
@@ -110,7 +154,8 @@ func TestRSSWidget_InvokeAction_ReadArticle(t *testing.T) {
 	}
 
 	w := &RSSWidget{
-		client: client,
+		client:   client,
+		resolver: publicResolverFor("example.com"),
 	}
 
 	// 1. Test missing url arg
@@ -122,7 +167,7 @@ func TestRSSWidget_InvokeAction_ReadArticle(t *testing.T) {
 	// 2. Test reading full page (truncated to 6000)
 	res, err := w.InvokeAction(
 		context.Background(),
-		widgetskills.Snapshot{},
+		rssSnapshotWithArticle("https://example.com/article"),
 		"inst1",
 		"read_article",
 		map[string]any{
@@ -142,7 +187,7 @@ func TestRSSWidget_InvokeAction_ReadArticle(t *testing.T) {
 	// 3. Test reading with grep filter query
 	resGrep, err := w.InvokeAction(
 		context.Background(),
-		widgetskills.Snapshot{},
+		rssSnapshotWithArticle("https://example.com/article"),
 		"inst1",
 		"read_article",
 		map[string]any{
@@ -163,7 +208,7 @@ func TestRSSWidget_InvokeAction_ReadArticle(t *testing.T) {
 
 	resExplicitGrep, err := w.InvokeAction(
 		context.Background(),
-		widgetskills.Snapshot{},
+		rssSnapshotWithArticle("https://example.com/article"),
 		"inst1",
 		"grep_article",
 		map[string]any{
@@ -188,7 +233,8 @@ func TestRSSWidget_InvokeAction_Refresh(t *testing.T) {
 </channel>
 </rss>`
 	w := &RSSWidget{
-		cache: make(map[string]rssCacheEntry),
+		cache:    make(map[string]rssCacheEntry),
+		resolver: publicResolverFor("example.com"),
 		client: &http.Client{
 			Transport: mockRoundTripper(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
@@ -249,7 +295,8 @@ func TestRSSWidget_ParseSettings(t *testing.T) {
 func TestRSSWidget_FetchData_EdgeCases(t *testing.T) {
 	// 1. Empty feed URL
 	w := &RSSWidget{
-		cache: make(map[string]rssCacheEntry),
+		cache:    make(map[string]rssCacheEntry),
+		resolver: publicResolverFor("cached-url", "fail-do-url", "bad-xml-url"),
 	}
 	settings := map[string]any{
 		"feeds": []any{
@@ -353,16 +400,29 @@ func TestRSSWidget_InvokeAction_EdgeCases(t *testing.T) {
 			}, nil
 		}),
 	}
-	_, err = w.InvokeAction(context.Background(), widgetskills.Snapshot{}, "inst1", "read_article", map[string]any{
-		"url": "https://example.com/notfound",
-	})
+	w.resolver = publicResolverFor("example.com")
+	_, err = w.InvokeAction(
+		context.Background(),
+		rssSnapshotWithArticle("https://example.com/notfound"),
+		"inst1",
+		"read_article",
+		map[string]any{
+			"url": "https://example.com/notfound",
+		},
+	)
 	if err == nil {
 		t.Error("expected error for non-200 HTTP status")
 	}
 
-	_, err = w.InvokeAction(context.Background(), widgetskills.Snapshot{}, "inst1", "grep_article", map[string]any{
-		"url": "https://example.com/article",
-	})
+	_, err = w.InvokeAction(
+		context.Background(),
+		rssSnapshotWithArticle("https://example.com/article"),
+		"inst1",
+		"grep_article",
+		map[string]any{
+			"url": "https://example.com/article",
+		},
+	)
 	if err == nil {
 		t.Error("expected error for grep_article without query")
 	}
@@ -413,5 +473,149 @@ func TestRSSWidget_InvokeAction_EdgeCases(t *testing.T) {
 	skill := w.Skill()
 	if skill.WidgetKind != "rss" {
 		t.Errorf("Skill WidgetKind: %q", skill.WidgetKind)
+	}
+}
+
+func TestRSSWidget_InvokeAction_RequiresArticleFromWidget(t *testing.T) {
+	w := &RSSWidget{
+		resolver: publicResolverFor("example.com"),
+		client: &http.Client{
+			Transport: mockRoundTripper(func(req *http.Request) (*http.Response, error) {
+				t.Fatalf("unexpected outbound request to %s", req.URL.String())
+				return nil, errors.New("unexpected test transport call")
+			}),
+		},
+	}
+
+	_, err := w.InvokeAction(
+		context.Background(),
+		rssSnapshotWithArticle("https://example.com/allowed"),
+		"inst1",
+		"read_article",
+		map[string]any{"url": "https://example.com/not-in-widget"},
+	)
+	if err == nil {
+		t.Fatal("expected article URL outside widget data to be rejected")
+	}
+	if !strings.Contains(err.Error(), "not available") {
+		t.Fatalf("expected widget availability error, got %v", err)
+	}
+}
+
+func TestArticleLinksFromData_JSONProjectedShape(t *testing.T) {
+	links := articleLinksFromData([]map[string]any{
+		{
+			"feedName": "Example",
+			"items": []map[string]any{
+				{"title": "Article", "link": "https://example.com/article"},
+			},
+		},
+	})
+
+	if len(links) != 1 || links[0] != "https://example.com/article" {
+		t.Fatalf("unexpected links: %#v", links)
+	}
+}
+
+func TestRSSWidget_SafeFetchURL(t *testing.T) {
+	tests := []struct {
+		name      string
+		rawURL    string
+		resolver  staticHostResolver
+		wantError string
+	}{
+		{
+			name:     "public host is allowed",
+			rawURL:   "https://example.com/article",
+			resolver: publicResolverFor("example.com"),
+		},
+		{
+			name:      "bad scheme is rejected",
+			rawURL:    "file:///etc/passwd",
+			resolver:  publicResolverFor("example.com"),
+			wantError: "http or https",
+		},
+		{
+			name:      "credentialed URL is rejected",
+			rawURL:    "https://user:pass@example.com/article",
+			resolver:  publicResolverFor("example.com"),
+			wantError: "credentials",
+		},
+		{
+			name:      "loopback literal is rejected",
+			rawURL:    "http://127.0.0.1/admin",
+			resolver:  publicResolverFor(),
+			wantError: "restricted network",
+		},
+		{
+			name:      "private literal is rejected",
+			rawURL:    "http://10.0.0.5/admin",
+			resolver:  publicResolverFor(),
+			wantError: "restricted network",
+		},
+		{
+			name:      "private DNS result is rejected",
+			rawURL:    "https://internal.example/article",
+			resolver:  staticHostResolver{"internal.example": []string{"192.168.1.10"}},
+			wantError: "restricted network",
+		},
+		{
+			name:      "unknown DNS is rejected",
+			rawURL:    "https://missing.example/article",
+			resolver:  publicResolverFor("example.com"),
+			wantError: "resolve",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := &RSSWidget{resolver: tt.resolver}
+			_, err := w.safeFetchURL(context.Background(), tt.rawURL)
+			if tt.wantError == "" {
+				if err != nil {
+					t.Fatalf("safeFetchURL unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected safeFetchURL error")
+			}
+			if !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantError, err)
+			}
+		})
+	}
+}
+
+func TestRSSWidget_InvokeAction_RejectsUnsafeRedirect(t *testing.T) {
+	w := &RSSWidget{
+		resolver: publicResolverFor("example.com"),
+		client: &http.Client{
+			Transport: mockRoundTripper(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Host == "example.com" {
+					return &http.Response{
+						StatusCode: http.StatusFound,
+						Header:     http.Header{"Location": []string{"http://127.0.0.1/admin"}},
+						Body:       io.NopCloser(strings.NewReader("")),
+					}, nil
+				}
+				t.Fatalf("unexpected redirect follow to %s", req.URL.String())
+				return nil, errors.New("unexpected test transport call")
+			}),
+		},
+	}
+
+	_, err := w.InvokeAction(
+		context.Background(),
+		rssSnapshotWithArticle("https://example.com/article"),
+		"inst1",
+		"read_article",
+		map[string]any{"url": "https://example.com/article"},
+	)
+	if err == nil {
+		t.Fatal("expected unsafe redirect to be rejected")
+	}
+	if !strings.Contains(err.Error(), "restricted network") {
+		t.Fatalf("expected restricted network error, got %v", err)
 	}
 }
