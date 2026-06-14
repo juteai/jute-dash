@@ -3,7 +3,9 @@ module jute-dash
 go 1.25.0
 
 require (
+	github.com/99designs/keyring v1.2.2
 	github.com/a2aproject/a2a-go/v2 v2.3.1
+	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/riverqueue/river v0.39.0
 	github.com/riverqueue/river/riverdriver/riversqlite v0.39.0
 	github.com/stretchr/testify v1.11.1
@@ -15,12 +17,10 @@ require (
 
 require (
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
-	github.com/99designs/keyring v1.2.2 // indirect
 	github.com/a2aproject/a2a-go v0.3.15 // indirect
 	github.com/danieljoos/wincred v1.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dvsekhvalnov/jose2go v1.5.0 // indirect
-	github.com/eclipse/paho.mqtt.golang v1.5.1 // indirect
+	github.com/dvsekhvalnov/jose2go v1.7.0 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
