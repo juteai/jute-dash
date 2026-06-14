@@ -45,6 +45,28 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
+func waitForConfig(
+	t *testing.T,
+	configPath string,
+	matches func(config.Config) bool,
+) config.Config {
+	t.Helper()
+	var reloaded config.Config
+	var err error
+	for range 100 {
+		reloaded, err = LoadConfig(configPath)
+		if err == nil && matches(reloaded) {
+			return reloaded
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	t.Fatalf("config did not reach expected state: %+v", reloaded)
+	return config.Config{}
+}
+
 func TestAgentProxyCORSPreflightAllowsA2AVersionHeader(t *testing.T) {
 	handler := New(testConfig(), "test")
 	req := httptest.NewRequest(http.MethodOptions, "/api/v1/proxy/agents/house", nil)
@@ -305,6 +327,69 @@ func TestHouseholdSettingsEndpointNormalizesAppearanceForYAMLConfig(t *testing.T
 	}
 }
 
+func TestHouseholdSettingsEndpointPersistsRepeatedAppearanceSavesToYAMLConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "jute.yaml")
+	cfg := testConfig()
+	if err := SaveYAML(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+
+	handler := NewServer(
+		cfg,
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		configPath,
+		nil,
+	)
+
+	firstPayload := bytes.NewBufferString(`{
+		"display":{
+			"colorMode":"dark",
+			"background":{"kind":"dynamic","value":"stardust"},
+			"widgetChrome":{"default":"smoked","smokedOpacity":0.4}
+		}
+	}`)
+	firstReq := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", firstPayload)
+	firstRec := httptest.NewRecorder()
+	handler.ServeHTTP(firstRec, firstReq)
+	if firstRec.Code != http.StatusOK {
+		t.Fatalf("expected first status 200, got %d: %s", firstRec.Code, firstRec.Body.String())
+	}
+	waitForConfig(t, configPath, func(cfg config.Config) bool {
+		return cfg.Display.ColorMode == "dark" &&
+			cfg.Display.WidgetChrome.Default == "smoked"
+	})
+
+	secondPayload := bytes.NewBufferString(`{
+		"display":{
+			"colorMode":"light",
+			"background":{"kind":"dynamic","value":"weather-ambient"},
+			"widgetChrome":{"default":"auto"}
+		}
+	}`)
+	secondReq := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", secondPayload)
+	secondRec := httptest.NewRecorder()
+	handler.ServeHTTP(secondRec, secondReq)
+	if secondRec.Code != http.StatusOK {
+		t.Fatalf("expected second status 200, got %d: %s", secondRec.Code, secondRec.Body.String())
+	}
+	reloaded := waitForConfig(t, configPath, func(cfg config.Config) bool {
+		return cfg.Display.ColorMode == "light" &&
+			cfg.Display.Background.Value == "weather-ambient" &&
+			cfg.Display.WidgetChrome.Default == "auto"
+	})
+	if reloaded.Display.ColorMode != "light" ||
+		reloaded.Display.Background.Value != "weather-ambient" ||
+		reloaded.Display.WidgetChrome.Default != "auto" {
+		t.Fatalf("second appearance save was not written to YAML: %+v", reloaded.Display)
+	}
+}
+
 func TestHouseholdSettingsEndpointClearsThemeBackgroundValue(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
@@ -390,10 +475,11 @@ func TestServerStartupPersistsNormalizedLayoutVariantsToYAMLConfig(t *testing.T)
 		nil,
 	)
 
-	reloaded, err := LoadConfig(configPath)
-	if err != nil {
-		t.Fatalf("reload config: %v", err)
-	}
+	reloaded := waitForConfig(t, configPath, func(cfg config.Config) bool {
+		return cfg.Dashboard.SchemaVersion == 2 &&
+			cfg.Dashboard.DefaultVariant != "" &&
+			len(cfg.Dashboard.Variants) > 0
+	})
 	if reloaded.Dashboard.SchemaVersion != 2 {
 		t.Fatalf("schema version was not persisted: %+v", reloaded.Dashboard)
 	}
@@ -579,20 +665,9 @@ func TestRoomAndTileSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 		t.Fatalf("expected tile status 200, got %d: %s", tileRec.Code, tileRec.Body.String())
 	}
 
-	// Poll configPath for changes since syncing is asynchronous
-	var reloaded config.Config
-	var err error
-	for range 100 {
-		reloaded, err = LoadConfig(configPath)
-		if err == nil && len(reloaded.Rooms) == 1 && len(reloaded.Tiles) == 1 {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	if err != nil {
-		t.Fatalf("reload config: %v", err)
-	}
+	reloaded := waitForConfig(t, configPath, func(cfg config.Config) bool {
+		return len(cfg.Rooms) == 1 && len(cfg.Tiles) == 1
+	})
 	if len(reloaded.Rooms) != 1 || reloaded.Rooms[0].ID != "office" {
 		t.Fatalf("unexpected saved rooms: %+v", reloaded.Rooms)
 	}

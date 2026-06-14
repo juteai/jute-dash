@@ -45,6 +45,7 @@ type Server struct {
 	secretStore        secretStore
 	actionDispatcher   *widgetactions.Dispatcher
 	spotifyOAuth       *spotifyOAuthController
+	appleMusic         *appleMusicController
 	turnRunner         *agents.Runner
 	handler            http.Handler
 	mu                 sync.Mutex
@@ -337,6 +338,7 @@ func newServer(
 	)
 	server.actionDispatcher = actionDispatcher
 	server.spotifyOAuth = newSpotifyOAuthController(server)
+	server.appleMusic = newAppleMusicController(server)
 
 	agents.SetEnvReader(os.Getenv)
 	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
@@ -374,6 +376,8 @@ func newServer(
 	mux.HandleFunc("/api/v1/integrations/spotify/auth", server.spotifyOAuth.handleAuth)
 	mux.HandleFunc("/api/v1/integrations/spotify/callback", server.spotifyOAuth.handleCallback)
 	mux.HandleFunc("/api/v1/integrations/spotify/web-playback-token", server.spotifyOAuth.handleWebPlaybackToken)
+	mux.HandleFunc("/api/v1/integrations/apple-music/music-kit-token", server.appleMusic.handleMusicKitToken)
+	mux.HandleFunc("/api/v1/integrations/apple-music/user-token", server.appleMusic.handleUserToken)
 	mux.HandleFunc("/api/v1/widgets/", server.handleWidgetAction)
 
 	// Registrations

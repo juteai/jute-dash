@@ -130,11 +130,12 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
   "apple-music": {
     component: AppleMusicWidget,
     props: ({ widget, stale }) => ({
-      instanceId: widget.id,
+      connectionId: widget.connectionRefs?.account ?? "",
       data: widgetPayload(widget) ?? {
         track_title: "Not Playing",
         artist_name: "Unknown",
         is_playing: false,
+        volume: 50,
       },
       stale,
       dispatch: createDisplayWidgetDispatcher(fetch, widget.id),

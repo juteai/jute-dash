@@ -676,6 +676,42 @@ export async function getSpotifyWebPlaybackToken(
   }>;
 }
 
+export async function getAppleMusicKitToken(
+  fetcher: typeof fetch,
+  connectionId: string
+): Promise<{ developerToken: string; userToken?: string }> {
+  const params = new URLSearchParams({ connectionId });
+  const response = await fetcher(
+    `${API_BASE}/api/v1/integrations/apple-music/music-kit-token?${params.toString()}`
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Apple Music credentials are unavailable');
+  }
+  return response.json() as Promise<{
+    developerToken: string;
+    userToken?: string;
+  }>;
+}
+
+export async function saveAppleMusicUserToken(
+  fetcher: typeof fetch,
+  connectionId: string,
+  userToken: string
+): Promise<AdapterConnection> {
+  const response = await fetcher(
+    `${API_BASE}/api/v1/integrations/apple-music/user-token`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connectionId, userToken })
+    }
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Apple Music login could not be saved');
+  }
+  return response.json() as Promise<AdapterConnection>;
+}
+
 export function spotifyCallbackParams(search: string): {
   code: string;
   state: string;
