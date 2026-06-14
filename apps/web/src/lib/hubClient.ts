@@ -19,8 +19,7 @@ import type {
   WidgetLayout
 } from '$lib/types';
 
-export const API_BASE =
-  import.meta.env.VITE_JUTE_API_URL ?? 'http://127.0.0.1:8787';
+export const API_BASE = import.meta.env.VITE_JUTE_API_URL ?? '';
 
 async function hubError(response: Response, fallback: string): Promise<Error> {
   const body = await response
@@ -457,6 +456,7 @@ export function eventsURL() {
 }
 
 function shortHubUrl(value: string) {
+  if (value === '') return 'this Jute server';
   return value.replace(/^https?:\/\//, '');
 }
 
@@ -623,14 +623,18 @@ export function spotifyAuthURL(
 }
 
 export function spotifyOAuthRedirectURI(): string {
+  const callbackPath = '/api/v1/integrations/spotify/callback';
+  if (!API_BASE) {
+    return callbackPath;
+  }
   try {
     const parsed = new URL(API_BASE);
     if (parsed.hostname === 'localhost') {
       parsed.hostname = '127.0.0.1';
     }
-    return `${parsed.origin}/api/v1/integrations/spotify/callback`;
+    return `${parsed.origin}${callbackPath}`;
   } catch {
-    return 'http://127.0.0.1:8787/api/v1/integrations/spotify/callback';
+    return `${API_BASE}${callbackPath}`;
   }
 }
 
