@@ -49,25 +49,9 @@ func (r *Repository) HouseholdSettings(ctx context.Context) (HouseholdSettings, 
 		return HouseholdSettings{}, fmt.Errorf("load household settings: %w", err)
 	}
 
-	var bg map[string]any
-	if err := decodeJSONSetting(hs.DisplayBackgroundJSON, &bg); err != nil {
-		return HouseholdSettings{}, fmt.Errorf("decode display background: %w", err)
-	}
-	var chrome map[string]any
-	if err := decodeJSONSetting(hs.DisplayWidgetChromeJSON, &chrome); err != nil {
-		return HouseholdSettings{}, fmt.Errorf("decode display widget chrome: %w", err)
-	}
-
-	display := DisplaySettings{
-		Theme:        hs.DisplayTheme,
-		ColorMode:    hs.DisplayColorMode,
-		ThemeID:      hs.DisplayThemeID,
-		Density:      hs.DisplayDensity,
-		Motion:       hs.DisplayMotion,
-		Background:   bg,
-		WidgetChrome: chrome,
-		AccentColor:  hs.DisplayAccentColor,
-		IdleMode:     hs.DisplayIdleMode,
+	display, err := displayConfigFromHouseholdDB(hs)
+	if err != nil {
+		return HouseholdSettings{}, err
 	}
 
 	home := HomeConfig{
@@ -168,10 +152,9 @@ func (r *Repository) SaveTiles(ctx context.Context, tiles []TileConfig) ([]TileC
 }
 
 func (r *Repository) SaveHouseholdSettings(ctx context.Context, settings HouseholdSettings) (HouseholdSettings, error) {
-	var display DisplaySettings
-	displayBytes, err := json.Marshal(settings.Display)
-	if err == nil {
-		_ = json.Unmarshal(displayBytes, &display)
+	display, err := normalizeDisplayForSave(settings.Display)
+	if err != nil {
+		return HouseholdSettings{}, err
 	}
 
 	backgroundJSON, err := jsonString(display.Background)

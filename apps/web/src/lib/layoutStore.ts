@@ -1,10 +1,11 @@
 import { writable } from 'svelte/store';
 import {
-  cloneLayout,
   addWidget as editorAddWidget,
+  ensureLayoutVariants,
   moveWidget as editorMoveWidget,
   resizeWidget as editorResizeWidget,
   removeWidget as editorRemoveWidget,
+  setVariantGridSize as editorSetVariantGridSize,
   setWidgetMode as editorSetWidgetMode,
   reorderWidget as editorReorderWidget,
   updateWidget as editorUpdateWidget
@@ -20,6 +21,7 @@ export interface LayoutState {
   editMode: boolean;
   draftLayout: WidgetLayout | undefined;
   configuringWidgetId: string;
+  activeVariantId: string;
   widgetCatalog: WidgetCatalogItem[];
   editIssue: string;
   saving: boolean;
@@ -29,6 +31,7 @@ const initialState: LayoutState = {
   editMode: false,
   draftLayout: undefined,
   configuringWidgetId: '',
+  activeVariantId: '',
   widgetCatalog: [],
   editIssue: '',
   saving: false
@@ -52,11 +55,13 @@ function createLayoutStore() {
         throw err;
       }
     },
-    enterEdit: (currentLayout: WidgetLayout) => {
+    enterEdit: (currentLayout: WidgetLayout, activeVariantId = '') => {
+      const draft = ensureLayoutVariants(currentLayout);
       update((s) => ({
         ...s,
         editMode: true,
-        draftLayout: cloneLayout(currentLayout),
+        draftLayout: draft,
+        activeVariantId,
         editIssue: '',
         configuringWidgetId: ''
       }));
@@ -66,6 +71,7 @@ function createLayoutStore() {
         ...s,
         editMode: false,
         draftLayout: undefined,
+        activeVariantId: '',
         editIssue: '',
         configuringWidgetId: ''
       }));
@@ -91,6 +97,7 @@ function createLayoutStore() {
           editMode: false,
           draftLayout: undefined,
           configuringWidgetId: '',
+          activeVariantId: '',
           saving: false
         }));
         onSuccess(saved);
@@ -114,7 +121,7 @@ function createLayoutStore() {
         const reset = await resetWidgetLayout(fetcher, profileId);
         update((s) => ({
           ...s,
-          draftLayout: cloneLayout(reset),
+          draftLayout: ensureLayoutVariants(reset),
           saving: false
         }));
         onSuccess(reset);
@@ -164,7 +171,29 @@ function createLayoutStore() {
         if (!s.draftLayout) return s;
         return {
           ...s,
-          draftLayout: editorReorderWidget(s.draftLayout, widgetId, direction)
+          draftLayout: editorReorderWidget(
+            s.draftLayout,
+            widgetId,
+            direction,
+            s.activeVariantId
+          )
+        };
+      });
+    },
+    setActiveVariant: (variantId: string) => {
+      update((s) => ({ ...s, activeVariantId: variantId }));
+    },
+    setVariantGridSize: (columns: number, rows: number) => {
+      update((s) => {
+        if (!s.draftLayout) return s;
+        return {
+          ...s,
+          draftLayout: editorSetVariantGridSize(
+            s.draftLayout,
+            s.activeVariantId,
+            columns,
+            rows
+          )
         };
       });
     },
@@ -200,7 +229,13 @@ function createLayoutStore() {
         if (!s.draftLayout) return s;
         return {
           ...s,
-          draftLayout: editorMoveWidget(s.draftLayout, widgetId, x, y)
+          draftLayout: editorMoveWidget(
+            s.draftLayout,
+            widgetId,
+            x,
+            y,
+            s.activeVariantId
+          )
         };
       });
     },
@@ -209,7 +244,13 @@ function createLayoutStore() {
         if (!s.draftLayout) return s;
         return {
           ...s,
-          draftLayout: editorResizeWidget(s.draftLayout, widgetId, w, h)
+          draftLayout: editorResizeWidget(
+            s.draftLayout,
+            widgetId,
+            w,
+            h,
+            s.activeVariantId
+          )
         };
       });
     },

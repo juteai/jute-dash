@@ -2,6 +2,7 @@ package spotify
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"jute-dash/apps/hub/pkg/widgetskills"
@@ -48,6 +49,19 @@ func TestSpotifyWidgetSettings(t *testing.T) {
 	if m["album_art_url"] != "https://example.test/mock-album.jpg" {
 		t.Errorf("expected mock album art URL, got %q", m["album_art_url"])
 	}
+	if m["track_uri"] != "spotify:track:mock" {
+		t.Errorf("expected mock track URI, got %q", m["track_uri"])
+	}
+	if m["progress_ms"] != 48000 || m["duration_ms"] != 192000 {
+		t.Errorf("expected mock progress/duration, got %v/%v", m["progress_ms"], m["duration_ms"])
+	}
+	if m["shuffle"] != true || m["repeat_state"] != "context" {
+		t.Errorf("expected mock shuffle/repeat, got %v/%v", m["shuffle"], m["repeat_state"])
+	}
+	topAlbums := reflect.ValueOf(m["top_albums"])
+	if topAlbums.Kind() != reflect.Slice || topAlbums.Len() == 0 {
+		t.Fatalf("expected mock top albums, got %#v", m["top_albums"])
+	}
 }
 
 func TestSpotifyWidgetActions(t *testing.T) {
@@ -66,7 +80,17 @@ func TestSpotifyWidgetActions(t *testing.T) {
 	}
 
 	// Invoke actions in mock mode
-	actions := []string{"play", "pause", "next", "previous"}
+	actions := []string{
+		"play",
+		"pause",
+		"next",
+		"previous",
+		"restart_track",
+		"play_album",
+		"play_track",
+		"play_playlist",
+		"search",
+	}
 	for _, act := range actions {
 		res, err := w.InvokeActionWithConnections(context.Background(), widgets.ActionInput{
 			RuntimeInput: widgets.RuntimeInput{
@@ -77,9 +101,20 @@ func TestSpotifyWidgetActions(t *testing.T) {
 			},
 			Snapshot: snap,
 			ActionID: act,
+			Arguments: map[string]any{
+				"query": "Mock Track",
+				"type":  "track",
+			},
 		})
 		if err != nil {
 			t.Errorf("action %q failed: %v", act, err)
+		}
+		if act == "search" {
+			results := reflect.ValueOf(res["results"])
+			if results.Kind() != reflect.Slice || results.Len() == 0 {
+				t.Errorf("expected search results, got %#v", res["results"])
+			}
+			continue
 		}
 		if res["status"] != "ok" {
 			t.Errorf("expected status 'ok', got %v", res["status"])
@@ -103,6 +138,136 @@ func TestSpotifyWidgetActions(t *testing.T) {
 	}
 	if res["status"] != "ok" {
 		t.Errorf("expected status 'ok', got %v", res["status"])
+	}
+
+	// Seek
+	res, err = w.InvokeActionWithConnections(context.Background(), widgets.ActionInput{
+		RuntimeInput: widgets.RuntimeInput{
+			InstanceID: "spotify-1",
+			Connections: map[string]widgets.ResolvedConnection{
+				"account": spotifyConnection(),
+			},
+		},
+		Snapshot:  snap,
+		ActionID:  "seek",
+		Arguments: map[string]any{"position_ms": 30000},
+	})
+	if err != nil {
+		t.Errorf("seek failed: %v", err)
+	}
+	if res["status"] != "ok" {
+		t.Errorf("expected status 'ok', got %v", res["status"])
+	}
+
+	// Set shuffle
+	res, err = w.InvokeActionWithConnections(context.Background(), widgets.ActionInput{
+		RuntimeInput: widgets.RuntimeInput{
+			InstanceID: "spotify-1",
+			Connections: map[string]widgets.ResolvedConnection{
+				"account": spotifyConnection(),
+			},
+		},
+		Snapshot:  snap,
+		ActionID:  "set_shuffle",
+		Arguments: map[string]any{"state": true},
+	})
+	if err != nil {
+		t.Errorf("set_shuffle failed: %v", err)
+	}
+	if res["status"] != "ok" {
+		t.Errorf("expected status 'ok', got %v", res["status"])
+	}
+
+	// Set repeat
+	res, err = w.InvokeActionWithConnections(context.Background(), widgets.ActionInput{
+		RuntimeInput: widgets.RuntimeInput{
+			InstanceID: "spotify-1",
+			Connections: map[string]widgets.ResolvedConnection{
+				"account": spotifyConnection(),
+			},
+		},
+		Snapshot:  snap,
+		ActionID:  "set_repeat",
+		Arguments: map[string]any{"state": "track"},
+	})
+	if err != nil {
+		t.Errorf("set_repeat failed: %v", err)
+	}
+	if res["status"] != "ok" {
+		t.Errorf("expected status 'ok', got %v", res["status"])
+	}
+}
+
+func TestSpotifySkillDeclaresSearchPlaybackActions(t *testing.T) {
+	w := NewWidget()
+	skill := w.Skill()
+	actionSchemas := map[string]map[string]any{}
+	for _, action := range skill.Actions {
+		actionSchemas[action.ID] = action.InputSchema
+	}
+
+	for _, actionID := range []string{
+		"play_album",
+		"play_track",
+		"play_playlist",
+		"restart_track",
+		"seek",
+		"set_shuffle",
+		"set_repeat",
+		"search",
+	} {
+		if _, ok := actionSchemas[actionID]; !ok {
+			t.Fatalf("expected action %q to be declared", actionID)
+		}
+	}
+
+	schema := actionSchemas["play_track"]
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected play_track properties, got %#v", schema["properties"])
+	}
+	if _, ok := properties["query"]; !ok {
+		t.Fatalf("expected play_track query property, got %#v", properties)
+	}
+}
+
+func TestSpotifyActionCatalogDrivesSkillAndInvocation(t *testing.T) {
+	w := NewWidget()
+	skill := w.Skill()
+	declared := map[string]widgetskills.Action{}
+	for _, action := range skill.Actions {
+		declared[action.ID] = action
+	}
+
+	for _, item := range spotifyActionCatalog {
+		action, ok := declared[item.action.ID]
+		if !ok {
+			t.Fatalf("catalog action %q was not declared by Skill", item.action.ID)
+		}
+		if action.SideEffect != item.action.SideEffect {
+			t.Fatalf(
+				"expected side effect %q for %q, got %q",
+				item.action.SideEffect,
+				item.action.ID,
+				action.SideEffect,
+			)
+		}
+	}
+
+	res, err := w.InvokeActionWithConnections(context.Background(), widgets.ActionInput{
+		RuntimeInput: widgets.RuntimeInput{
+			InstanceID: "spotify-1",
+			Connections: map[string]widgets.ResolvedConnection{
+				"account": spotifyConnection(),
+			},
+		},
+		ActionID: "status",
+	})
+	if err != nil {
+		t.Fatalf("status action failed: %v", err)
+	}
+	if res["track_title"] != "Mock Track" {
+		t.Fatalf("expected status action to return playback data, got %#v", res)
 	}
 }
 

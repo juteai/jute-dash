@@ -281,7 +281,7 @@ Setup and settings APIs:
 - `GET /api/v1/settings/tiles`
 - `PUT /api/v1/settings/tiles`
 
-The current pre-v1 settings UI uses `GET/PATCH /api/v1/settings/household` for home name, locale, timezone, display theme, weather enablement, location, and units. It also uses `GET/PUT /api/v1/settings/rooms` and `GET/PUT /api/v1/settings/tiles` for the home model shown on the dashboard. Store-backed runs persist these records in SQLite. YAML-backed harness runs write the same records back to the active YAML config.
+The current pre-v1 settings UI uses `GET/PATCH /api/v1/settings/household` for home name, locale, timezone, display appearance, weather enablement, location, and units. Household display appearance writes are normalized through the same defaulting and validation rules as config import before they are saved. It also uses `GET/PUT /api/v1/settings/rooms` and `GET/PUT /api/v1/settings/tiles` for the home model shown on the dashboard. Store-backed runs persist these records in SQLite. YAML-backed harness runs write the same records back to the active YAML config.
 
 Future visual customization settings are documented in [Visual Customization](visual-customization.md). Theme selection, color mode, background policy, and default widget chrome are durable display settings. Theme Pack manifests are install records. Per-widget chrome overrides are widget settings.
 

@@ -11,9 +11,9 @@ import (
 
 var ErrInvalidLayout = errors.New("invalid widget layout")
 
-// BaseColumns is the number of columns in the authored base grid. Layouts are
-// stored at this resolution and proportionally remapped to fewer columns on
-// smaller screens by the display.
+// BaseColumns is the legacy authored grid width. v2 layouts store explicit
+// layout variants with their own grid dimensions, but widget x/y/w/h remains as
+// the compatibility placement.
 const BaseColumns = 12
 
 // LegacyColumnScale migrates layouts authored on the original 4-column grid to
@@ -63,7 +63,11 @@ type DisplayWidgetChrome struct {
 
 // DashboardConfig represents grid configuration defaults.
 type DashboardConfig struct {
-	Widgets []DashboardWidgetConfig `json:"widgets" yaml:"widgets"`
+	SchemaVersion int `json:"schemaVersion,omitempty" yaml:"schema-version,omitempty"`
+
+	DefaultVariant string                  `json:"defaultVariant,omitempty" yaml:"default-variant,omitempty"`
+	Variants       []LayoutVariant         `json:"variants,omitempty"       yaml:"variants,omitempty"`
+	Widgets        []DashboardWidgetConfig `json:"widgets"                  yaml:"widgets"`
 }
 
 // DashboardWidgetConfig represents basic bootstrap placement config.
@@ -88,8 +92,31 @@ type DashboardWidgetConfig struct {
 
 // WidgetLayout represents widget placement on the display grid.
 type WidgetLayout struct {
-	ProfileID string           `json:"profileId"`
-	Widgets   []WidgetInstance `json:"widgets"`
+	ProfileID      string           `json:"profileId"`
+	SchemaVersion  int              `json:"schemaVersion,omitempty"`
+	DefaultVariant string           `json:"defaultVariant,omitempty"`
+	Variants       []LayoutVariant  `json:"variants,omitempty"`
+	Widgets        []WidgetInstance `json:"widgets"`
+}
+
+type LayoutVariant struct {
+	ID          string                     `json:"id"                    yaml:"id"`
+	Label       string                     `json:"label"                 yaml:"label"`
+	MinWidth    int                        `json:"minWidth"              yaml:"min-width"`
+	MinHeight   int                        `json:"minHeight,omitempty"   yaml:"min-height,omitempty"`
+	Orientation string                     `json:"orientation,omitempty" yaml:"orientation,omitempty"`
+	Columns     int                        `json:"columns"               yaml:"columns"`
+	Rows        int                        `json:"rows"                  yaml:"rows"`
+	Gap         int                        `json:"gap,omitempty"         yaml:"gap,omitempty"`
+	Placements  map[string]WidgetPlacement `json:"placements"            yaml:"placements"`
+}
+
+type WidgetPlacement struct {
+	X      int  `json:"x"                yaml:"x"`
+	Y      int  `json:"y"                yaml:"y"`
+	W      int  `json:"w"                yaml:"w"`
+	H      int  `json:"h"                yaml:"h"`
+	Hidden bool `json:"hidden,omitempty" yaml:"hidden,omitempty"`
 }
 
 type SettingFieldType = widgets.SettingFieldType

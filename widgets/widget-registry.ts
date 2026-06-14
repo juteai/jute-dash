@@ -10,7 +10,7 @@ import PhilipsHueWidget from "./philipshue/web/PhilipsHueWidget.svelte";
 import Zigbee2MQTTWidget from "./zigbee2mqtt/web/Zigbee2MQTTWidget.svelte";
 import { chatStore } from "$lib/chatStore";
 import { navigationStore } from "$lib/navigationStore";
-import { dispatchWidgetAction } from "$lib/hubClient";
+import { createDisplayWidgetDispatcher } from "$lib/widgetActions";
 import type {
   DashboardData,
   ChatMessage,
@@ -27,17 +27,6 @@ function widgetPayload(widget: WidgetInstance): any {
     return payload.data;
   }
   return widget.data;
-}
-
-async function refreshAfterWidgetAction() {
-  const { hubStream } = await import("$lib/hubStream");
-  await hubStream.refreshAfterMutation(fetch);
-  if (typeof window === "undefined") return;
-  for (const delay of [750, 1750, 3500]) {
-    window.setTimeout(() => {
-      void hubStream.refreshAfterMutation(fetch);
-    }, delay);
-  }
 }
 
 export interface WidgetRegistryEntry {
@@ -135,10 +124,7 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
         volume: 50,
       },
       stale,
-      dispatch: async (action: string, args: Record<string, any> = {}) => {
-        await dispatchWidgetAction(fetch, widget.id, action, args);
-        await refreshAfterWidgetAction();
-      },
+      dispatch: createDisplayWidgetDispatcher(fetch, widget.id),
     }),
   },
   "apple-music": {
@@ -151,10 +137,7 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
         is_playing: false,
       },
       stale,
-      dispatch: async (action: string, args: Record<string, any> = {}) => {
-        await dispatchWidgetAction(fetch, widget.id, action, args);
-        await refreshAfterWidgetAction();
-      },
+      dispatch: createDisplayWidgetDispatcher(fetch, widget.id),
     }),
   },
   "philips-hue": {
@@ -166,11 +149,13 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
       },
       stale,
       dispatch: async (action: string, args: Record<string, any> = {}) => {
-        await dispatchWidgetAction(fetch, widget.id, action, {
-          deviceId: args.device_id || args.deviceId || "",
-          value: args.state !== undefined ? args.state : args.value,
-        });
-        await refreshAfterWidgetAction();
+        return createDisplayWidgetDispatcher(fetch, widget.id)(
+          action,
+          {
+            deviceId: args.device_id || args.deviceId || "",
+            value: args.state !== undefined ? args.state : args.value,
+          }
+        );
       },
     }),
   },
@@ -182,11 +167,13 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
       },
       stale,
       dispatch: async (action: string, args: Record<string, any> = {}) => {
-        await dispatchWidgetAction(fetch, widget.id, action, {
-          deviceId: args.device_id || args.deviceId || "",
-          value: args.state !== undefined ? args.state : args.value,
-        });
-        await refreshAfterWidgetAction();
+        return createDisplayWidgetDispatcher(fetch, widget.id)(
+          action,
+          {
+            deviceId: args.device_id || args.deviceId || "",
+            value: args.state !== undefined ? args.state : args.value,
+          }
+        );
       },
     }),
   },

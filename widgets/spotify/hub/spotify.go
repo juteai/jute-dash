@@ -157,13 +157,23 @@ func (w *SpotifyWidget) FetchDataWithConnections(
 			"Jute could not load Spotify playback.",
 		), nil
 	}
-	return widgets.OK(map[string]any{
+	return widgets.OK(spotifyPlaybackData(playback)), nil
+}
+
+func spotifyPlaybackData(playback provider.Playback) map[string]any {
+	return map[string]any{
 		"track_title":   playback.TrackTitle,
 		"artist_name":   playback.ArtistName,
 		"album_art_url": playback.AlbumArtURL,
+		"track_uri":     playback.URI,
 		"is_playing":    playback.IsPlaying,
 		"volume":        playback.Volume,
-	}), nil
+		"progress_ms":   playback.ProgressMS,
+		"duration_ms":   playback.DurationMS,
+		"shuffle":       playback.Shuffle,
+		"repeat_state":  playback.RepeatState,
+		"top_albums":    playback.TopAlbums,
+	}
 }
 
 func (w *SpotifyWidget) Skill() *widgetskills.Definition {
@@ -185,39 +195,33 @@ func (w *SpotifyWidget) Skill() *widgetskills.Definition {
 			},
 			{Name: "is_playing", Type: "boolean", Description: "Is music active.", Sensitivity: "public"},
 			{Name: "volume", Type: "number", Description: "Player volume.", Sensitivity: "public"},
+			{Name: "shuffle", Type: "boolean", Description: "Whether shuffle is enabled.", Sensitivity: "public"},
+			{
+				Name:        "repeat_state",
+				Type:        "string",
+				Description: "Repeat mode: off, context, or track.",
+				Sensitivity: "public",
+			},
+			{
+				Name:        "progress_ms",
+				Type:        "number",
+				Description: "Playback position in milliseconds.",
+				Sensitivity: "public",
+			},
+			{
+				Name:        "duration_ms",
+				Type:        "number",
+				Description: "Track duration in milliseconds.",
+				Sensitivity: "public",
+			},
+			{
+				Name:        "top_albums",
+				Type:        "object-list",
+				Description: "Personalized album quick picks derived from top tracks.",
+				Sensitivity: "public",
+			},
 		},
-		Actions: []widgetskills.Action{
-			widgetskills.ReadAction("status", "Get playback status", "Read current track and status."),
-			playbackAction("play", "Play", "Start Spotify playback."),
-			playbackAction("pause", "Pause", "Pause Spotify playback."),
-			playbackAction("next", "Next track", "Skip to the next Spotify track."),
-			playbackAction("previous", "Previous track", "Return to the previous Spotify track."),
-			playbackAction("set_volume", "Set volume", "Set Spotify player volume."),
-			playbackAction(
-				"transfer_playback",
-				"Use Jute player",
-				"Transfer Spotify playback to this Jute Dash display.",
-			),
-		},
-	}
-}
-
-func playbackAction(id, title, description string) widgetskills.Action {
-	return widgetskills.Action{
-		ID:                   id,
-		Title:                title,
-		Description:          description,
-		SideEffect:           "home_action",
-		RequiresConfirmation: false,
-		InputSchema: map[string]any{
-			"type":                 "object",
-			"additionalProperties": true,
-		},
-		OutputSchema: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{"status": map[string]any{"type": "string"}},
-			"required":   []string{"status"},
-		},
+		Actions: spotifySkillActions(),
 	}
 }
 
@@ -240,11 +244,8 @@ func (w *SpotifyWidget) InvokeActionWithConnections(
 		"spotify action invoked",
 		"actionID", input.ActionID,
 	)
-	if err := provider.NewClient(providerSettings(settings)).
-		ApplyAction(ctx, input.ActionID, input.Arguments); err != nil {
-		return nil, err
-	}
-	return map[string]any{"status": "ok"}, nil
+	client := provider.NewClient(providerSettings(settings))
+	return invokeSpotifyAction(ctx, client, input.ActionID, input.Arguments)
 }
 
 func spotifySettingsFromConnection(connection widgets.ResolvedConnection) Settings {
@@ -278,6 +279,11 @@ func init() {
 			"album_art_url": "",
 			"is_playing":    false,
 			"volume":        50,
+			"shuffle":       false,
+			"repeat_state":  "off",
+			"progress_ms":   0,
+			"duration_ms":   0,
+			"top_albums":    []map[string]any{},
 		}
 	})
 }

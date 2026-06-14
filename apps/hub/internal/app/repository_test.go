@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/dashboard"
 	"jute-dash/apps/hub/internal/app/homestate"
 	"jute-dash/apps/hub/internal/pkg/a2a"
 )
@@ -472,6 +473,79 @@ func TestSaveWidgetLayoutPersists(t *testing.T) {
 	}
 	if reloaded.Widgets[0].X != 1 || reloaded.Widgets[0].W != 3 || reloaded.Widgets[1].Visible {
 		t.Fatalf("layout did not persist: %+v", reloaded.Widgets)
+	}
+}
+
+func TestSaveWidgetLayoutPersistsVariants(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	if _, err := st.Initialize(context.Background(), DefaultConfig(), false); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	layout := DefaultWidgetLayout()
+	layout.Variants[0].Columns = 2
+	layout.Variants[0].Rows = 12
+	layout.Variants[0].Placements[layout.Widgets[0].ID] = dashboard.WidgetPlacement{
+		X: 0,
+		Y: 1,
+		W: 2,
+		H: 1,
+	}
+
+	if _, err := st.DashboardRepo.SaveWidgetLayout(context.Background(), layout); err != nil {
+		t.Fatalf("SaveWidgetLayout() error = %v", err)
+	}
+
+	reloaded, err := st.DashboardRepo.WidgetLayout(context.Background(), "")
+	if err != nil {
+		t.Fatalf("WidgetLayout() error = %v", err)
+	}
+	if reloaded.SchemaVersion != dashboard.LayoutSchemaVersion {
+		t.Fatalf("schemaVersion = %d, want %d", reloaded.SchemaVersion, dashboard.LayoutSchemaVersion)
+	}
+	if len(reloaded.Variants) == 0 || reloaded.Variants[0].Columns != 2 || reloaded.Variants[0].Rows != 12 {
+		t.Fatalf("layout variants did not persist: %+v", reloaded.Variants)
+	}
+	if got := reloaded.Variants[0].Placements[layout.Widgets[0].ID]; got.Y != 1 || got.W != 2 {
+		t.Fatalf("variant placement did not persist: %+v", got)
+	}
+}
+
+func TestConfigExportsWidgetLayoutVariants(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	if _, err := st.Initialize(context.Background(), DefaultConfig(), false); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	layout := DefaultWidgetLayout()
+	layout.DefaultVariant = "desktop"
+	layout.Variants[3].Columns = 14
+	layout.Variants[3].Rows = 7
+	layout.Variants[3].Placements[layout.Widgets[0].ID] = dashboard.WidgetPlacement{
+		X: 2,
+		Y: 1,
+		W: 4,
+		H: 1,
+	}
+	if _, err := st.DashboardRepo.SaveWidgetLayout(context.Background(), layout); err != nil {
+		t.Fatalf("SaveWidgetLayout() error = %v", err)
+	}
+
+	cfg, err := st.Config(context.Background())
+	if err != nil {
+		t.Fatalf("Config() error = %v", err)
+	}
+	if cfg.Dashboard.SchemaVersion != dashboard.LayoutSchemaVersion ||
+		cfg.Dashboard.DefaultVariant != "desktop" {
+		t.Fatalf("layout metadata was not exported: %+v", cfg.Dashboard)
+	}
+	if len(cfg.Dashboard.Variants) == 0 || cfg.Dashboard.Variants[3].Columns != 14 {
+		t.Fatalf("layout variants were not exported: %+v", cfg.Dashboard.Variants)
+	}
+	if got := cfg.Dashboard.Variants[3].Placements[layout.Widgets[0].ID]; got.X != 2 || got.W != 4 {
+		t.Fatalf("layout variant placement was not exported: %+v", got)
 	}
 }
 

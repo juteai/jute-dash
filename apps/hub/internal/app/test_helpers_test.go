@@ -30,6 +30,7 @@ type AuthConfig = agents.AuthConfig
 type VoiceStatusResponse = voice.StatusResponse
 type VoiceProviderPack = voice.ProviderPack
 type WidgetInstance = dashboard.WidgetInstance
+type WidgetPlacement = dashboard.WidgetPlacement
 type WidgetCatalogItem = dashboard.WidgetCatalogItem
 type DashboardWidgetConfig = dashboard.DashboardWidgetConfig
 type DisplayBackground = dashboard.DisplayBackground

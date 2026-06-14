@@ -5,19 +5,25 @@
   import {
     getAdapterConnectionKinds,
     getAdapterConnections,
+    getWidgetCatalog,
     saveAdapterConnection,
+    saveWidgetLayout,
     spotifyAuthURL,
     spotifyOAuthRedirectURI
   } from '$lib/hubClient';
+  import { autoLinkWidgetConnections } from '$lib/connectionAutoLink';
   import { hubStream } from '$lib/hubStream';
   import type {
     AdapterConnection,
     AdapterConnectionKind,
-    ConnectionField
+    ConnectionField,
+    WidgetCatalogItem,
+    WidgetLayout
   } from '$lib/types';
 
   let connections: AdapterConnection[] = [];
   let connectionKinds: AdapterConnectionKind[] = [];
+  let widgetCatalog: WidgetCatalogItem[] = [];
   let selectedId = '';
   let draft = blankConnection();
   let loading = false;
@@ -127,9 +133,10 @@
     loading = true;
     issue = '';
     try {
-      [connectionKinds, connections] = await Promise.all([
+      [connectionKinds, connections, widgetCatalog] = await Promise.all([
         getAdapterConnectionKinds(fetch),
-        getAdapterConnections(fetch)
+        getAdapterConnections(fetch),
+        getWidgetCatalog(fetch)
       ]);
       if (connections.length > 0) {
         selectConnection(connections[0]);
@@ -248,7 +255,7 @@
         a.name.localeCompare(b.name)
       );
       selectConnection(saved);
-      await hubStream.refreshAfterMutation(fetch);
+      await refreshDashboardAndAutoLinkWidgets(connections);
       return saved;
     } catch (err) {
       issue = err instanceof Error ? err.message : 'Connection was not saved.';
@@ -303,10 +310,44 @@
       if (current) {
         selectConnection(current);
       }
-      await hubStream.refreshAfterMutation(fetch);
+      await refreshDashboardAndAutoLinkWidgets(connections);
     } catch {
       issue = 'Connections could not be refreshed.';
     }
+  }
+
+  async function ensureWidgetCatalog() {
+    if (widgetCatalog.length > 0) return widgetCatalog;
+    widgetCatalog = await getWidgetCatalog(fetch);
+    return widgetCatalog;
+  }
+
+  async function refreshDashboardAndAutoLinkWidgets(
+    currentConnections: AdapterConnection[]
+  ) {
+    const fresh = await hubStream.refreshAfterMutation(fetch);
+    await autoLinkMissingWidgetConnectionRefs(
+      currentConnections,
+      fresh?.layout
+    );
+  }
+
+  async function autoLinkMissingWidgetConnectionRefs(
+    currentConnections: AdapterConnection[],
+    layout: WidgetLayout | undefined
+  ) {
+    if (!layout) return;
+    const catalog = await ensureWidgetCatalog();
+    const result = autoLinkWidgetConnections(
+      layout,
+      catalog,
+      currentConnections
+    );
+    if (!result.changed) return;
+
+    const savedLayout = await saveWidgetLayout(fetch, result.layout);
+    hubStream.updateLayout(savedLayout);
+    await hubStream.refreshAfterMutation(fetch);
   }
 
   async function refreshAfterSpotifyAuth() {

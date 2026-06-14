@@ -3,33 +3,40 @@
   import { MonitorSpeaker } from "lucide-svelte";
   import { getSpotifyWebPlaybackToken } from "$lib/hubClient";
   import {
-    MediaControls,
-    MediaSummary,
-    VolumeControl,
-  } from "$lib/components/integration-controls";
+    SPOTIFY_PREVIOUS_DOUBLE_PRESS_MS,
+    clampProgress,
+    createPlayerStateProgressClock,
+    createServerProgressClock,
+    estimateProgress,
+    nextRepeatState,
+    normalizeRepeatState,
+    nowMS,
+    progressPercent as calculateProgressPercent,
+    setProgressClockPlaying,
+    setProgressClockPosition,
+    type PlaybackProgressClock,
+  } from "./playbackViewModel";
+  import {
+    actionForPlayableItem,
+    playableItemsFromAlbums,
+    playableItemsFromSearchResults,
+  } from "./discovery";
+  import {
+    createSpotifyPlayerSession,
+    type SpotifyPlayerSession,
+  } from "./playerSession";
+  import type {
+    SpotifyPlayableItem,
+    SpotifyPlayerState,
+    SpotifyRepeatState,
+  } from "./types";
+  import NowPlaying from "./components/NowPlaying.svelte";
+  import OptionsMenu from "./components/OptionsMenu.svelte";
+  import QuickPicks from "./components/QuickPicks.svelte";
+  import Timeline from "./components/Timeline.svelte";
+  import TransportControls from "./components/TransportControls.svelte";
   import WidgetActionButton from "$lib/components/widget-content/WidgetActionButton.svelte";
   import WidgetStack from "$lib/components/widget-content/WidgetStack.svelte";
-
-  type SpotifyPlayer = {
-    addListener: (event: string, callback: (payload: any) => void) => boolean;
-    activateElement?: () => Promise<void>;
-    connect: () => Promise<boolean>;
-    disconnect: () => void;
-  };
-
-  type SpotifyNamespace = {
-    Player: new (options: {
-      name: string;
-      getOAuthToken: (callback: (token: string) => void) => void;
-      volume?: number;
-    }) => SpotifyPlayer;
-  };
-
-  type SpotifyWindow = Window &
-    typeof globalThis & {
-      Spotify?: SpotifyNamespace;
-      onSpotifyWebPlaybackSDKReady?: () => void;
-    };
 
   export let connectionId = "";
   export let data: any = {};
@@ -40,23 +47,70 @@
   export let stale = false;
 
   let busy = false;
-  let player: SpotifyPlayer | undefined;
+  let playerSession: SpotifyPlayerSession | undefined;
   let activatingPlayer = false;
   let playerReady = false;
+  let playerDeviceID = "";
   let playerIssue = "";
   let mounted = false;
   let activationAttemptedFor = "";
   let optimisticPlaying: boolean | undefined;
   let optimisticVolume: number | undefined;
   let optimisticClearTimer: number | undefined;
+  let previousPressTimer: number | undefined;
+  let searchQuery = "";
+  let searchMode: "album" | "track" | "playlist" = "album";
+  let searchSuggestions: SpotifyPlayableItem[] = [];
+  let searchDebounceTimer: number | undefined;
+  let searchRequestID = 0;
+  let searching = false;
+  let optionsOpen = false;
+  let spotifyStatus: "connected" | "connecting" | "disconnected" =
+    "disconnected";
+  let optimisticProgressMS: number | undefined;
+  let optimisticShuffle: boolean | undefined;
+  let optimisticRepeatState: SpotifyRepeatState | undefined;
+  let progressClock: PlaybackProgressClock = createServerProgressClock({
+    progressMS: 0,
+    durationMS: 0,
+    observedAtMS: 0,
+    isPlaying: false,
+  });
+  let progressServerSnapshotKey = "";
+  let progressTrackKey = "";
+  let progressTickTimer: number | undefined;
+  let localProgressNowMS = 0;
 
   $: serverPlaying = data?.is_playing ?? false;
   $: serverVolume = data?.volume ?? 50;
+  $: serverProgressMS = data?.progress_ms ?? 0;
+  $: durationMS = data?.duration_ms ?? 0;
+  $: serverShuffle = data?.shuffle ?? false;
+  $: serverRepeatState = normalizeRepeatState(data?.repeat_state);
   $: isPlaying = optimisticPlaying ?? serverPlaying;
   $: trackTitle = data?.track_title ?? "Not Playing";
   $: artistName = data?.artist_name ?? "Unknown";
   $: albumArtURL = data?.album_art_url ?? "";
+  $: trackURI = data?.track_uri ?? "";
+  $: trackIdentity = trackURI || `${trackTitle}|${artistName}|${durationMS}`;
+  $: topAlbums = playableItemsFromAlbums(data?.playable_items ?? data?.top_albums);
   $: volume = optimisticVolume ?? serverVolume;
+  $: shuffle = optimisticShuffle ?? serverShuffle;
+  $: repeatState = optimisticRepeatState ?? serverRepeatState;
+  $: syncProgressClockFromServer(
+    `${trackIdentity}|${durationMS}|${serverProgressMS}`,
+    trackIdentity,
+    serverProgressMS,
+    durationMS,
+    serverPlaying,
+  );
+  $: syncProgressClockPlaying(isPlaying);
+  $: timelineDurationMS = Math.max(progressClock.durationMS, durationMS, 0);
+  $: progressMS = clampProgress(
+    optimisticProgressMS ?? estimateProgress(progressClock, localProgressNowMS),
+    timelineDurationMS,
+  );
+  $: progressPercent = calculateProgressPercent(progressMS, timelineDurationMS);
   $: if (
     optimisticPlaying !== undefined &&
     optimisticPlaying === serverPlaying
@@ -66,11 +120,26 @@
   $: if (optimisticVolume !== undefined && optimisticVolume === serverVolume) {
     optimisticVolume = undefined;
   }
-  $: playerStatus = playerReady
-    ? "Jute player ready"
-    : activatingPlayer
-      ? "Starting Jute player"
-      : "Jute player connecting";
+  $: if (optimisticShuffle !== undefined && optimisticShuffle === serverShuffle) {
+    optimisticShuffle = undefined;
+  }
+  $: if (
+    optimisticRepeatState !== undefined &&
+    optimisticRepeatState === serverRepeatState
+  ) {
+    optimisticRepeatState = undefined;
+  }
+  $: spotifyStatus = !connectionId
+    ? "disconnected"
+    : playerReady
+      ? "connected"
+      : "connecting";
+  $: spotifyStatusLabel =
+    spotifyStatus === "connected"
+      ? "Spotify connected"
+      : spotifyStatus === "connecting"
+        ? "Spotify getting ready"
+        : "Spotify not connected";
   $: if (
     mounted &&
     connectionId &&
@@ -83,6 +152,7 @@
   $: if (!connectionId) {
     activationAttemptedFor = "";
   }
+  $: queueSearchSuggestions(optionsOpen, searchQuery, searchMode, connectionId);
 
   async function runAction(action: string, args?: any) {
     if (busy || stale) {
@@ -104,62 +174,244 @@
     optimisticClearTimer = window.setTimeout(() => {
       optimisticPlaying = undefined;
       optimisticVolume = undefined;
+      optimisticProgressMS = undefined;
+      optimisticShuffle = undefined;
+      optimisticRepeatState = undefined;
       optimisticClearTimer = undefined;
     }, 6000);
+  }
+
+  function syncProgressClockFromServer(
+    snapshotKey: string,
+    trackKey: string,
+    progressMS: number,
+    nextDurationMS: number,
+    playing: boolean,
+  ) {
+    if (progressServerSnapshotKey === snapshotKey) {
+      return;
+    }
+
+    const now = nowMS();
+    progressServerSnapshotKey = snapshotKey;
+    progressTrackKey = trackKey;
+    progressClock = createServerProgressClock({
+      progressMS,
+      durationMS: nextDurationMS,
+      observedAtMS: now,
+      isPlaying: playing,
+    });
+    localProgressNowMS = now;
+    restartProgressTicker();
+  }
+
+  function syncProgressClockFromPlayerState(state: SpotifyPlayerState | null) {
+    if (!state) {
+      return;
+    }
+
+    const now = nowMS();
+    const sdkTrackKey = state.track_window?.current_track?.uri ?? progressTrackKey;
+    progressTrackKey = sdkTrackKey;
+    progressClock = createPlayerStateProgressClock(state, now);
+    localProgressNowMS = now;
+    restartProgressTicker();
+  }
+
+  function syncProgressClockPlaying(playing: boolean) {
+    if (progressClock.isPlaying === playing) {
+      return;
+    }
+
+    const now = nowMS();
+    progressClock = setProgressClockPlaying(progressClock, playing, now);
+    localProgressNowMS = now;
+    restartProgressTicker();
+  }
+
+  function previewProgress(positionMS: number) {
+    const now = nowMS();
+    optimisticProgressMS = positionMS;
+    progressClock = setProgressClockPosition(progressClock, positionMS, now);
+    localProgressNowMS = now;
+    restartProgressTicker();
+  }
+
+  function restartProgressTicker() {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (progressTickTimer) {
+      window.clearInterval(progressTickTimer);
+      progressTickTimer = undefined;
+    }
+    if (!progressClock.isPlaying || progressClock.durationMS <= 0) {
+      return;
+    }
+    progressTickTimer = window.setInterval(() => {
+      const now = nowMS();
+      localProgressNowMS = now;
+      if (estimateProgress(progressClock, now) >= progressClock.durationMS) {
+        window.clearInterval(progressTickTimer);
+        progressTickTimer = undefined;
+      }
+    }, 500);
   }
 
   async function handlePlayPause() {
     const nextPlaying = !isPlaying;
     optimisticPlaying = nextPlaying;
     clearOptimisticStateSoon();
-    await player?.activateElement?.();
+    await playerSession?.activateElement();
     if (connectionId && !playerReady && !activatingPlayer) {
       await activatePlayer();
     }
-    await runAction(nextPlaying ? "play" : "pause");
+    await runAction(nextPlaying ? "play" : "pause", withPlayerDevice());
   }
 
   async function handleNext() {
     clearOptimisticStateSoon();
-    await runAction("next");
+    await runAction("next", withPlayerDevice());
   }
 
   async function handlePrevious() {
-    clearOptimisticStateSoon();
-    await runAction("previous");
+    if (typeof window !== "undefined" && previousPressTimer) {
+      window.clearTimeout(previousPressTimer);
+      previousPressTimer = undefined;
+      clearOptimisticStateSoon();
+      await runAction("previous", withPlayerDevice());
+      return;
+    }
+    if (typeof window === "undefined") {
+      await runAction("restart_track", withPlayerDevice());
+      return;
+    }
+
+    previousPressTimer = window.setTimeout(() => {
+      previousPressTimer = undefined;
+      clearOptimisticStateSoon();
+      void runAction("restart_track", withPlayerDevice());
+    }, SPOTIFY_PREVIOUS_DOUBLE_PRESS_MS);
   }
 
   async function handleVolume(vol: number) {
     optimisticVolume = vol;
     clearOptimisticStateSoon();
-    await runAction("set_volume", { volume: vol });
+    await runAction("set_volume", withPlayerDevice({ volume: vol }));
   }
 
-  function loadSpotifySDK(): Promise<void> {
-    if (typeof window === "undefined") {
-      return Promise.reject(new Error("Spotify playback needs a browser."));
+  async function handleSeek(positionMS: number) {
+    previewProgress(positionMS);
+    optimisticProgressMS = undefined;
+    clearOptimisticStateSoon();
+    await runAction("seek", withPlayerDevice({ position_ms: positionMS }));
+  }
+
+  async function handleShuffleToggle() {
+    const next = !shuffle;
+    optimisticShuffle = next;
+    clearOptimisticStateSoon();
+    await runAction("set_shuffle", withPlayerDevice({ state: next }));
+  }
+
+  async function handleRepeatToggle() {
+    const next = nextRepeatState(repeatState);
+    optimisticRepeatState = next;
+    clearOptimisticStateSoon();
+    await runAction("set_repeat", withPlayerDevice({ state: next }));
+  }
+
+  async function handleSearchPlay() {
+    const query = searchQuery.trim();
+    if (!query) return;
+    optimisticPlaying = true;
+    clearOptimisticStateSoon();
+    await playerSession?.activateElement();
+    await runAction(
+      searchMode === "playlist"
+        ? "play_playlist"
+        : searchMode === "album"
+          ? "play_album"
+          : "play_track",
+      withPlayerDevice({ query }),
+    );
+    searchQuery = "";
+    searchSuggestions = [];
+    optionsOpen = false;
+  }
+
+  async function handleSuggestionPlay(result: SpotifyPlayableItem) {
+    if (!result.uri) return;
+    optimisticPlaying = true;
+    clearOptimisticStateSoon();
+    await playerSession?.activateElement();
+    await runAction(actionForPlayableItem(result), withPlayerDevice({ uri: result.uri }));
+    searchQuery = "";
+    searchSuggestions = [];
+    optionsOpen = false;
+  }
+
+  async function handleAlbumPlay(album: SpotifyPlayableItem) {
+    if (!album.uri) return;
+    optimisticPlaying = true;
+    clearOptimisticStateSoon();
+    await playerSession?.activateElement();
+    await runAction("play_album", withPlayerDevice({ uri: album.uri }));
+  }
+
+  function queueSearchSuggestions(
+    open: boolean,
+    queryValue: string,
+    mode: "album" | "track" | "playlist",
+    activeConnectionID: string,
+  ) {
+    if (typeof window === "undefined") return;
+    if (searchDebounceTimer) {
+      window.clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = undefined;
     }
-    const spotifyWindow = window as SpotifyWindow;
-    if (spotifyWindow.Spotify?.Player) {
-      return Promise.resolve();
+
+    const query = queryValue.trim();
+    if (!open || !activeConnectionID || query.length < 2) {
+      searchRequestID += 1;
+      searchSuggestions = [];
+      searching = false;
+      return;
     }
-    return new Promise((resolve, reject) => {
-      const previousReady = spotifyWindow.onSpotifyWebPlaybackSDKReady;
-      spotifyWindow.onSpotifyWebPlaybackSDKReady = () => {
-        previousReady?.();
-        resolve();
-      };
-      if (document.querySelector("script[data-jute-spotify-sdk]")) {
-        return;
+
+    searchDebounceTimer = window.setTimeout(() => {
+      void loadSearchSuggestions(query, mode);
+    }, 260);
+  }
+
+  async function loadSearchSuggestions(
+    query: string,
+    mode: "album" | "track" | "playlist",
+  ) {
+    if (stale) return;
+    const requestID = ++searchRequestID;
+    searching = true;
+    try {
+      const result = await dispatch("search", {
+        query,
+        type: mode,
+        limit: 5,
+      });
+      if (requestID !== searchRequestID) return;
+      searchSuggestions = playableItemsFromSearchResults(result?.results);
+    } catch {
+      if (requestID === searchRequestID) {
+        searchSuggestions = [];
       }
-      const script = document.createElement("script");
-      script.src = "https://sdk.scdn.co/spotify-player.js";
-      script.async = true;
-      script.dataset.juteSpotifySdk = "true";
-      script.onerror = () =>
-        reject(new Error("Spotify player could not be loaded."));
-      document.head.appendChild(script);
-    });
+    } finally {
+      if (requestID === searchRequestID) {
+        searching = false;
+      }
+    }
+  }
+
+  function withPlayerDevice(args: Record<string, any> = {}) {
+    return playerDeviceID ? { ...args, device_id: playerDeviceID } : args;
   }
 
   async function activatePlayer() {
@@ -171,43 +423,32 @@
     activatingPlayer = true;
     playerIssue = "";
     try {
-      await loadSpotifySDK();
-      const Spotify = (window as SpotifyWindow).Spotify;
-      if (!Spotify?.Player) {
-        throw new Error("Spotify player is unavailable.");
-      }
-      player?.disconnect();
-      const nextPlayer = new Spotify.Player({
-        name: "Jute Dash",
+      playerSession?.disconnect();
+      const nextSession = await createSpotifyPlayerSession({
         volume: Math.max(0, Math.min(1, volume / 100)),
-        getOAuthToken: async (callback: (token: string) => void) => {
+        getOAuthToken: async () => {
           const token = await getSpotifyWebPlaybackToken(fetch, connectionId);
-          callback(token.accessToken);
+          return token.accessToken;
+        },
+        onReady: (deviceID) => {
+          playerReady = true;
+          playerDeviceID = deviceID;
+          void runAction("transfer_playback", {
+            device_id: deviceID,
+            play: isPlaying,
+          });
+        },
+        onNotReady: () => {
+          playerReady = false;
+          playerDeviceID = "";
+        },
+        onStateChanged: syncProgressClockFromPlayerState,
+        onIssue: (message) => {
+          playerIssue = message;
         },
       });
-      nextPlayer.addListener("ready", ({ device_id }) => {
-        playerReady = true;
-        void runAction("transfer_playback", { device_id, play: isPlaying });
-      });
-      nextPlayer.addListener("not_ready", () => {
-        playerReady = false;
-      });
-      nextPlayer.addListener("initialization_error", ({ message }) => {
-        playerIssue = message || "Spotify player could not start.";
-      });
-      nextPlayer.addListener("authentication_error", ({ message }) => {
-        playerIssue = message || "Spotify login needs to be refreshed.";
-      });
-      nextPlayer.addListener("account_error", ({ message }) => {
-        playerIssue =
-          message || "Spotify Premium is required for browser playback.";
-      });
-      nextPlayer.addListener("autoplay_failed", () => {
-        playerIssue =
-          "Browser autoplay rules blocked playback. Press play once to continue.";
-      });
-      player = nextPlayer;
-      const connected = await nextPlayer.connect();
+      playerSession = nextSession;
+      const connected = await nextSession.connect();
       if (!connected) {
         playerIssue = "Spotify player could not connect in this browser.";
       }
@@ -239,34 +480,83 @@
       if (optimisticClearTimer) {
         window.clearTimeout(optimisticClearTimer);
       }
-      player?.disconnect();
+      if (previousPressTimer) {
+        window.clearTimeout(previousPressTimer);
+      }
+      if (progressTickTimer) {
+        window.clearInterval(progressTickTimer);
+      }
+      if (searchDebounceTimer) {
+        window.clearTimeout(searchDebounceTimer);
+      }
+      playerDeviceID = "";
+      playerSession?.disconnect();
     };
   });
 </script>
 
+<svelte:window on:pointerdown={() => (optionsOpen = false)} />
+
 <WidgetStack {stale} class="media-widget">
-  <MediaSummary
-    title={trackTitle}
-    subtitle={artistName}
-    imageUrl={albumArtURL}
-    imageAlt={`${trackTitle} album art`}
-  />
-  {#if connectionId}
-    <div class="player-status">
-      <span class:player-status--ready={playerReady} class="player-status-icon">
-        <MonitorSpeaker size={16} />
-      </span>
-      <span>{playerStatus}</span>
-    </div>
-  {/if}
-  <MediaControls
-    {isPlaying}
-    disabled={busy || stale}
-    onPrevious={handlePrevious}
-    onPlayPause={handlePlayPause}
-    onNext={handleNext}
-  />
-  <VolumeControl {volume} disabled={busy || stale} onVolume={handleVolume} />
+  <div class="spotify-player">
+    <NowPlaying
+      {trackTitle}
+      {artistName}
+      {albumArtURL}
+      {spotifyStatus}
+      {spotifyStatusLabel}
+      {optionsOpen}
+      {busy}
+      {stale}
+      onToggleOptions={() => (optionsOpen = !optionsOpen)}
+    >
+      <OptionsMenu
+        slot="options"
+        {volume}
+        {busy}
+        {stale}
+        bind:searchQuery
+        bind:searchMode
+        {searchSuggestions}
+        {searching}
+        onVolumePreview={(nextVolume) => (optimisticVolume = nextVolume)}
+        onVolumeChange={handleVolume}
+        onSearchPlay={handleSearchPlay}
+        onSuggestionPlay={handleSuggestionPlay}
+      />
+    </NowPlaying>
+
+    <TransportControls
+      {busy}
+      {stale}
+      {shuffle}
+      {isPlaying}
+      {repeatState}
+      onShuffle={handleShuffleToggle}
+      onPrevious={handlePrevious}
+      onPlayPause={handlePlayPause}
+      onNext={handleNext}
+      onRepeat={handleRepeatToggle}
+    />
+
+    <Timeline
+      {progressMS}
+      durationMS={timelineDurationMS}
+      {progressPercent}
+      {busy}
+      {stale}
+      onPreview={previewProgress}
+      onSeek={handleSeek}
+    />
+
+    <QuickPicks
+      items={topAlbums}
+      {busy}
+      {stale}
+      onPlay={handleAlbumPlay}
+    />
+  </div>
+
   {#if playerIssue}
     <div class="player-issue-row">
       <p class="player-issue">{playerIssue}</p>
@@ -283,34 +573,19 @@
 
 <style>
   :global(.media-widget) {
+    position: relative;
     justify-content: center;
-    padding: clamp(4px, 2cqmin, 8px);
+    gap: clamp(6px, 2cqmin, 12px);
+    padding: clamp(4px, 1.8cqmin, 8px);
   }
 
-  .player-status {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-height: 30px;
-    color: var(--muted);
-    font-size: var(--widget-label-size);
-    font-weight: 700;
-  }
-
-  .player-status-icon {
-    display: inline-grid;
-    width: 30px;
-    height: 30px;
-    place-items: center;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--muted);
-  }
-
-  .player-status--ready {
-    border-color: color-mix(in srgb, var(--success) 45%, var(--border));
-    color: var(--success);
+  .spotify-player {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    gap: clamp(4px, 1.6cqmin, 10px);
+    width: 100%;
+    height: 100%;
+    min-height: 0;
   }
 
   .player-issue-row {
@@ -331,5 +606,24 @@
     text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  @container (max-height: 190px) {
+    :global(.media-widget) {
+      gap: 4px;
+    }
+  }
+
+  @container (max-height: 360px) {
+    :global(.media-widget) {
+      gap: clamp(4px, 1.4cqmin, 8px);
+    }
+
+    .spotify-player {
+      align-content: center;
+      grid-template-rows: auto auto auto;
+      max-width: min(560px, 100%);
+      justify-self: center;
+    }
   }
 </style>

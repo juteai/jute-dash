@@ -20,11 +20,13 @@
   "dependencies": {
     "@a2a-js/sdk": "1.0.0-alpha.0",
     "@fontsource-variable/inter": "^5.0.0",
+    "@fortawesome/free-brands-svg-icons": "^7.2.0",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.5",
     "lucide-svelte": "^0.468.0",
     "marked": "^18.0.3",
     "svelte": "^5.46.4",
+    "svelte-fa": "^4.0.4",
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {

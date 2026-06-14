@@ -41,7 +41,7 @@ func (m *MemoryRepository) SetCatalog(items []WidgetCatalogItem) {
 func (m *MemoryRepository) WidgetLayout(_ context.Context, _ string) (WidgetLayout, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.layout, nil
+	return EnsureLayoutVariants(m.layout), nil
 }
 
 func (m *MemoryRepository) SaveWidgetLayout(_ context.Context, layout WidgetLayout) (WidgetLayout, error) {

@@ -327,12 +327,19 @@ func (juteSkillInvokeActionTool) InputSchema() map[string]any {
 		"skillId":          map[string]any{"type": "string"},
 		"widgetInstanceId": map[string]any{"type": "string"},
 		"actionId":         map[string]any{"type": "string"},
+		"arguments": map[string]any{
+			"type":                 "object",
+			"description":          "Action-specific arguments declared by the Widget Skill action schema.",
+			"additionalProperties": true,
+		},
+		"confirmed": map[string]any{"type": "boolean"},
 	}, []string{"skillId", "actionId"})
 }
 func (juteSkillInvokeActionTool) Call(ctx RouteContext, args map[string]any) (any, error) {
 	skillID := stringArg(args, "skillId")
 	widgetID := stringArg(args, "widgetInstanceId")
 	actionID := stringArg(args, "actionId")
+	actionArgs := skillActionArguments(args)
 	if ctx.ActionDispatcher != nil {
 		skill, err := widgetskills.FindSkill(ctx.Snapshot, skillID, widgetID)
 		if err != nil {
@@ -343,7 +350,7 @@ func (juteSkillInvokeActionTool) Call(ctx RouteContext, args map[string]any) (an
 			ctx.Context,
 			skill.WidgetInstanceID,
 			actionID,
-			args,
+			actionArgs,
 			"mcp",
 			confirmed,
 		)
@@ -354,8 +361,24 @@ func (juteSkillInvokeActionTool) Call(ctx RouteContext, args map[string]any) (an
 		skillID,
 		widgetID,
 		actionID,
-		args,
+		actionArgs,
 	)
+}
+
+func skillActionArguments(args map[string]any) map[string]any {
+	if raw, ok := args["arguments"].(map[string]any); ok {
+		return raw
+	}
+	cleaned := make(map[string]any, len(args))
+	for key, value := range args {
+		switch key {
+		case "skillId", "widgetInstanceId", "actionId", "confirmed":
+			continue
+		default:
+			cleaned[key] = value
+		}
+	}
+	return cleaned
 }
 
 type juteSkillPromptGetTool struct{}

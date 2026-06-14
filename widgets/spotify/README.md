@@ -29,7 +29,7 @@ The Spotify widget can activate a Jute Dash browser player using Spotify's Web P
 
 - a linked Spotify Account connection;
 - a Spotify Premium account;
-- the `streaming` OAuth scope granted during login;
+- the `streaming` and `user-top-read` OAuth scopes granted during login;
 - HTTPS for local display development.
 
 Once the browser player is activated, the widget transfers Spotify playback to the Jute Dash display and existing playback controls continue through the hub action dispatcher.

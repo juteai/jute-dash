@@ -731,7 +731,7 @@ func syncOnLoad(
 		}
 	}
 
-	return nil
+	return syncer.Sync(ctx)
 }
 
 type widgetActionRequest struct {

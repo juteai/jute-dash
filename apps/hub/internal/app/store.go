@@ -514,6 +514,9 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 
 	layout, err := s.DashboardRepo.WidgetLayout(ctx, "")
 	if err == nil {
+		cfg.Dashboard.SchemaVersion = layout.SchemaVersion
+		cfg.Dashboard.DefaultVariant = layout.DefaultVariant
+		cfg.Dashboard.Variants = layout.Variants
 		widgets := make([]dashboard.DashboardWidgetConfig, 0, len(layout.Widgets))
 		for _, w := range layout.Widgets {
 			widgets = append(widgets, dashboard.DashboardWidgetConfig{

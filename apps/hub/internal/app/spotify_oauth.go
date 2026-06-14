@@ -20,7 +20,7 @@ import (
 	"jute-dash/apps/hub/internal/pkg/httphelper"
 )
 
-const spotifyOAuthScope = "streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state user-read-currently-playing user-library-read playlist-read-private"
+const spotifyOAuthScope = "streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state user-read-currently-playing user-library-read playlist-read-private user-top-read"
 
 //nolint:gochecknoglobals // test seams for OAuth endpoint integration tests.
 var (

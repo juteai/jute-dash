@@ -215,6 +215,8 @@ Rules:
 
 Theme selection, background policy, widget chrome defaults, and per-widget chrome overrides are durable settings owned by the hub.
 
+Household appearance updates are normalized and validated by the hub before they are written to SQLite or projected back to YAML/JSON. Missing display defaults are filled consistently with config import, and invalid background or widget chrome values are rejected instead of being stored as broken runtime state.
+
 Storage classification:
 
 - Theme Pack manifests are install records.

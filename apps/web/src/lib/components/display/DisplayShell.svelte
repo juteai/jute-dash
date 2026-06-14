@@ -14,6 +14,7 @@
     isAgentAvailable
   } from '$lib/agents';
   import { displayThemeStyle, resolveColorMode } from '$lib/themes';
+  import { selectLayoutVariant } from '$lib/layout-editor';
   import type {
     Agent,
     DashboardData,
@@ -247,7 +248,7 @@
     }
     clearLongPress();
     longPressTimer = window.setTimeout(() => {
-      layoutStore.enterEdit($hubStream.dashboard.layout);
+      enterEditForCurrentView();
     }, 650);
   }
 
@@ -256,6 +257,21 @@
       window.clearTimeout(longPressTimer);
       longPressTimer = undefined;
     }
+  }
+
+  function currentLayoutVariantId() {
+    if (!browser) {
+      return '';
+    }
+    return selectLayoutVariant(
+      $hubStream.dashboard.layout,
+      window.innerWidth,
+      window.innerHeight
+    ).id;
+  }
+
+  function enterEditForCurrentView(activeVariantId = currentLayoutVariantId()) {
+    layoutStore.enterEdit($hubStream.dashboard.layout, activeVariantId);
   }
 
   async function submitMessage(text: string, retryMessageId?: string) {
@@ -377,7 +393,7 @@
       savingLayout={$layoutStore.saving}
       onOpenChat={() => openChat()}
       onToggleVoiceMute={toggleVoiceMute}
-      onEnterEdit={() => layoutStore.enterEdit($hubStream.dashboard.layout)}
+      onEnterEdit={enterEditForCurrentView}
       onSaveEdit={() =>
         layoutStore.saveEdit($hubStream.dashboard.stale, fetch, (saved) => {
           hubStream.updateLayout(saved);

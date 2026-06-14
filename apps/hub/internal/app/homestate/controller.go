@@ -94,6 +94,17 @@ func (c *Controller) handleHouseholdSettings(w http.ResponseWriter, r *http.Requ
 		}
 
 		merged := mergeHouseholdSettings(current, req)
+		display, err := normalizeDisplayForSave(merged.Display)
+		if err != nil {
+			httphelper.WriteError(
+				w,
+				http.StatusBadRequest,
+				fmt.Errorf("%w: %s", errInvalidHouseholdSettings, err.Error()).Error(),
+			)
+			return
+		}
+		merged.Display = display
+
 		if err := validateHouseholdSettings(merged); err != nil {
 			httphelper.WriteError(w, http.StatusBadRequest, err.Error())
 			return

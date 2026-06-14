@@ -121,7 +121,7 @@ func TestHandlerInvokesSpotifyActionThroughDispatcher(t *testing.T) {
 		dispatcher,
 	)
 	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(
-		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"jute_skill_invoke_action","arguments":{"skillId":"jute.spotify.control","widgetInstanceId":"spotify","actionId":"next"}}}`,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"jute_skill_invoke_action","arguments":{"skillId":"jute.spotify.control","widgetInstanceId":"spotify","actionId":"play_track","arguments":{"query":"True Colours The Weeknd"}}}}`,
 	))
 	req.Header.Set("Authorization", "Bearer test-token")
 	req.Header.Set(callerAgentHeader, "kronk-agent")
@@ -136,11 +136,14 @@ func TestHandlerInvokesSpotifyActionThroughDispatcher(t *testing.T) {
 	if response.Error != nil {
 		t.Fatalf("unexpected RPC error: %+v", response.Error)
 	}
-	if dispatcher.widgetInstanceID != "spotify" || dispatcher.actionID != "next" || dispatcher.actor != "mcp" {
+	if dispatcher.widgetInstanceID != "spotify" || dispatcher.actionID != "play_track" || dispatcher.actor != "mcp" {
 		t.Fatalf("unexpected dispatched action: %+v", dispatcher)
 	}
-	if dispatcher.arguments["skillId"] != "jute.spotify.control" {
-		t.Fatalf("expected skillId argument to pass through, got %#v", dispatcher.arguments)
+	if dispatcher.arguments["query"] != "True Colours The Weeknd" {
+		t.Fatalf("expected action arguments to pass through, got %#v", dispatcher.arguments)
+	}
+	if _, exists := dispatcher.arguments["skillId"]; exists {
+		t.Fatalf("expected routing arguments to be stripped, got %#v", dispatcher.arguments)
 	}
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cloneLayout,
+  ensureLayoutVariants,
   uniqueWidgetId,
   nextWidgetRow,
   sizeFromDimensions,
@@ -9,6 +10,8 @@ import {
   addWidget,
   moveWidget,
   resizeWidget,
+  setVariantGridSize,
+  widgetsForVariant,
   removeWidget,
   setWidgetMode,
   reorderWidget,
@@ -50,6 +53,17 @@ describe('layout-editor', () => {
     const cloned = cloneLayout(layout);
     expect(cloned).toEqual(layout);
     expect(cloned).not.toBe(layout);
+  });
+
+  it('adds explicit layout variants to legacy layouts', () => {
+    const layout = createLayout([createWidget({ id: 'weather', w: 6, h: 1 })]);
+    const migrated = ensureLayoutVariants(layout);
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.defaultVariant).toBe('tablet-landscape');
+    expect(migrated.variants?.some((variant) => variant.id === 'desktop')).toBe(
+      true
+    );
+    expect(migrated.variants?.[0].placements.weather).toBeTruthy();
   });
 
   it('generates unique widget IDs', () => {
@@ -139,11 +153,35 @@ describe('layout-editor', () => {
     expect(moved.widgets[1].y).toBe(1);
   });
 
+  it('moves widgets inside a selected layout variant', () => {
+    const layout = ensureLayoutVariants(
+      createLayout([createWidget({ id: 'w1', x: 0, y: 0, w: 2, h: 1 })])
+    );
+    const moved = moveWidget(layout, 'w1', 2, 1, 'desktop');
+    const desktopWidget = widgetsForVariant(moved, 'desktop')[0];
+    expect(desktopWidget.x).toBe(2);
+    expect(desktopWidget.y).toBe(1);
+    expect(moved.widgets[0].x).toBe(0);
+  });
+
   it('resizes widgets and updates size attribute', () => {
     const layout = createLayout([createWidget({ id: 'w1', w: 3, h: 1 })]);
     const resized = resizeWidget(layout, 'w1', 6, 2);
     expect(resized.widgets[0].w).toBe(6);
     expect(resized.widgets[0].size).toBe('medium');
+  });
+
+  it('changes a variant grid size and clamps placements', () => {
+    const layout = ensureLayoutVariants(
+      createLayout([createWidget({ id: 'w1', x: 0, y: 0, w: 6, h: 2 })])
+    );
+    const resized = setVariantGridSize(layout, 'desktop', 4, 3);
+    const desktop = resized.variants?.find(
+      (variant) => variant.id === 'desktop'
+    );
+    expect(desktop?.columns).toBe(4);
+    expect(desktop?.rows).toBe(3);
+    expect(desktop?.placements.w1.w).toBe(4);
   });
 
   it('removes widgets by setting visible to false', () => {

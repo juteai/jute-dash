@@ -56,6 +56,199 @@ voice:
     followup-window-seconds: 8
     microphone-profile: ""
 dashboard:
+    schema-version: 2
+    default-variant: tablet-landscape
+    variants:
+        - id: phone
+          label: Phone
+          min-width: 0
+          orientation: any
+          columns: 1
+          rows: 8
+          gap: 12
+          placements:
+            assistant-chat:
+                x: 0
+                'y': 5
+                w: 1
+                h: 3
+            date-time-widget:
+                x: 0
+                'y': 0
+                w: 1
+                h: 2
+            hacker-news:
+                x: 0
+                'y': 5
+                w: 1
+                h: 3
+            spotify:
+                x: 0
+                'y': 4
+                w: 1
+                h: 2
+            stocks-watchlist:
+                x: 0
+                'y': 5
+                w: 1
+                h: 3
+            weather-widget:
+                x: 0
+                'y': 0
+                w: 1
+                h: 2
+        - id: tablet-portrait
+          label: Tablet
+          min-width: 641
+          orientation: portrait
+          columns: 6
+          rows: 10
+          gap: 12
+          placements:
+            assistant-chat:
+                x: 2
+                'y': 6
+                w: 4
+                h: 3
+            date-time-widget:
+                x: 0
+                'y': 0
+                w: 4
+                h: 2
+            hacker-news:
+                x: 2
+                'y': 6
+                w: 4
+                h: 3
+            spotify:
+                x: 0
+                'y': 4
+                w: 6
+                h: 2
+            stocks-watchlist:
+                x: 0
+                'y': 6
+                w: 4
+                h: 3
+            weather-widget:
+                x: 2
+                'y': 0
+                w: 4
+                h: 2
+        - id: tablet-landscape
+          label: Tablet wide
+          min-width: 768
+          orientation: landscape
+          columns: 10
+          rows: 6
+          gap: 12
+          placements:
+            assistant-chat:
+                x: 6
+                'y': 3
+                w: 4
+                h: 3
+            date-time-widget:
+                x: 0
+                'y': 0
+                w: 4
+                h: 2
+            hacker-news:
+                x: 4
+                'y': 3
+                w: 4
+                h: 3
+            spotify:
+                x: 0
+                'y': 4
+                w: 6
+                h: 2
+            stocks-watchlist:
+                x: 0
+                'y': 3
+                w: 4
+                h: 3
+            weather-widget:
+                x: 6
+                'y': 0
+                w: 4
+                h: 2
+        - id: desktop
+          label: Desktop
+          min-width: 1024
+          orientation: any
+          columns: 12
+          rows: 8
+          gap: 12
+          placements:
+            assistant-chat:
+                x: 8
+                'y': 5
+                w: 4
+                h: 3
+            date-time-widget:
+                x: 0
+                'y': 0
+                w: 4
+                h: 2
+            hacker-news:
+                x: 4
+                'y': 5
+                w: 4
+                h: 3
+            spotify:
+                x: 0
+                'y': 4
+                w: 6
+                h: 2
+            stocks-watchlist:
+                x: 0
+                'y': 5
+                w: 4
+                h: 3
+            weather-widget:
+                x: 8
+                'y': 0
+                w: 4
+                h: 2
+        - id: wall
+          label: Wall
+          min-width: 1600
+          orientation: landscape
+          columns: 16
+          rows: 9
+          gap: 12
+          placements:
+            assistant-chat:
+                x: 8
+                'y': 6
+                w: 4
+                h: 3
+            date-time-widget:
+                x: 0
+                'y': 0
+                w: 4
+                h: 2
+            hacker-news:
+                x: 4
+                'y': 6
+                w: 4
+                h: 3
+            spotify:
+                x: 0
+                'y': 4
+                w: 6
+                h: 2
+            stocks-watchlist:
+                x: 0
+                'y': 6
+                w: 4
+                h: 3
+            weather-widget:
+                x: 8
+                'y': 0
+                w: 4
+                h: 2
     widgets:
         - id: date-time-widget
           type: date-time

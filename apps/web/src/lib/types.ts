@@ -298,7 +298,32 @@ export type WidgetKind = 'date-time' | 'weather' | 'chat-history' | string;
 
 export type WidgetLayout = {
   profileId: string;
+  schemaVersion?: number;
+  defaultVariant?: string;
+  variants?: LayoutVariant[];
   widgets: WidgetInstance[];
+};
+
+export type LayoutVariantOrientation = 'portrait' | 'landscape' | 'any';
+
+export type WidgetPlacement = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  hidden?: boolean;
+};
+
+export type LayoutVariant = {
+  id: string;
+  label: string;
+  minWidth: number;
+  minHeight?: number;
+  orientation?: LayoutVariantOrientation;
+  columns: number;
+  rows: number;
+  gap?: number;
+  placements: Record<string, WidgetPlacement>;
 };
 
 export type WidgetCatalogItem = {
