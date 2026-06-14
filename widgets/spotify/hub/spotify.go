@@ -3,6 +3,8 @@ package spotify
 import (
 	"context"
 	"log/slog"
+	"sync"
+	"time"
 
 	"jute-dash/apps/hub/pkg/widgetskills"
 	"jute-dash/widgets"
@@ -42,6 +44,8 @@ func (s Settings) LogValue() slog.Value {
 }
 
 type SpotifyWidget struct{}
+
+var spotifySuggestions = newSpotifySuggestionCache()
 
 func NewWidget() *SpotifyWidget {
 	return &SpotifyWidget{}
@@ -149,7 +153,8 @@ func (w *SpotifyWidget) FetchDataWithConnections(
 			"Choose a Spotify Account connection in settings.",
 		), nil
 	}
-	playback, err := provider.NewClient(providerSettings(settings)).FetchPlayback(ctx)
+	client := provider.NewClient(providerSettings(settings))
+	playback, err := client.FetchPlayback(ctx)
 	if err != nil {
 		return widgets.Unavailable( //nolint:nilerr // provider error is mapped to a safe widget issue
 			"spotify.unavailable",
@@ -157,7 +162,94 @@ func (w *SpotifyWidget) FetchDataWithConnections(
 			"Jute could not load Spotify playback.",
 		), nil
 	}
+	if len(playback.TopAlbums) == 0 {
+		playback.TopAlbums = spotifySuggestions.get(
+			ctx,
+			spotifySuggestionCacheKey(input),
+			client.FetchSuggestedAlbums,
+		)
+	}
 	return widgets.OK(spotifyPlaybackData(playback)), nil
+}
+
+func spotifySuggestionCacheKey(input widgets.RuntimeInput) string {
+	if connection := input.Connections["account"]; connection.ID != "" {
+		return connection.ID
+	}
+	if ref := input.ConnectionRefs["account"]; ref != "" {
+		return ref
+	}
+	return input.InstanceID + ":account"
+}
+
+type spotifySuggestionFetcher func(context.Context, int) ([]provider.Album, error)
+
+type spotifySuggestionCache struct {
+	mu      sync.Mutex
+	entries map[string]spotifySuggestionCacheEntry
+	now     func() time.Time
+}
+
+type spotifySuggestionCacheEntry struct {
+	albums     []provider.Album
+	expiresAt  time.Time
+	retryAfter time.Time
+}
+
+func newSpotifySuggestionCache() *spotifySuggestionCache {
+	return &spotifySuggestionCache{
+		entries: map[string]spotifySuggestionCacheEntry{},
+		now:     time.Now,
+	}
+}
+
+func (c *spotifySuggestionCache) get(
+	ctx context.Context,
+	key string,
+	fetch spotifySuggestionFetcher,
+) []provider.Album {
+	now := c.now()
+	c.mu.Lock()
+	entry := c.entries[key]
+	if len(entry.albums) > 0 && now.Before(entry.expiresAt) {
+		albums := cloneSpotifyAlbums(entry.albums)
+		c.mu.Unlock()
+		return albums
+	}
+	if now.Before(entry.retryAfter) {
+		albums := cloneSpotifyAlbums(entry.albums)
+		c.mu.Unlock()
+		return albums
+	}
+	c.mu.Unlock()
+
+	albums, err := fetch(ctx, 8)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err != nil {
+		entry.retryAfter = now.Add(5 * time.Minute)
+		c.entries[key] = entry
+		return cloneSpotifyAlbums(entry.albums)
+	}
+	entry.albums = cloneSpotifyAlbums(albums)
+	if len(albums) > 0 {
+		entry.expiresAt = now.Add(30 * time.Minute)
+	} else {
+		entry.expiresAt = now.Add(5 * time.Minute)
+	}
+	entry.retryAfter = time.Time{}
+	c.entries[key] = entry
+	return cloneSpotifyAlbums(entry.albums)
+}
+
+func cloneSpotifyAlbums(albums []provider.Album) []provider.Album {
+	if len(albums) == 0 {
+		return nil
+	}
+	out := make([]provider.Album, len(albums))
+	copy(out, albums)
+	return out
 }
 
 func spotifyPlaybackData(playback provider.Playback) map[string]any {

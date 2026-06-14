@@ -65,7 +65,7 @@ func (c Client) FetchPlayback(ctx context.Context) (Playback, error) {
 		Shuffle    bool   `json:"shuffle_state"`
 		Repeat     string `json:"repeat_state"`
 		Device     struct {
-			VolumePercent int `json:"volume_percent"`
+			VolumePercent *int `json:"volume_percent"`
 		} `json:"device"`
 		Item *struct {
 			Name       string `json:"name"`
@@ -81,8 +81,6 @@ func (c Client) FetchPlayback(ctx context.Context) (Playback, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&playerState); err != nil {
 		return Playback{}, err
 	}
-	topAlbums, _ := c.FetchSuggestedAlbums(ctx, 8)
-
 	track := "Not Playing"
 	artist := "Unknown"
 	albumArtURL := ""
@@ -108,11 +106,17 @@ func (c Client) FetchPlayback(ctx context.Context) (Playback, error) {
 		AlbumArtURL: albumArtURL,
 		URI:         uri,
 		IsPlaying:   playerState.IsPlaying,
-		Volume:      playerState.Device.VolumePercent,
+		Volume:      defaultVolumePercent(playerState.Device.VolumePercent),
 		ProgressMS:  playerState.ProgressMS,
 		DurationMS:  durationMS,
 		Shuffle:     playerState.Shuffle,
 		RepeatState: strings.TrimSpace(playerState.Repeat),
-		TopAlbums:   topAlbums,
 	}, nil
+}
+
+func defaultVolumePercent(volume *int) int {
+	if volume == nil {
+		return 50
+	}
+	return max(0, min(*volume, 100))
 }

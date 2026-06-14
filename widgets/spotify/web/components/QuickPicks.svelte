@@ -37,7 +37,8 @@
 <style>
   .album-strip {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(52px, 72px));
+    justify-content: center;
     gap: clamp(6px, 2cqmin, 10px);
     width: 100%;
     min-width: 0;
@@ -90,15 +91,9 @@
     }
   }
 
-  @container (max-height: 360px) {
-    .album-strip {
-      display: none;
-    }
-  }
-
   @container (min-height: 400px) {
     .album-strip {
-      grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(58px, 82px));
     }
   }
 </style>

@@ -425,7 +425,7 @@
     try {
       playerSession?.disconnect();
       const nextSession = await createSpotifyPlayerSession({
-        volume: Math.max(0, Math.min(1, volume / 100)),
+        volume,
         getOAuthToken: async () => {
           const token = await getSpotifyWebPlaybackToken(fetch, connectionId);
           return token.accessToken;
@@ -515,12 +515,14 @@
         {volume}
         {busy}
         {stale}
-        bind:searchQuery
-        bind:searchMode
+        {searchQuery}
+        {searchMode}
         {searchSuggestions}
         {searching}
         onVolumePreview={(nextVolume) => (optimisticVolume = nextVolume)}
         onVolumeChange={handleVolume}
+        onSearchQueryChange={(query) => (searchQuery = query)}
+        onSearchModeChange={(mode) => (searchMode = mode)}
         onSearchPlay={handleSearchPlay}
         onSuggestionPlay={handleSuggestionPlay}
       />

@@ -11,8 +11,21 @@
   export let searching = false;
   export let onVolumePreview: (volume: number) => void = () => {};
   export let onVolumeChange: (volume: number) => void = () => {};
+  export let onSearchQueryChange: (query: string) => void = () => {};
+  export let onSearchModeChange: (mode: SpotifyPlayableType) => void = () => {};
   export let onSearchPlay: () => void = () => {};
   export let onSuggestionPlay: (item: SpotifyPlayableItem) => void = () => {};
+
+  function updateSearchQuery(value: string) {
+    searchQuery = value;
+    onSearchQueryChange(value);
+  }
+
+  function updateSearchMode(value: string) {
+    const nextMode = value as SpotifyPlayableType;
+    searchMode = nextMode;
+    onSearchModeChange(nextMode);
+  }
 </script>
 
 <div
@@ -46,19 +59,21 @@
         <Search size={14} />
         <input
           id="spotify-search"
-          bind:value={searchQuery}
+          value={searchQuery}
           disabled={busy || stale}
           placeholder={searchMode === "album"
             ? "Find an album"
             : searchMode === "track"
               ? "Find a song"
               : "Find a playlist"}
+          on:input={(event) => updateSearchQuery(event.currentTarget.value)}
         />
       </div>
       <select
-        bind:value={searchMode}
+        value={searchMode}
         disabled={busy || stale}
         aria-label="Spotify search type"
+        on:change={(event) => updateSearchMode(event.currentTarget.value)}
       >
         <option value="album">Album</option>
         <option value="track">Song</option>

@@ -25,3 +25,19 @@ func TestWithDeviceIDLeavesURLWithoutDeviceID(t *testing.T) {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
+
+func TestDefaultVolumePercent(t *testing.T) {
+	if got := defaultVolumePercent(nil); got != 50 {
+		t.Fatalf("expected missing volume to default to 50, got %d", got)
+	}
+
+	muted := 0
+	if got := defaultVolumePercent(&muted); got != 0 {
+		t.Fatalf("expected explicit zero volume to be preserved, got %d", got)
+	}
+
+	tooHigh := 120
+	if got := defaultVolumePercent(&tooHigh); got != 100 {
+		t.Fatalf("expected high volume to clamp to 100, got %d", got)
+	}
+}

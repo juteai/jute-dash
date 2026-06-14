@@ -8,11 +8,16 @@ describe('spotify player session', () => {
 
   it('wires Spotify SDK player lifecycle events', async () => {
     const listeners: Record<string, (payload: unknown) => void> = {};
+    let playerOptions: { volume?: number } | undefined;
     const connect = vi.fn(async () => true);
     const disconnect = vi.fn();
     const activateElement = vi.fn(async () => {});
 
     class FakePlayer {
+      constructor(options: { volume?: number }) {
+        playerOptions = options;
+      }
+
       addListener(event: string, callback: (payload: unknown) => void) {
         listeners[event] = callback;
         return true;
@@ -61,5 +66,6 @@ describe('spotify player session', () => {
     expect(onIssue).toHaveBeenCalledWith('login expired');
     expect(activateElement).toHaveBeenCalledOnce();
     expect(disconnect).toHaveBeenCalledOnce();
+    expect(playerOptions?.volume).toBe(0.75);
   });
 });

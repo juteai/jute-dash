@@ -131,7 +131,25 @@
             track_title: 'Home Mode',
             artist_name: 'Jute Dash',
             is_playing: true,
-            volume: 48
+            volume: 48,
+            top_albums: [
+              {
+                id: 'visual-album-1',
+                name: 'Morning Loop',
+                artist_name: 'Jute Dash',
+                uri: 'spotify:album:visual-1',
+                album_art_url:
+                  'https://i.scdn.co/image/ab67616d00001e02ff9ca10b55ce82ae553c8228'
+              },
+              {
+                id: 'visual-album-2',
+                name: 'Kitchen Mix',
+                artist_name: 'Jute Dash',
+                uri: 'spotify:album:visual-2',
+                album_art_url:
+                  'https://i.scdn.co/image/ab67616d00001e02ff9ca10b55ce82ae553c8228'
+              }
+            ]
           }
         };
       case 'philips-hue':

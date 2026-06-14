@@ -2,11 +2,14 @@ package spotify
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"jute-dash/apps/hub/pkg/widgetskills"
 	"jute-dash/widgets"
+	"jute-dash/widgets/spotify/hub/internal/provider"
 )
 
 func TestSpotifyWidgetSettings(t *testing.T) {
@@ -268,6 +271,64 @@ func TestSpotifyActionCatalogDrivesSkillAndInvocation(t *testing.T) {
 	}
 	if res["track_title"] != "Mock Track" {
 		t.Fatalf("expected status action to return playback data, got %#v", res)
+	}
+}
+
+func TestSpotifySuggestionCacheReusesAlbums(t *testing.T) {
+	cache := newSpotifySuggestionCache()
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	cache.now = func() time.Time { return now }
+	fetches := 0
+	fetch := func(context.Context, int) ([]provider.Album, error) {
+		fetches++
+		return []provider.Album{{
+			ID:          "album-1",
+			Name:        "Odelay",
+			ArtistName:  "Beck",
+			URI:         "spotify:album:album-1",
+			AlbumArtURL: "https://example.test/odelay.jpg",
+		}}, nil
+	}
+
+	first := cache.get(context.Background(), "spotify-main", fetch)
+	second := cache.get(context.Background(), "spotify-main", fetch)
+
+	if fetches != 1 {
+		t.Fatalf("expected one discovery fetch, got %d", fetches)
+	}
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("expected cached albums, got %#v then %#v", first, second)
+	}
+}
+
+func TestSpotifySuggestionCacheReturnsStaleAlbumsDuringCooldown(t *testing.T) {
+	cache := newSpotifySuggestionCache()
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	cache.now = func() time.Time { return now }
+	fetches := 0
+	fetch := func(context.Context, int) ([]provider.Album, error) {
+		fetches++
+		if fetches == 1 {
+			return []provider.Album{{
+				ID:         "album-1",
+				Name:       "Odelay",
+				ArtistName: "Beck",
+				URI:        "spotify:album:album-1",
+			}}, nil
+		}
+		return nil, errors.New("spotify API returned status 429")
+	}
+
+	_ = cache.get(context.Background(), "spotify-main", fetch)
+	now = now.Add(31 * time.Minute)
+	stale := cache.get(context.Background(), "spotify-main", fetch)
+	again := cache.get(context.Background(), "spotify-main", fetch)
+
+	if fetches != 2 {
+		t.Fatalf("expected failed refresh to start cooldown, got %d fetches", fetches)
+	}
+	if len(stale) != 1 || len(again) != 1 {
+		t.Fatalf("expected stale albums during cooldown, got %#v then %#v", stale, again)
 	}
 }
 
