@@ -245,63 +245,90 @@ func (w *MarketsWidget) Skill() *widgetskills.Definition {
 			},
 		},
 		Actions: []widgetskills.Action{
-			{
-				ID:          "refresh",
-				Title:       "Refresh market prices",
-				Description: "Query Yahoo Finance for active ticker prices.",
-				SideEffect:  "read",
-				InputSchema: map[string]any{
-					"type":                 "object",
-					"additionalProperties": false,
-				},
-				OutputSchema: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"status": map[string]any{"type": "string"},
-					},
-					"required": []string{"status"},
-				},
-			},
-			{
-				ID:          "query_ticker",
-				Title:       "Query stock or cryptocurrency ticker price",
-				Description: "Query Yahoo Finance for detailed price and quote information of a specific ticker symbol.",
-				SideEffect:  "read",
-				InputSchema: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"symbol": map[string]any{
-							"type":        "string",
-							"description": "The stock or cryptocurrency symbol to query, e.g. AAPL, GOOG, BTC-USD.",
-						},
-					},
-					"required":             []string{"symbol"},
-					"additionalProperties": false,
-				},
-				OutputSchema: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"status":        map[string]any{"type": "string"},
-						"symbol":        map[string]any{"type": "string"},
-						"name":          map[string]any{"type": "string"},
-						"price":         map[string]any{"type": "number"},
-						"change":        map[string]any{"type": "number"},
-						"changePercent": map[string]any{"type": "number"},
-						"currency":      map[string]any{"type": "string"},
-					},
-					"required": []string{
-						"status",
-						"symbol",
-						"name",
-						"price",
-						"change",
-						"changePercent",
-						"currency",
-					},
-				},
-			},
+			marketRefreshAction(),
+			marketQuoteAction(
+				"query_ticker",
+				"Query ticker price",
+				"Query Yahoo Finance for detailed price and quote information of a stock, share, fund, commodity, or cryptocurrency ticker symbol.",
+			),
+			marketQuoteAction(
+				"query_stock",
+				"Query stock price",
+				"Query Yahoo Finance for detailed price and quote information of a stock ticker symbol such as AAPL or GOOG.",
+			),
+			marketQuoteAction(
+				"query_share",
+				"Query share price",
+				"Query Yahoo Finance for detailed price and quote information of a share ticker symbol such as AAPL, VOD.L, or HSBA.L.",
+			),
+			marketQuoteAction(
+				"query_crypto",
+				"Query cryptocurrency price",
+				"Query Yahoo Finance for detailed price and quote information of a cryptocurrency ticker symbol such as BTC-USD or ETH-USD.",
+			),
 		},
 		SupportedWidgetSizes: []string{"medium", "wide", "large"},
+	}
+}
+
+func marketRefreshAction() widgetskills.Action {
+	return widgetskills.Action{
+		ID:          "refresh",
+		Title:       "Refresh market prices",
+		Description: "Query Yahoo Finance for active ticker prices in this widget's watchlist.",
+		SideEffect:  "read",
+		InputSchema: map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+		},
+		OutputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"status": map[string]any{"type": "string"},
+			},
+			"required": []string{"status"},
+		},
+	}
+}
+
+func marketQuoteAction(id, title, description string) widgetskills.Action {
+	return widgetskills.Action{
+		ID:          id,
+		Title:       title,
+		Description: description,
+		SideEffect:  "read",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"symbol": map[string]any{
+					"type":        "string",
+					"description": "Ticker symbol to query. Examples: AAPL, GOOG, VOD.L, HSBA.L, BTC-USD.",
+				},
+			},
+			"required":             []string{"symbol"},
+			"additionalProperties": false,
+		},
+		OutputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"status":        map[string]any{"type": "string"},
+				"symbol":        map[string]any{"type": "string"},
+				"name":          map[string]any{"type": "string"},
+				"price":         map[string]any{"type": "number"},
+				"change":        map[string]any{"type": "number"},
+				"changePercent": map[string]any{"type": "number"},
+				"currency":      map[string]any{"type": "string"},
+			},
+			"required": []string{
+				"status",
+				"symbol",
+				"name",
+				"price",
+				"change",
+				"changePercent",
+				"currency",
+			},
+		},
 	}
 }
 
@@ -337,7 +364,7 @@ func (w *MarketsWidget) InvokeAction(
 			"status": "completed",
 		}, nil
 
-	case "query_ticker":
+	case "query_ticker", "query_stock", "query_share", "query_crypto":
 		symbol, _ := arguments["symbol"].(string)
 		if symbol == "" {
 			return nil, errors.New("symbol parameter is required")

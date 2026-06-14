@@ -73,6 +73,25 @@ func TestVisibleWidgetsExposeSkillMappings(t *testing.T) {
 	}
 }
 
+func TestSkillListIncludesActionDetails(t *testing.T) {
+	registerTestSkill()
+	list := SkillListSnapshot(testSnapshot())
+
+	if len(list.Skills) != 1 {
+		t.Fatalf("expected one skill, got %+v", list.Skills)
+	}
+	if got := list.Skills[0].Actions; len(got) != 1 || got[0] != "read" {
+		t.Fatalf("expected action ID list to remain available, got %+v", got)
+	}
+	details := list.Skills[0].ActionDetails
+	if len(details) != 1 {
+		t.Fatalf("expected action details, got %+v", details)
+	}
+	if details[0].ID != "read" || details[0].Title != "Read context" || details[0].InputSchema == nil {
+		t.Fatalf("unexpected action details: %+v", details[0])
+	}
+}
+
 func TestWidgetContextUsesOwningSkill(t *testing.T) {
 	registerTestSkill()
 	context, err := WidgetContext(testSnapshot(), "test-widget")

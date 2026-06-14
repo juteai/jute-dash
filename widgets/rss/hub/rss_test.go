@@ -160,6 +160,64 @@ func TestRSSWidget_InvokeAction_ReadArticle(t *testing.T) {
 	if !strings.Contains(contentGrep, "First paragraph of the article.") {
 		t.Errorf("expected neighbor paragraph to be present, got: %q", contentGrep)
 	}
+
+	resExplicitGrep, err := w.InvokeAction(
+		context.Background(),
+		widgetskills.Snapshot{},
+		"inst1",
+		"grep_article",
+		map[string]any{
+			"url":   "https://example.com/article",
+			"query": "keyword",
+		},
+	)
+	if err != nil {
+		t.Fatalf("InvokeAction explicit grep error: %v", err)
+	}
+	contentExplicitGrep := resExplicitGrep["content"].(string)
+	if !strings.Contains(contentExplicitGrep, "Second paragraph with keyword match.") {
+		t.Errorf("expected explicit grep keyword match, got: %q", contentExplicitGrep)
+	}
+}
+
+func TestRSSWidget_InvokeAction_Refresh(t *testing.T) {
+	sampleXML := `<rss version="2.0">
+<channel>
+  <title>Example Feed</title>
+  <item><title>Article 1</title><link>https://example.com/art1</link></item>
+</channel>
+</rss>`
+	w := &RSSWidget{
+		cache: make(map[string]rssCacheEntry),
+		client: &http.Client{
+			Transport: mockRoundTripper(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(sampleXML)),
+				}, nil
+			}),
+		},
+	}
+	snapshot := widgetskills.Snapshot{
+		Layout: widgetskills.WidgetLayout{
+			Widgets: []widgetskills.WidgetInstance{{
+				ID:      "rss-1",
+				Kind:    "rss",
+				Visible: true,
+				Settings: map[string]any{
+					"feeds": []any{map[string]any{"url": "https://example.com/rss"}},
+				},
+			}},
+		},
+	}
+
+	res, err := w.InvokeAction(context.Background(), snapshot, "rss-1", "refresh", nil)
+	if err != nil {
+		t.Fatalf("InvokeAction refresh error: %v", err)
+	}
+	if res["status"] != "completed" || res["data"] == nil {
+		t.Fatalf("unexpected refresh result: %+v", res)
+	}
 }
 
 func TestRSSWidget_ParseSettings(t *testing.T) {
@@ -300,6 +358,13 @@ func TestRSSWidget_InvokeAction_EdgeCases(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for non-200 HTTP status")
+	}
+
+	_, err = w.InvokeAction(context.Background(), widgetskills.Snapshot{}, "inst1", "grep_article", map[string]any{
+		"url": "https://example.com/article",
+	})
+	if err == nil {
+		t.Error("expected error for grep_article without query")
 	}
 
 	// 3. HTML cleaning case-insensitivity and entity unescaping

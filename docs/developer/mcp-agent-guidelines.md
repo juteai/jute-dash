@@ -78,6 +78,7 @@ Initial implemented tools:
 Rules:
 
 - use skill discovery and context reads before invoking actions;
+- use `jute_skill_list` action details to choose exact action arguments;
 - invoke only actions declared by the relevant skill;
 - treat skill prompts as guidance, not permission grants;
 - do not narrate tool choice, tool plans, function-call decisions, or hidden reasoning in A2A assistant output;

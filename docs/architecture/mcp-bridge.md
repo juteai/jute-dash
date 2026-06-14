@@ -219,7 +219,7 @@ The bridge exposes generic skill tools and a small number of hub-level display t
 Initial tools:
 
 - `jute_dashboard_context_get`: return the same safe context as `jute://dashboard/current`.
-- `jute_skill_list`: list available Widget Skills.
+- `jute_skill_list`: list available Widget Skills, including action IDs and action detail metadata needed to call `jute_skill_invoke_action`.
 - `jute_skill_read_context`: read current public context for a skill or widget instance.
 - `jute_skill_invoke_action`: invoke a declared skill action through the hub.
 - `jute_skill_prompt_get`: get hub-approved prompt guidance for a skill.

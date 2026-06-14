@@ -167,6 +167,8 @@ func buildSystemInstruction() string {
 		"For date or time questions, read the jute.date_time.current skill context with jute_skill_read_context.",
 		"For chat history or agent status questions, read the jute.chat_history.current skill context with jute_skill_read_context.",
 		"For music playback requests, first call jute_skill_list, choose the exact visible Spotify or Apple Music skillId and widgetInstanceId, then invoke only one of that skill's declared action IDs.",
+		"For RSS, headline, link, or article-reading requests, first call jute_skill_list, choose the visible RSS skillId and widgetInstanceId, then use read_article or grep_article with the article URL and optional query.",
+		"For stocks, shares, crypto, commodities, or market-price requests, first call jute_skill_list, choose the visible Markets skillId and widgetInstanceId, then use query_stock, query_share, query_crypto, or query_ticker with the ticker symbol.",
 		"Prefer specific Widget Skill context over broad dashboard context when the user asks about one widget.",
 		"Never answer that you lack weather, time, dashboard, or widget data until you have checked the relevant Jute MCP tool and it is unavailable, unauthorized, or missing.",
 		"If MCP context is unavailable or unauthorized, say that Jute dashboard context is unavailable and ask the user to check the local MCP connection.",

@@ -124,6 +124,42 @@ func TestMarketsWidget_InvokeAction_QueryTicker(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for missing symbol parameter")
 	}
+
+	resStock, err := w.InvokeAction(
+		context.Background(),
+		widgetskills.Snapshot{},
+		"inst1",
+		"query_stock",
+		map[string]any{
+			"symbol": "GOOG",
+		},
+	)
+	if err != nil {
+		t.Fatalf("InvokeAction query_stock error: %v", err)
+	}
+	if resStock["symbol"] != "GOOG" || resStock["price"] != 2800.0 {
+		t.Errorf("unexpected query_stock result values: %+v", resStock)
+	}
+}
+
+func TestMarketsWidget_SkillDeclaresNaturalMarketActions(t *testing.T) {
+	skill := (&MarketsWidget{}).Skill()
+	actions := map[string]widgetskills.Action{}
+	for _, action := range skill.Actions {
+		actions[action.ID] = action
+	}
+	for _, id := range []string{"refresh", "query_ticker", "query_stock", "query_share", "query_crypto"} {
+		action, ok := actions[id]
+		if !ok {
+			t.Fatalf("expected action %q in markets skill", id)
+		}
+		if action.InputSchema == nil {
+			t.Fatalf("expected action %q to include input schema", id)
+		}
+	}
+	if actions["query_share"].Title != "Query share price" {
+		t.Fatalf("unexpected query_share action: %+v", actions["query_share"])
+	}
 }
 
 func TestMarketsWidget_ParseSettings(t *testing.T) {

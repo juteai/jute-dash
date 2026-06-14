@@ -257,7 +257,7 @@ Resources:
 
 Tools:
 
-- `jute_skill_list`: list available Widget Skills.
+- `jute_skill_list`: list available Widget Skills, including stable action IDs plus `actionDetails` with titles, descriptions, side-effect policy, confirmation policy, and input schemas.
 - `jute_skill_read_context`: read current public context for a skill or widget instance.
 - `jute_skill_invoke_action`: invoke a declared action through the hub.
 - `jute_skill_prompt_get`: get hub-approved prompt guidance for a skill.

@@ -344,7 +344,7 @@ func (juteSkillInvokeActionTool) InputSchema() map[string]any {
 		},
 		"arguments": map[string]any{
 			"type":                 "object",
-			"description":          "Action-specific arguments declared by the Widget Skill action schema.",
+			"description":          "Action-specific arguments declared by the Widget Skill actionDetails/inputSchema returned by jute_skill_list.",
 			"additionalProperties": true,
 		},
 		"confirmed": map[string]any{"type": "boolean"},

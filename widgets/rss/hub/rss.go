@@ -238,55 +238,81 @@ func (w *RSSWidget) Skill() *widgetskills.Definition {
 					"required": []string{"status"},
 				},
 			},
-			{
-				ID:          "read_article",
-				Title:       "Read article content",
-				Description: "Fetch the text content of a given article URL, optionally searching for a grep query.",
-				SideEffect:  "read",
-				InputSchema: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"url": map[string]any{
-							"type":        "string",
-							"description": "The URL of the article to read.",
-						},
-						"query": map[string]any{
-							"type":        "string",
-							"description": "Optional keyword query to filter matching paragraphs with surrounding context.",
-						},
-					},
-					"required":             []string{"url"},
-					"additionalProperties": false,
-				},
-				OutputSchema: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"status":  map[string]any{"type": "string"},
-						"title":   map[string]any{"type": "string"},
-						"content": map[string]any{"type": "string"},
-					},
-					"required": []string{"status", "title", "content"},
-				},
-			},
+			rssArticleAction(
+				"read_article",
+				"Read article content",
+				"Fetch the text content of a given article URL.",
+				false,
+			),
+			rssArticleAction(
+				"grep_article",
+				"Search article content",
+				"Fetch an article URL and return paragraphs matching a keyword query with surrounding context.",
+				true,
+			),
 		},
 		SupportedWidgetSizes: []string{"medium", "wide", "large"},
 	}
 }
 
+func rssArticleAction(id, title, description string, requireQuery bool) widgetskills.Action {
+	required := []string{"url"}
+	if requireQuery {
+		required = append(required, "query")
+	}
+	return widgetskills.Action{
+		ID:          id,
+		Title:       title,
+		Description: description,
+		SideEffect:  "read",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"url": map[string]any{
+					"type":        "string",
+					"description": "The URL of the article to read.",
+				},
+				"query": map[string]any{
+					"type":        "string",
+					"description": "Keyword query to filter matching paragraphs with surrounding context.",
+				},
+			},
+			"required":             required,
+			"additionalProperties": false,
+		},
+		OutputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"status":  map[string]any{"type": "string"},
+				"title":   map[string]any{"type": "string"},
+				"content": map[string]any{"type": "string"},
+			},
+			"required": []string{"status", "title", "content"},
+		},
+	}
+}
+
 func (w *RSSWidget) InvokeAction(
 	ctx context.Context,
-	_ widgetskills.Snapshot,
-	_ string,
+	snapshot widgetskills.Snapshot,
+	instanceID string,
 	actionID string,
 	arguments map[string]any,
 ) (map[string]any, error) {
-	if actionID != "read_article" {
+	if actionID == "refresh" {
+		return w.invokeRefresh(ctx, snapshot, instanceID)
+	}
+	if actionID != "read_article" && actionID != "grep_article" {
 		return nil, fmt.Errorf("unknown action: %s", actionID)
 	}
 
 	url, _ := arguments["url"].(string)
 	if url == "" {
 		return nil, errors.New("url parameter is required")
+	}
+	query, _ := arguments["query"].(string)
+	if actionID == "grep_article" && strings.TrimSpace(query) == "" {
+		return nil, errors.New("query parameter is required")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -319,7 +345,6 @@ func (w *RSSWidget) InvokeAction(
 
 	cleanedText := cleanHTML(string(bodyBytes))
 
-	query, _ := arguments["query"].(string)
 	if query != "" {
 		cleanedText = grepArticle(cleanedText, query)
 	} else {
@@ -334,6 +359,28 @@ func (w *RSSWidget) InvokeAction(
 		"content":   cleanedText,
 		"updatedAt": time.Now().UTC().Format(time.RFC3339Nano),
 	}, nil
+}
+
+func (w *RSSWidget) invokeRefresh(
+	ctx context.Context,
+	snapshot widgetskills.Snapshot,
+	instanceID string,
+) (map[string]any, error) {
+	for _, widget := range snapshot.Layout.Widgets {
+		if widget.ID != instanceID {
+			continue
+		}
+		data, err := w.FetchData(ctx, widget.Settings)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"status":    "completed",
+			"data":      data,
+			"updatedAt": time.Now().UTC().Format(time.RFC3339Nano),
+		}, nil
+	}
+	return nil, errors.New("widget instance not found")
 }
 
 var (
