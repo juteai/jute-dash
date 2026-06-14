@@ -147,6 +147,39 @@ func TestHandlerInvokesSpotifyActionThroughDispatcher(t *testing.T) {
 	}
 }
 
+func TestHandlerRejectsInventedAggregateMusicSkill(t *testing.T) {
+	cfg := testMCPConfig(t)
+	dispatcher := &recordingActionDispatcher{
+		result: map[string]any{"status": "ok"},
+	}
+	handler := NewHandlerWithActions(
+		cfg,
+		"test-version",
+		staticSnapshotProvider{snapshot: spotifyActionSnapshot()},
+		nil,
+		dispatcher,
+	)
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewBufferString(
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"jute_skill_invoke_action","arguments":{"skillId":"music_player","widgetInstanceId":"default_music_widget","actionId":"next"}}}`,
+	))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set(callerAgentHeader, "kronk-agent")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	response := decodeRPCResponse(t, rec)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if response.Error == nil || response.Error.Message != "skill or action not found" {
+		t.Fatalf("expected skill/action not found error, got %+v", response.Error)
+	}
+	if dispatcher.widgetInstanceID != "" || dispatcher.actionID != "" {
+		t.Fatalf("invented aggregate skill should not dispatch, got %+v", dispatcher)
+	}
+}
+
 func testMCPConfig(t *testing.T) Config {
 	t.Helper()
 	t.Setenv(testTokenEnv, "test-token")

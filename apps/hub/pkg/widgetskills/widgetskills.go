@@ -600,6 +600,7 @@ func homeAssistantGuidance() string {
 		"Return only the final user-facing answer in A2A messages. Never include private reasoning, scratchpad text, analysis, tool-selection notes, function-call plans, or statements like \"I should\" or \"no need to call tools\" in assistant output.",
 		"Use Jute MCP resources and Widget Skills to understand only the visible dashboard context that the hub exposes.",
 		"Prefer skill context over guesses. Invoke only declared actions, and only when the user's request requires that action or context.",
+		"For music playback requests, call jute_skill_list and choose the exact visible Spotify or Apple Music Widget Skill ID, widget instance ID, and declared action ID. Do not use generic music_player skill IDs or default widget IDs.",
 		"For simple greetings or ordinary chat, reply naturally without calling tools.",
 		"Before using a tool, choose the narrowest relevant Jute resource or Widget Skill action. Do not invent tools or capabilities that are not listed.",
 		"Do not infer hidden widget state, secrets, private household data, camera frames, microphone audio, browser storage, or raw adapter payloads.",

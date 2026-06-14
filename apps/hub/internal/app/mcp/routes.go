@@ -300,13 +300,19 @@ type juteSkillReadContextTool struct{}
 func (juteSkillReadContextTool) Name() string  { return "jute_skill_read_context" }
 func (juteSkillReadContextTool) Title() string { return "Read Widget Skill Context" }
 func (juteSkillReadContextTool) Description() string {
-	return "Read public context for a Widget Skill."
+	return "Read public context for an exact Widget Skill ID returned by jute_skill_list."
 }
 func (juteSkillReadContextTool) Scope() string { return agents.MCPScopeSkillsContextRead }
 func (juteSkillReadContextTool) InputSchema() map[string]any {
 	return objectSchema(map[string]any{
-		"skillId":          map[string]any{"type": "string"},
-		"widgetInstanceId": map[string]any{"type": "string"},
+		"skillId": map[string]any{
+			"type":        "string",
+			"description": "Exact Widget Skill ID returned by jute_skill_list.",
+		},
+		"widgetInstanceId": map[string]any{
+			"type":        "string",
+			"description": "Optional exact widget instance ID returned by jute_skill_list.",
+		},
 	}, []string{"skillId"})
 }
 func (juteSkillReadContextTool) Call(ctx RouteContext, args map[string]any) (any, error) {
@@ -319,14 +325,23 @@ type juteSkillInvokeActionTool struct{}
 func (juteSkillInvokeActionTool) Name() string  { return "jute_skill_invoke_action" }
 func (juteSkillInvokeActionTool) Title() string { return "Invoke Widget Skill Action" }
 func (juteSkillInvokeActionTool) Description() string {
-	return "Invoke a declared low-risk Widget Skill action through the hub."
+	return "Invoke an exact declared Widget Skill action through the hub. Call jute_skill_list first; do not invent generic skill IDs such as music_player."
 }
 func (juteSkillInvokeActionTool) Scope() string { return agents.MCPScopeSkillsActionInvoke }
 func (juteSkillInvokeActionTool) InputSchema() map[string]any {
 	return objectSchema(map[string]any{
-		"skillId":          map[string]any{"type": "string"},
-		"widgetInstanceId": map[string]any{"type": "string"},
-		"actionId":         map[string]any{"type": "string"},
+		"skillId": map[string]any{
+			"type":        "string",
+			"description": "Exact Widget Skill ID returned by jute_skill_list, for example jute.spotify.control.",
+		},
+		"widgetInstanceId": map[string]any{
+			"type":        "string",
+			"description": "Optional exact widget instance ID returned by jute_skill_list.",
+		},
+		"actionId": map[string]any{
+			"type":        "string",
+			"description": "Exact action ID declared by the selected Widget Skill.",
+		},
 		"arguments": map[string]any{
 			"type":                 "object",
 			"description":          "Action-specific arguments declared by the Widget Skill action schema.",
