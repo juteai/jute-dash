@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -18,6 +19,14 @@ type Repository struct {
 	onSave      func(ctx context.Context)
 	configStore any
 }
+
+const (
+	LayoutSchemaVersion  = 2
+	DefaultLayoutVariant = "tablet-landscape"
+	defaultLayoutGridGap = 12
+	minLayoutGridSize    = 1
+	maxLayoutGridSize    = 24
+)
 
 func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{
@@ -66,6 +75,15 @@ func (r *Repository) WidgetLayout(ctx context.Context, profileID string) (Widget
 	}
 
 	layout := WidgetLayout{ProfileID: profileID, Widgets: []WidgetInstance{}}
+	var profile homestate.LayoutProfileDB
+	if err := r.db.WithContext(ctx).
+		Where("id = ?", profileID).
+		First(&profile).
+		Error; err == nil {
+		applyLayoutProfileSettings(&layout, profile.SettingsJSON)
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return WidgetLayout{}, fmt.Errorf("load layout profile: %w", err)
+	}
 	for _, w := range wDBs {
 		widget := WidgetInstance{
 			ID:      w.ID,
@@ -87,11 +105,18 @@ func (r *Repository) WidgetLayout(ctx context.Context, profileID string) (Widget
 				return WidgetLayout{}, fmt.Errorf("decode widget settings for %s: %w", widget.ID, err)
 			}
 		}
+		widget.ConnectionRefs = map[string]string{}
+		if strings.TrimSpace(w.ConnectionRefsJSON) != "" {
+			if err := json.Unmarshal([]byte(w.ConnectionRefsJSON), &widget.ConnectionRefs); err != nil {
+				return WidgetLayout{}, fmt.Errorf("decode widget connection refs for %s: %w", widget.ID, err)
+			}
+		}
 		if item, ok := r.catalog[widget.Kind]; ok {
 			widget.Overflow = item.Overflow
 		}
 		layout.Widgets = append(layout.Widgets, widget)
 	}
+	layout = EnsureLayoutVariants(layout)
 	return layout, nil
 }
 
@@ -122,29 +147,48 @@ func (r *Repository) SaveWidgetLayout(ctx context.Context, layout WidgetLayout) 
 			return fmt.Errorf("clear widget layout: %w", err)
 		}
 
+		settingsJSON, err := layoutProfileSettingsJSON(normalized)
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&homestate.LayoutProfileDB{}).
+			Where("id = ?", normalized.ProfileID).
+			Updates(map[string]any{
+				"settings_json": settingsJSON,
+				"updated_at":    now,
+			}).
+			Error; err != nil {
+			return fmt.Errorf("save layout profile settings: %w", err)
+		}
+
 		for i, widget := range normalized.Widgets {
 			settingsJSON, err := jsonString(widget.Settings)
 			if err != nil {
 				return fmt.Errorf("encode widget settings for %s: %w", widget.ID, err)
 			}
+			connectionRefsJSON, err := jsonString(widget.ConnectionRefs)
+			if err != nil {
+				return fmt.Errorf("encode widget connection refs for %s: %w", widget.ID, err)
+			}
 			wDB := WidgetInstanceDB{
-				ID:              widget.ID,
-				Kind:            widget.Kind,
-				Title:           widget.Title,
-				LayoutProfileID: normalized.ProfileID,
-				X:               widget.X,
-				Y:               widget.Y,
-				W:               widget.W,
-				H:               widget.H,
-				MinW:            widget.MinW,
-				MinH:            widget.MinH,
-				Size:            widget.Size,
-				Mode:            normalizeMode(widget.Mode),
-				SettingsJSON:    settingsJSON,
-				Visible:         boolToInt(widget.Visible),
-				SortOrder:       i,
-				CreatedAt:       now,
-				UpdatedAt:       now,
+				ID:                 widget.ID,
+				Kind:               widget.Kind,
+				Title:              widget.Title,
+				LayoutProfileID:    normalized.ProfileID,
+				X:                  widget.X,
+				Y:                  widget.Y,
+				W:                  widget.W,
+				H:                  widget.H,
+				MinW:               widget.MinW,
+				MinH:               widget.MinH,
+				Size:               widget.Size,
+				Mode:               normalizeMode(widget.Mode),
+				SettingsJSON:       settingsJSON,
+				ConnectionRefsJSON: connectionRefsJSON,
+				Visible:            boolToInt(widget.Visible),
+				SortOrder:          i,
+				CreatedAt:          now,
+				UpdatedAt:          now,
 			}
 			if err := tx.Create(&wDB).Error; err != nil {
 				return fmt.Errorf("save widget %s: %w", widget.ID, err)
@@ -233,6 +277,9 @@ func NormalizeWidgetLayout(layout WidgetLayout, catalog map[string]WidgetCatalog
 		if widget.Settings == nil {
 			widget.Settings = map[string]any{}
 		}
+		if widget.ConnectionRefs == nil {
+			widget.ConnectionRefs = map[string]string{}
+		}
 		if _, err := json.Marshal(widget.Settings); err != nil {
 			return WidgetLayout{}, fmt.Errorf(
 				"%w: widget %s settings are not JSON serializable",
@@ -240,8 +287,283 @@ func NormalizeWidgetLayout(layout WidgetLayout, catalog map[string]WidgetCatalog
 				widget.ID,
 			)
 		}
+		if _, err := json.Marshal(widget.ConnectionRefs); err != nil {
+			return WidgetLayout{}, fmt.Errorf(
+				"%w: widget %s connection refs are not JSON serializable",
+				ErrInvalidLayout,
+				widget.ID,
+			)
+		}
+	}
+	layout = EnsureLayoutVariants(layout)
+	if err := validateLayoutVariants(layout); err != nil {
+		return WidgetLayout{}, err
 	}
 	return layout, nil
+}
+
+func EnsureLayoutVariants(layout WidgetLayout) WidgetLayout {
+	if layout.SchemaVersion < LayoutSchemaVersion {
+		layout.SchemaVersion = LayoutSchemaVersion
+	}
+	if strings.TrimSpace(layout.DefaultVariant) == "" {
+		layout.DefaultVariant = DefaultLayoutVariant
+	}
+	existing := map[string]LayoutVariant{}
+	for _, variant := range layout.Variants {
+		existing[strings.TrimSpace(variant.ID)] = variant
+	}
+	presets := []LayoutVariant{
+		{
+			ID:          "phone",
+			Label:       "Phone",
+			MinWidth:    0,
+			Orientation: "any",
+			Columns:     1,
+			Rows:        8,
+			Gap:         defaultLayoutGridGap,
+		},
+		{
+			ID:          "tablet-portrait",
+			Label:       "Tablet",
+			MinWidth:    641,
+			Orientation: "portrait",
+			Columns:     6,
+			Rows:        10,
+			Gap:         defaultLayoutGridGap,
+		},
+		{
+			ID:          "tablet-landscape",
+			Label:       "Tablet wide",
+			MinWidth:    768,
+			Orientation: "landscape",
+			Columns:     10,
+			Rows:        6,
+			Gap:         defaultLayoutGridGap,
+		},
+		{
+			ID:          "desktop",
+			Label:       "Desktop",
+			MinWidth:    1024,
+			Orientation: "any",
+			Columns:     12,
+			Rows:        8,
+			Gap:         defaultLayoutGridGap,
+		},
+		{
+			ID:          "wall",
+			Label:       "Wall",
+			MinWidth:    1600,
+			Orientation: "landscape",
+			Columns:     16,
+			Rows:        9,
+			Gap:         defaultLayoutGridGap,
+		},
+	}
+
+	var variants []LayoutVariant
+	seen := map[string]bool{}
+	for _, preset := range presets {
+		variant := preset
+		if candidate, ok := existing[preset.ID]; ok {
+			variant = mergeVariantPreset(preset, candidate)
+		}
+		variants = append(variants, normalizeLayoutVariant(variant, layout.Widgets))
+		seen[preset.ID] = true
+	}
+	for _, variant := range layout.Variants {
+		id := strings.TrimSpace(variant.ID)
+		if id == "" || seen[id] {
+			continue
+		}
+		variants = append(variants, normalizeLayoutVariant(variant, layout.Widgets))
+		seen[id] = true
+	}
+	layout.Variants = variants
+	if _, ok := seen[layout.DefaultVariant]; !ok && len(layout.Variants) > 0 {
+		layout.DefaultVariant = layout.Variants[0].ID
+	}
+	return layout
+}
+
+func mergeVariantPreset(preset, variant LayoutVariant) LayoutVariant {
+	if strings.TrimSpace(variant.Label) == "" {
+		variant.Label = preset.Label
+	}
+	if variant.Columns == 0 {
+		variant.Columns = preset.Columns
+	}
+	if variant.Rows == 0 {
+		variant.Rows = preset.Rows
+	}
+	if variant.Gap == 0 {
+		variant.Gap = preset.Gap
+	}
+	if strings.TrimSpace(variant.Orientation) == "" {
+		variant.Orientation = preset.Orientation
+	}
+	if variant.MinWidth == 0 {
+		variant.MinWidth = preset.MinWidth
+	}
+	return variant
+}
+
+func normalizeLayoutVariant(variant LayoutVariant, widgets []WidgetInstance) LayoutVariant {
+	variant.ID = strings.TrimSpace(variant.ID)
+	variant.Label = strings.TrimSpace(variant.Label)
+	if variant.Label == "" {
+		variant.Label = variant.ID
+	}
+	variant.Orientation = strings.TrimSpace(variant.Orientation)
+	if variant.Orientation == "" {
+		variant.Orientation = "any"
+	}
+	variant.MinWidth = maxInt(0, variant.MinWidth)
+	variant.MinHeight = maxInt(0, variant.MinHeight)
+	variant.Columns = clampInt(variant.Columns, minLayoutGridSize, maxLayoutGridSize)
+	variant.Rows = clampInt(variant.Rows, minLayoutGridSize, maxLayoutGridSize)
+	if variant.Gap == 0 {
+		variant.Gap = defaultLayoutGridGap
+	}
+	if variant.Placements == nil {
+		variant.Placements = map[string]WidgetPlacement{}
+	}
+	for _, widget := range widgets {
+		placement, ok := variant.Placements[widget.ID]
+		if !ok {
+			placement = WidgetPlacement{X: widget.X, Y: widget.Y, W: widget.W, H: widget.H}
+		}
+		variant.Placements[widget.ID] = clampWidgetPlacement(placement, widget, variant.Columns, variant.Rows)
+	}
+	return variant
+}
+
+func clampWidgetPlacement(
+	placement WidgetPlacement,
+	widget WidgetInstance,
+	columns int,
+	rows int,
+) WidgetPlacement {
+	minW := clampInt(widget.MinW, 1, columns)
+	minH := clampInt(widget.MinH, 1, rows)
+	width := clampInt(placement.W, minW, columns)
+	height := clampInt(placement.H, minH, rows)
+	return WidgetPlacement{
+		X:      clampInt(placement.X, 0, columns-width),
+		Y:      clampInt(placement.Y, 0, rows-height),
+		W:      width,
+		H:      height,
+		Hidden: placement.Hidden,
+	}
+}
+
+func validateLayoutVariants(layout WidgetLayout) error {
+	if layout.SchemaVersion < LayoutSchemaVersion {
+		return fmt.Errorf("%w: unsupported layout schema version", ErrInvalidLayout)
+	}
+	seen := map[string]bool{}
+	widgetsByID := map[string]WidgetInstance{}
+	for _, widget := range layout.Widgets {
+		widgetsByID[widget.ID] = widget
+	}
+	for _, variant := range layout.Variants {
+		if variant.ID == "" {
+			return fmt.Errorf("%w: layout variant id is required", ErrInvalidLayout)
+		}
+		if seen[variant.ID] {
+			return fmt.Errorf("%w: duplicate layout variant %q", ErrInvalidLayout, variant.ID)
+		}
+		seen[variant.ID] = true
+		if variant.Columns < minLayoutGridSize || variant.Columns > maxLayoutGridSize ||
+			variant.Rows < minLayoutGridSize || variant.Rows > maxLayoutGridSize {
+			return fmt.Errorf("%w: layout variant %q grid size is invalid", ErrInvalidLayout, variant.ID)
+		}
+		switch variant.Orientation {
+		case "", "any", "portrait", "landscape":
+		default:
+			return fmt.Errorf("%w: layout variant %q orientation is invalid", ErrInvalidLayout, variant.ID)
+		}
+		for widgetID, placement := range variant.Placements {
+			widget, ok := widgetsByID[widgetID]
+			if !ok {
+				return fmt.Errorf(
+					"%w: layout variant %q references unknown widget %q",
+					ErrInvalidLayout,
+					variant.ID,
+					widgetID,
+				)
+			}
+			minW := clampInt(widget.MinW, 1, variant.Columns)
+			minH := clampInt(widget.MinH, 1, variant.Rows)
+			if placement.W < minW || placement.H < minH ||
+				placement.X < 0 || placement.Y < 0 ||
+				placement.X+placement.W > variant.Columns ||
+				placement.Y+placement.H > variant.Rows {
+				return fmt.Errorf(
+					"%w: layout variant %q placement for %q is out of bounds",
+					ErrInvalidLayout,
+					variant.ID,
+					widgetID,
+				)
+			}
+		}
+	}
+	if !seen[layout.DefaultVariant] {
+		return fmt.Errorf("%w: default layout variant is missing", ErrInvalidLayout)
+	}
+	return nil
+}
+
+type layoutProfileSettings struct {
+	SchemaVersion  int             `json:"schemaVersion,omitempty"`
+	DefaultVariant string          `json:"defaultVariant,omitempty"`
+	Variants       []LayoutVariant `json:"variants,omitempty"`
+}
+
+func applyLayoutProfileSettings(layout *WidgetLayout, raw string) {
+	if strings.TrimSpace(raw) == "" {
+		return
+	}
+	var settings layoutProfileSettings
+	if err := json.Unmarshal([]byte(raw), &settings); err != nil {
+		return
+	}
+	layout.SchemaVersion = settings.SchemaVersion
+	layout.DefaultVariant = settings.DefaultVariant
+	layout.Variants = settings.Variants
+}
+
+func layoutProfileSettingsJSON(layout WidgetLayout) (string, error) {
+	settings := layoutProfileSettings{
+		SchemaVersion:  layout.SchemaVersion,
+		DefaultVariant: layout.DefaultVariant,
+		Variants:       layout.Variants,
+	}
+	raw, err := json.Marshal(settings)
+	if err != nil {
+		return "", fmt.Errorf("encode layout profile settings: %w", err)
+	}
+	return string(raw), nil
+}
+
+func clampInt(value, lower, upper int) int {
+	if upper < lower {
+		return lower
+	}
+	if value < lower {
+		return lower
+	}
+	if value > upper {
+		return upper
+	}
+	return value
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func WidgetLayoutFromDashboardConfig(
@@ -249,8 +571,11 @@ func WidgetLayoutFromDashboardConfig(
 	catalog map[string]WidgetCatalogItem,
 ) (WidgetLayout, error) {
 	layout := WidgetLayout{
-		ProfileID: DefaultLayoutProfileID,
-		Widgets:   make([]WidgetInstance, 0, len(cfg.Widgets)),
+		ProfileID:      DefaultLayoutProfileID,
+		SchemaVersion:  cfg.SchemaVersion,
+		DefaultVariant: cfg.DefaultVariant,
+		Variants:       cfg.Variants,
+		Widgets:        make([]WidgetInstance, 0, len(cfg.Widgets)),
 	}
 	legacyColumns := usesLegacyColumns(cfg, catalog)
 	for _, w := range cfg.Widgets {
@@ -273,19 +598,20 @@ func WidgetLayoutFromDashboardConfig(
 			}
 		}
 		layout.Widgets = append(layout.Widgets, WidgetInstance{
-			ID:       w.ID,
-			Kind:     w.Type,
-			Title:    w.Title,
-			X:        x,
-			Y:        w.Y,
-			W:        width,
-			H:        w.H,
-			MinW:     minW,
-			MinH:     w.MinH,
-			Size:     w.Size,
-			Mode:     normalizeMode(w.Mode),
-			Settings: w.Settings,
-			Visible:  w.Visible,
+			ID:             w.ID,
+			Kind:           w.Type,
+			Title:          w.Title,
+			X:              x,
+			Y:              w.Y,
+			W:              width,
+			H:              w.H,
+			MinW:           minW,
+			MinH:           w.MinH,
+			Size:           w.Size,
+			Mode:           normalizeMode(w.Mode),
+			Settings:       w.Settings,
+			ConnectionRefs: w.ConnectionRefs,
+			Visible:        w.Visible,
 		})
 	}
 	return NormalizeWidgetLayout(layout, catalog)
@@ -315,28 +641,30 @@ func usesLegacyColumns(cfg DashboardConfig, catalog map[string]WidgetCatalogItem
 func DefaultWidgetLayout() WidgetLayout {
 	widgets := defaultWidgetInstances()
 	layout := WidgetLayout{
-		ProfileID: DefaultLayoutProfileID,
-		Widgets:   make([]WidgetInstance, 0, len(widgets)),
+		ProfileID:     DefaultLayoutProfileID,
+		SchemaVersion: LayoutSchemaVersion,
+		Widgets:       make([]WidgetInstance, 0, len(widgets)),
 	}
 	for _, widget := range widgets {
 		layout.Widgets = append(layout.Widgets, WidgetInstance{
-			ID:       widget.id,
-			Kind:     widget.kind,
-			Title:    widget.title,
-			X:        widget.x,
-			Y:        widget.y,
-			W:        widget.w,
-			H:        widget.h,
-			MinW:     widget.minW,
-			MinH:     widget.minH,
-			Size:     widget.size,
-			Overflow: widget.overflow,
-			Mode:     WidgetModeUI,
-			Settings: map[string]any{},
-			Visible:  widget.visible,
+			ID:             widget.id,
+			Kind:           widget.kind,
+			Title:          widget.title,
+			X:              widget.x,
+			Y:              widget.y,
+			W:              widget.w,
+			H:              widget.h,
+			MinW:           widget.minW,
+			MinH:           widget.minH,
+			Size:           widget.size,
+			Overflow:       widget.overflow,
+			Mode:           WidgetModeUI,
+			Settings:       map[string]any{},
+			ConnectionRefs: map[string]string{},
+			Visible:        widget.visible,
 		})
 	}
-	return layout
+	return EnsureLayoutVariants(layout)
 }
 
 func WidgetCatalog() []WidgetCatalogItem {
@@ -478,6 +806,20 @@ func defaultWidgetInstances() []defaultWidgetInstance {
 			minH:     1,
 			size:     "medium",
 			overflow: "scroll",
+			visible:  true,
+		},
+		{
+			id:       "spotify-widget-1",
+			kind:     "spotify",
+			title:    "Spotify",
+			x:        6,
+			y:        1,
+			w:        6,
+			h:        2,
+			minW:     4,
+			minH:     2,
+			size:     "wide",
+			overflow: "clip",
 			visible:  true,
 		},
 	}

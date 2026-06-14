@@ -42,6 +42,22 @@ func TestHiddenWidgetsAreOmitted(t *testing.T) {
 	}
 }
 
+func TestHeadlessWidgetsExposeSkillsWithoutVisibleWidgetTiles(t *testing.T) {
+	registerTestSkill()
+	snapshot := testSnapshot()
+	snapshot.Layout.Widgets[0].Mode = "headless"
+
+	skills := Available(snapshot)
+	visible := VisibleWidgetsSnapshot(snapshot)
+
+	if len(skills) != 1 || skills[0].WidgetInstanceID != "test-widget" {
+		t.Fatalf("headless widget should still expose its skill, got %+v", skills)
+	}
+	if len(visible.Widgets) != 0 {
+		t.Fatalf("headless widget should not render a visible tile, got %+v", visible.Widgets)
+	}
+}
+
 func TestSkillContextUsesRegisteredContext(t *testing.T) {
 	registerTestSkill()
 
@@ -70,6 +86,25 @@ func TestVisibleWidgetsExposeSkillMappings(t *testing.T) {
 	}
 	if widgets.Widgets[0].ContextURI != "jute://widgets/test-widget/context" {
 		t.Fatalf("unexpected widget context URI: %+v", widgets.Widgets[0])
+	}
+}
+
+func TestSkillListIncludesActionDetails(t *testing.T) {
+	registerTestSkill()
+	list := SkillListSnapshot(testSnapshot())
+
+	if len(list.Skills) != 1 {
+		t.Fatalf("expected one skill, got %+v", list.Skills)
+	}
+	if got := list.Skills[0].Actions; len(got) != 1 || got[0] != "read" {
+		t.Fatalf("expected action ID list to remain available, got %+v", got)
+	}
+	details := list.Skills[0].ActionDetails
+	if len(details) != 1 {
+		t.Fatalf("expected action details, got %+v", details)
+	}
+	if details[0].ID != "read" || details[0].Title != "Read context" || details[0].InputSchema == nil {
+		t.Fatalf("unexpected action details: %+v", details[0])
 	}
 }
 
@@ -169,6 +204,23 @@ func TestWidgetSkillsDoesNotHardCodeBuiltInWidgets(t *testing.T) {
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("widgetskills.go should stay generic; found forbidden reference %q", forbidden)
+		}
+	}
+}
+
+func TestHomeAssistantGuidanceRoutesMarketRequestsThroughWidgetSkills(t *testing.T) {
+	guidance := HomeAssistantGuidance()
+	for _, want := range []string{
+		"stocks, shares, crypto, commodities, or market-price requests",
+		"jute_skill_list",
+		"visible Markets Widget Skill",
+		"query_stock",
+		"query_share",
+		"query_crypto",
+		"query_ticker",
+	} {
+		if !strings.Contains(guidance, want) {
+			t.Fatalf("expected market guidance to contain %q, got %q", want, guidance)
 		}
 	}
 }

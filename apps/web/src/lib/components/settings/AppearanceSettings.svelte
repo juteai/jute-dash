@@ -1,15 +1,25 @@
 <script lang="ts">
   /* eslint-disable no-useless-assignment */
+  import { onDestroy } from 'svelte';
   import { Trash2, Upload } from 'lucide-svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import { themeOptions } from '$lib/themes';
   import { settingsStore } from '$lib/settingsStore';
+  import { hubStream } from '$lib/hubStream';
   import { backgroundImageURL } from '$lib/hubClient';
   import type { HouseholdSettings } from '$lib/types';
   import { numeric } from '$lib/utils';
 
   let draft: HouseholdSettings | undefined;
   let lastJSON = '';
+  let savedNotice = '';
+  let savedNoticeTimer: number | undefined;
+
+  $: draftJSON = draft ? JSON.stringify(draft) : '';
+  $: hasChanges = !!draft && draftJSON !== lastJSON;
+  $: if (hasChanges && savedNotice) {
+    savedNotice = '';
+  }
 
   $: if ($settingsStore.householdSettings) {
     const currentJSON = JSON.stringify($settingsStore.householdSettings);
@@ -43,7 +53,14 @@
     !draft.display.background.value
   ) {
     draft.display.background.value = 'stardust';
+    draft = draft;
   }
+
+  onDestroy(() => {
+    if (savedNoticeTimer) {
+      window.clearTimeout(savedNoticeTimer);
+    }
+  });
 
   function ensureBackground() {
     if (!draft) {
@@ -110,8 +127,18 @@
     if (!draft || $settingsStore.saving) {
       return;
     }
+    savedNotice = '';
+    if (savedNoticeTimer) {
+      window.clearTimeout(savedNoticeTimer);
+    }
     try {
       await settingsStore.saveHousehold(draft);
+      savedNotice = $hubStream.dashboard.status?.config.writableYaml
+        ? 'Saved to hub and YAML config.'
+        : 'Saved to hub.';
+      savedNoticeTimer = window.setTimeout(() => {
+        savedNotice = '';
+      }, 4000);
     } catch {
       // Error is set in settingsStore.issue
     }
@@ -169,6 +196,7 @@
               draft.display.widgetChrome.smokedOpacity = parseFloat(
                 event.currentTarget.value
               );
+              draft = draft;
             }
           }}
         />
@@ -192,6 +220,7 @@
               draft.display.widgetChrome.frostedOpacity = parseFloat(
                 event.currentTarget.value
               );
+              draft = draft;
             }
           }}
         />
@@ -247,11 +276,14 @@
           type="number"
           min="3"
           value={bg.intervalSeconds ?? 30}
-          on:input={(event) =>
-            draft &&
-            (draft.display.background.intervalSeconds = numeric(
-              event.currentTarget.value
-            ))}
+          on:input={(event) => {
+            if (draft) {
+              draft.display.background.intervalSeconds = numeric(
+                event.currentTarget.value
+              );
+              draft = draft;
+            }
+          }}
         />
       </label>
     {/if}
@@ -316,8 +348,23 @@
   {/if}
 
   <div class="settings-actions">
-    <Button on:click={save} disabled={$settingsStore.saving}
-      >{$settingsStore.saving ? 'Saving' : 'Save appearance'}</Button
+    <span class="settings-save-state" aria-live="polite">
+      {#if $settingsStore.saving}
+        Saving appearance…
+      {:else if hasChanges}
+        Unsaved changes
+      {:else if savedNotice}
+        {savedNotice}
+      {:else}
+        All changes saved
+      {/if}
+    </span>
+    <Button on:click={save} disabled={$settingsStore.saving || !hasChanges}
+      >{$settingsStore.saving
+        ? 'Saving'
+        : hasChanges
+          ? 'Save appearance'
+          : 'Saved'}</Button
     >
   </div>
 {:else}
@@ -439,6 +486,12 @@
     gap: 10px;
     justify-content: flex-end;
     margin-top: 12px;
+  }
+
+  .settings-save-state {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 720;
   }
 
   .settings-empty {

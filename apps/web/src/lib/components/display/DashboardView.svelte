@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import {
     MessageCircle,
     Mic,
@@ -11,14 +12,20 @@
   import DashboardGrid from '$lib/components/display/DashboardGrid.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
+  import {
+    ensureLayoutVariants,
+    selectLayoutVariant
+  } from '$lib/layout-editor';
   import { layoutStore } from '$lib/layoutStore';
   import type {
     Agent,
     AgentAvailability,
     ChatMessage,
     DashboardData,
+    UserFacingIssue,
     VoiceStatus,
-    WidgetCatalogItem
+    WidgetCatalogItem,
+    WidgetInstance
   } from '$lib/types';
 
   export let data: DashboardData;
@@ -35,12 +42,18 @@
   export let onOpenChat: () => void = () => {};
   export let onManageAgents: () => void = () => {};
   export let onToggleVoiceMute: () => Promise<void> | void = () => {};
-  export let onEnterEdit: () => void = () => {};
+  export let onEnterEdit: (activeVariantId: string) => void = () => {};
   export let onSaveEdit: () => void = () => {};
   export let onCancelEdit: () => void = () => {};
   export let onResetLayout: () => void = () => {};
+  export let onIssueAction: (
+    issue: UserFacingIssue,
+    widget: WidgetInstance
+  ) => void = () => {};
 
   let showCatalog = false;
+  let viewportWidth = 1280;
+  let viewportHeight = 800;
 
   $: headlessWidgets = data.layout.widgets.filter(
     (widget) => widget.visible && widget.mode === 'headless'
@@ -53,6 +66,31 @@
       ? 'Voice muted'
       : 'Wake listening'
     : 'Voice not configured';
+  $: layoutWithVariants = ensureLayoutVariants(data.layout);
+  $: activeVariant = selectLayoutVariant(
+    layoutWithVariants,
+    viewportWidth,
+    viewportHeight,
+    $layoutStore.activeVariantId
+  );
+  $: if (
+    editMode &&
+    activeVariant &&
+    $layoutStore.activeVariantId !== activeVariant.id
+  ) {
+    layoutStore.setActiveVariant(activeVariant.id);
+  }
+
+  onMount(() => {
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
+  });
+
+  function updateViewport() {
+    viewportWidth = window.innerWidth;
+    viewportHeight = window.innerHeight;
+  }
 
   function canAddWidget(item: WidgetCatalogItem) {
     return (
@@ -103,7 +141,7 @@
         <IconButton
           label="Edit dashboard"
           variant="outline"
-          on:click={onEnterEdit}
+          on:click={() => onEnterEdit(activeVariant.id)}
         >
           <Pencil size={20} />
         </IconButton>
@@ -132,6 +170,56 @@
           {/if}
         </span>
       </div>
+      {#if activeVariant}
+        <div class="layout-variant-controls" aria-label="Layout size">
+          <div
+            class="layout-variant-tabs"
+            role="tablist"
+            aria-label="Layout variants"
+          >
+            {#each layoutWithVariants.variants ?? [] as variant (variant.id)}
+              <button
+                type="button"
+                class:layout-variant-tab--active={variant.id ===
+                  activeVariant.id}
+                role="tab"
+                aria-selected={variant.id === activeVariant.id}
+                on:click={() => layoutStore.setActiveVariant(variant.id)}
+              >
+                {variant.label}
+              </button>
+            {/each}
+          </div>
+          <label>
+            <span>Columns</span>
+            <input
+              type="number"
+              min="1"
+              max="24"
+              value={activeVariant.columns}
+              on:change={(event) =>
+                layoutStore.setVariantGridSize(
+                  Number((event.currentTarget as HTMLInputElement).value),
+                  activeVariant.rows
+                )}
+            />
+          </label>
+          <label>
+            <span>Rows</span>
+            <input
+              type="number"
+              min="1"
+              max="24"
+              value={activeVariant.rows}
+              on:change={(event) =>
+                layoutStore.setVariantGridSize(
+                  activeVariant.columns,
+                  Number((event.currentTarget as HTMLInputElement).value)
+                )}
+            />
+          </label>
+        </div>
+      {/if}
       <div class="edit-toolbar-actions">
         <Button
           size="sm"
@@ -242,11 +330,58 @@
     {selectedAgent}
     {selectedAvailability}
     {focusedWidgetId}
+    activeVariantId={$layoutStore.activeVariantId}
     {onOpenChat}
+    {onIssueAction}
   />
 </section>
 
 <style>
+  .layout-variant-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .layout-variant-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.16));
+    border-radius: 8px;
+    background: var(--surface, rgba(255, 255, 255, 0.04));
+  }
+  .layout-variant-tabs button {
+    min-height: 32px;
+    border: none;
+    border-radius: 6px;
+    padding: 0 9px;
+    background: transparent;
+    color: var(--foreground, inherit);
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .layout-variant-tabs button.layout-variant-tab--active {
+    background: var(--foreground, #fff);
+    color: var(--background, #000);
+  }
+  .layout-variant-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    opacity: 0.88;
+  }
+  .layout-variant-controls input {
+    width: 56px;
+    min-height: 34px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.16));
+    border-radius: 7px;
+    background: var(--surface, rgba(255, 255, 255, 0.04));
+    color: var(--foreground, inherit);
+    padding: 0 8px;
+  }
   .widget-catalog-actions {
     display: flex;
     gap: 8px;

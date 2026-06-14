@@ -298,7 +298,32 @@ export type WidgetKind = 'date-time' | 'weather' | 'chat-history' | string;
 
 export type WidgetLayout = {
   profileId: string;
+  schemaVersion?: number;
+  defaultVariant?: string;
+  variants?: LayoutVariant[];
   widgets: WidgetInstance[];
+};
+
+export type LayoutVariantOrientation = 'portrait' | 'landscape' | 'any';
+
+export type WidgetPlacement = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  hidden?: boolean;
+};
+
+export type LayoutVariant = {
+  id: string;
+  label: string;
+  minWidth: number;
+  minHeight?: number;
+  orientation?: LayoutVariantOrientation;
+  columns: number;
+  rows: number;
+  gap?: number;
+  placements: Record<string, WidgetPlacement>;
 };
 
 export type WidgetCatalogItem = {
@@ -314,6 +339,37 @@ export type WidgetCatalogItem = {
   overflow: 'clip' | 'scroll' | 'expand' | string;
   allowMultiple: boolean;
   settingsSchema?: SettingField[];
+  connectionRequirements?: ConnectionRequirement[];
+};
+
+export type ConnectionRequirement = {
+  slot: string;
+  kind: string;
+  displayName: string;
+  description?: string;
+  required: boolean;
+  secretKeys?: string[];
+  fields?: ConnectionField[];
+};
+
+export type ConnectionFieldType = 'string' | 'number' | 'boolean' | 'enum';
+
+export type ConnectionField = {
+  id: string;
+  type: ConnectionFieldType | string;
+  label: string;
+  help?: string;
+  required: boolean;
+  secret: boolean;
+  default?: unknown;
+  options?: string[];
+};
+
+export type AdapterConnectionKind = {
+  kind: string;
+  displayName: string;
+  description?: string;
+  fields: ConnectionField[];
 };
 
 export type SettingFieldType =
@@ -350,8 +406,33 @@ export type WidgetInstance = {
   overflow?: 'clip' | 'scroll' | 'expand' | string;
   mode?: WidgetMode | string;
   settings: Record<string, unknown>;
+  connectionRefs?: Record<string, string>;
   visible: boolean;
   data?: unknown;
+};
+
+export type WidgetRuntimePayload = {
+  status:
+    | 'ok'
+    | 'loading'
+    | 'empty'
+    | 'unavailable'
+    | 'error'
+    | 'permission_required'
+    | 'stale'
+    | string;
+  issue?: UserFacingIssue;
+  updatedAt?: string;
+  data?: unknown;
+};
+
+export type AdapterConnection = {
+  id: string;
+  kind: string;
+  name: string;
+  settings: Record<string, unknown>;
+  secretRefs?: Record<string, string>;
+  enabled: boolean;
 };
 
 export type ChatState =

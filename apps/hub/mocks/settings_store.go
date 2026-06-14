@@ -22,6 +22,121 @@ func (_m *SettingsStore) EXPECT() *SettingsStore_Expecter {
 	return &SettingsStore_Expecter{mock: &_m.Mock}
 }
 
+// AdapterConnection provides a mock function with given fields: ctx, id
+func (_m *SettingsStore) AdapterConnection(ctx context.Context, id string) (homestate.AdapterConnection, error) {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AdapterConnection")
+	}
+
+	var r0 homestate.AdapterConnection
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) (homestate.AdapterConnection, error)); ok {
+		return rf(ctx, id)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) homestate.AdapterConnection); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(homestate.AdapterConnection)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SettingsStore_AdapterConnection_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AdapterConnection'
+type SettingsStore_AdapterConnection_Call struct {
+	*mock.Call
+}
+
+// AdapterConnection is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+func (_e *SettingsStore_Expecter) AdapterConnection(ctx interface{}, id interface{}) *SettingsStore_AdapterConnection_Call {
+	return &SettingsStore_AdapterConnection_Call{Call: _e.mock.On("AdapterConnection", ctx, id)}
+}
+
+func (_c *SettingsStore_AdapterConnection_Call) Run(run func(ctx context.Context, id string)) *SettingsStore_AdapterConnection_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *SettingsStore_AdapterConnection_Call) Return(_a0 homestate.AdapterConnection, _a1 error) *SettingsStore_AdapterConnection_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *SettingsStore_AdapterConnection_Call) RunAndReturn(run func(context.Context, string) (homestate.AdapterConnection, error)) *SettingsStore_AdapterConnection_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// AdapterConnections provides a mock function with given fields: ctx
+func (_m *SettingsStore) AdapterConnections(ctx context.Context) ([]homestate.AdapterConnection, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AdapterConnections")
+	}
+
+	var r0 []homestate.AdapterConnection
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) ([]homestate.AdapterConnection, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) []homestate.AdapterConnection); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]homestate.AdapterConnection)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SettingsStore_AdapterConnections_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AdapterConnections'
+type SettingsStore_AdapterConnections_Call struct {
+	*mock.Call
+}
+
+// AdapterConnections is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *SettingsStore_Expecter) AdapterConnections(ctx interface{}) *SettingsStore_AdapterConnections_Call {
+	return &SettingsStore_AdapterConnections_Call{Call: _e.mock.On("AdapterConnections", ctx)}
+}
+
+func (_c *SettingsStore_AdapterConnections_Call) Run(run func(ctx context.Context)) *SettingsStore_AdapterConnections_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *SettingsStore_AdapterConnections_Call) Return(_a0 []homestate.AdapterConnection, _a1 error) *SettingsStore_AdapterConnections_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *SettingsStore_AdapterConnections_Call) RunAndReturn(run func(context.Context) ([]homestate.AdapterConnection, error)) *SettingsStore_AdapterConnections_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // HouseholdSettings provides a mock function with given fields: ctx
 func (_m *SettingsStore) HouseholdSettings(ctx context.Context) (homestate.HouseholdSettings, error) {
 	ret := _m.Called(ctx)
@@ -132,6 +247,63 @@ func (_c *SettingsStore_Rooms_Call) Return(_a0 []homestate.RoomConfig, _a1 error
 }
 
 func (_c *SettingsStore_Rooms_Call) RunAndReturn(run func(context.Context) ([]homestate.RoomConfig, error)) *SettingsStore_Rooms_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SaveAdapterConnection provides a mock function with given fields: ctx, connection
+func (_m *SettingsStore) SaveAdapterConnection(ctx context.Context, connection homestate.AdapterConnection) (homestate.AdapterConnection, error) {
+	ret := _m.Called(ctx, connection)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SaveAdapterConnection")
+	}
+
+	var r0 homestate.AdapterConnection
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, homestate.AdapterConnection) (homestate.AdapterConnection, error)); ok {
+		return rf(ctx, connection)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, homestate.AdapterConnection) homestate.AdapterConnection); ok {
+		r0 = rf(ctx, connection)
+	} else {
+		r0 = ret.Get(0).(homestate.AdapterConnection)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, homestate.AdapterConnection) error); ok {
+		r1 = rf(ctx, connection)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SettingsStore_SaveAdapterConnection_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveAdapterConnection'
+type SettingsStore_SaveAdapterConnection_Call struct {
+	*mock.Call
+}
+
+// SaveAdapterConnection is a helper method to define mock.On call
+//   - ctx context.Context
+//   - connection homestate.AdapterConnection
+func (_e *SettingsStore_Expecter) SaveAdapterConnection(ctx interface{}, connection interface{}) *SettingsStore_SaveAdapterConnection_Call {
+	return &SettingsStore_SaveAdapterConnection_Call{Call: _e.mock.On("SaveAdapterConnection", ctx, connection)}
+}
+
+func (_c *SettingsStore_SaveAdapterConnection_Call) Run(run func(ctx context.Context, connection homestate.AdapterConnection)) *SettingsStore_SaveAdapterConnection_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(homestate.AdapterConnection))
+	})
+	return _c
+}
+
+func (_c *SettingsStore_SaveAdapterConnection_Call) Return(_a0 homestate.AdapterConnection, _a1 error) *SettingsStore_SaveAdapterConnection_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *SettingsStore_SaveAdapterConnection_Call) RunAndReturn(run func(context.Context, homestate.AdapterConnection) (homestate.AdapterConnection, error)) *SettingsStore_SaveAdapterConnection_Call {
 	_c.Call.Return(run)
 	return _c
 }

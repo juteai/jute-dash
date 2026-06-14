@@ -78,18 +78,19 @@ type Config struct {
 }
 
 type WidgetInstance struct {
-	ID       string         `json:"id"`
-	Kind     string         `json:"kind"`
-	Title    string         `json:"title"`
-	X        int            `json:"x"`
-	Y        int            `json:"y"`
-	W        int            `json:"w"`
-	H        int            `json:"h"`
-	Visible  bool           `json:"visible"`
-	Mode     string         `json:"mode,omitempty"`
-	Size     string         `json:"size"`
-	Settings map[string]any `json:"settings"`
-	Data     any            `json:"data,omitempty"`
+	ID             string            `json:"id"`
+	Kind           string            `json:"kind"`
+	Title          string            `json:"title"`
+	X              int               `json:"x"`
+	Y              int               `json:"y"`
+	W              int               `json:"w"`
+	H              int               `json:"h"`
+	Visible        bool              `json:"visible"`
+	Mode           string            `json:"mode,omitempty"`
+	Size           string            `json:"size"`
+	Settings       map[string]any    `json:"settings"`
+	ConnectionRefs map[string]string `json:"connectionRefs,omitempty"`
+	Data           any               `json:"data,omitempty"`
 }
 
 // rendersTile reports whether a present widget instance draws a visible tile.
@@ -170,13 +171,23 @@ type Skill struct {
 }
 
 type SkillSummary struct {
-	SkillID          string   `json:"skillId"`
-	WidgetInstanceID string   `json:"widgetInstanceId"`
-	WidgetKind       string   `json:"widgetKind"`
-	DisplayName      string   `json:"displayName"`
-	Summary          string   `json:"summary"`
-	Actions          []string `json:"actions"`
-	Prompts          []string `json:"prompts"`
+	SkillID          string          `json:"skillId"`
+	WidgetInstanceID string          `json:"widgetInstanceId"`
+	WidgetKind       string          `json:"widgetKind"`
+	DisplayName      string          `json:"displayName"`
+	Summary          string          `json:"summary"`
+	Actions          []string        `json:"actions"`
+	ActionDetails    []ActionSummary `json:"actionDetails,omitempty"`
+	Prompts          []string        `json:"prompts"`
+}
+
+type ActionSummary struct {
+	ID                   string         `json:"id"`
+	Title                string         `json:"title"`
+	Description          string         `json:"description"`
+	SideEffect           string         `json:"sideEffect"`
+	RequiresConfirmation bool           `json:"requiresConfirmation"`
+	InputSchema          map[string]any `json:"inputSchema,omitempty"`
 }
 
 type DashboardContext struct {
@@ -489,8 +500,17 @@ func HomeAssistantGuidance() string {
 
 func Summarize(skill Skill) SkillSummary {
 	actionIDs := make([]string, 0, len(skill.Actions))
+	actionDetails := make([]ActionSummary, 0, len(skill.Actions))
 	for _, action := range skill.Actions {
 		actionIDs = append(actionIDs, action.ID)
+		actionDetails = append(actionDetails, ActionSummary{
+			ID:                   action.ID,
+			Title:                action.Title,
+			Description:          action.Description,
+			SideEffect:           action.SideEffect,
+			RequiresConfirmation: action.RequiresConfirmation,
+			InputSchema:          action.InputSchema,
+		})
 	}
 	promptIDs := make([]string, 0, len(skill.Prompts))
 	for _, prompt := range skill.Prompts {
@@ -503,6 +523,7 @@ func Summarize(skill Skill) SkillSummary {
 		DisplayName:      skill.DisplayName,
 		Summary:          skill.Summary,
 		Actions:          actionIDs,
+		ActionDetails:    actionDetails,
 		Prompts:          promptIDs,
 	}
 }
@@ -599,6 +620,9 @@ func homeAssistantGuidance() string {
 		"Return only the final user-facing answer in A2A messages. Never include private reasoning, scratchpad text, analysis, tool-selection notes, function-call plans, or statements like \"I should\" or \"no need to call tools\" in assistant output.",
 		"Use Jute MCP resources and Widget Skills to understand only the visible dashboard context that the hub exposes.",
 		"Prefer skill context over guesses. Invoke only declared actions, and only when the user's request requires that action or context.",
+		"For music playback requests, call jute_skill_list and choose the exact visible Spotify or Apple Music Widget Skill ID, widget instance ID, and declared action ID. Do not use generic music_player skill IDs or default widget IDs.",
+		"For RSS, headline, link, or article-reading requests, call jute_skill_list, choose the visible RSS Widget Skill, and invoke its declared read_article or grep_article action with the article URL and optional query.",
+		"For stocks, shares, crypto, commodities, or market-price requests, call jute_skill_list, choose the visible Markets Widget Skill, and use its declared query_stock, query_share, query_crypto, or query_ticker action with a ticker symbol.",
 		"For simple greetings or ordinary chat, reply naturally without calling tools.",
 		"Before using a tool, choose the narrowest relevant Jute resource or Widget Skill action. Do not invent tools or capabilities that are not listed.",
 		"Do not infer hidden widget state, secrets, private household data, camera frames, microphone audio, browser storage, or raw adapter payloads.",

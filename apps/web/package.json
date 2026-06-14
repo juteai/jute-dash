@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "dev:https": "vite --host 0.0.0.0 --mode https",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
@@ -13,24 +14,29 @@
     "format:check": "prettier --check .",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
+    "test:browser": "playwright test",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@a2a-js/sdk": "1.0.0-alpha.0",
     "@fontsource-variable/inter": "^5.0.0",
+    "@fortawesome/free-brands-svg-icons": "^7.2.0",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.5",
     "lucide-svelte": "^0.468.0",
     "marked": "^18.0.3",
     "svelte": "^5.46.4",
+    "svelte-fa": "^4.0.4",
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.60.0",
     "@sveltejs/adapter-auto": "^7.0.1",
     "@sveltejs/kit": "^2.60.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@types/node": "^24.0.0",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitest/coverage-v8": "4.1.8",
     "autoprefixer": "^10.4.20",
     "eslint": "^10.4.1",

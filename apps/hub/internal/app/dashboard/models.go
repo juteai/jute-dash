@@ -5,13 +5,15 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"jute-dash/widgets"
 )
 
 var ErrInvalidLayout = errors.New("invalid widget layout")
 
-// BaseColumns is the number of columns in the authored base grid. Layouts are
-// stored at this resolution and proportionally remapped to fewer columns on
-// smaller screens by the display.
+// BaseColumns is the legacy authored grid width. v2 layouts store explicit
+// layout variants with their own grid dimensions, but widget x/y/w/h remains as
+// the compatibility placement.
 const BaseColumns = 12
 
 // LegacyColumnScale migrates layouts authored on the original 4-column grid to
@@ -61,88 +63,94 @@ type DisplayWidgetChrome struct {
 
 // DashboardConfig represents grid configuration defaults.
 type DashboardConfig struct {
-	Widgets []DashboardWidgetConfig `json:"widgets" yaml:"widgets"`
+	SchemaVersion int `json:"schemaVersion,omitempty" yaml:"schema-version,omitempty"`
+
+	DefaultVariant string                  `json:"defaultVariant,omitempty" yaml:"default-variant,omitempty"`
+	Variants       []LayoutVariant         `json:"variants,omitempty"       yaml:"variants,omitempty"`
+	Widgets        []DashboardWidgetConfig `json:"widgets"                  yaml:"widgets"`
 }
 
 // DashboardWidgetConfig represents basic bootstrap placement config.
 type DashboardWidgetConfig struct {
-	ID       string         `json:"id"                 yaml:"id"`
-	Type     string         `json:"type"               yaml:"type"`
-	Title    string         `json:"title"              yaml:"title"`
-	X        int            `json:"x"                  yaml:"x"`
-	Y        int            `json:"y"                  yaml:"y"`
-	W        int            `json:"w"                  yaml:"w"`
-	H        int            `json:"h"                  yaml:"h"`
-	MinW     int            `json:"minW,omitempty"     yaml:"min-w,omitempty"`
-	MinH     int            `json:"minH,omitempty"     yaml:"min-h,omitempty"`
-	Size     string         `json:"size,omitempty"     yaml:"size,omitempty"`
-	Visible  bool           `json:"visible"            yaml:"visible"`
-	Mode     string         `json:"mode,omitempty"     yaml:"mode,omitempty"`
-	Settings map[string]any `json:"settings,omitempty" yaml:"settings,omitempty"`
+	ID             string            `json:"id"                       yaml:"id"`
+	Type           string            `json:"type"                     yaml:"type"`
+	Title          string            `json:"title"                    yaml:"title"`
+	X              int               `json:"x"                        yaml:"x"`
+	Y              int               `json:"y"                        yaml:"y"`
+	W              int               `json:"w"                        yaml:"w"`
+	H              int               `json:"h"                        yaml:"h"`
+	MinW           int               `json:"minW,omitempty"           yaml:"min-w,omitempty"`
+	MinH           int               `json:"minH,omitempty"           yaml:"min-h,omitempty"`
+	Size           string            `json:"size,omitempty"           yaml:"size,omitempty"`
+	Visible        bool              `json:"visible"                  yaml:"visible"`
+	Mode           string            `json:"mode,omitempty"           yaml:"mode,omitempty"`
+	Settings       map[string]any    `json:"settings,omitempty"       yaml:"settings,omitempty"`
+	ConnectionRefs map[string]string `json:"connectionRefs,omitempty" yaml:"connection-refs,omitempty"`
 }
 
 // Domain Models
 
 // WidgetLayout represents widget placement on the display grid.
 type WidgetLayout struct {
-	ProfileID string           `json:"profileId"`
-	Widgets   []WidgetInstance `json:"widgets"`
+	ProfileID      string           `json:"profileId"`
+	SchemaVersion  int              `json:"schemaVersion,omitempty"`
+	DefaultVariant string           `json:"defaultVariant,omitempty"`
+	Variants       []LayoutVariant  `json:"variants,omitempty"`
+	Widgets        []WidgetInstance `json:"widgets"`
 }
 
-type SettingFieldType string
+type LayoutVariant struct {
+	ID          string                     `json:"id"                    yaml:"id"`
+	Label       string                     `json:"label"                 yaml:"label"`
+	MinWidth    int                        `json:"minWidth"              yaml:"min-width"`
+	MinHeight   int                        `json:"minHeight,omitempty"   yaml:"min-height,omitempty"`
+	Orientation string                     `json:"orientation,omitempty" yaml:"orientation,omitempty"`
+	Columns     int                        `json:"columns"               yaml:"columns"`
+	Rows        int                        `json:"rows"                  yaml:"rows"`
+	Gap         int                        `json:"gap,omitempty"         yaml:"gap,omitempty"`
+	Placements  map[string]WidgetPlacement `json:"placements"            yaml:"placements"`
+}
+
+type WidgetPlacement struct {
+	X      int  `json:"x"                yaml:"x"`
+	Y      int  `json:"y"                yaml:"y"`
+	W      int  `json:"w"                yaml:"w"`
+	H      int  `json:"h"                yaml:"h"`
+	Hidden bool `json:"hidden,omitempty" yaml:"hidden,omitempty"`
+}
+
+type SettingFieldType = widgets.SettingFieldType
+type SettingField = widgets.SettingField
+type ConnectionRequirement = widgets.ConnectionRequirement
+type WidgetCatalogItem = widgets.WidgetCatalogItem
 
 const (
-	SettingString     SettingFieldType = "string"
-	SettingNumber     SettingFieldType = "number"
-	SettingBoolean    SettingFieldType = "boolean"
-	SettingEnum       SettingFieldType = "enum"
-	SettingStringList SettingFieldType = "string-list"
-	SettingObjectList SettingFieldType = "object-list"
+	SettingString     = widgets.SettingString
+	SettingNumber     = widgets.SettingNumber
+	SettingBoolean    = widgets.SettingBoolean
+	SettingEnum       = widgets.SettingEnum
+	SettingStringList = widgets.SettingStringList
+	SettingObjectList = widgets.SettingObjectList
 )
-
-type SettingField struct {
-	ID      string           `json:"id"`
-	Type    SettingFieldType `json:"type"`
-	Label   string           `json:"label"`
-	Help    string           `json:"help,omitempty"`
-	Default any              `json:"default,omitempty"`
-	Options []string         `json:"options,omitempty"`
-	Fields  []SettingField   `json:"fields,omitempty"`
-}
-
-// WidgetCatalogItem holds metadata of a widget kind.
-type WidgetCatalogItem struct {
-	Kind           string         `json:"kind"`
-	Name           string         `json:"name"`
-	Description    string         `json:"description"`
-	DefaultTitle   string         `json:"defaultTitle"`
-	DefaultW       int            `json:"defaultW"`
-	DefaultH       int            `json:"defaultH"`
-	MinW           int            `json:"minW"`
-	MinH           int            `json:"minH"`
-	DefaultSize    string         `json:"defaultSize"`
-	Overflow       string         `json:"overflow"`
-	AllowMultiple  bool           `json:"allowMultiple"`
-	SettingsSchema []SettingField `json:"settingsSchema,omitempty"`
-}
 
 // WidgetInstance represents an active widget.
 type WidgetInstance struct {
-	ID       string         `json:"id"`
-	Kind     string         `json:"kind"`
-	Title    string         `json:"title"`
-	X        int            `json:"x"`
-	Y        int            `json:"y"`
-	W        int            `json:"w"`
-	H        int            `json:"h"`
-	MinW     int            `json:"minW"`
-	MinH     int            `json:"minH"`
-	Size     string         `json:"size"`
-	Overflow string         `json:"overflow"`
-	Mode     string         `json:"mode"`
-	Settings map[string]any `json:"settings"`
-	Visible  bool           `json:"visible"`
-	Data     any            `json:"data,omitempty"`
+	ID             string            `json:"id"`
+	Kind           string            `json:"kind"`
+	Title          string            `json:"title"`
+	X              int               `json:"x"`
+	Y              int               `json:"y"`
+	W              int               `json:"w"`
+	H              int               `json:"h"`
+	MinW           int               `json:"minW"`
+	MinH           int               `json:"minH"`
+	Size           string            `json:"size"`
+	Overflow       string            `json:"overflow"`
+	Mode           string            `json:"mode"`
+	Settings       map[string]any    `json:"settings"`
+	ConnectionRefs map[string]string `json:"connectionRefs,omitempty"`
+	Visible        bool              `json:"visible"`
+	Data           any               `json:"data,omitempty"`
 }
 
 // GORM DB Models
@@ -161,23 +169,24 @@ func (WidgetPackDB) TableName() string {
 }
 
 type WidgetInstanceDB struct {
-	ID              string `gorm:"primaryKey;column:id"`
-	Kind            string `gorm:"column:kind"`
-	Title           string `gorm:"column:title"`
-	LayoutProfileID string `gorm:"column:layout_profile_id"`
-	X               int    `gorm:"column:x"`
-	Y               int    `gorm:"column:y"`
-	W               int    `gorm:"column:w"`
-	H               int    `gorm:"column:h"`
-	MinW            int    `gorm:"column:min_w"`
-	MinH            int    `gorm:"column:min_h"`
-	Size            string `gorm:"column:size"`
-	Mode            string `gorm:"column:mode;default:'ui'"`
-	SettingsJSON    string `gorm:"column:settings_json"`
-	Visible         int    `gorm:"column:visible"`
-	SortOrder       int    `gorm:"column:sort_order"`
-	CreatedAt       string `gorm:"column:created_at"`
-	UpdatedAt       string `gorm:"column:updated_at"`
+	ID                 string `gorm:"primaryKey;column:id"`
+	Kind               string `gorm:"column:kind"`
+	Title              string `gorm:"column:title"`
+	LayoutProfileID    string `gorm:"column:layout_profile_id"`
+	X                  int    `gorm:"column:x"`
+	Y                  int    `gorm:"column:y"`
+	W                  int    `gorm:"column:w"`
+	H                  int    `gorm:"column:h"`
+	MinW               int    `gorm:"column:min_w"`
+	MinH               int    `gorm:"column:min_h"`
+	Size               string `gorm:"column:size"`
+	Mode               string `gorm:"column:mode;default:'ui'"`
+	SettingsJSON       string `gorm:"column:settings_json"`
+	ConnectionRefsJSON string `gorm:"column:connection_refs_json"`
+	Visible            int    `gorm:"column:visible"`
+	SortOrder          int    `gorm:"column:sort_order"`
+	CreatedAt          string `gorm:"column:created_at"`
+	UpdatedAt          string `gorm:"column:updated_at"`
 }
 
 func (WidgetInstanceDB) TableName() string {

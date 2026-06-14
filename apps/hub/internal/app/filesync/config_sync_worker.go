@@ -11,11 +11,7 @@ type ConfigSyncArgs struct{}
 func (ConfigSyncArgs) Kind() string { return "config_sync" }
 
 func (ConfigSyncArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{
-		UniqueOpts: river.UniqueOpts{
-			ByArgs: true,
-		},
-	}
+	return river.InsertOpts{}
 }
 
 type ConfigSyncWorker struct {

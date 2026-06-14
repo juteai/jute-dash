@@ -17,14 +17,21 @@ Secrets are never committed, displayed, or sent to widgets.
 
 v1 secret handling:
 
-- store references in config or SQLite, such as environment variable names;
+- store references in config or SQLite, such as environment variable names or `db:` secret-vault IDs;
+- store OAuth token material in the local SQLite secret vault encrypted with AES-GCM;
+- wrap the secret vault master key with the host OS credential store by default, with `JUTE_SECRET_KEY` available for CI, containers, and headless deployments without an interactive keyring;
 - read raw secret values only inside the hub;
 - never include raw secret values in public config endpoints;
 - redact secret references in logs where possible.
 
+Adapter Connections are the required credential boundary for Integration Widgets. Widget instances link to them with `connectionRefs`; widget settings remain non-secret. The hub validates typed connection setup fields and required secret references before provider code runs. Resolved provider secrets may be passed to connection-aware Go widget code only inside the hub process and must not be written back to layouts, snapshots, display payloads, A2A context, MCP context, logs, or public config projections.
+
+Browser playback SDKs are the v1 exception where the local Display may receive raw provider token material. Spotify serves a short-lived access token from `/api/v1/integrations/spotify/web-playback-token` only for a linked Spotify Adapter Connection so Spotify's Web Playback SDK can create a browser player. Apple Music serves MusicKit developer/user tokens from `/api/v1/integrations/apple-music/music-kit-token` only for a linked Apple Music Adapter Connection so MusicKit JS can authorize and play in the browser. The Display must keep this token material in memory, must not store it in browser storage, and must not expose it to A2A agents, MCP tools, widget settings, config export, or logs.
+
+The OS credential store backend is platform-specific: macOS uses Keychain, Windows uses Credential Manager, and Linux can use Secret Service, KWallet, Pass, or KeyCtl depending on the desktop/session environment. If no OS credential store is available, operators must provide `JUTE_SECRET_KEY`; Jute should fail closed rather than store raw secrets.
+
 Future secret handling:
 
-- OS keyring;
 - OAuth device flow;
 - mTLS identities;
 - encrypted backup/export support.
@@ -67,6 +74,7 @@ Jute's widgets are compiled directly into the display application within Jute's 
 - Widgets do not access raw secrets, raw keys, or keys in local storage.
 - Widgets request and declare permissions in their Go/Svelte codebase.
 - Widgets declare their agent-facing capabilities through safe Widget Skills.
+- Integration Widgets declare Adapter Connection requirements instead of storing credentials or tokens in widget settings.
 
 ## Theme And Background Security
 
@@ -89,6 +97,8 @@ The hub builds A2A dashboard context from safe, declared data only.
 Never send:
 
 - raw credentials;
+- resolved Adapter Connection secrets;
+- secret references;
 - hidden widget state;
 - private widget fields;
 - raw smart-home payloads that include sensitive metadata;

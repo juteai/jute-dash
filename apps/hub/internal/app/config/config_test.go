@@ -651,23 +651,25 @@ func assertDevHarnessWidgets(t *testing.T, cfg Config) {
 	type widgetExpectation struct {
 		id, kind, size string
 		x, y, w, h     int
+		minW, minH     int
 	}
 	var want []widgetExpectation
 	if cfg.Home.Name == "Jute Local Dev" || cfg.Home.Name == "Jute Kronk A2A Dev" {
 		want = []widgetExpectation{
-			{id: "date-time-widget", kind: "date-time", size: "small", x: 0, y: 0, w: 4, h: 2},
-			{id: "weather-widget", kind: "weather", size: "small", x: 8, y: 0, w: 4, h: 2},
-			{id: "assistant-chat", kind: "chat-history", size: "large", x: 0, y: 3, w: 4, h: 3},
-			{id: "hacker-news", kind: "rss", size: "large", x: 8, y: 3, w: 4, h: 3},
-			{id: "stocks-watchlist", kind: "markets", size: "large", x: 4, y: 3, w: 4, h: 3},
+			{id: "date-time-widget", kind: "date-time", size: "small", x: 0, y: 0, w: 4, h: 2, minW: 3, minH: 1},
+			{id: "weather-widget", kind: "weather", size: "small", x: 8, y: 0, w: 4, h: 2, minW: 3, minH: 1},
+			{id: "assistant-chat", kind: "chat-history", size: "large", x: 8, y: 6, w: 4, h: 3, minW: 3, minH: 1},
+			{id: "hacker-news", kind: "rss", size: "large", x: 4, y: 6, w: 4, h: 3, minW: 3, minH: 1},
+			{id: "stocks-watchlist", kind: "markets", size: "large", x: 0, y: 6, w: 4, h: 3, minW: 3, minH: 1},
+			{id: "spotify", kind: "spotify", size: "medium", x: 0, y: 4, w: 6, h: 2, minW: 4, minH: 2},
 		}
 	} else {
 		want = []widgetExpectation{
-			{id: "date-time-widget", kind: "date-time", size: "wide", x: 0, y: 0, w: 6, h: 1},
-			{id: "weather-widget", kind: "weather", size: "wide", x: 6, y: 0, w: 6, h: 1},
-			{id: "assistant-chat", kind: "chat-history", size: "medium", x: 0, y: 1, w: 6, h: 2},
-			{id: "hacker-news", kind: "rss", size: "medium", x: 6, y: 1, w: 6, h: 2},
-			{id: "stocks-watchlist", kind: "markets", size: "medium", x: 0, y: 3, w: 6, h: 2},
+			{id: "date-time-widget", kind: "date-time", size: "wide", x: 0, y: 0, w: 6, h: 1, minW: 3, minH: 1},
+			{id: "weather-widget", kind: "weather", size: "wide", x: 6, y: 0, w: 6, h: 1, minW: 3, minH: 1},
+			{id: "assistant-chat", kind: "chat-history", size: "medium", x: 0, y: 1, w: 6, h: 2, minW: 3, minH: 1},
+			{id: "hacker-news", kind: "rss", size: "medium", x: 6, y: 1, w: 6, h: 2, minW: 3, minH: 1},
+			{id: "stocks-watchlist", kind: "markets", size: "medium", x: 0, y: 3, w: 6, h: 2, minW: 3, minH: 1},
 		}
 	}
 	if len(cfg.Dashboard.Widgets) != len(want) {
@@ -677,7 +679,8 @@ func assertDevHarnessWidgets(t *testing.T, cfg Config) {
 		got := cfg.Dashboard.Widgets[i]
 		if got.ID != wantWidget.id || got.Type != wantWidget.kind || got.Size != wantWidget.size ||
 			got.X != wantWidget.x || got.Y != wantWidget.y || got.W != wantWidget.w || got.H != wantWidget.h ||
-			got.MinW != 3 || got.MinH != 1 || !got.Visible || got.Mode != dashboard.WidgetModeUI {
+			got.MinW != wantWidget.minW || got.MinH != wantWidget.minH ||
+			!got.Visible || got.Mode != dashboard.WidgetModeUI {
 			t.Fatalf("unexpected harness widget %d: %+v", i, got)
 		}
 		if (got.Type == "weather" || got.Type == "rss" || got.Type == "markets") && len(got.Settings) == 0 {

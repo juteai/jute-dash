@@ -9,11 +9,12 @@ import (
 	"jute-dash/apps/hub/internal/app/homestate"
 	"jute-dash/apps/hub/internal/app/voice"
 
-	_ "jute-dash/widgets/chathistory"
-	_ "jute-dash/widgets/datetime"
-	_ "jute-dash/widgets/markets"
-	_ "jute-dash/widgets/rss"
-	_ "jute-dash/widgets/weather"
+	_ "jute-dash/widgets/chathistory/hub"
+	_ "jute-dash/widgets/datetime/hub"
+	_ "jute-dash/widgets/markets/hub"
+	_ "jute-dash/widgets/rss/hub"
+	_ "jute-dash/widgets/spotify/hub"
+	_ "jute-dash/widgets/weather/hub"
 )
 
 type AgentConfig = agents.AgentConfig
@@ -29,6 +30,7 @@ type AuthConfig = agents.AuthConfig
 type VoiceStatusResponse = voice.StatusResponse
 type VoiceProviderPack = voice.ProviderPack
 type WidgetInstance = dashboard.WidgetInstance
+type WidgetPlacement = dashboard.WidgetPlacement
 type WidgetCatalogItem = dashboard.WidgetCatalogItem
 type DashboardWidgetConfig = dashboard.DashboardWidgetConfig
 type DisplayBackground = dashboard.DisplayBackground

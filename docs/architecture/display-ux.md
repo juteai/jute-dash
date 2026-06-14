@@ -111,6 +111,7 @@ Initial sections:
 - `Household`: home name, timezone, locale, theme, weather enablement, location, coordinates, and units;
 - `Rooms`: editable room IDs, names, summaries, and simple status text;
 - `Tiles`: editable dashboard tile IDs, kinds, labels, values, and details;
+- `Connections`: shared Adapter Connections for Integration Widgets, including non-secret adapter settings and secret references;
 - `Agents`: add an agent by Agent Card URL, enable or disable agents, remove agents, and refresh Agent Cards;
 - `MCP`: read-only bridge status and startup configuration summary;
 - `Voice`: read-only voice/provider status until provider selection is implemented;
@@ -121,10 +122,12 @@ Settings writes go through the hub. Store-backed runs persist to SQLite. YAML-ba
 
 Responsive behavior:
 
-- the dashboard layout is authored once on a **12-column base grid** and stored at that resolution; on every real screen (desktop, tablet, edge kiosk) the display renders that **same layout, scaled to fill the viewport** — there is no column remap or widget reflow, so a layout configured on a desktop looks identical on a smaller edge device;
-- the grid is **fully proportional**: both columns and rows are `1fr` tracks. The number of rows equals the configured layout's vertical extent (`max(y + h)`), so the whole grid fills the viewport height with no scrolling. Cell aspect ratio flexes with the device; arrangement and relative sizes are preserved;
+- dashboard layouts are authored as explicit **layout variants** for screen classes such as phone, tablet portrait, tablet landscape, desktop, and wall display;
+- each variant owns its grid size (`columns`, `rows`, `gap`) and its widget placements. The display chooses the best matching variant by viewport size and orientation, with future device-profile overrides allowed for fixed kiosks;
+- the compatibility widget coordinates (`x`, `y`, `w`, `h`) remain on the legacy 12-column base grid for API stability and migration, but display rendering uses the selected variant's placement when variants are present;
+- grids use proportional `1fr` tracks for both columns and rows, but the row count is the variant's configured `rows`, not an automatic `max(y + h)`;
 - **widgets own their content sizing**: each widget frame is a CSS [size container](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_containment/Container_queries) and widget fonts, icons, and padding scale with the cell using container-query units (`cqmin`). Avoid fixed `px`/`rem` sizing inside widgets;
-- the only exception is a **narrow-phone fallback (≤640px)**: the grid collapses to a single scrolling column of content-height tiles (fine drag/resize disabled; reorder via the ⋯ menu). At this width frames switch to an inline-size container with fixed-size fallbacks (an inline-size container has no block axis, so `cqmin` would collapse to zero);
+- phone variants default to a single-column ordered stack. Fine drag/resize is disabled on phones; reorder remains available via the ⋯ menu;
 - overlays (settings panel, widget catalog, widget settings sheet, chat) present as full-width bottom sheets on phones and as centered panels/dialogs on larger screens;
 - large wall displays may keep chat as a side focus area, but ordinary displays use full chat focus mode.
 
@@ -139,19 +142,35 @@ Spacing:
 
 The dashboard grid is draggable and resizable.
 
-Persisted widget layout fields (all coordinates are on the **12-column base grid**):
+Persisted layout-level fields:
+
+- `profileId`: layout profile ID;
+- `schemaVersion`: layout schema version. v2 introduces explicit layout variants;
+- `defaultVariant`: fallback variant ID;
+- `variants`: named layout variants. Built-in defaults are `phone`, `tablet-portrait`, `tablet-landscape`, `desktop`, and `wall`.
+
+Persisted layout variant fields:
+
+- `id`: stable variant ID;
+- `label`: short display label in edit mode;
+- `minWidth` and optional `minHeight`: viewport matching thresholds;
+- `orientation`: `portrait`, `landscape`, or `any`;
+- `columns`: manual grid column count;
+- `rows`: manual grid row count;
+- `gap`: grid gap in pixels;
+- `placements`: widget-instance placements keyed by widget instance ID. Each placement has `x`, `y`, `w`, `h`, and optional `hidden`.
+
+Persisted widget instance fields:
 
 - `id`: widget instance ID;
 - `kind`: widget kind matching the widget's registered type;
-- `x`: grid column start (0–11);
-- `y`: grid row start;
-- `w`: grid width in base columns;
-- `h`: grid height in row units;
+- `x`, `y`, `w`, `h`: compatibility placement on the legacy 12-column base grid;
 - `minW`: minimum grid width;
 - `minH`: minimum grid height;
 - `size`: named size such as `small`, `medium`, `wide`, or `large`;
 - `mode`: `ui` (renders a tile) or `headless` (no tile; still fetches data and feeds the agent — see [Widgets](widgets.md));
 - `settings`: non-secret widget settings;
+- `connectionRefs`: typed references from declared widget connection slots to shared Adapter Connection IDs;
 - `visible`: whether the widget instance exists on the current profile (a removed widget sets `visible: false`; this is distinct from `mode`).
 
 Layouts stored before the 12-column grid (4-column coordinates) are migrated on load by scaling `x`/`w` ×3.
@@ -159,8 +178,10 @@ Layouts stored before the 12-column grid (4-column coordinates) are migrated on 
 Implementation guidance:
 
 - v1 uses a small custom Svelte grid editor for the built-in widget set;
-- the base grid is 12 columns; rows are proportional (`1fr`) and the rendered row count follows the layout's extent. Drag and resize snap to base cells — edit-mode pixel↔cell math measures the actual rendered cell width and row step from the DOM (rows are not a fixed pixel height);
-- the stored layout is always 12-column and renders identically at every size by scaling; only the ≤640px phone fallback collapses to a single column, and it never overwrites the base;
+- edit mode exposes variant tabs and manual grid size controls (`columns` × `rows`);
+- drag and resize snap to the selected variant's cells. Edit-mode pixel↔cell math measures the actual rendered cell width and row step from the DOM;
+- changing a variant's grid size clamps placements into the new bounds and keeps the variant as the source of truth;
+- compatibility widget coordinates are retained for migration and non-display consumers, but new placement edits write to the selected variant;
 - revisit a proven Svelte-compatible drag/resize grid library only when denser layouts make the custom editor too costly;
 - preserve layout through hub APIs, not browser local storage;
 - debounce layout saves while dragging;
@@ -208,7 +229,7 @@ Edit mode UI:
 
 - direct manipulation is primary: drag a tile to move, drag its corner to resize, snapping to the 12-column base grid;
 - per-tile controls collapse into a single overflow (⋯) menu offering Configure, Make headless / Restore to dashboard, and Remove — not a cluster of always-visible buttons;
-- Configure opens the schema-driven widget settings sheet (see [Widgets](widgets.md)); it includes frame settings (title, chrome, size) and the `ui`/`headless` toggle;
+- Configure opens the schema-driven widget settings sheet (see [Widgets](widgets.md)); it includes frame settings (title, chrome, size), the `ui`/`headless` toggle, non-secret widget settings, and connection selectors for declared Adapter Connection requirements;
 - headless instances do not appear on the grid; edit mode shows a **headless tray** listing them as chips for configure/restore/remove;
 - arrow/size keyboard nudges remain available as a focus-visible accessibility fallback, not as always-visible buttons;
 - show a subtle grid overlay;

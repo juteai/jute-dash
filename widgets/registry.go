@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"context"
+	"sort"
 	"sync"
 
 	"jute-dash/apps/hub/pkg/widgetskills"
@@ -68,4 +69,46 @@ func List() []Widget {
 		list = append(list, w)
 	}
 	return list
+}
+
+func AdapterConnectionKinds() []AdapterConnectionKind {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	byKind := map[string]AdapterConnectionKind{}
+	for _, w := range instances {
+		for _, req := range w.CatalogInfo().ConnectionRequirements {
+			if req.Kind == "" {
+				continue
+			}
+			kind, ok := byKind[req.Kind]
+			if !ok {
+				kind = AdapterConnectionKind{
+					Kind:        req.Kind,
+					DisplayName: req.DisplayName,
+					Description: req.Description,
+					Fields:      []ConnectionField{},
+				}
+			}
+			known := map[string]struct{}{}
+			for _, field := range kind.Fields {
+				known[field.ID] = struct{}{}
+			}
+			for _, field := range req.Fields {
+				if _, exists := known[field.ID]; exists {
+					continue
+				}
+				kind.Fields = append(kind.Fields, field)
+				known[field.ID] = struct{}{}
+			}
+			byKind[req.Kind] = kind
+		}
+	}
+	kinds := make([]AdapterConnectionKind, 0, len(byKind))
+	for _, kind := range byKind {
+		kinds = append(kinds, kind)
+	}
+	sort.Slice(kinds, func(i, j int) bool {
+		return kinds[i].Kind < kinds[j].Kind
+	})
+	return kinds
 }

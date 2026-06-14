@@ -36,12 +36,13 @@ flowchart TD
 
     Bridge -->|Return resources / tools / prompts| Agent
 
-    Registry -->|Dispatch action| GoWidget
-    GoWidget -->|InvokeAction| ActionExec[Modify settings / trigger event]
+    Registry -->|Dispatch action| Dispatcher["Hub widgetactions Dispatcher"]
+    Dispatcher -->|Resolve connection refs + policy| GoWidget
+    GoWidget -->|InvokeAction| ActionExec[Provider action / trigger event]
     ActionExec -.->|Broadcast update| Svelte[Svelte Frontend Component]
 ```
 
-The compact A2A dashboard-context extension may include a summary of currently relevant Widget Skills, but full action invocation goes through MCP or a future hub-approved action API.
+The compact A2A dashboard-context extension may include a summary of currently relevant Widget Skills, but full action invocation goes through MCP, Display, or future Agent entry points that all call the same hub dispatcher.
 
 ## Skill Model
 
@@ -52,6 +53,7 @@ Skill identity:
 - `skillId`: stable capability ID, such as `jute.weather.current`.
 - `widgetInstanceId`: the dashboard widget instance exposing the skill.
 - `widgetKind`: widget type, such as `weather`, `date-time`, or `chat-history`.
+- `connectionRefs`: optional widget instance references to shared Adapter Connections. These are IDs only, not credentials.
 - `displayName`: short user-facing name.
 - `summary`: hub-reviewed capability summary for agents.
 
@@ -193,12 +195,15 @@ Action rules:
 
 - every action must have a stable ID and JSON Schema input/output;
 - display, configure, and home actions require opt-in scopes;
-- actions execute through the hub, not through direct MCP-to-widget calls;
+- actions execute through the unified hub dispatcher, not through direct MCP-to-widget or direct display-to-provider calls;
+- the dispatcher resolves Widget Instance, Widget Skill action, actor type, connection references, resolved connection material, confirmation policy, and safe issue/result mapping;
 - actions return safe public results;
 - failed actions return recoverable safe errors;
-- high-impact actions require confirmation even if an agent has the scope.
+- `sideEffect` and `requiresConfirmation` are authoritative;
+- any action marked `requiresConfirmation: true` requires confirmation for every actor;
+- low-risk display-originated media/light actions may execute immediately when the action declaration does not require confirmation.
 
-For the POC, only `read` and low-risk `display` actions are in scope.
+For v1, Integration Widgets use the generic route `POST /api/v1/widgets/{widgetInstanceId}/actions/{actionId}`. MCP and agent action entry points must route through the same dispatcher behavior.
 
 Required action fields:
 
@@ -224,7 +229,7 @@ Prompt rules:
 - prompt text must not include secrets, hidden state, or private widget data;
 - prompts guide the agent but never grant permission.
 
-For third-party widgets, the manifest may declare prompt purpose and expected use, but the hub decides the final prompt content exposed to agents.
+For future manifest-backed widgets, a manifest may declare prompt purpose and expected use, but the hub will still decide the final prompt content exposed to agents.
 
 Required prompt fields:
 
@@ -252,7 +257,7 @@ Resources:
 
 Tools:
 
-- `jute_skill_list`: list available Widget Skills.
+- `jute_skill_list`: list available Widget Skills, including stable action IDs plus `actionDetails` with titles, descriptions, side-effect policy, confirmation policy, and input schemas.
 - `jute_skill_read_context`: read current public context for a skill or widget instance.
 - `jute_skill_invoke_action`: invoke a declared action through the hub.
 - `jute_skill_prompt_get`: get hub-approved prompt guidance for a skill.

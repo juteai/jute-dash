@@ -11,13 +11,18 @@
   import WidgetFrame from '$lib/components/display/WidgetFrame.svelte';
   import { widgetRegistry } from '$widgets/widget-registry';
   import { resolveWidgetChrome } from '$lib/themes';
-  import { BASE_COLUMNS, GRID_GAP, rendersTile } from '$lib/layout-editor';
+  import {
+    GRID_GAP,
+    selectLayoutVariant,
+    widgetsForVariant
+  } from '$lib/layout-editor';
   import { layoutStore } from '$lib/layoutStore';
   import type {
     Agent,
     AgentAvailability,
     ChatMessage,
     DashboardData,
+    UserFacingIssue,
     WidgetInstance
   } from '$lib/types';
 
@@ -28,22 +33,29 @@
   export let selectedAgent: Agent | undefined;
   export let selectedAvailability: AgentAvailability = 'unknown';
   export let focusedWidgetId = '';
+  export let activeVariantId = '';
   export let onOpenChat: () => void = () => {};
+  export let onIssueAction: (
+    issue: UserFacingIssue,
+    widget: WidgetInstance
+  ) => void = () => {};
 
   let canvasEl: HTMLElement;
   let viewportWidth = 1280;
+  let viewportHeight = 800;
   let openMenuId = '';
 
   // Fine drag/resize placement is available only on tablet and larger; phones
   // use reorder-only editing through the per-tile menu.
   $: fineEdit = editMode && viewportWidth >= 768;
-  // The configured 12-column layout renders identically on every real screen and
-  // is scaled to fit (see proportional rows below). Only the <=640px phone
-  // fallback collapses to a single scrolling column, handled purely in CSS.
-  const activeColumns = BASE_COLUMNS;
-  $: widgets = data.layout.widgets
-    .filter(rendersTile)
-    .sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
+  $: activeVariant = selectLayoutVariant(
+    data.layout,
+    viewportWidth,
+    viewportHeight,
+    editMode ? activeVariantId : ''
+  );
+  $: activeColumns = activeVariant.columns;
+  $: widgets = widgetsForVariant(data.layout, activeVariant.id);
 
   let drag:
     | {
@@ -68,16 +80,12 @@
   let ghostW = 0;
   let ghostH = 0;
 
-  // The canvas fills its height with exactly as many proportional (1fr) rows as
-  // the configured layout occupies, so the same layout scales to any screen.
-  // Not capped at MAX_ROWS: stored layouts may legitimately run deeper and we
-  // render them faithfully rather than clipping.
-  $: highestY = widgets.reduce((max, w) => Math.max(max, w.y + w.h), 0);
-  $: rowCount = Math.max(1, highestY);
+  $: rowCount = activeVariant.rows;
 
   function updateViewport() {
     if (typeof window !== 'undefined') {
       viewportWidth = window.innerWidth;
+      viewportHeight = window.innerHeight;
     }
   }
 
@@ -160,6 +168,10 @@
     return 'ok';
   }
 
+  function widgetIssue(widget: WidgetInstance) {
+    return (widget.data as { issue?: UserFacingIssue } | undefined)?.issue;
+  }
+
   function startDrag(
     widget: WidgetInstance,
     mode: 'move' | 'resize' | 'resize-w' | 'resize-h',
@@ -222,7 +234,10 @@
         Math.max(drag.startX + gridDX, 0),
         activeColumns - drag.startW
       );
-      ghostY = Math.max(drag.startY + gridDY, 0);
+      ghostY = Math.min(
+        Math.max(drag.startY + gridDY, 0),
+        rowCount - drag.startH
+      );
       ghostW = drag.startW;
       ghostH = drag.startH;
     } else {
@@ -238,6 +253,7 @@
       }
       if (drag.mode === 'resize-h' || drag.mode === 'resize') {
         ghostH = Math.max(drag.startH + gridDY, minH);
+        ghostH = Math.min(ghostH, rowCount - drag.startY);
       } else {
         ghostH = drag.startH;
       }
@@ -310,7 +326,7 @@
   bind:this={canvasEl}
   class:dashboard-grid-edit={editMode}
   class="dashboard-canvas"
-  style={`--dashboard-grid-gap: ${GRID_GAP}px; grid-template-columns: repeat(${activeColumns}, minmax(0, 1fr)); grid-template-rows: repeat(${rowCount}, minmax(0, 1fr));`}
+  style={`--dashboard-grid-gap: ${activeVariant.gap ?? GRID_GAP}px; grid-template-columns: repeat(${activeColumns}, minmax(0, 1fr)); grid-template-rows: repeat(${rowCount}, minmax(0, 1fr));`}
   aria-label="Widget dashboard"
 >
   {#if editMode && fineEdit}
@@ -349,6 +365,8 @@
         chrome={resolveWidgetChrome(widget, data.config.display)}
         overflow={(widget.overflow ?? 'clip') as 'clip' | 'scroll' | 'expand'}
         state={determineWidgetState(widget, stale)}
+        issue={widgetIssue(widget)}
+        onIssueAction={(issue) => onIssueAction(issue, widget)}
         onMoveStart={(event) => startDrag(widget, 'move', event)}
         onResizeStart={(event, resizeMode) =>
           startDrag(

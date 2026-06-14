@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/dashboard"
 	"jute-dash/apps/hub/internal/app/homestate"
 	"jute-dash/apps/hub/internal/pkg/a2a"
 )
@@ -42,7 +43,7 @@ func TestInitializeMigratesAndSeedsEmptyDB(t *testing.T) {
 	assertCount(t, st, "household_settings", 1)
 	assertCount(t, st, "device_profiles", 1)
 	assertCount(t, st, "layout_profiles", 1)
-	assertCount(t, st, "widget_instances", 3)
+	assertCount(t, st, "widget_instances", 4)
 	assertCount(t, st, "voice_settings", 1)
 
 	cfg := result.Config.(config.Config)
@@ -413,10 +414,10 @@ func TestWidgetLayoutReturnsSeededWidgets(t *testing.T) {
 	if layout.ProfileID != defaultLayoutProfileID {
 		t.Fatalf("unexpected profile ID: %q", layout.ProfileID)
 	}
-	if len(layout.Widgets) != 3 {
-		t.Fatalf("expected 3 widgets, got %+v", layout.Widgets)
+	if len(layout.Widgets) != 4 {
+		t.Fatalf("expected 4 widgets, got %+v", layout.Widgets)
 	}
-	wantKinds := []string{"date-time", "weather", "chat-history"}
+	wantKinds := []string{"date-time", "weather", "chat-history", "spotify"}
 	for i, want := range wantKinds {
 		if layout.Widgets[i].Kind != want {
 			t.Fatalf("widget %d kind = %q, want %q", i, layout.Widgets[i].Kind, want)
@@ -472,6 +473,79 @@ func TestSaveWidgetLayoutPersists(t *testing.T) {
 	}
 	if reloaded.Widgets[0].X != 1 || reloaded.Widgets[0].W != 3 || reloaded.Widgets[1].Visible {
 		t.Fatalf("layout did not persist: %+v", reloaded.Widgets)
+	}
+}
+
+func TestSaveWidgetLayoutPersistsVariants(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	if _, err := st.Initialize(context.Background(), DefaultConfig(), false); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	layout := DefaultWidgetLayout()
+	layout.Variants[0].Columns = 2
+	layout.Variants[0].Rows = 12
+	layout.Variants[0].Placements[layout.Widgets[0].ID] = dashboard.WidgetPlacement{
+		X: 0,
+		Y: 1,
+		W: 2,
+		H: 1,
+	}
+
+	if _, err := st.DashboardRepo.SaveWidgetLayout(context.Background(), layout); err != nil {
+		t.Fatalf("SaveWidgetLayout() error = %v", err)
+	}
+
+	reloaded, err := st.DashboardRepo.WidgetLayout(context.Background(), "")
+	if err != nil {
+		t.Fatalf("WidgetLayout() error = %v", err)
+	}
+	if reloaded.SchemaVersion != dashboard.LayoutSchemaVersion {
+		t.Fatalf("schemaVersion = %d, want %d", reloaded.SchemaVersion, dashboard.LayoutSchemaVersion)
+	}
+	if len(reloaded.Variants) == 0 || reloaded.Variants[0].Columns != 2 || reloaded.Variants[0].Rows != 12 {
+		t.Fatalf("layout variants did not persist: %+v", reloaded.Variants)
+	}
+	if got := reloaded.Variants[0].Placements[layout.Widgets[0].ID]; got.Y != 1 || got.W != 2 {
+		t.Fatalf("variant placement did not persist: %+v", got)
+	}
+}
+
+func TestConfigExportsWidgetLayoutVariants(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	if _, err := st.Initialize(context.Background(), DefaultConfig(), false); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	layout := DefaultWidgetLayout()
+	layout.DefaultVariant = "desktop"
+	layout.Variants[3].Columns = 14
+	layout.Variants[3].Rows = 7
+	layout.Variants[3].Placements[layout.Widgets[0].ID] = dashboard.WidgetPlacement{
+		X: 2,
+		Y: 1,
+		W: 4,
+		H: 1,
+	}
+	if _, err := st.DashboardRepo.SaveWidgetLayout(context.Background(), layout); err != nil {
+		t.Fatalf("SaveWidgetLayout() error = %v", err)
+	}
+
+	cfg, err := st.Config(context.Background())
+	if err != nil {
+		t.Fatalf("Config() error = %v", err)
+	}
+	if cfg.Dashboard.SchemaVersion != dashboard.LayoutSchemaVersion ||
+		cfg.Dashboard.DefaultVariant != "desktop" {
+		t.Fatalf("layout metadata was not exported: %+v", cfg.Dashboard)
+	}
+	if len(cfg.Dashboard.Variants) == 0 || cfg.Dashboard.Variants[3].Columns != 14 {
+		t.Fatalf("layout variants were not exported: %+v", cfg.Dashboard.Variants)
+	}
+	if got := cfg.Dashboard.Variants[3].Placements[layout.Widgets[0].ID]; got.X != 2 || got.W != 4 {
+		t.Fatalf("layout variant placement was not exported: %+v", got)
 	}
 }
 
@@ -555,7 +629,7 @@ func TestResetWidgetLayoutRestoresDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResetWidgetLayout() error = %v", err)
 	}
-	if len(reset.Widgets) != 3 || !reset.Widgets[0].Visible || reset.Widgets[0].X != 0 {
+	if len(reset.Widgets) != 4 || !reset.Widgets[0].Visible || reset.Widgets[0].X != 0 {
 		t.Fatalf("unexpected reset layout: %+v", reset)
 	}
 }

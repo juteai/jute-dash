@@ -6,7 +6,7 @@
     ShieldAlert,
     Inbox
   } from 'lucide-svelte';
-  import type { WidgetInstance } from '$lib/types';
+  import type { UserFacingIssue, WidgetInstance } from '$lib/types';
   import { cn } from '$lib/utils';
 
   export let widget: WidgetInstance;
@@ -14,6 +14,7 @@
   export let focused = false;
   export let chrome = 'solid';
   export let overflow: 'clip' | 'scroll' | 'expand' = 'clip';
+  export let issue: UserFacingIssue | undefined;
   export let state:
     | 'ok'
     | 'loading'
@@ -27,11 +28,13 @@
     event: PointerEvent,
     resizeMode: 'both' | 'w' | 'h'
   ) => void = () => {};
+  export let onIssueAction: (issue: UserFacingIssue) => void = () => {};
   let className = '';
   export { className as class };
 
   $: stateDetails =
-    {
+    issue ??
+    ({
       loading: { title: 'Loading', message: 'Checking for updates...' },
       empty: { title: 'No Data', message: 'Nothing to display yet.' },
       unavailable: {
@@ -53,7 +56,8 @@
         | 'unavailable'
         | 'error'
         | 'permission_required'
-    ] || null;
+    ] ||
+      null);
 </script>
 
 <section
@@ -111,6 +115,15 @@
         {/if}
         <div class="widget-state-title">{stateDetails.title}</div>
         <div class="widget-state-message">{stateDetails.message}</div>
+        {#if issue?.action}
+          <button
+            type="button"
+            class="widget-state-action"
+            on:click|stopPropagation={() => onIssueAction(issue)}
+          >
+            {issue.action.label}
+          </button>
+        {/if}
       </div>
     {:else}
       <slot />
@@ -179,6 +192,21 @@
     color: var(--muted);
     line-height: 1.35;
     max-width: 200px;
+  }
+  .widget-state-action {
+    min-height: 30px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-muted);
+    color: var(--foreground);
+    padding: 0 10px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.74rem;
+    font-weight: 760;
+  }
+  .widget-state-action:hover {
+    border-color: var(--foreground);
   }
   :global(.animate-spin) {
     animation: spin 1.2s linear infinite;

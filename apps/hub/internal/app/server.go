@@ -18,30 +18,39 @@ import (
 	"jute-dash/apps/hub/internal/app/filesync"
 	"jute-dash/apps/hub/internal/app/homestate"
 	"jute-dash/apps/hub/internal/app/voice"
+	"jute-dash/apps/hub/internal/app/widgetactions"
 	a2aclient "jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/internal/pkg/httphelper"
 	"jute-dash/apps/hub/internal/pkg/registry"
+	"jute-dash/apps/hub/pkg/widgetskills"
+	"jute-dash/widgets"
 )
 
 type Server struct {
-	cfg             config.Config
-	agentsManager   *agents.AgentManager
-	messages        a2aclient.MessageSender
-	setup           homestate.SetupStatus
-	layout          dashboard.WidgetLayout
-	layoutStore     dashboard.LayoutStore
-	settings        homestate.SettingsStore
-	voice           voice.Config
-	voiceStore      voice.Store
-	configPath      string
-	syncer          filesync.Syncer
-	display         *displayactions.Dispatcher
-	voiceDispatcher *voice.Dispatcher
-	turnRunner      *agents.Runner
-	mu              sync.Mutex
-	started         time.Time
-	version         string
+	cfg                config.Config
+	agentsManager      *agents.AgentManager
+	messages           a2aclient.MessageSender
+	setup              homestate.SetupStatus
+	layout             dashboard.WidgetLayout
+	layoutStore        dashboard.LayoutStore
+	settings           homestate.SettingsStore
+	voice              voice.Config
+	voiceStore         voice.Store
+	configPath         string
+	syncer             filesync.Syncer
+	display            *displayactions.Dispatcher
+	voiceDispatcher    *voice.Dispatcher
+	connectionResolver widgets.ConnectionResolver
+	secretStore        secretStore
+	actionDispatcher   *widgetactions.Dispatcher
+	spotifyOAuth       *spotifyOAuthController
+	appleMusic         *appleMusicController
+	turnRunner         *agents.Runner
+	handler            http.Handler
+	mu                 sync.Mutex
+	started            time.Time
+	version            string
 }
 
 type HealthResponse struct {
@@ -89,7 +98,19 @@ type VoiceStatusSummary struct {
 
 func New(cfg config.Config, version string) http.Handler {
 	layout := dashboard.DefaultWidgetLayout()
-	return newServer(cfg, version, nil, homestate.SetupStatus{Complete: true}, layout, nil, nil, nil, "", nil)
+	return newServer(
+		cfg,
+		version,
+		nil,
+		homestate.SetupStatus{Complete: true},
+		layout,
+		nil,
+		nil,
+		nil,
+		"",
+		nil,
+		nil,
+	)
 }
 
 func NewWithSetupStatus(
@@ -106,7 +127,7 @@ func NewWithSetupStatusAndLayout(
 	setup homestate.SetupStatus,
 	layout dashboard.WidgetLayout,
 ) http.Handler {
-	return newServer(cfg, version, nil, setup, layout, nil, nil, nil, "", nil)
+	return newServer(cfg, version, nil, setup, layout, nil, nil, nil, "", nil, nil)
 }
 
 func NewWithMessageSender(
@@ -125,6 +146,7 @@ func NewWithMessageSender(
 		nil,
 		"",
 		nil,
+		nil,
 	)
 }
 
@@ -137,14 +159,58 @@ func NewServer(
 	voiceStore voice.Store,
 	configPath string,
 	display *displayactions.Dispatcher,
-) http.Handler {
+) *Server {
 	layout := dashboard.DefaultWidgetLayout()
 	if layoutStore != nil {
 		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
 			layout = loaded
 		}
 	}
-	return newServer(cfg, version, nil, setup, layout, layoutStore, settingsStore, voiceStore, configPath, display)
+	return newServer(
+		cfg,
+		version,
+		nil,
+		setup,
+		layout,
+		layoutStore,
+		settingsStore,
+		voiceStore,
+		configPath,
+		display,
+		nil,
+	)
+}
+
+func NewServerWithSecrets(
+	cfg config.Config,
+	version string,
+	setup homestate.SetupStatus,
+	layoutStore dashboard.LayoutStore,
+	settingsStore homestate.SettingsStore,
+	voiceStore voice.Store,
+	configPath string,
+	display *displayactions.Dispatcher,
+	secrets secretStore,
+) *Server {
+	layout := dashboard.DefaultWidgetLayout()
+	if layoutStore != nil {
+		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
+			layout = loaded
+		}
+	}
+	return newServer(
+		cfg,
+		version,
+		nil,
+		setup,
+		layout,
+		layoutStore,
+		settingsStore,
+		voiceStore,
+		configPath,
+		display,
+		secrets,
+	)
 }
 
 func newServer(
@@ -158,7 +224,8 @@ func newServer(
 	voiceStore voice.Store,
 	configPath string,
 	display *displayactions.Dispatcher,
-) http.Handler {
+	secretStore secretStore,
+) *Server {
 	if messageSender == nil {
 		messageSender = a2aclient.NewJSONRPCClient()
 	}
@@ -243,24 +310,35 @@ func newServer(
 	agentsManager := agents.NewAgentManager(syncer, agentCards, configPath)
 
 	voiceDispatcher := voice.NewDispatcher()
+	connectionResolver := newConnectionResolver(activeSettingsStore, secretStore)
 
 	server := &Server{
-		cfg:             cfg,
-		agentsManager:   agentsManager,
-		messages:        messageSender,
-		setup:           setup,
-		layout:          layout,
-		layoutStore:     activeLayoutStore,
-		settings:        activeSettingsStore,
-		voice:           cfg.Voice,
-		voiceStore:      activeVoiceStore,
-		configPath:      configPath,
-		syncer:          syncer,
-		display:         display,
-		voiceDispatcher: voiceDispatcher,
-		started:         time.Now().UTC(),
-		version:         version,
+		cfg:                cfg,
+		agentsManager:      agentsManager,
+		messages:           messageSender,
+		setup:              setup,
+		layout:             layout,
+		layoutStore:        activeLayoutStore,
+		settings:           activeSettingsStore,
+		voice:              cfg.Voice,
+		voiceStore:         activeVoiceStore,
+		configPath:         configPath,
+		syncer:             syncer,
+		display:            display,
+		voiceDispatcher:    voiceDispatcher,
+		connectionResolver: connectionResolver,
+		secretStore:        secretStore,
+		started:            time.Now().UTC(),
+		version:            version,
 	}
+	actionDispatcher := widgetactions.NewDispatcher(
+		activeLayoutStore,
+		connectionResolver,
+		server.buildWidgetSkillsSnapshot,
+	)
+	server.actionDispatcher = actionDispatcher
+	server.spotifyOAuth = newSpotifyOAuthController(server)
+	server.appleMusic = newAppleMusicController(server)
 
 	agents.SetEnvReader(os.Getenv)
 	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
@@ -295,6 +373,12 @@ func newServer(
 	mux.HandleFunc("/healthz", server.handleHealth)
 	mux.HandleFunc("/api/v1/status", server.handleStatus)
 	mux.HandleFunc("/api/v1/config", server.handleConfig)
+	mux.HandleFunc("/api/v1/integrations/spotify/auth", server.spotifyOAuth.handleAuth)
+	mux.HandleFunc("/api/v1/integrations/spotify/callback", server.spotifyOAuth.handleCallback)
+	mux.HandleFunc("/api/v1/integrations/spotify/web-playback-token", server.spotifyOAuth.handleWebPlaybackToken)
+	mux.HandleFunc("/api/v1/integrations/apple-music/music-kit-token", server.appleMusic.handleMusicKitToken)
+	mux.HandleFunc("/api/v1/integrations/apple-music/user-token", server.appleMusic.handleUserToken)
+	mux.HandleFunc("/api/v1/widgets/", server.handleWidgetAction)
 
 	// Registrations
 	homestate.NewController(
@@ -308,8 +392,9 @@ func newServer(
 		nil,
 	).RegisterRoutes(mux)
 
-	dashboard.NewController(
+	dashboard.NewControllerWithHydrator(
 		server.layoutStore,
+		dashboard.NewHydrator(server.connectionResolver),
 		func(saved dashboard.WidgetLayout) {
 			server.mu.Lock()
 			server.layout = saved
@@ -336,7 +421,12 @@ func newServer(
 	mux.Handle("/api/v1/events", broker)
 
 	handler := withCommonHeaders(withCORS(mux))
-	return RequestLogger(slog.Default() /*nolint:sloglint // use default global logger */)(handler)
+	server.handler = RequestLogger(slog.Default() /*nolint:sloglint // use default global logger */)(handler)
+	return server
+}
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.handler.ServeHTTP(w, r)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -422,19 +512,20 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		widgets := make([]dashboard.DashboardWidgetConfig, 0, len(layout.Widgets))
 		for _, w := range layout.Widgets {
 			widgets = append(widgets, dashboard.DashboardWidgetConfig{
-				ID:       w.ID,
-				Type:     w.Kind,
-				Title:    w.Title,
-				X:        w.X,
-				Y:        w.Y,
-				W:        w.W,
-				H:        w.H,
-				MinW:     w.MinW,
-				MinH:     w.MinH,
-				Size:     w.Size,
-				Visible:  w.Visible,
-				Mode:     w.Mode,
-				Settings: w.Settings,
+				ID:             w.ID,
+				Type:           w.Kind,
+				Title:          w.Title,
+				X:              w.X,
+				Y:              w.Y,
+				W:              w.W,
+				H:              w.H,
+				MinW:           w.MinW,
+				MinH:           w.MinH,
+				Size:           w.Size,
+				Visible:        w.Visible,
+				Mode:           w.Mode,
+				Settings:       w.Settings,
+				ConnectionRefs: w.ConnectionRefs,
 			})
 		}
 		dbConfig.Widgets = widgets
@@ -644,5 +735,193 @@ func syncOnLoad(
 		}
 	}
 
-	return nil
+	return syncer.Sync(ctx)
+}
+
+type widgetActionRequest struct {
+	Arguments map[string]any `json:"arguments"`
+	Actor     string         `json:"actor"`
+	Confirmed bool           `json:"confirmed"`
+}
+
+func (s *Server) handleWidgetAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		httphelper.WriteMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	instanceID, actionID, ok := parseWidgetActionPath(r.URL.Path)
+	if !ok {
+		httphelper.WriteError(w, http.StatusNotFound, "widget action route not found")
+		return
+	}
+	var req widgetActionRequest
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
+			return
+		}
+	}
+	if req.Arguments == nil {
+		req.Arguments = map[string]any{}
+	}
+	if req.Actor == "" {
+		req.Actor = "display"
+	}
+	result := s.actionDispatcher.Dispatch(r.Context(), widgetactions.Request{
+		WidgetInstanceID: instanceID,
+		ActionID:         actionID,
+		Arguments:        req.Arguments,
+		Actor:            req.Actor,
+		Confirmed:        req.Confirmed,
+	})
+	if result.Issue != nil {
+		httphelper.WriteJSON(w, result.HTTPStatus, map[string]any{"status": "error", "issue": result.Issue})
+		return
+	}
+	httphelper.WriteJSON(w, result.HTTPStatus, result.Body)
+}
+
+func (s *Server) InvokeWidgetAction(
+	ctx context.Context,
+	widgetInstanceID string,
+	actionID string,
+	arguments map[string]any,
+	actor string,
+	confirmed bool,
+) (map[string]any, error) {
+	return s.actionDispatcher.InvokeWidgetAction(
+		ctx,
+		widgetInstanceID,
+		actionID,
+		arguments,
+		actor,
+		confirmed,
+	)
+}
+
+func parseWidgetActionPath(path string) (string, string, bool) {
+	const prefix = "/api/v1/widgets/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(path, prefix)
+	parts := strings.Split(rest, "/")
+	if len(parts) != 3 || parts[1] != "actions" {
+		return "", "", false
+	}
+	instanceID := strings.TrimSpace(parts[0])
+	actionID := strings.TrimSpace(parts[2])
+	return instanceID, actionID, instanceID != "" && actionID != ""
+}
+
+func (s *Server) buildWidgetSkillsSnapshot(
+	ctx context.Context,
+	layout dashboard.WidgetLayout,
+) widgetskills.Snapshot {
+	cfg := s.cfg
+	if s.configPath != "" {
+		if loaded, err := config.LoadConfig(s.configPath); err == nil {
+			loaded.Server = s.cfg.Server
+			loaded.MCP = s.cfg.MCP
+			cfg = loaded
+		}
+	}
+
+	layout = dashboard.NewHydrator(s.connectionResolver).HydrateWidgetLayout(ctx, layout)
+
+	agentsList := []widgetskills.Agent{}
+	regAgents := s.agentsManager.List(ctx, false)
+	for _, agent := range regAgents {
+		agentsList = append(agentsList, widgetskills.Agent{
+			ID:              agent.ID,
+			Name:            agent.Name,
+			Description:     agent.Description,
+			ProtocolBinding: agent.ProtocolBinding,
+			Enabled:         agent.Enabled,
+			Capabilities:    append([]string(nil), agent.Capabilities...),
+			MCPScopes:       append([]string(nil), agent.MCPScopes...),
+			AuthConfigured:  agent.AuthConfigured,
+		})
+	}
+
+	timezone := "UTC"
+	locale := "en"
+	for _, w := range layout.Widgets {
+		if w.Kind == "date-time" {
+			if tzVal, ok := w.Settings["timezone"].(string); ok && tzVal != "" {
+				timezone = tzVal
+			}
+			if locVal, ok := w.Settings["locale"].(string); ok && locVal != "" {
+				locale = locVal
+			}
+			break
+		}
+	}
+
+	wsCfg := widgetskills.Config{}
+	wsCfg.Home.Locale = locale
+	wsCfg.Home.Timezone = timezone
+	wsCfg.Voice.PreferredAgentID = cfg.Voice.PreferredAgentID
+
+	rooms, err := s.settings.Rooms(ctx)
+	if err != nil {
+		rooms = cfg.Rooms
+	}
+	tiles, err := s.settings.Tiles(ctx)
+	if err != nil {
+		tiles = cfg.Tiles
+	}
+
+	wsRooms := make([]widgetskills.RoomConfig, len(rooms))
+	for i, r := range rooms {
+		wsRooms[i] = widgetskills.RoomConfig{
+			ID:      r.ID,
+			Name:    r.Name,
+			Summary: r.Summary,
+			Status:  r.Status,
+		}
+	}
+	wsCfg.Rooms = wsRooms
+
+	wsTiles := make([]widgetskills.TileConfig, len(tiles))
+	for i, t := range tiles {
+		wsTiles[i] = widgetskills.TileConfig{
+			ID:     t.ID,
+			Kind:   t.Kind,
+			Label:  t.Label,
+			Value:  t.Value,
+			Detail: t.Detail,
+		}
+	}
+	wsCfg.Tiles = wsTiles
+
+	wsWidgets := make([]widgetskills.WidgetInstance, len(layout.Widgets))
+	for i, w := range layout.Widgets {
+		wsWidgets[i] = widgetskills.WidgetInstance{
+			ID:             w.ID,
+			Kind:           w.Kind,
+			Title:          w.Title,
+			X:              w.X,
+			Y:              w.Y,
+			W:              w.W,
+			H:              w.H,
+			Visible:        w.Visible,
+			Mode:           w.Mode,
+			Size:           w.Size,
+			Settings:       w.Settings,
+			ConnectionRefs: w.ConnectionRefs,
+			Data:           w.Data,
+		}
+	}
+	wsLayout := widgetskills.WidgetLayout{
+		ProfileID: layout.ProfileID,
+		Widgets:   wsWidgets,
+	}
+
+	return widgetskills.Snapshot{
+		Config:      wsCfg,
+		Layout:      wsLayout,
+		Agents:      agentsList,
+		GeneratedAt: time.Now().UTC(),
+	}
 }
