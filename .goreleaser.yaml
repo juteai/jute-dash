@@ -1,20 +1,35 @@
-# This is an example .goreleaser.yml file with some sensible defaults.
-# Make sure to check the documentation at https://goreleaser.com
-
-# The lines below are called `modelines`. See `:help modeline`
-# Feel free to remove those if you don't want/need to use them.
-# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# vim: set ts=2 sw=2 tw=0 fo=cnqoj
-
 version: 2
 
 before:
   hooks:
-    # You may remove this if you don't use go modules.
-    - go mod tidy
+    - npm --prefix apps/web ci
+    - npm --prefix apps/web run build
+    - rm -rf apps/hub/internal/displayassets/dist
+    - mkdir -p apps/hub/internal/displayassets/dist
+    - cp -R apps/web/build/. apps/hub/internal/displayassets/dist/
 
 builds:
-  - skip: true
+  - id: juted-linux-amd64
+    main: ./apps/hub/cmd/juted
+    binary: juted
+    goos:
+      - linux
+    goarch:
+      - amd64
+    env:
+      - CGO_ENABLED=1
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - ids:
+      - juted-linux-amd64
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
 
 source:
   enabled: true

@@ -73,15 +73,33 @@ Once SQLite persistence exists, `--config` bootstraps an empty runtime store. Ru
 
 ### Docker
 
-Run the hub in a container with config and data mounted:
+Run the hub and display in a single container with config and data mounted:
 
 ```sh
 docker run --rm \
   -p 8787:8787 \
-  -v "$PWD/config:/config" \
+  -e JUTE_HOME=/data \
+  -e JUTE_CONFIG=/config/config.yaml \
+  -e JUTE_LISTEN=0.0.0.0:8787 \
+  -v "$PWD/config/config.yaml:/config/config.yaml:ro" \
   -v "$PWD/data:/data" \
-  ghcr.io/jute-dev/jute-dash:latest
+  ghcr.io/juteai/jute-dash:latest
 ```
+
+For Compose-based installs, use `examples/compose/docker-compose.yml` as the
+starting point. The Compose example mounts `./config/config.yaml` into
+`/config/config.yaml` and persists runtime SQLite state under `/data`.
+
+Docker runtime defaults:
+
+- `JUTE_HOME=/data`
+- `JUTE_CONFIG=/config/config.yaml`
+- `JUTE_LISTEN=0.0.0.0:8787`
+
+The mounted YAML/JSON file is a bootstrap/import source. On first run, the hub
+creates `/data/jute.db`, applies the bootstrap config, and then treats SQLite as
+runtime truth. Secrets must remain environment variable references, not literal
+values in the mounted config.
 
 ### systemd
 
