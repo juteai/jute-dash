@@ -19,6 +19,7 @@ import (
 	"jute-dash/apps/hub/internal/app/config"
 	"jute-dash/apps/hub/internal/app/dashboard"
 	"jute-dash/apps/hub/internal/app/mcp"
+	"jute-dash/apps/hub/internal/displayassets"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/pkg/widgetskills"
 
@@ -48,6 +49,12 @@ func run() error {
 	configPath := flag.String("config", os.Getenv("JUTE_CONFIG"), "optional path to Jute bootstrap config YAML or JSON")
 	dataDirOverride := flag.String("data-dir", os.Getenv("JUTE_DATA_DIR"), "override Jute runtime data directory")
 	listenOverride := flag.String("listen", os.Getenv("JUTE_LISTEN"), "override listen address")
+	displayDir := flag.String(
+		"display-dir",
+		os.Getenv("JUTE_DISPLAY_DIR"),
+		"serve display assets from a local directory instead of embedded assets",
+	)
+	headless := flag.Bool("headless", false, "start the hub API without serving the display")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -120,7 +127,7 @@ func run() error {
 	log.SetOutput(slog.NewLogLogger(logHandler, slog.LevelInfo).Writer())
 
 	displayActions := displayactions.NewDispatcher()
-	handler := app.NewServerWithSecrets(
+	handler, err := app.NewServerWithSecretsAndDisplay(
 		cfg,
 		version,
 		result.Setup,
@@ -130,7 +137,15 @@ func run() error {
 		*configPath,
 		displayActions,
 		runtimeStore.SecretVault,
+		app.DisplayOptions{
+			Headless: *headless,
+			Dir:      *displayDir,
+			FS:       displayassets.FS,
+		},
 	)
+	if err != nil {
+		return fmt.Errorf("configure display assets: %w", err)
+	}
 	logger.Info("jute data directory", "path", dataDir)
 
 	baseCtx, cancelBase := context.WithCancel(context.Background())

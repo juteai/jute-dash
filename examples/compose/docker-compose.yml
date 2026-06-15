@@ -1,0 +1,16 @@
+services:
+  jute-dash:
+    image: ghcr.io/juteai/jute-dash:latest
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      JUTE_HOME: /data
+      JUTE_CONFIG: /config/config.yaml
+      JUTE_LISTEN: 0.0.0.0:8787
+    volumes:
+      - ./config/config.yaml:/config/config.yaml:ro
+      - jute-data:/data
+
+volumes:
+  jute-data:

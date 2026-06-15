@@ -2,6 +2,11 @@ name: CI Build
 
 on:
   pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   lint-test:

@@ -30,6 +30,10 @@ export default defineConfig(({ mode }) => ({
     }
   },
   server: {
+    proxy: {
+      '/api/v1': 'http://127.0.0.1:8787',
+      '/healthz': 'http://127.0.0.1:8787'
+    },
     fs: {
       allow: ['../../widgets', '../../themes', '.']
     }
