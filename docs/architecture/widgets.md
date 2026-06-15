@@ -214,6 +214,8 @@ POST /api/v1/widgets/{widgetInstanceId}/actions/{actionId}
 
 The Hub-owned `widgetactions` dispatcher resolves the widget instance, Widget Skill action declaration, actor type, `connectionRefs`, resolved connection material, confirmation policy, and safe result/issue. Display, MCP, and agent action paths must share this dispatcher behavior. `Server` handlers only parse HTTP and write responses; they do not own provider action policy.
 
+Stateful widgets that need agent-created durable state, such as timers and alarms, may return a settings mutation result from their action implementation. The dispatcher persists the replacement widget settings through the layout store after the action succeeds, keeping SQLite/YAML persistence and public API projections hub-owned.
+
 ## Security and Persistence Constraints
 
 All widgets must adhere to the following security and storage rules:
@@ -237,6 +239,10 @@ Jute Dash ships with first-class built-in widgets:
 7. **Apple Music (`apple-music`)**: Apple Music playback state and controls through a shared Apple Music Adapter Connection.
 8. **Philips Hue (`philips-hue`)**: Hue light state and low-risk controls through a shared Hue bridge Adapter Connection.
 9. **Zigbee2MQTT (`zigbee2mqtt`)**: Zigbee device state and low-risk controls through a shared MQTT broker Adapter Connection.
+10. **Timers & Alarms (`timers-alarms`)**: Local countdown timers, one-off alarms, recurring alarms, notification sound settings, snooze, dismiss, and cancel actions through the hub.
+11. **Calendar (`calendar`)**: Upcoming events from a Calendar Account connection, iCalendar feed parsing with recurrence expansion, event alert lead times, notification sound settings, snooze, and dismiss actions through the hub.
+
+Calendar sync v1 uses private iCalendar feed URLs, including Basic Auth-protected feeds. Plain IMAP email accounts are not treated as a full calendar sync source; invite parsing from email can be added later as an import path. CalDAV and provider API sync are future work and are not exposed in the v1 Calendar Account interface.
 
 ---
 

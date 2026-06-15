@@ -8,6 +8,8 @@ import SpotifyWidget from "./spotify/web/SpotifyWidget.svelte";
 import AppleMusicWidget from "./applemusic/web/AppleMusicWidget.svelte";
 import PhilipsHueWidget from "./philipshue/web/PhilipsHueWidget.svelte";
 import Zigbee2MQTTWidget from "./zigbee2mqtt/web/Zigbee2MQTTWidget.svelte";
+import TimersAlarmsWidget from "./timersalarms/web/TimersAlarmsWidget.svelte";
+import CalendarWidget from "./calendar/web/CalendarWidget.svelte";
 import { chatStore } from "$lib/chatStore";
 import { navigationStore } from "$lib/navigationStore";
 import { createDisplayWidgetDispatcher } from "$lib/widgetActions";
@@ -113,6 +115,33 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
       },
     }),
   },
+  "timers-alarms": {
+    component: TimersAlarmsWidget,
+    props: ({ widget, stale }) => ({
+      data: widgetPayload(widget) ?? {
+        active: [],
+        ringing: [],
+        notificationSound: widget.settings?.notificationSound ?? "chime",
+        defaultSnoozeMins: widget.settings?.defaultSnoozeMins ?? 9,
+      },
+      stale,
+      dispatch: createDisplayWidgetDispatcher(fetch, widget.id),
+    }),
+  },
+  calendar: {
+    component: CalendarWidget,
+    props: ({ widget, stale }) => ({
+      data: widgetPayload(widget) ?? {
+        events: [],
+        ringing: [],
+        alertLeadMinutes: widget.settings?.alertLeadMinutes ?? 10,
+        defaultSnoozeMins: widget.settings?.defaultSnoozeMins ?? 9,
+        notificationSound: widget.settings?.notificationSound ?? "chime",
+      },
+      stale,
+      dispatch: createDisplayWidgetDispatcher(fetch, widget.id),
+    }),
+  },
   spotify: {
     component: SpotifyWidget,
     props: ({ widget, stale }) => ({
@@ -150,13 +179,10 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
       },
       stale,
       dispatch: async (action: string, args: Record<string, any> = {}) => {
-        return createDisplayWidgetDispatcher(fetch, widget.id)(
-          action,
-          {
-            deviceId: args.device_id || args.deviceId || "",
-            value: args.state !== undefined ? args.state : args.value,
-          }
-        );
+        return createDisplayWidgetDispatcher(fetch, widget.id)(action, {
+          deviceId: args.device_id || args.deviceId || "",
+          value: args.state !== undefined ? args.state : args.value,
+        });
       },
     }),
   },
@@ -168,13 +194,10 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
       },
       stale,
       dispatch: async (action: string, args: Record<string, any> = {}) => {
-        return createDisplayWidgetDispatcher(fetch, widget.id)(
-          action,
-          {
-            deviceId: args.device_id || args.deviceId || "",
-            value: args.state !== undefined ? args.state : args.value,
-          }
-        );
+        return createDisplayWidgetDispatcher(fetch, widget.id)(action, {
+          deviceId: args.device_id || args.deviceId || "",
+          value: args.state !== undefined ? args.state : args.value,
+        });
       },
     }),
   },

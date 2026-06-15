@@ -274,13 +274,29 @@ Initial built-in widgets:
 - `date-time`: clock, date, timezone, and optional next relevant household moment.
 - `weather`: current Open-Meteo state from the hub, with unavailable and disabled states.
 - `chat-history`: recent conversations, active agent status, no-agent state, and quick re-entry into chat mode.
+- `timers-alarms`: local timers, one-off alarms, recurring alarms, sound selection, snooze, dismiss, and cancel.
+- `calendar`: upcoming events from a Calendar Account connection, event alert lead time controls, sound selection, snooze, and dismiss.
 
 Default dashboard profile:
 
 - `date-time` anchored top-left;
 - `weather` near the top row;
 - `chat-history` visible when at least one agent is configured;
-- additional status widgets may be added later, but these three define the first clean layout.
+- `timers-alarms` can be added as a dashboard tile or headless skill depending on the display profile;
+- `calendar` can be added as a dashboard tile or used headlessly by agents that need upcoming event context;
+- additional status widgets may be added later, but these widgets define the first clean layout.
+
+## Alert Focus
+
+When a timer, alarm, or calendar event alert becomes due, the display presents a full-screen alert state above dashboard or chat. It reuses the ambient animated chat background treatment, but the foreground interaction is purpose-built for alert handling:
+
+- show the item type, label, and alarm time, event start time, or countdown-complete state in large touch-friendly type;
+- provide primary snooze and dismiss actions;
+- use the configured local notification sound without fetching remote media;
+- let recurring alarm dismissals schedule the next occurrence through the same hub action path agents use.
+- let calendar event snooze and dismiss actions persist through the same widget settings mutation path agents use.
+
+The alert state is derived from hydrated widget data and the Display's current clock. It does not keep durable timer, alarm, or event alert state in browser storage. Local sound playback uses the shared Notification Sound Policy names and falls back to the default sound when a widget payload contains an unsupported value.
 
 ## Chat Mode
 
