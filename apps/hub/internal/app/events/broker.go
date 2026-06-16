@@ -55,10 +55,10 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if src == nil {
 			continue
 		}
+		ch := src.Subscribe(ctx)
 		wg.Add(1)
-		go func(s EventSource) {
+		go func(ch <-chan displayactions.Event) {
 			defer wg.Done()
-			ch := s.Subscribe(ctx)
 			for {
 				select {
 				case <-ctx.Done():
@@ -74,7 +74,7 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-		}(src)
+		}(ch)
 	}
 
 	go func() {
