@@ -247,6 +247,26 @@ export async function saveWidgetLayout(
   return response.json() as Promise<WidgetLayout>;
 }
 
+export async function saveActiveDashboardScreen(
+  fetcher: typeof fetch,
+  screenId: string
+): Promise<WidgetLayout> {
+  const response = await fetcher(
+    `${API_BASE}/api/v1/widgets/layout/active-screen`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ screenId })
+    }
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Jute API request failed');
+  }
+  return response.json() as Promise<WidgetLayout>;
+}
+
 const BACKGROUNDS_BASE = '/api/v1/backgrounds';
 
 export async function getBackgroundImages(

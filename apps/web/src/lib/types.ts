@@ -299,6 +299,17 @@ export type WidgetKind = 'date-time' | 'weather' | 'chat-history' | string;
 export type WidgetLayout = {
   profileId: string;
   schemaVersion?: number;
+  defaultScreenId?: string;
+  activeScreenId?: string;
+  screens?: DashboardScreen[];
+  defaultVariant?: string;
+  variants?: LayoutVariant[];
+  widgets: WidgetInstance[];
+};
+
+export type DashboardScreen = {
+  id: string;
+  label: string;
   defaultVariant?: string;
   variants?: LayoutVariant[];
   widgets: WidgetInstance[];
@@ -393,6 +404,7 @@ export type SettingField = {
 export type WidgetMode = 'ui' | 'headless';
 
 export type WidgetInstance = {
+  screenId?: string;
   id: string;
   kind: WidgetKind;
   title: string;

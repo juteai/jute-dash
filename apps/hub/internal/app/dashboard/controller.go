@@ -15,6 +15,7 @@ type LayoutStore interface {
 	WidgetLayout(ctx context.Context, profileID string) (WidgetLayout, error)
 	SaveWidgetLayout(ctx context.Context, layout WidgetLayout) (WidgetLayout, error)
 	ResetWidgetLayout(ctx context.Context, profileID string) (WidgetLayout, error)
+	SetActiveScreen(ctx context.Context, profileID string, screenID string) (WidgetLayout, error)
 }
 
 type Controller struct {
@@ -45,6 +46,7 @@ func NewControllerWithHydrator(
 func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/widgets/catalog", c.handleWidgetCatalog)
 	mux.HandleFunc("/api/v1/widgets/layout", c.handleWidgetLayout)
+	mux.HandleFunc("/api/v1/widgets/layout/active-screen", c.handleWidgetLayoutActiveScreen)
 	mux.HandleFunc("/api/v1/widgets/layout/reset", c.handleWidgetLayoutReset)
 }
 
@@ -109,6 +111,34 @@ func (c *Controller) handleWidgetLayout(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+func (c *Controller) handleWidgetLayoutActiveScreen(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		httphelper.WriteMethodNotAllowed(w, http.MethodPatch)
+		return
+	}
+	var body struct {
+		ScreenID string `json:"screenId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httphelper.WriteError(w, http.StatusBadRequest, "invalid JSON request body")
+		return
+	}
+	profileID := strings.TrimSpace(r.URL.Query().Get("profileId"))
+	saved, err := c.layoutStore.SetActiveScreen(r.Context(), profileID, body.ScreenID)
+	if err != nil {
+		if errors.Is(err, ErrInvalidLayout) {
+			httphelper.WriteError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		httphelper.WriteError(w, http.StatusInternalServerError, "active dashboard screen could not be saved")
+		return
+	}
+	if c.onUpdate != nil {
+		c.onUpdate(saved)
+	}
+	httphelper.WriteJSON(w, http.StatusOK, saved)
+}
+
 func (c *Controller) handleWidgetLayoutReset(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		httphelper.WriteMethodNotAllowed(w, http.MethodPost)
@@ -149,48 +179,56 @@ func NewHydrator(resolver widgets.ConnectionResolver) *Hydrator {
 
 func (h *Hydrator) HydrateWidgetLayout(ctx context.Context, layout WidgetLayout) WidgetLayout {
 	for i := range layout.Widgets {
-		widget := &layout.Widgets[i]
-		if !widget.Visible {
-			continue
+		h.hydrateWidget(ctx, &layout.Widgets[i])
+	}
+	for screenIndex := range layout.Screens {
+		for widgetIndex := range layout.Screens[screenIndex].Widgets {
+			h.hydrateWidget(ctx, &layout.Screens[screenIndex].Widgets[widgetIndex])
 		}
-		provider, ok := widgets.Get(widget.Kind)
-		if !ok {
-			continue
-		}
-		if widget.Overflow == "" {
-			widget.Overflow = provider.CatalogInfo().Overflow
-		}
-
-		settings := cloneSettings(widget.Settings)
-		if connectionWidget, ok := provider.(widgets.ConnectionAwareWidget); ok {
-			resolution := widgets.ConnectionResolution{
-				Connections: map[string]widgets.ResolvedConnection{},
-			}
-			if h.resolver != nil {
-				resolution = h.resolver.ResolveWidgetConnections(
-					ctx,
-					connectionWidget.RequiredConnections(),
-					widget.ConnectionRefs,
-				)
-			}
-			if resolution.Issue != nil {
-				widget.Data = *resolution.Issue
-				continue
-			}
-			payload, err := connectionWidget.FetchDataWithConnections(ctx, widgets.RuntimeInput{
-				InstanceID:     widget.ID,
-				Settings:       settings,
-				ConnectionRefs: cloneConnectionRefs(widget.ConnectionRefs),
-				Connections:    resolution.Connections,
-			})
-			widget.Data = widgets.NormalizePayload(payload, err)
-			continue
-		}
-		settings["instanceId"] = widget.ID
-		data, err := provider.FetchData(ctx, settings)
-		widget.Data = widgets.NormalizePayload(data, err)
 	}
 	return layout
+}
+
+func (h *Hydrator) hydrateWidget(ctx context.Context, widget *WidgetInstance) {
+	if !widget.Visible {
+		return
+	}
+	provider, ok := widgets.Get(widget.Kind)
+	if !ok {
+		return
+	}
+	if widget.Overflow == "" {
+		widget.Overflow = provider.CatalogInfo().Overflow
+	}
+
+	settings := cloneSettings(widget.Settings)
+	if connectionWidget, ok := provider.(widgets.ConnectionAwareWidget); ok {
+		resolution := widgets.ConnectionResolution{
+			Connections: map[string]widgets.ResolvedConnection{},
+		}
+		if h.resolver != nil {
+			resolution = h.resolver.ResolveWidgetConnections(
+				ctx,
+				connectionWidget.RequiredConnections(),
+				widget.ConnectionRefs,
+			)
+		}
+		if resolution.Issue != nil {
+			widget.Data = *resolution.Issue
+			return
+		}
+		payload, err := connectionWidget.FetchDataWithConnections(ctx, widgets.RuntimeInput{
+			InstanceID:     widget.ID,
+			Settings:       settings,
+			ConnectionRefs: cloneConnectionRefs(widget.ConnectionRefs),
+			Connections:    resolution.Connections,
+		})
+		widget.Data = widgets.NormalizePayload(payload, err)
+		return
+	}
+	settings["instanceId"] = widget.ID
+	data, err := provider.FetchData(ctx, settings)
+	widget.Data = widgets.NormalizePayload(data, err)
 }
 
 func cloneSettings(in map[string]any) map[string]any {

@@ -349,6 +349,10 @@ button {
   gap: 12px;
 }
 
+.dashboard-view--screen-dots {
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
 .dashboard-header,
 .dashboard-actions,
 .brand-lockup,
@@ -772,6 +776,10 @@ button {
     min-height: 100vh;
     height: auto;
     padding: 12px;
+  }
+
+  .dashboard-view--screen-dots {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   .dashboard-header,

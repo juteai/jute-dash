@@ -78,6 +78,7 @@ type Config struct {
 }
 
 type WidgetInstance struct {
+	ScreenID       string            `json:"screenId,omitempty"`
 	ID             string            `json:"id"`
 	Kind           string            `json:"kind"`
 	Title          string            `json:"title"`
@@ -100,8 +101,17 @@ func (w WidgetInstance) rendersTile() bool {
 }
 
 type WidgetLayout struct {
-	ProfileID string           `json:"profileId"`
-	Widgets   []WidgetInstance `json:"widgets"`
+	ProfileID       string           `json:"profileId"`
+	DefaultScreenID string           `json:"defaultScreenId,omitempty"`
+	ActiveScreenID  string           `json:"activeScreenId,omitempty"`
+	Screens         []WidgetScreen   `json:"screens,omitempty"`
+	Widgets         []WidgetInstance `json:"widgets"`
+}
+
+type WidgetScreen struct {
+	ID      string   `json:"id"`
+	Label   string   `json:"label"`
+	Widgets []string `json:"widgets"`
 }
 
 type Agent struct {
@@ -207,9 +217,18 @@ type Display struct {
 }
 
 type Dashboard struct {
+	VisibleWidgetIDs []string                 `json:"visibleWidgetIds"`
+	FocusedWidgetID  string                   `json:"focusedWidgetId"`
+	ActiveScreenID   string                   `json:"activeScreenId,omitempty"`
+	Screens          []DashboardScreenSummary `json:"screens,omitempty"`
+	Stale            bool                     `json:"stale"`
+}
+
+type DashboardScreenSummary struct {
+	ID               string   `json:"id"`
+	Label            string   `json:"label"`
 	VisibleWidgetIDs []string `json:"visibleWidgetIds"`
-	FocusedWidgetID  string   `json:"focusedWidgetId"`
-	Stale            bool     `json:"stale"`
+	Active           bool     `json:"active"`
 }
 
 type SkillResult struct {
@@ -231,6 +250,7 @@ type VisibleWidgets struct {
 }
 
 type WidgetSummary struct {
+	ScreenID    string        `json:"screenId,omitempty"`
 	ID          string        `json:"id"`
 	Kind        string        `json:"kind"`
 	Title       string        `json:"title"`
@@ -293,6 +313,7 @@ func DashboardSnapshot(snapshot Snapshot) DashboardContext {
 			visibleWidgetIDs = append(visibleWidgetIDs, widget.ID)
 		}
 	}
+	screenSummaries := dashboardScreenSummaries(snapshot)
 	for _, skill := range skills {
 		results = append(results, SkillResult{
 			SkillSummary: Summarize(skill),
@@ -327,10 +348,52 @@ func DashboardSnapshot(snapshot Snapshot) DashboardContext {
 		Dashboard: Dashboard{
 			VisibleWidgetIDs: visibleWidgetIDs,
 			FocusedWidgetID:  "",
+			ActiveScreenID:   snapshot.Layout.ActiveScreenID,
+			Screens:          screenSummaries,
 			Stale:            false,
 		},
 		Skills: results,
 	}
+}
+
+func dashboardScreenSummaries(snapshot Snapshot) []DashboardScreenSummary {
+	if len(snapshot.Layout.Screens) == 0 {
+		if len(snapshot.Layout.Widgets) == 0 {
+			return nil
+		}
+		ids := make([]string, 0, len(snapshot.Layout.Widgets))
+		for _, widget := range snapshot.Layout.Widgets {
+			if widget.rendersTile() {
+				ids = append(ids, widget.ID)
+			}
+		}
+		return []DashboardScreenSummary{{
+			ID:               firstNonEmpty(snapshot.Layout.ActiveScreenID, "home"),
+			Label:            "Home",
+			VisibleWidgetIDs: ids,
+			Active:           true,
+		}}
+	}
+	widgetsByID := map[string]WidgetInstance{}
+	for _, widget := range snapshot.Layout.Widgets {
+		widgetsByID[widget.ID] = widget
+	}
+	results := make([]DashboardScreenSummary, 0, len(snapshot.Layout.Screens))
+	for _, screen := range snapshot.Layout.Screens {
+		ids := []string{}
+		for _, widgetID := range screen.Widgets {
+			if widget, ok := widgetsByID[widgetID]; ok && widget.rendersTile() {
+				ids = append(ids, widget.ID)
+			}
+		}
+		results = append(results, DashboardScreenSummary{
+			ID:               screen.ID,
+			Label:            screen.Label,
+			VisibleWidgetIDs: ids,
+			Active:           screen.ID == snapshot.Layout.ActiveScreenID,
+		})
+	}
+	return results
 }
 
 func SkillListSnapshot(snapshot Snapshot) SkillList {
@@ -360,15 +423,16 @@ func VisibleWidgetsSnapshot(snapshot Snapshot) VisibleWidgets {
 			continue
 		}
 		summary := WidgetSummary{
-			ID:      widget.ID,
-			Kind:    widget.Kind,
-			Title:   widget.Title,
-			Size:    widget.Size,
-			X:       widget.X,
-			Y:       widget.Y,
-			W:       widget.W,
-			H:       widget.H,
-			Visible: widget.Visible,
+			ScreenID: widget.ScreenID,
+			ID:       widget.ID,
+			Kind:     widget.Kind,
+			Title:    widget.Title,
+			Size:     widget.Size,
+			X:        widget.X,
+			Y:        widget.Y,
+			W:        widget.W,
+			H:        widget.H,
+			Visible:  widget.Visible,
 		}
 		if skill, ok := skillsByWidget[widget.ID]; ok {
 			skillSummary := Summarize(skill)

@@ -507,14 +507,14 @@ linters:
           - nestif
       # Package registries and built-in widget registration are intentional
       # singleton extension points until the widget registry is redesigned.
-      - path: ^(apps/hub/)?(internal/pkg/a2a|internal/a2a|pkg/widgetskills|internal/widgetskills|widgets)/
+      - path: (^|/)(apps/hub/)?(internal/pkg/a2a|internal/a2a|pkg/widgetskills|internal/widgetskills|widgets)/
         linters:
           - gochecknoglobals
           - gochecknoinits
       - text: 'exported: type name will be used as .+ and that stutters'
         linters:
           - revive
-      - path: ^apps/web/(node_modules|\.svelte-kit|build)/
+      - path: (^|/)apps/web/(node_modules|\.svelte-kit|build)/
         linters:
           - asasalint
           - asciicheck
@@ -543,6 +543,7 @@ linters:
           - gocognit
           - goconst
           - gocritic
+          - golines
           - godoclint
           - godot
           - gomoddirectives

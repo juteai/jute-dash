@@ -145,9 +145,21 @@ The dashboard grid is draggable and resizable.
 Persisted layout-level fields:
 
 - `profileId`: layout profile ID;
-- `schemaVersion`: layout schema version. v2 introduces explicit layout variants;
-- `defaultVariant`: fallback variant ID;
-- `variants`: named layout variants. Built-in defaults are `phone`, `tablet-portrait`, `tablet-landscape`, `desktop`, and `wall`.
+- `schemaVersion`: layout schema version. v2 introduces explicit layout variants. v3 introduces multiple dashboard screens;
+- `defaultScreenId`: fallback user-facing dashboard screen ID;
+- `activeScreenId`: current screen for the display/profile;
+- `screens`: ordered user-facing dashboard screens. Each screen owns its widget instances and its responsive variants;
+- `widgets`: compatibility flattened widget list for existing hub consumers. New display editing uses `screens[*].widgets`.
+
+Persisted dashboard screen fields:
+
+- `id`: stable screen ID;
+- `label`: short edit-mode label;
+- `defaultVariant`: fallback variant ID for this screen;
+- `variants`: named layout variants for this screen;
+- `widgets`: widget instances owned by this screen.
+
+The display renders the active screen by default. In dashboard mode, users can swipe left or right with a clear horizontal drag to switch screens. Swipe navigation is disabled in edit mode, chat, settings, startup offline states, and while widget drag/resize owns pointer input. A minimal dot rail shows the current screen when more than one screen exists. Edit mode exposes screen selection, add, rename, duplicate, delete, and reorder controls.
 
 Persisted layout variant fields:
 
@@ -193,6 +205,7 @@ Current v1 layout APIs:
 - `GET /api/v1/widgets/catalog`: built-in widget catalog.
 - `GET /api/v1/widgets/layout`: current device layout profile.
 - `PUT /api/v1/widgets/layout`: replace the current layout with a validated full layout document.
+- `PATCH /api/v1/widgets/layout/active-screen`: persist the current dashboard screen with `{ "screenId": "..." }`.
 - `POST /api/v1/widgets/layout/reset`: restore the default built-in layout.
 
 Widget additions can come from:
@@ -224,6 +237,8 @@ Edit mode supports:
 - toggle a widget between `ui` and `headless` mode;
 - duplicate widget when the widget supports multiple instances;
 - reset layout profile.
+
+Widgets with `allowMultiple: false` are single-instance across the full dashboard profile, not per screen, because their hub-owned state and agent/MCP context are shared.
 
 Edit mode UI:
 

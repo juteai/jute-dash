@@ -185,7 +185,8 @@ Before adding a new setting, classify it as one of:
 
 Classification of the new display/widget settings:
 
-- widget instance `mode` (`ui`/`headless`), non-secret widget settings values, `connectionRefs`, and the 12-column layout are `household durable` (SQLite truth, YAML bootstrap/export);
+- dashboard screen definitions, screen-owned widget instances, widget instance `mode` (`ui`/`headless`), non-secret widget settings values, `connectionRefs`, and responsive layout variants are `household durable` (SQLite truth, YAML bootstrap/export);
+- the current active dashboard screen is durable display/profile state. Until full device-profile settings are exposed, the default display/profile path stores it with the active layout profile;
 - Adapter Connections are `household durable` records shared across widget instances;
 - Adapter Connection `secretRefs` are `secret reference` values. The hub may resolve them into raw provider material in process memory, but public APIs, YAML/JSON export, widget snapshots, A2A context, and MCP resources expose references or redacted availability only;
 - a widget's settings schema is part of its `install record` / built-in widget metadata (surfaced via the catalog), not a per-home setting;

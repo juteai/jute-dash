@@ -57,7 +57,7 @@ voice:
     followup-window-seconds: 8
     microphone-profile: ""
 dashboard:
-    schema-version: 2
+    schema-version: 3
     default-variant: tablet-landscape
     variants:
         - id: phone
@@ -404,6 +404,42 @@ dashboard:
           mode: ui
           connection-refs:
             account: Spotify
+        - id: apple-music
+          type: apple-music
+          title: Apple Music
+          x: 0
+          'y': 0
+          w: 6
+          h: 2
+          min-w: 4
+          min-h: 2
+          size: medium
+          visible: false
+          mode: ui
+        - id: zigbee2mqtt
+          type: zigbee2mqtt
+          title: Zigbee
+          x: 0
+          'y': 0
+          w: 6
+          h: 2
+          min-w: 4
+          min-h: 2
+          size: medium
+          visible: true
+          mode: ui
+        - id: philips-hue
+          type: philips-hue
+          title: Hue Lights
+          x: 0
+          'y': 2
+          w: 6
+          h: 2
+          min-w: 4
+          min-h: 2
+          size: medium
+          visible: true
+          mode: ui
         - id: timers-alarms
           type: timers-alarms
           title: Timers
@@ -515,6 +551,569 @@ dashboard:
           size: medium
           visible: true
           mode: headless
+    default-screen: home
+    active-screen: home
+    screens:
+        - id: home
+          label: Home
+          default-variant: tablet-landscape
+          variants:
+            - id: phone
+              label: Phone
+              min-width: 0
+              orientation: any
+              columns: 1
+              rows: 8
+              gap: 12
+              placements:
+                assistant-chat:
+                    x: 0
+                    'y': 5
+                    w: 1
+                    h: 3
+                date-time-widget:
+                    x: 0
+                    'y': 0
+                    w: 1
+                    h: 2
+                hacker-news:
+                    x: 0
+                    'y': 5
+                    w: 1
+                    h: 3
+                spotify:
+                    x: 0
+                    'y': 4
+                    w: 1
+                    h: 2
+                stocks-watchlist:
+                    x: 0
+                    'y': 5
+                    w: 1
+                    h: 3
+                weather-widget:
+                    x: 0
+                    'y': 0
+                    w: 1
+                    h: 2
+            - id: tablet-portrait
+              label: Tablet
+              min-width: 641
+              orientation: portrait
+              columns: 6
+              rows: 10
+              gap: 12
+              placements:
+                assistant-chat:
+                    x: 2
+                    'y': 6
+                    w: 4
+                    h: 3
+                date-time-widget:
+                    x: 0
+                    'y': 0
+                    w: 4
+                    h: 2
+                hacker-news:
+                    x: 2
+                    'y': 6
+                    w: 4
+                    h: 3
+                spotify:
+                    x: 0
+                    'y': 4
+                    w: 6
+                    h: 2
+                stocks-watchlist:
+                    x: 0
+                    'y': 6
+                    w: 4
+                    h: 3
+                weather-widget:
+                    x: 2
+                    'y': 0
+                    w: 4
+                    h: 2
+            - id: tablet-landscape
+              label: Tablet wide
+              min-width: 768
+              orientation: landscape
+              columns: 10
+              rows: 6
+              gap: 12
+              placements:
+                assistant-chat:
+                    x: 6
+                    'y': 3
+                    w: 4
+                    h: 3
+                date-time-widget:
+                    x: 0
+                    'y': 0
+                    w: 4
+                    h: 2
+                hacker-news:
+                    x: 4
+                    'y': 3
+                    w: 4
+                    h: 3
+                spotify:
+                    x: 0
+                    'y': 4
+                    w: 6
+                    h: 2
+                stocks-watchlist:
+                    x: 0
+                    'y': 3
+                    w: 4
+                    h: 3
+                weather-widget:
+                    x: 6
+                    'y': 0
+                    w: 4
+                    h: 2
+            - id: desktop
+              label: Desktop
+              min-width: 1024
+              orientation: any
+              columns: 12
+              rows: 8
+              gap: 12
+              placements:
+                assistant-chat:
+                    x: 8
+                    'y': 5
+                    w: 4
+                    h: 3
+                date-time-widget:
+                    x: 0
+                    'y': 0
+                    w: 4
+                    h: 3
+                hacker-news:
+                    x: 4
+                    'y': 5
+                    w: 4
+                    h: 3
+                spotify:
+                    x: 4
+                    'y': 0
+                    w: 4
+                    h: 3
+                stocks-watchlist:
+                    x: 0
+                    'y': 5
+                    w: 4
+                    h: 3
+                weather-widget:
+                    x: 8
+                    'y': 0
+                    w: 4
+                    h: 3
+            - id: wall
+              label: Wall
+              min-width: 1600
+              orientation: landscape
+              columns: 16
+              rows: 9
+              gap: 12
+              placements:
+                assistant-chat:
+                    x: 12
+                    'y': 5
+                    w: 4
+                    h: 4
+                date-time-widget:
+                    x: 0
+                    'y': 0
+                    w: 3
+                    h: 2
+                hacker-news:
+                    x: 4
+                    'y': 5
+                    w: 4
+                    h: 4
+                spotify:
+                    x: 0
+                    'y': 2
+                    w: 5
+                    h: 3
+                stocks-watchlist:
+                    x: 0
+                    'y': 5
+                    w: 4
+                    h: 4
+                weather-widget:
+                    x: 11
+                    'y': 0
+                    w: 5
+                    h: 3
+          widgets:
+            - id: date-time-widget
+              type: date-time
+              title: Clock
+              x: 0
+              'y': 0
+              w: 4
+              h: 2
+              min-w: 3
+              min-h: 1
+              size: small
+              visible: true
+              mode: ui
+              settings:
+                locale: en-GB
+                timezone: Europe/London
+            - id: weather-widget
+              type: weather
+              title: Local Weather
+              x: 8
+              'y': 0
+              w: 4
+              h: 2
+              min-w: 3
+              min-h: 1
+              size: small
+              visible: true
+              mode: ui
+              settings:
+                latitude: 56.462
+                location: Dundee
+                longitude: -2.9707
+                temperature-unit: celsius
+                wind-speed-unit: kmh
+            - id: assistant-chat
+              type: chat-history
+              title: Concierge Chat
+              x: 8
+              'y': 6
+              w: 4
+              h: 3
+              min-w: 3
+              min-h: 1
+              size: large
+              visible: true
+              mode: ui
+            - id: hacker-news
+              type: rss
+              title: Tech News
+              x: 4
+              'y': 6
+              w: 4
+              h: 3
+              min-w: 3
+              min-h: 1
+              size: large
+              visible: true
+              mode: ui
+              settings:
+                feeds:
+                    - name: Hacker News
+                      url: https://news.ycombinator.com/rss
+                limit: 5
+            - id: stocks-watchlist
+              type: markets
+              title: Markets
+              x: 0
+              'y': 6
+              w: 4
+              h: 3
+              min-w: 3
+              min-h: 1
+              size: large
+              visible: true
+              mode: ui
+              settings:
+                tickers:
+                    - AAPL
+                    - GOOG
+                    - symbol: BTC-USD
+            - id: spotify
+              type: spotify
+              title: Spotify
+              x: 0
+              'y': 4
+              w: 6
+              h: 2
+              min-w: 4
+              min-h: 2
+              size: medium
+              visible: true
+              mode: ui
+              connection-refs:
+                account: Spotify
+            - id: timers-alarms
+              type: timers-alarms
+              title: Timers
+              x: 4
+              'y': 6
+              w: 6
+              h: 2
+              min-w: 3
+              min-h: 2
+              size: medium
+              visible: true
+              mode: headless
+              settings:
+                defaultSnoozeMins: 9
+                items:
+                    - createdAt: "2026-06-15T19:51:08Z"
+                      dueAt: "2026-06-15T19:52:08Z"
+                      durationSeconds: 60
+                      id: timer-1781553068592231000
+                      kind: timer
+                      label: Test
+                      snoozeCount: 0
+                      sound: chime
+                      status: dismissed
+                    - createdAt: "2026-06-15T19:51:18Z"
+                      dueAt: "2026-06-15T19:52:18Z"
+                      durationSeconds: 60
+                      id: timer-1781553078015313000
+                      kind: timer
+                      label: test
+                      snoozeCount: 0
+                      sound: chime
+                      status: dismissed
+                    - createdAt: "2026-06-15T20:07:19Z"
+                      dueAt: "2026-06-15T20:16:39Z"
+                      durationSeconds: 300
+                      id: timer-1781554039362167000
+                      kind: timer
+                      label: test
+                      lastSnoozedAt: "2026-06-15T20:07:39Z"
+                      snoozeCount: 1
+                      sound: bell
+                      status: dismissed
+                    - createdAt: "2026-06-15T20:07:51Z"
+                      dueAt: "2026-06-15T20:08:51Z"
+                      durationSeconds: 60
+                      id: timer-1781554071485924000
+                      kind: timer
+                      label: test
+                      snoozeCount: 0
+                      sound: bell
+                      status: dismissed
+                    - createdAt: "2026-06-16T18:50:22Z"
+                      dueAt: "2026-06-16T18:50:52Z"
+                      durationSeconds: 30
+                      id: timer-1781635822053563000
+                      kind: timer
+                      label: test
+                      snoozeCount: 0
+                      sound: bell
+                      status: dismissed
+                    - createdAt: "2026-06-16T18:50:29Z"
+                      dueAt: "2026-06-16T19:00:29Z"
+                      durationSeconds: 600
+                      id: timer-1781635829476352000
+                      kind: timer
+                      label: Timer
+                      snoozeCount: 0
+                      sound: bell
+                      status: cancelled
+                    - createdAt: "2026-06-16T18:54:42Z"
+                      dueAt: "2026-06-16T18:54:48Z"
+                      durationSeconds: 6
+                      id: timer-1781636082000304000
+                      kind: timer
+                      label: Timer
+                      snoozeCount: 0
+                      sound: bell
+                      status: dismissed
+                    - createdAt: "2026-06-16T18:54:59Z"
+                      dueAt: "2026-06-16T18:55:11Z"
+                      durationSeconds: 12
+                      id: timer-1781636099203897000
+                      kind: timer
+                      label: Timer
+                      snoozeCount: 0
+                      sound: bell
+                      status: dismissed
+                    - createdAt: "2026-06-16T18:58:07Z"
+                      dueAt: "2026-06-16T18:58:13Z"
+                      durationSeconds: 6
+                      id: timer-1781636287834448000
+                      kind: timer
+                      label: Timer
+                      snoozeCount: 0
+                      sound: bell
+                      status: dismissed
+                notificationSound: bell
+                timezone: UTC
+            - id: calendar
+              type: calendar
+              title: Calendar
+              x: 4
+              'y': 6
+              w: 6
+              h: 2
+              min-w: 3
+              min-h: 2
+              size: medium
+              visible: true
+              mode: headless
+        - id: screen-2
+          label: Smart Home
+          default-variant: tablet-landscape
+          variants:
+            - id: phone
+              label: Phone
+              min-width: 0
+              orientation: any
+              columns: 1
+              rows: 8
+              gap: 12
+              placements:
+                apple-music:
+                    x: 0
+                    'y': 0
+                    w: 1
+                    h: 2
+                    hidden: true
+                philips-hue:
+                    x: 0
+                    'y': 2
+                    w: 1
+                    h: 2
+                zigbee2mqtt:
+                    x: 0
+                    'y': 0
+                    w: 1
+                    h: 2
+            - id: tablet-portrait
+              label: Tablet
+              min-width: 641
+              orientation: portrait
+              columns: 6
+              rows: 10
+              gap: 12
+              placements:
+                apple-music:
+                    x: 0
+                    'y': 0
+                    w: 6
+                    h: 2
+                    hidden: true
+                philips-hue:
+                    x: 0
+                    'y': 2
+                    w: 6
+                    h: 2
+                zigbee2mqtt:
+                    x: 0
+                    'y': 0
+                    w: 6
+                    h: 2
+            - id: tablet-landscape
+              label: Tablet wide
+              min-width: 768
+              orientation: landscape
+              columns: 10
+              rows: 6
+              gap: 12
+              placements:
+                apple-music:
+                    x: 0
+                    'y': 0
+                    w: 6
+                    h: 2
+                    hidden: true
+                philips-hue:
+                    x: 0
+                    'y': 2
+                    w: 6
+                    h: 2
+                zigbee2mqtt:
+                    x: 0
+                    'y': 0
+                    w: 6
+                    h: 2
+            - id: desktop
+              label: Desktop
+              min-width: 1024
+              orientation: any
+              columns: 12
+              rows: 8
+              gap: 12
+              placements:
+                apple-music:
+                    x: 0
+                    'y': 0
+                    w: 4
+                    h: 3
+                    hidden: true
+                philips-hue:
+                    x: 6
+                    'y': 0
+                    w: 6
+                    h: 8
+                zigbee2mqtt:
+                    x: 0
+                    'y': 0
+                    w: 6
+                    h: 8
+            - id: wall
+              label: Wall
+              min-width: 1600
+              orientation: landscape
+              columns: 16
+              rows: 9
+              gap: 12
+              placements:
+                apple-music:
+                    x: 0
+                    'y': 0
+                    w: 6
+                    h: 2
+                    hidden: true
+                philips-hue:
+                    x: 0
+                    'y': 2
+                    w: 6
+                    h: 2
+                zigbee2mqtt:
+                    x: 0
+                    'y': 0
+                    w: 6
+                    h: 2
+          widgets:
+            - id: apple-music
+              type: apple-music
+              title: Apple Music
+              x: 0
+              'y': 0
+              w: 6
+              h: 2
+              min-w: 4
+              min-h: 2
+              size: medium
+              visible: false
+              mode: ui
+            - id: zigbee2mqtt
+              type: zigbee2mqtt
+              title: Zigbee
+              x: 0
+              'y': 0
+              w: 6
+              h: 2
+              min-w: 4
+              min-h: 2
+              size: medium
+              visible: true
+              mode: ui
+            - id: philips-hue
+              type: philips-hue
+              title: Hue Lights
+              x: 0
+              'y': 2
+              w: 6
+              h: 2
+              min-w: 4
+              min-h: 2
+              size: medium
+              visible: true
+              mode: ui
 agents:
     - id: mock-agent
       name: Mock Agent

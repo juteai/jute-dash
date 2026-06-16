@@ -313,32 +313,9 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 	}
 	wsCfg.Tiles = wsTiles
 
-	wsWidgets := make([]widgetskills.WidgetInstance, len(layout.Widgets))
-	for i, w := range layout.Widgets {
-		wsWidgets[i] = widgetskills.WidgetInstance{
-			ID:             w.ID,
-			Kind:           w.Kind,
-			Title:          w.Title,
-			X:              w.X,
-			Y:              w.Y,
-			W:              w.W,
-			H:              w.H,
-			Visible:        w.Visible,
-			Mode:           w.Mode,
-			Size:           w.Size,
-			Settings:       w.Settings,
-			ConnectionRefs: w.ConnectionRefs,
-			Data:           w.Data,
-		}
-	}
-	wsLayout := widgetskills.WidgetLayout{
-		ProfileID: layout.ProfileID,
-		Widgets:   wsWidgets,
-	}
-
 	return widgetskills.Snapshot{
 		Config:      wsCfg,
-		Layout:      wsLayout,
+		Layout:      dashboard.WidgetSkillsLayout(layout),
 		Agents:      agentsList,
 		GeneratedAt: time.Now().UTC(),
 	}, nil

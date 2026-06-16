@@ -653,20 +653,27 @@ func assertDevHarnessWidgets(t *testing.T, cfg Config) {
 		x, y, w, h     int
 		minW, minH     int
 		mode           string
+		visible        bool
 	}
 	widget := func(id, kind, size string, x, y, w, h, minW, minH int, mode string) widgetExpectation {
 		return widgetExpectation{
-			id:   id,
-			kind: kind,
-			size: size,
-			x:    x,
-			y:    y,
-			w:    w,
-			h:    h,
-			minW: minW,
-			minH: minH,
-			mode: mode,
+			id:      id,
+			kind:    kind,
+			size:    size,
+			x:       x,
+			y:       y,
+			w:       w,
+			h:       h,
+			minW:    minW,
+			minH:    minH,
+			mode:    mode,
+			visible: true,
 		}
+	}
+	hiddenWidget := func(id, kind, size string, x, y, w, h, minW, minH int, mode string) widgetExpectation {
+		expectation := widget(id, kind, size, x, y, w, h, minW, minH, mode)
+		expectation.visible = false
+		return expectation
 	}
 	var want []widgetExpectation
 	if cfg.Home.Name == "Jute Local Dev" || cfg.Home.Name == "Jute Kronk A2A Dev" {
@@ -677,6 +684,9 @@ func assertDevHarnessWidgets(t *testing.T, cfg Config) {
 			widget("hacker-news", "rss", "large", 6, 3, 4, 3, 3, 1, dashboard.WidgetModeUI),
 			widget("stocks-watchlist", "markets", "large", 8, 0, 4, 3, 3, 1, dashboard.WidgetModeUI),
 			widget("spotify", "spotify", "medium", 0, 2, 6, 2, 4, 2, dashboard.WidgetModeUI),
+			hiddenWidget("apple-music", "apple-music", "medium", 0, 0, 6, 2, 4, 2, dashboard.WidgetModeUI),
+			widget("zigbee2mqtt", "zigbee2mqtt", "medium", 0, 0, 6, 2, 4, 2, dashboard.WidgetModeUI),
+			widget("philips-hue", "philips-hue", "medium", 0, 2, 6, 2, 4, 2, dashboard.WidgetModeUI),
 			widget("timers-alarms", "timers-alarms", "medium", 4, 6, 6, 2, 3, 2, dashboard.WidgetModeHeadless),
 			widget("calendar", "calendar", "medium", 4, 6, 6, 2, 3, 2, dashboard.WidgetModeHeadless),
 		}
@@ -697,7 +707,7 @@ func assertDevHarnessWidgets(t *testing.T, cfg Config) {
 		if got.ID != wantWidget.id || got.Type != wantWidget.kind || got.Size != wantWidget.size ||
 			got.X != wantWidget.x || got.Y != wantWidget.y || got.W != wantWidget.w || got.H != wantWidget.h ||
 			got.MinW != wantWidget.minW || got.MinH != wantWidget.minH ||
-			!got.Visible || got.Mode != wantWidget.mode {
+			got.Visible != wantWidget.visible || got.Mode != wantWidget.mode {
 			t.Fatalf("unexpected harness widget %d: %+v", i, got)
 		}
 		if (got.Type == "weather" || got.Type == "rss" || got.Type == "markets") && len(got.Settings) == 0 {
