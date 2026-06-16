@@ -274,6 +274,8 @@ Initial built-in widgets should expose these skills:
 - `jute.date_time.current`: read date, time, timezone, locale, and display format.
 - `jute.weather.current`: read weather condition, temperature, humidity, wind, sunrise, sunset, and freshness.
 - `jute.chat_history.current`: read available agents, selected agent, recent conversation summaries, and conversation availability.
+- `jute.timers_alarms.control`: create timers, create one-off or recurring alarms, read active and ringing alerts, set notification sounds, snooze, dismiss, and cancel.
+- `jute.calendar.events`: read upcoming calendar events and ringing event alerts, set event alert lead minutes, set event notification sounds, snooze event alerts, and dismiss event alerts.
 
 These skills should be instance-aware even if the first dashboard only has one instance of each widget.
 

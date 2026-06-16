@@ -11,6 +11,7 @@ import (
 
 type ActionLayoutStore interface {
 	WidgetLayout(ctx context.Context, profileID string) (dashboard.WidgetLayout, error)
+	SaveWidgetLayout(ctx context.Context, layout dashboard.WidgetLayout) (dashboard.WidgetLayout, error)
 }
 
 type SnapshotBuilder func(ctx context.Context, layout dashboard.WidgetLayout) widgetskills.Snapshot
@@ -104,6 +105,48 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) Result {
 	var snapshot widgetskills.Snapshot
 	if d.snapshot != nil {
 		snapshot = d.snapshot(ctx, layout)
+	}
+	if mutatingWidget, ok := provider.(widgets.SettingsMutatingActionWidget); ok {
+		result, err := mutatingWidget.InvokeActionWithSettings(ctx, widgets.ActionInput{
+			RuntimeInput: widgets.RuntimeInput{
+				InstanceID:     inst.ID,
+				Settings:       cloneSettings(inst.Settings),
+				ConnectionRefs: cloneConnectionRefs(inst.ConnectionRefs),
+			},
+			Snapshot:  snapshot,
+			ActionID:  req.ActionID,
+			Arguments: req.Arguments,
+			Actor:     req.Actor,
+		})
+		if err != nil {
+			return issueResult(
+				http.StatusInternalServerError,
+				"widget.action_failed",
+				"Action failed",
+				"Jute could not complete this widget action.",
+				"error",
+			)
+		}
+		if result.Body == nil {
+			result.Body = map[string]any{}
+		}
+		if result.Settings != nil {
+			inst.Settings = result.Settings
+			saved, err := d.layoutStore.SaveWidgetLayout(ctx, layout)
+			if err != nil {
+				return issueResult(
+					http.StatusInternalServerError,
+					"widget.action_save_failed",
+					"Action not saved",
+					"Jute completed the action but could not save the widget state.",
+					"error",
+				)
+			}
+			if savedInst := findWidget(saved, req.WidgetInstanceID); savedInst != nil {
+				result.Body["settings"] = cloneSettings(savedInst.Settings)
+			}
+		}
+		return Result{Body: result.Body, HTTPStatus: http.StatusOK}
 	}
 	if connectionWidget, ok := provider.(widgets.ConnectionAwareActionWidget); ok {
 		resolution := widgets.ConnectionResolution{

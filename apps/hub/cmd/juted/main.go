@@ -24,12 +24,14 @@ import (
 	"jute-dash/apps/hub/pkg/widgetskills"
 
 	_ "jute-dash/widgets/applemusic/hub"
+	_ "jute-dash/widgets/calendar/hub"
 	_ "jute-dash/widgets/chathistory/hub"
 	_ "jute-dash/widgets/datetime/hub"
 	_ "jute-dash/widgets/markets/hub"
 	_ "jute-dash/widgets/philipshue/hub"
 	_ "jute-dash/widgets/rss/hub"
 	_ "jute-dash/widgets/spotify/hub"
+	_ "jute-dash/widgets/timersalarms/hub"
 	_ "jute-dash/widgets/weather/hub"
 	_ "jute-dash/widgets/zigbee2mqtt/hub"
 )

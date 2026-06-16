@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/99designs/keyring v1.2.2
 	github.com/a2aproject/a2a-go/v2 v2.3.1
+	github.com/apognu/gocal v0.9.1
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/riverqueue/river v0.39.0
 	github.com/riverqueue/river/riverdriver/riversqlite v0.39.0
@@ -17,6 +18,7 @@ require (
 
 require (
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
+	github.com/ChannelMeter/iso8601duration v0.0.0-20150204201828-8da3af7a2a61 // indirect
 	github.com/a2aproject/a2a-go v0.3.15 // indirect
 	github.com/danieljoos/wincred v1.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
