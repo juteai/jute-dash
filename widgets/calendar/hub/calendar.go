@@ -62,7 +62,7 @@ func (w *CalendarWidget) CatalogInfo() widgets.WidgetCatalogItem {
 	return widgets.WidgetCatalogItem{
 		Kind:          Kind,
 		Name:          "Calendar",
-		Description:   "Upcoming events from a private iCalendar feed with full-screen event alerts.",
+		Description:   "Blank calendar by default, with optional private iCalendar feed events and full-screen event alerts.",
 		DefaultTitle:  "Calendar",
 		DefaultW:      6,
 		DefaultH:      2,
@@ -115,18 +115,18 @@ func (w *CalendarWidget) RequiredConnections() []widgets.ConnectionRequirement {
 			Kind:        "calendar-account",
 			DisplayName: "Calendar Account",
 			Description: strings.Join([]string{
-				"Private iCalendar feed account.",
-				"CalDAV and plain IMAP email are not v1 calendar sync sources.",
+				"Optional private iCalendar feed account for synced events.",
+				"Calendar works without a source; CalDAV and plain IMAP email are not v1 calendar sync sources.",
 			}, " "),
-			Required:   true,
+			Required:   false,
 			SecretKeys: []string{"password"},
 			Fields: []widgets.ConnectionField{
 				{
 					ID:       "feed_url",
 					Type:     widgets.ConnectionFieldString,
 					Label:    "Calendar URL",
-					Required: true,
-					Help:     "Private iCalendar .ics URL or provider calendar export URL.",
+					Required: false,
+					Help:     "Optional private iCalendar .ics URL or provider calendar export URL.",
 				},
 				{
 					ID:    "username",
@@ -154,8 +154,8 @@ func (w *CalendarWidget) RequiredConnections() []widgets.ConnectionRequirement {
 
 func (w *CalendarWidget) FetchData(ctx context.Context, raw map[string]any) (any, error) {
 	now := w.currentTime()
+	settings := parseSettings(raw)
 	if url, ok := raw["feedUrl"].(string); ok && strings.TrimSpace(url) != "" {
-		settings := parseSettings(raw)
 		events, err := w.client.Fetch(ctx, provider.Settings{
 			FeedURL:       url,
 			CalendarName:  "Calendar",
@@ -171,11 +171,7 @@ func (w *CalendarWidget) FetchData(ctx context.Context, raw map[string]any) (any
 		}
 		return widgets.OK(calendarData(events, settings, now)), nil
 	}
-	return widgets.Unavailable(
-		"connection.missing",
-		"Calendar account needed",
-		"Choose a Calendar Account connection in settings.",
-	), nil
+	return widgets.OK(calendarData(nil, settings, now)), nil
 }
 
 func (w *CalendarWidget) FetchDataWithConnections(
@@ -194,11 +190,7 @@ func (w *CalendarWidget) FetchDataWithConnections(
 		LookaheadDays: settings.LookaheadDays,
 	}
 	if providerSettings.FeedURL == "" {
-		return widgets.Unavailable(
-			"connection.missing_settings",
-			"Calendar URL needed",
-			"Add an iCalendar URL to this Calendar Account connection.",
-		), nil
+		return widgets.OK(calendarData(nil, settings, now)), nil
 	}
 	events, err := w.client.Fetch(ctx, providerSettings, now)
 	if err != nil {

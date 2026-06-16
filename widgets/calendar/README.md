@@ -1,10 +1,12 @@
 # Calendar Widget
 
-The Calendar widget shows upcoming events from a Calendar Account connection and exposes event alerts to the display and Widget Skills.
+The Calendar widget starts as a blank local calendar and exposes event alerts to the display and Widget Skills. A Calendar Account connection can be added later to sync upcoming events from an iCalendar feed.
+
+The dashboard tile is calendar-first: it renders the current month even when no source is configured. Alert lead time and notification sound are settings, not always-visible tile controls; snooze and dismiss appear in alert states.
 
 ## Sync
 
-Calendar sync v1 supports private iCalendar feed URLs. Feeds may be public bearer-style URLs or Basic Auth-protected URLs using the connection `username` field and secret `password` field.
+Calendar sync v1 optionally supports private iCalendar feed URLs. Feeds may be public bearer-style URLs or Basic Auth-protected URLs using the connection `username` field and secret `password` field.
 
 Plain IMAP email is not a live calendar sync source. Email invite parsing can be added later as an import path. CalDAV and provider API sync are future work rather than part of the v1 account interface.
 
@@ -20,9 +22,9 @@ Plain IMAP email is not a live calendar sync source. Email invite parsing can be
 
 ## Connection
 
-The widget requires a `calendar-account` connection in the `account` slot:
+The widget can run without a connection. To sync external events, link an optional `calendar-account` connection in the `account` slot:
 
-- `feed_url`: private `.ics` or provider calendar export URL.
+- `feed_url`: optional private `.ics` or provider calendar export URL.
 - `username`: optional Basic Auth username.
 - `password`: optional Basic Auth password or app password stored as a secret.
 - `calendar_name`: display name applied to events from the feed.

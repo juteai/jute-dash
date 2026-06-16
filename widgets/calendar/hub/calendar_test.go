@@ -61,6 +61,69 @@ END:VCALENDAR`))
 	}
 }
 
+func TestCalendarFetchDataWithoutFeedReturnsBlankCalendar(t *testing.T) {
+	now := time.Date(2026, 6, 15, 8, 0, 0, 0, time.UTC)
+	widget := &CalendarWidget{now: func() time.Time { return now }}
+
+	payload, err := widget.FetchData(context.Background(), map[string]any{})
+	if err != nil {
+		t.Fatalf("FetchData error = %v", err)
+	}
+	data, ok := widgets.PayloadData(payload).(map[string]any)
+	if !ok {
+		t.Fatalf("payload data = %#v, want map", payload)
+	}
+	if events, ok := data["events"].([]provider.Event); !ok || len(events) != 0 {
+		t.Fatalf("events = %#v, want empty event list", data["events"])
+	}
+	if got := data["nextEvent"]; got != nil {
+		t.Fatalf("nextEvent = %#v, want nil", got)
+	}
+	if got, want := data["generatedAt"], "2026-06-15T08:00:00Z"; got != want {
+		t.Fatalf("generatedAt = %v, want %s", got, want)
+	}
+}
+
+func TestCalendarFetchDataWithNoConnectionReturnsBlankCalendar(t *testing.T) {
+	now := time.Date(2026, 6, 15, 8, 0, 0, 0, time.UTC)
+	widget := &CalendarWidget{now: func() time.Time { return now }}
+
+	payload, err := widget.FetchDataWithConnections(context.Background(), widgets.RuntimeInput{
+		InstanceID:  "calendar",
+		Settings:    map[string]any{"alertLeadMinutes": float64(5)},
+		Connections: map[string]widgets.ResolvedConnection{},
+	})
+	if err != nil {
+		t.Fatalf("FetchDataWithConnections error = %v", err)
+	}
+	data, ok := payload.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("payload data = %#v, want map", payload.Data)
+	}
+	if events, ok := data["events"].([]provider.Event); !ok || len(events) != 0 {
+		t.Fatalf("events = %#v, want empty event list", data["events"])
+	}
+	if got, want := data["alertLeadMinutes"], 5; got != want {
+		t.Fatalf("alertLeadMinutes = %v, want %v", got, want)
+	}
+}
+
+func TestCalendarAccountConnectionIsOptional(t *testing.T) {
+	widget := &CalendarWidget{}
+	requirements := widget.RequiredConnections()
+	if len(requirements) != 1 {
+		t.Fatalf("requirements len = %d, want 1", len(requirements))
+	}
+	if requirements[0].Required {
+		t.Fatalf("calendar account requirement is required, want optional")
+	}
+	for _, field := range requirements[0].Fields {
+		if field.ID == "feed_url" && field.Required {
+			t.Fatalf("feed_url is required, want optional")
+		}
+	}
+}
+
 func TestCalendarSnoozeEventPersistsSettings(t *testing.T) {
 	now := time.Date(2026, 6, 15, 8, 0, 0, 0, time.UTC)
 	widget := &CalendarWidget{now: func() time.Time { return now }}

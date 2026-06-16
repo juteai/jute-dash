@@ -1,19 +1,7 @@
 <script lang="ts">
-  import {
-    Bell,
-    CalendarDays,
-    Check,
-    Clock3,
-    MapPin,
-    RotateCcw,
-    Volume2,
-  } from "lucide-svelte";
+  import { Check, MapPin, RotateCcw } from "lucide-svelte";
   import {
     WidgetActionButton,
-    WidgetBadge,
-    WidgetEmptyState,
-    WidgetList,
-    WidgetListItem,
     WidgetMeta,
     WidgetStack,
   } from "$lib/components/widget-content";
@@ -52,6 +40,15 @@
     source?: string;
   };
 
+  type MonthDay = {
+    key: string;
+    label: number;
+    ariaLabel: string;
+    currentMonth: boolean;
+    today: boolean;
+    hasEvents: boolean;
+  };
+
   export let data: CalendarData = {};
   export let stale = false;
   export let dispatch: (
@@ -59,7 +56,8 @@
     args?: Record<string, unknown>,
   ) => Promise<unknown> = async () => {};
 
-  const leadOptions = [0, 5, 10, 30];
+  const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const today = new Date();
 
   $: events = [...(data.events ?? [])].sort(
     (a, b) => Date.parse(a.start) - Date.parse(b.start),
@@ -67,26 +65,18 @@
   $: ringingAlerts = data.ringing ?? [];
   $: primaryAlert = ringingAlerts[0];
   $: nextEvent = data.nextEvent ?? events[0];
-  $: alertLead = Number(data.alertLeadMinutes ?? 10);
-  $: sound = data.notificationSound ?? "chime";
-  $: sounds = data.supportedSounds ?? [
-    "chime",
-    "bell",
-    "pulse",
-    "soft",
-    "none",
-  ];
+  $: monthLabel = today.toLocaleDateString([], {
+    month: "long",
+    year: "numeric",
+  });
+  $: monthDays = buildMonthDays(today, events);
 
   function formatEventTime(event: Event | undefined) {
     if (!event) return "";
     const start = new Date(event.start);
     const end = new Date(event.end);
     if (event.allDay) {
-      return start.toLocaleDateString([], {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      });
+      return "All day";
     }
     return `${start.toLocaleTimeString([], {
       hour: "2-digit",
@@ -121,6 +111,39 @@
     });
   }
 
+  function buildMonthDays(anchor: Date, calendarEvents: Event[]): MonthDay[] {
+    const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    const gridStart = new Date(monthStart);
+    gridStart.setDate(monthStart.getDate() - monthStart.getDay());
+    const eventDays = new Set(
+      calendarEvents.map((event) => dayKey(new Date(event.start))),
+    );
+
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(gridStart);
+      date.setDate(gridStart.getDate() + index);
+      return {
+        key: dayKey(date),
+        label: date.getDate(),
+        ariaLabel: date.toLocaleDateString([], {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+        }),
+        currentMonth: date.getMonth() === anchor.getMonth(),
+        today: dayKey(date) === dayKey(anchor),
+        hasEvents: eventDays.has(dayKey(date)),
+      };
+    });
+  }
+
+  function dayKey(date: Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
   function snooze(alert: EventAlert) {
     return dispatch("snooze_event", {
       id: alert.id,
@@ -131,27 +154,38 @@
   function dismiss(alert: EventAlert) {
     return dispatch("dismiss_event", { id: alert.id });
   }
-
-  function setSound(nextSound: string) {
-    return dispatch("set_event_notification_sound", { sound: nextSound });
-  }
 </script>
 
-<WidgetStack {stale} gap="loose">
-  <section class="calendar-head">
-    <div class="calendar-section-header">
-      <div class="calendar-section-title">
-        <CalendarDays size={14} />
-        <h3>Calendar</h3>
+<WidgetStack {stale} gap="tight">
+  <section class:has-next={!!nextEvent} class="calendar-shell">
+    <section class="month-calendar" aria-label={monthLabel}>
+      <div class="month-heading">
+        <strong>{monthLabel}</strong>
+        <span
+          >{today.toLocaleDateString([], {
+            weekday: "long",
+            day: "numeric",
+          })}</span
+        >
       </div>
-      {#if ringingAlerts.length > 0}
-        <WidgetBadge tone="warning" pulse>
-          {ringingAlerts.length} due
-        </WidgetBadge>
-      {:else}
-        <WidgetBadge>{alertLead}m alerts</WidgetBadge>
-      {/if}
-    </div>
+      <div class="weekday-grid" aria-hidden="true">
+        {#each weekdayLabels as weekday}
+          <span>{weekday}</span>
+        {/each}
+      </div>
+      <div class="month-grid">
+        {#each monthDays as day (day.key)}
+          <span
+            class:current-month={day.currentMonth}
+            class:today={day.today}
+            class:has-events={day.hasEvents}
+            aria-label={day.ariaLabel}
+          >
+            {day.label}
+          </span>
+        {/each}
+      </div>
+    </section>
 
     {#if nextEvent}
       <article class:ringing={!!primaryAlert} class="next-event">
@@ -190,107 +224,118 @@
       </article>
     {/if}
   </section>
-
-  <div class="lead-row" aria-label="Event alert lead time">
-    <Bell size={14} />
-    {#each leadOptions as minutes}
-      <button
-        type="button"
-        class:active={alertLead === minutes}
-        on:click={() => dispatch("set_event_alert_lead", { minutes })}
-      >
-        {minutes === 0 ? "At time" : `${minutes}m`}
-      </button>
-    {/each}
-  </div>
-
-  <label class="sound-row">
-    <Volume2 size={14} />
-    <select
-      aria-label="Event notification sound"
-      value={sound}
-      on:change={(event) => setSound(event.currentTarget.value)}
-    >
-      {#each sounds as option}
-        <option value={option}>{option}</option>
-      {/each}
-    </select>
-  </label>
-
-  {#if events.length === 0}
-    <WidgetEmptyState message="No upcoming events">
-      <CalendarDays slot="icon" size={32} />
-    </WidgetEmptyState>
-  {:else}
-    <WidgetList gap="tight">
-      {#each events.slice(0, 5) as event (event.id)}
-        <WidgetListItem
-          direction="row"
-          class={event.id === nextEvent?.id ? "current" : ""}
-        >
-          <div class="event-time">
-            <Clock3 size={14} />
-            <span>{formatEventTime(event)}</span>
-          </div>
-          <div class="event-copy">
-            <strong>{event.title}</strong>
-            <WidgetMeta>
-              <span>{formatRelativeDay(event)}</span>
-              {#if event.location}
-                <span>{event.location}</span>
-              {/if}
-            </WidgetMeta>
-          </div>
-        </WidgetListItem>
-      {/each}
-    </WidgetList>
-  {/if}
 </WidgetStack>
 
 <style>
-  .calendar-head {
+  .calendar-shell {
     display: grid;
-    gap: clamp(6px, 2cqmin, 10px);
+    flex: 1;
+    gap: clamp(8px, 2.2cqmin, 12px);
+    height: 100%;
+    min-height: 0;
   }
 
-  .calendar-section-header,
-  .calendar-section-title {
-    display: flex;
-    align-items: center;
+  .calendar-shell.has-next {
+    grid-template-columns: minmax(0, 1fr) minmax(144px, 0.72fr);
+    align-items: stretch;
   }
 
-  .calendar-section-header {
-    justify-content: space-between;
-    gap: 8px;
-    padding-bottom: 2px;
+  .month-calendar {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: clamp(5px, 1.5cqmin, 8px);
+    height: 100%;
+    min-height: 0;
   }
 
-  .calendar-section-title {
+  .month-heading,
+  .next-event {
     min-width: 0;
-    gap: 8px;
   }
 
-  .calendar-section-title :global(svg) {
-    flex: 0 0 auto;
-    color: var(--muted);
+  .month-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
   }
 
-  h3 {
-    margin: 0;
+  .month-heading strong {
     overflow: hidden;
-    color: var(--muted);
-    font-size: var(--widget-label-size, 0.75rem);
-    font-weight: 740;
+    color: var(--foreground);
+    font-size: clamp(0.95rem, 4.8cqmin, 1.32rem);
+    font-weight: 760;
     line-height: 1.1;
     text-overflow: ellipsis;
-    text-transform: uppercase;
     white-space: nowrap;
+  }
+
+  .month-heading span,
+  .weekday-grid span {
+    color: var(--muted);
+    font-size: clamp(0.58rem, 2.8cqmin, 0.72rem);
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .weekday-grid,
+  .month-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  .weekday-grid {
+    gap: 2px;
+  }
+
+  .weekday-grid span {
+    text-align: center;
+  }
+
+  .month-grid {
+    gap: clamp(2px, 0.9cqmin, 5px);
+    grid-template-rows: repeat(6, minmax(0, 1fr));
+    min-height: 0;
+  }
+
+  .month-grid span {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-width: 0;
+    min-height: 0;
+    border-radius: 6px;
+    color: color-mix(in srgb, var(--muted) 54%, transparent);
+    font-size: clamp(0.66rem, 3.4cqmin, 0.86rem);
+    font-weight: 650;
+    line-height: 1;
+  }
+
+  .month-grid span.current-month {
+    color: var(--foreground);
+  }
+
+  .month-grid span.today {
+    background: var(--surface-strong);
+    color: var(--active);
+    font-weight: 800;
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+  }
+
+  .month-grid span.has-events::after {
+    position: absolute;
+    bottom: clamp(1px, 0.6cqmin, 3px);
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: currentColor;
+    content: "";
   }
 
   .next-event {
     display: grid;
-    grid-template-columns: minmax(74px, auto) minmax(0, 1fr) auto;
-    align-items: center;
+    align-content: center;
+    grid-template-columns: 1fr;
     gap: clamp(8px, 2.2cqmin, 12px);
     padding: clamp(8px, 2.7cqmin, 13px);
     border: 1px solid var(--border);
@@ -320,15 +365,13 @@
     white-space: nowrap;
   }
 
-  .next-copy,
-  .event-copy {
+  .next-copy {
     display: grid;
     min-width: 0;
     gap: 3px;
   }
 
-  .next-copy strong,
-  .event-copy strong {
+  .next-copy strong {
     overflow: hidden;
     color: var(--foreground);
     font-size: clamp(0.82rem, 4.6cqmin, 1rem);
@@ -349,74 +392,13 @@
     gap: 5px;
   }
 
-  .lead-row {
-    display: grid;
-    grid-template-columns: auto repeat(4, minmax(0, 1fr));
-    align-items: center;
-    gap: clamp(4px, 1cqmin, 7px);
-    color: var(--muted);
-  }
-
-  .lead-row button {
-    min-width: 0;
-    min-height: clamp(28px, 5cqmin, 36px);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: transparent;
-    color: var(--foreground);
-    font: inherit;
-    font-size: clamp(0.64rem, 3.5cqmin, 0.78rem);
-    cursor: pointer;
-  }
-
-  .lead-row button.active {
-    border-color: var(--border-strong);
-    background: var(--surface-strong);
-    color: var(--active);
-  }
-
-  .sound-row {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    align-items: center;
-    gap: clamp(4px, 1cqmin, 8px);
-    color: var(--muted);
-  }
-
-  select {
-    width: 100%;
-    min-width: 0;
-    min-height: clamp(30px, 5.2cqmin, 40px);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: color-mix(in srgb, var(--surface-muted) 36%, transparent);
-    color: var(--foreground);
-    padding: 0 clamp(6px, 1.6cqmin, 10px);
-    font: inherit;
-    font-size: clamp(0.72rem, 4cqmin, 0.92rem);
-  }
-
-  .event-time {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    min-width: clamp(70px, 24cqmin, 96px);
-    color: var(--muted);
-    font-size: clamp(0.66rem, 3.7cqmin, 0.82rem);
-    white-space: nowrap;
-  }
-
-  .event-copy {
-    flex: 1;
-  }
-
-  :global(.widget-list-item.current) {
-    border-color: var(--border-strong);
-  }
-
-  @container (max-width: 260px) {
-    .next-event {
+  @container (max-width: 360px) {
+    .calendar-shell.has-next {
       grid-template-columns: 1fr;
+    }
+
+    .next-event {
+      display: none;
     }
 
     .alert-actions {

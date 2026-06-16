@@ -2,17 +2,13 @@
   import { onDestroy, onMount } from "svelte";
   import {
     AlarmClock,
-    Bell,
     Check,
     Clock3,
-    MoreVertical,
     Plus,
     RotateCcw,
     TimerOff,
     Volume2,
   } from "lucide-svelte";
-  import WidgetEmptyState from "$lib/components/widget-content/WidgetEmptyState.svelte";
-  import WidgetBadge from "$lib/components/widget-content/WidgetBadge.svelte";
 
   type Item = {
     id: string;
@@ -37,6 +33,7 @@
     ringing?: Item[];
     notificationSound?: string;
     defaultSnoozeMins?: number;
+    generatedAt?: string;
     timezone?: string;
   };
 
@@ -55,6 +52,7 @@
 
   const sounds = ["chime", "bell", "pulse", "soft", "none"];
   const timerPresets = [5, 10, 15, 30];
+  const countdownBoundaryPaddingMs = 34;
   const weekdays: Weekday[] = [
     { short: "Sun", long: "Sunday", value: 0 },
     { short: "Mon", long: "Monday", value: 1 },
@@ -86,11 +84,18 @@
     (item) => item.status !== "dismissed" && item.status !== "cancelled",
   );
   $: sortedItems = [...activeItems].sort((a, b) => dueMs(a) - dueMs(b));
-  $: ringingItems = sortedItems.filter((item) => isRinging(item));
+  $: generatedAtMs = data.generatedAt
+    ? Date.parse(data.generatedAt)
+    : Number.NaN;
+  $: ringingItems = sortedItems.filter((item) => isRinging(item, now));
   $: primaryItem = ringingItems[0] ?? sortedItems[0];
-  $: visibleItems = sortedItems.slice(0, 3);
-  $: hiddenItemCount = Math.max(0, sortedItems.length - visibleItems.length);
-  $: heroProgress = progressFor(primaryItem);
+  $: secondaryItems = sortedItems
+    .filter((item) => item.id !== primaryItem?.id)
+    .slice(0, 2);
+  $: hiddenItemCount = Math.max(
+    0,
+    sortedItems.length - 1 - secondaryItems.length,
+  );
 
   onMount(() => {
     const closeMenu = () => {
@@ -100,26 +105,37 @@
       if (menuOpen) positionMenu();
     };
 
-    tick = window.setInterval(() => {
-      now = Date.now();
-    }, 1000);
+    startTicker();
     window.addEventListener("pointerdown", closeMenu);
     window.addEventListener("resize", repositionMenu);
 
     return () => {
-      if (tick) {
-        window.clearInterval(tick);
-      }
+      stopTicker();
       window.removeEventListener("pointerdown", closeMenu);
       window.removeEventListener("resize", repositionMenu);
     };
   });
 
   onDestroy(() => {
-    if (tick) {
-      window.clearInterval(tick);
-    }
+    stopTicker();
   });
+
+  function startTicker() {
+    stopTicker();
+    const run = () => {
+      now = Date.now();
+      tick = window.setTimeout(run, nextTickDelay(now));
+    };
+    now = Date.now();
+    tick = window.setTimeout(run, nextTickDelay(now));
+  }
+
+  function stopTicker() {
+    if (tick !== undefined) {
+      window.clearTimeout(tick);
+      tick = undefined;
+    }
+  }
 
   function dueMs(item: Item) {
     return item.dueAt
@@ -127,15 +143,43 @@
       : Number.MAX_SAFE_INTEGER;
   }
 
-  function isRinging(item: Item) {
+  function isRinging(item: Item, at: number) {
     return (
       (item.status === "active" || item.status === "snoozed") &&
-      dueMs(item) <= now
+      dueMs(item) <= at
     );
   }
 
-  function remaining(item: Item) {
-    return Math.max(0, Math.ceil((dueMs(item) - now) / 1000));
+  function remaining(item: Item, at: number) {
+    const snapshotSeconds = item.remainingSeconds;
+    if (snapshotSeconds !== undefined && Number.isFinite(generatedAtMs)) {
+      const elapsedSeconds = Math.max(0, (at - generatedAtMs) / 1000);
+      return Math.max(0, Math.ceil(snapshotSeconds - elapsedSeconds));
+    }
+    return Math.max(0, Math.ceil((dueMs(item) - at) / 1000));
+  }
+
+  function countdownTargetMs(item: Item) {
+    const snapshotSeconds = item.remainingSeconds;
+    if (snapshotSeconds !== undefined && Number.isFinite(generatedAtMs)) {
+      return generatedAtMs + snapshotSeconds * 1000;
+    }
+    return dueMs(item);
+  }
+
+  function nextTickDelay(at: number) {
+    const nextDelay = sortedItems
+      .filter((item) => item.kind === "timer")
+      .map((item) => countdownTargetMs(item) - at)
+      .filter((remainingMs) => Number.isFinite(remainingMs) && remainingMs > 0)
+      .map((remainingMs) => {
+        const untilBoundary = remainingMs % 1000;
+        const baseDelay = untilBoundary > 20 ? untilBoundary : 1000;
+        return baseDelay + countdownBoundaryPaddingMs;
+      })
+      .sort((a, b) => a - b)[0];
+
+    return Math.max(80, Math.min(nextDelay ?? 1000, 1034));
   }
 
   function formatRemaining(seconds: number) {
@@ -149,41 +193,15 @@
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 
-  function formatPrimary(item: Item | undefined) {
+  function formatPrimary(item: Item | undefined, at: number) {
     if (!item) return "--:--";
     if (item.kind === "alarm" && item.time) return item.time;
-    return formatRemaining(remaining(item));
+    return formatRemaining(remaining(item, at));
   }
 
-  function formatDetail(item: Item) {
-    if (isRinging(item)) return "due now";
-    if (item.kind === "alarm") {
-      return weekdayLabel(item.weekdays ?? []);
-    }
-    return "remaining";
-  }
-
-  function formatItemTime(item: Item) {
+  function formatItemTime(item: Item, at: number) {
     if (item.kind === "alarm" && item.time) return item.time;
-    return formatRemaining(remaining(item));
-  }
-
-  function formatKind(item: Item | undefined) {
-    if (!item) return "Timer";
-    return item.kind === "alarm" ? "Alarm" : "Timer";
-  }
-
-  function heroCaption(item: Item | undefined) {
-    if (!item) return "Tap options to add one";
-    if (isRinging(item)) return "Due now";
-    if (item.kind === "alarm") return weekdayLabel(item.weekdays ?? []);
-    return "Remaining";
-  }
-
-  function progressFor(item: Item | undefined) {
-    if (!item || item.kind !== "timer" || !item.durationSeconds) return 0;
-    const seconds = remaining(item);
-    return Math.max(0, Math.min(1, seconds / item.durationSeconds));
+    return formatRemaining(remaining(item, at));
   }
 
   function choosePreset(minutes: number) {
@@ -275,167 +293,143 @@
 </script>
 
 <section class="timers-widget" class:timers-widget--stale={stale}>
-  <header class="widget-topline">
-    <div class="widget-title">
-      <Clock3 size={15} />
-      <span>Timers</span>
-    </div>
-    <div class="topline-actions">
-      {#if ringingItems.length > 0}
-        <WidgetBadge tone="warning" pulse>{ringingItems.length} due</WidgetBadge
-        >
-      {:else if sortedItems.length > 0}
-        <WidgetBadge>{sortedItems.length} active</WidgetBadge>
-      {:else}
-        <WidgetBadge>ready</WidgetBadge>
-      {/if}
-      <div class="menu-wrap">
-        <button
-          bind:this={menuButton}
-          type="button"
-          class="menu-trigger"
-          aria-label="Timer and alarm options"
-          aria-haspopup="dialog"
-          aria-expanded={menuOpen}
-          on:pointerdown|stopPropagation
-          on:click|stopPropagation={toggleMenu}
-        >
-          <MoreVertical size={18} />
-        </button>
-        {#if menuOpen}
-          <div
-            class="timer-menu"
-            role="dialog"
-            tabindex="-1"
-            aria-label="Add timer or alarm"
-            style={`top: ${menuTop}px; right: ${menuRight}px;`}
-            on:pointerdown|stopPropagation
+  <div class="menu-wrap">
+    <button
+      bind:this={menuButton}
+      type="button"
+      class="menu-trigger"
+      aria-label="Add timer or alarm"
+      aria-haspopup="dialog"
+      aria-expanded={menuOpen}
+      on:pointerdown|stopPropagation
+      on:click|stopPropagation={toggleMenu}
+    >
+      <Plus size={18} />
+    </button>
+    {#if menuOpen}
+      <div
+        class="timer-menu"
+        role="dialog"
+        tabindex="-1"
+        aria-label="Add timer or alarm"
+        style={`top: ${menuTop}px; right: ${menuRight}px;`}
+        on:pointerdown|stopPropagation
+      >
+        <div class="menu-heading">
+          <strong>{mode === "timer" ? "New timer" : "New alarm"}</strong>
+          <span>{sound} sound</span>
+        </div>
+
+        <div class="menu-mode" aria-label="Timer or alarm">
+          <button
+            type="button"
+            class:active={mode === "timer"}
+            on:click={() => setMode("timer")}
           >
-            <div class="menu-heading">
-              <strong>{mode === "timer" ? "New timer" : "New alarm"}</strong>
-              <span>{sound} sound</span>
-            </div>
+            <Clock3 size={15} />
+            <span>Timer</span>
+          </button>
+          <button
+            type="button"
+            class:active={mode === "alarm"}
+            on:click={() => setMode("alarm")}
+          >
+            <AlarmClock size={15} />
+            <span>Alarm</span>
+          </button>
+        </div>
 
-            <div class="menu-mode" aria-label="Timer or alarm">
+        {#if mode === "timer"}
+          <div class="preset-row" aria-label="Timer duration presets">
+            {#each timerPresets as minutes}
               <button
                 type="button"
-                class:active={mode === "timer"}
-                on:click={() => setMode("timer")}
+                class:active={timerMinutes === minutes}
+                on:click={() => choosePreset(minutes)}
               >
-                <Clock3 size={15} />
-                <span>Timer</span>
+                {minutes}m
               </button>
-              <button
-                type="button"
-                class:active={mode === "alarm"}
-                on:click={() => setMode("alarm")}
-              >
-                <AlarmClock size={15} />
-                <span>Alarm</span>
-              </button>
-            </div>
-
-            {#if mode === "timer"}
-              <div class="preset-row" aria-label="Timer duration presets">
-                {#each timerPresets as minutes}
-                  <button
-                    type="button"
-                    class:active={timerMinutes === minutes}
-                    on:click={() => choosePreset(minutes)}
-                  >
-                    {minutes}m
-                  </button>
-                {/each}
-              </div>
-              <div class="menu-fields">
-                <input
-                  aria-label="Timer label"
-                  placeholder="Tea, laundry, oven"
-                  bind:value={timerLabel}
-                />
-                <label class="number-field">
-                  <span>min</span>
-                  <input
-                    aria-label="Timer minutes"
-                    type="number"
-                    min="1"
-                    step="1"
-                    bind:value={timerMinutes}
-                  />
-                </label>
-              </div>
-            {:else}
-              <div class="menu-fields">
-                <input
-                  aria-label="Alarm label"
-                  placeholder="Wake up, school run"
-                  bind:value={alarmLabel}
-                />
-                <input
-                  aria-label="Alarm time"
-                  type="time"
-                  bind:value={alarmTime}
-                />
-              </div>
-              <div class="weekday-row" aria-label="Recurring days">
-                {#each weekdays as weekday}
-                  <button
-                    type="button"
-                    aria-label={weekday.long}
-                    class:active={selectedWeekdays.includes(weekday.value)}
-                    on:click={() => toggleWeekday(weekday.value)}
-                  >
-                    {weekday.short}
-                  </button>
-                {/each}
-              </div>
-            {/if}
-
-            <label class="sound-row">
-              <Volume2 size={14} />
-              <span>Sound</span>
-              <select
-                aria-label="Notification sound"
-                value={sound}
-                on:change={(event) => setSound(event.currentTarget.value)}
-              >
-                {#each sounds as option}
-                  <option value={option}>{option}</option>
-                {/each}
-              </select>
+            {/each}
+          </div>
+          <div class="menu-fields">
+            <input
+              aria-label="Timer label"
+              placeholder="Tea, laundry, oven"
+              bind:value={timerLabel}
+            />
+            <label class="number-field">
+              <span>min</span>
+              <input
+                aria-label="Timer minutes"
+                type="number"
+                min="1"
+                step="1"
+                bind:value={timerMinutes}
+              />
             </label>
-
-            {#if error}
-              <div class="inline-error">{error}</div>
-            {/if}
-
-            <button
-              type="button"
-              class="add-action"
-              on:click={submit}
-              disabled={busy}
-            >
-              <Plus size={16} />
-              <span
-                >{busy
-                  ? "Adding"
-                  : mode === "timer"
-                    ? "Add timer"
-                    : "Add alarm"}</span
+          </div>
+        {:else}
+          <div class="menu-fields">
+            <input
+              aria-label="Alarm label"
+              placeholder="Wake up, school run"
+              bind:value={alarmLabel}
+            />
+            <input aria-label="Alarm time" type="time" bind:value={alarmTime} />
+          </div>
+          <div class="weekday-row" aria-label="Recurring days">
+            {#each weekdays as weekday}
+              <button
+                type="button"
+                aria-label={weekday.long}
+                class:active={selectedWeekdays.includes(weekday.value)}
+                on:click={() => toggleWeekday(weekday.value)}
               >
-            </button>
+                {weekday.short}
+              </button>
+            {/each}
           </div>
         {/if}
+
+        <label class="sound-row">
+          <Volume2 size={14} />
+          <span>Sound</span>
+          <select
+            aria-label="Notification sound"
+            value={sound}
+            on:change={(event) => setSound(event.currentTarget.value)}
+          >
+            {#each sounds as option}
+              <option value={option}>{option}</option>
+            {/each}
+          </select>
+        </label>
+
+        {#if error}
+          <div class="inline-error">{error}</div>
+        {/if}
+
+        <button
+          type="button"
+          class="add-action"
+          on:click={submit}
+          disabled={busy}
+        >
+          <Plus size={16} />
+          <span
+            >{busy
+              ? "Adding"
+              : mode === "timer"
+                ? "Add timer"
+                : "Add alarm"}</span
+          >
+        </button>
       </div>
-    </div>
-  </header>
+    {/if}
+  </div>
 
   {#if primaryItem}
-    <article
-      class:ringing={isRinging(primaryItem)}
-      class="hero-card"
-      style={`--timer-progress: ${heroProgress * 360}deg;`}
-    >
+    <article class:ringing={isRinging(primaryItem, now)} class="hero-card">
       <div class="time-orbit" aria-hidden="true">
         {#if primaryItem.kind === "alarm"}
           <AlarmClock size={24} />
@@ -444,11 +438,10 @@
         {/if}
       </div>
       <div class="hero-body">
-        <span>{formatKind(primaryItem)}</span>
-        <strong>{formatPrimary(primaryItem)}</strong>
-        <small>{primaryItem.label} · {heroCaption(primaryItem)}</small>
+        <strong>{formatPrimary(primaryItem, now)}</strong>
+        <small>{primaryItem.label}</small>
       </div>
-      {#if isRinging(primaryItem)}
+      {#if isRinging(primaryItem, now)}
         <div class="hero-actions">
           <button type="button" on:click={() => snooze(primaryItem)}>
             <RotateCcw size={15} />
@@ -475,35 +468,24 @@
       {/if}
     </article>
   {:else}
-    <div class="empty-panel">
-      <WidgetEmptyState message="No timers or alarms">
-        <Clock3 slot="icon" size={34} />
-      </WidgetEmptyState>
+    <div class="empty-state">
+      <Clock3 size={42} />
+      <span>No timers</span>
     </div>
   {/if}
 
   {#if sortedItems.length > 1}
     <div class="item-list" aria-live="polite">
-      {#each visibleItems.filter((item) => item.id !== primaryItem?.id) as item (item.id)}
-        <article class:ringing={isRinging(item)} class="timer-item">
+      {#each secondaryItems as item (item.id)}
+        <article class:ringing={isRinging(item, now)} class="timer-item">
           <div class="item-main">
-            <span class="item-kind">
-              {#if item.kind === "timer"}
-                <Clock3 size={13} />
-                Timer
-              {:else}
-                <Bell size={13} />
-                Alarm
-              {/if}
-            </span>
             <strong>{item.label}</strong>
           </div>
           <div class="item-side">
-            <strong>{formatItemTime(item)}</strong>
-            <span>{formatDetail(item)}</span>
+            <strong>{formatItemTime(item, now)}</strong>
           </div>
           <div class="item-actions">
-            {#if isRinging(item)}
+            {#if isRinging(item, now)}
               <button
                 type="button"
                 aria-label="Snooze"
@@ -534,11 +516,6 @@
         <div class="more-row">+{hiddenItemCount} more</div>
       {/if}
     </div>
-  {:else}
-    <div class="quiet-footer">
-      <span>{data.notificationSound ?? "chime"} sound</span>
-      <span>{data.defaultSnoozeMins ?? 9}m snooze</span>
-    </div>
   {/if}
 </section>
 
@@ -547,8 +524,8 @@
     container-type: size;
     position: relative;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    gap: clamp(8px, 2.2cqmin, 13px);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: clamp(6px, 1.8cqmin, 10px);
     min-height: 100%;
     color: var(--foreground);
   }
@@ -557,42 +534,11 @@
     opacity: 0.72;
   }
 
-  .widget-topline,
-  .widget-title,
-  .topline-actions {
-    display: flex;
-    align-items: center;
-  }
-
-  .widget-topline {
-    justify-content: space-between;
-    gap: 8px;
-    min-width: 0;
-  }
-
-  .widget-title {
-    min-width: 0;
-    gap: 8px;
-    color: var(--muted);
-    font-size: var(--widget-label-size, 0.75rem);
-    font-weight: 740;
-    line-height: 1.1;
-    text-transform: uppercase;
-  }
-
-  .widget-title span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .topline-actions {
-    gap: 6px;
-  }
-
   .menu-wrap {
-    position: relative;
-    align-self: start;
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 4;
   }
 
   .menu-trigger,
@@ -613,8 +559,9 @@
   }
 
   .menu-trigger {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
+    color: var(--muted);
   }
 
   .menu-trigger:hover,
@@ -660,12 +607,8 @@
 
   .menu-heading span,
   .sound-row span,
-  .quiet-footer,
   .more-row,
-  .hero-body span,
-  .hero-body small,
-  .item-kind,
-  .item-side span {
+  .hero-body small {
     color: var(--muted);
     font-size: clamp(0.62rem, 3.2cqmin, 0.76rem);
   }
@@ -790,80 +733,28 @@
   .hero-card {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(74px, 0.44fr) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: clamp(10px, 3cqmin, 16px);
-    min-height: 0;
+    justify-items: center;
+    gap: clamp(8px, 2cqmin, 12px);
     min-height: 100%;
-    padding: clamp(12px, 4cqmin, 18px);
-    border: 1px solid color-mix(in srgb, var(--border) 56%, transparent);
-    border-radius: 8px;
-    background:
-      linear-gradient(
-        145deg,
-        color-mix(in srgb, var(--surface-muted) 48%, transparent),
-        transparent 62%
-      ),
-      color-mix(in srgb, var(--surface-muted) 18%, transparent);
+    padding: clamp(10px, 3cqmin, 16px) 34px clamp(10px, 3cqmin, 16px) 0;
     overflow: hidden;
   }
 
   .hero-card.ringing {
-    border-color: color-mix(in srgb, var(--warning) 70%, var(--border));
-    background:
-      radial-gradient(
-        circle at 16% 18%,
-        color-mix(in srgb, var(--warning) 20%, transparent),
-        transparent 42%
-      ),
-      color-mix(in srgb, var(--warning) 9%, transparent);
-  }
-
-  .time-orbit {
-    display: grid;
-    place-items: center;
-    width: clamp(70px, 24cqmin, 116px);
-    aspect-ratio: 1;
-    border-radius: 999px;
-    background:
-      radial-gradient(
-        circle,
-        color-mix(in srgb, var(--surface) 86%, transparent) 55%,
-        transparent 57%
-      ),
-      conic-gradient(
-        var(--active) var(--timer-progress),
-        color-mix(in srgb, var(--border) 58%, transparent) 0deg
-      );
     color: var(--foreground);
   }
 
-  .hero-card.ringing .time-orbit {
-    background:
-      radial-gradient(
-        circle,
-        color-mix(in srgb, var(--surface) 86%, transparent) 55%,
-        transparent 57%
-      ),
-      conic-gradient(
-        var(--warning) 360deg,
-        color-mix(in srgb, var(--warning) 16%, transparent) 0deg
-      );
+  .time-orbit {
+    display: none;
   }
 
   .hero-body {
     display: grid;
+    justify-items: center;
     min-width: 0;
-    gap: 3px;
-  }
-
-  .hero-body span,
-  .item-kind {
-    display: inline-flex;
-    align-items: center;
     gap: 4px;
-    font-weight: 740;
-    text-transform: uppercase;
   }
 
   .hero-body strong {
@@ -879,14 +770,17 @@
   .hero-body small {
     overflow: hidden;
     line-height: 1.25;
+    max-width: 100%;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .quiet-cancel {
-    align-self: start;
-    width: 34px;
-    height: 34px;
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 30px;
+    height: 30px;
     color: var(--muted);
   }
 
@@ -923,11 +817,24 @@
     background: var(--surface-strong);
   }
 
-  .empty-panel {
+  .empty-state {
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 12px;
     min-height: 100%;
-    border: 1px dashed var(--border);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--surface-muted) 20%, transparent);
+    padding: 24px 34px 24px 0;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .empty-state :global(svg) {
+    opacity: 0.56;
+  }
+
+  .empty-state span {
+    font-size: clamp(0.95rem, 5cqmin, 1.45rem);
+    font-weight: 650;
   }
 
   .item-list {
@@ -998,14 +905,6 @@
     text-align: center;
   }
 
-  .quiet-footer {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 0 2px;
-    text-transform: uppercase;
-  }
-
   .inline-error {
     color: var(--danger);
     font-size: 0.76rem;
@@ -1056,17 +955,12 @@
       gap: clamp(6px, 1.8cqmin, 9px);
     }
 
-    .item-list,
-    .quiet-footer {
+    .item-list {
       display: none;
     }
 
     .hero-card {
       padding: clamp(9px, 3cqmin, 13px);
-    }
-
-    .time-orbit {
-      width: clamp(58px, 21cqmin, 86px);
     }
 
     .hero-body strong {
@@ -1077,10 +971,6 @@
   @container (max-height: 120px) {
     .timers-widget {
       gap: 5px;
-    }
-
-    .widget-title {
-      font-size: 0.68rem;
     }
 
     .menu-trigger {
@@ -1094,16 +984,8 @@
       padding: 5px 8px;
     }
 
-    .time-orbit {
-      display: none;
-    }
-
     .hero-body {
       gap: 1px;
-    }
-
-    .hero-body span {
-      font-size: 0.58rem;
     }
 
     .hero-body strong {

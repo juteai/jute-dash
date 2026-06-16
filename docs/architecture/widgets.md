@@ -240,9 +240,9 @@ Jute Dash ships with first-class built-in widgets:
 8. **Philips Hue (`philips-hue`)**: Hue light state and low-risk controls through a shared Hue bridge Adapter Connection.
 9. **Zigbee2MQTT (`zigbee2mqtt`)**: Zigbee device state and low-risk controls through a shared MQTT broker Adapter Connection.
 10. **Timers & Alarms (`timers-alarms`)**: Local countdown timers, one-off alarms, recurring alarms, notification sound settings, snooze, dismiss, and cancel actions through the hub.
-11. **Calendar (`calendar`)**: Upcoming events from a Calendar Account connection, iCalendar feed parsing with recurrence expansion, event alert lead times, notification sound settings, snooze, and dismiss actions through the hub.
+11. **Calendar (`calendar`)**: Blank local calendar by default, optional upcoming events from a Calendar Account connection, iCalendar feed parsing with recurrence expansion, event alert lead times, notification sound settings, snooze, and dismiss actions through the hub.
 
-Calendar sync v1 uses private iCalendar feed URLs, including Basic Auth-protected feeds. Plain IMAP email accounts are not treated as a full calendar sync source; invite parsing from email can be added later as an import path. CalDAV and provider API sync are future work and are not exposed in the v1 Calendar Account interface.
+Calendar sync v1 can use optional private iCalendar feed URLs, including Basic Auth-protected feeds. A Calendar widget with no linked source renders as an empty calendar rather than a setup failure. Plain IMAP email accounts are not treated as a full calendar sync source; invite parsing from email can be added later as an import path. CalDAV and provider API sync are future work and are not exposed in the v1 Calendar Account interface.
 
 ---
 

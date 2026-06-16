@@ -275,7 +275,7 @@ Initial built-in widgets:
 - `weather`: current Open-Meteo state from the hub, with unavailable and disabled states.
 - `chat-history`: recent conversations, active agent status, no-agent state, and quick re-entry into chat mode.
 - `timers-alarms`: local timers, one-off alarms, recurring alarms, sound selection, snooze, dismiss, and cancel.
-- `calendar`: upcoming events from a Calendar Account connection, event alert lead time controls, sound selection, snooze, and dismiss.
+- `calendar`: blank month calendar by default, optional upcoming events from a Calendar Account connection, settings-backed event alert lead time and sound selection, plus snooze and dismiss during alert states.
 
 Default dashboard profile:
 

@@ -187,31 +187,36 @@
         return {
           status: 'ok',
           data: {
-            active: [
-              {
-                id: 'timer-visual',
-                kind: 'timer',
-                label: 'Tea',
-                status: 'active',
-                dueAt:
-                  visualState === 'ringing'
-                    ? new Date(Date.now() - 1000).toISOString()
-                    : new Date(Date.now() + 305000).toISOString(),
-                durationSeconds: 300,
-                sound: 'chime'
-              },
-              {
-                id: 'alarm-visual',
-                kind: 'alarm',
-                label: 'School run',
-                status: 'active',
-                dueAt: new Date(Date.now() + 3600000).toISOString(),
-                time: '07:30',
-                weekdays: [1, 2, 3, 4, 5],
-                recurring: true,
-                sound: 'bell'
-              }
-            ],
+            active:
+              visualState === 'timers-empty'
+                ? []
+                : [
+                    {
+                      id: 'timer-visual',
+                      kind: 'timer',
+                      label: 'Tea',
+                      status: 'active',
+                      dueAt:
+                        visualState === 'ringing'
+                          ? new Date(Date.now() - 1000).toISOString()
+                          : new Date(Date.now() + 305000).toISOString(),
+                      durationSeconds: 300,
+                      remainingSeconds: visualState === 'ringing' ? 0 : 305,
+                      sound: 'chime'
+                    },
+                    {
+                      id: 'alarm-visual',
+                      kind: 'alarm',
+                      label: 'School run',
+                      status: 'active',
+                      dueAt: new Date(Date.now() + 3600000).toISOString(),
+                      time: '07:30',
+                      weekdays: [1, 2, 3, 4, 5],
+                      remainingSeconds: 3600,
+                      recurring: true,
+                      sound: 'bell'
+                    }
+                  ],
             ringing:
               visualState === 'ringing'
                 ? [
@@ -222,16 +227,35 @@
                       status: 'active',
                       dueAt: new Date(Date.now() - 1000).toISOString(),
                       sound: 'chime',
+                      remainingSeconds: 0,
                       ringing: true
                     }
                   ]
                 : [],
             notificationSound: 'chime',
             defaultSnoozeMins: 9,
+            generatedAt: new Date().toISOString(),
             timezone: 'Europe/London'
           }
         };
       case 'calendar': {
+        if (visualState === 'calendar-empty') {
+          return {
+            status: 'ok',
+            data: {
+              events: [],
+              nextEvent: null,
+              alerts: [],
+              ringing: [],
+              ringingCount: 0,
+              alertLeadMinutes: 10,
+              defaultSnoozeMins: 9,
+              notificationSound: 'chime',
+              generatedAt: new Date().toISOString()
+            }
+          };
+        }
+
         const eventStart =
           visualState === 'calendar-ringing'
             ? new Date(Date.now() + 3 * 60000).toISOString()
