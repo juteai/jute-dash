@@ -44,6 +44,8 @@ flowchart TD
 
 The compact A2A dashboard-context extension may include a summary of currently relevant Widget Skills, but full action invocation goes through MCP, Display, or future Agent entry points that all call the same hub dispatcher.
 
+Dashboard context includes all configured dashboard screens, not only the screen currently visible on the display. The context includes `activeScreenId`, screen labels, per-screen widget summaries, and each widget's `screenId` so agents can distinguish the user's current screen from other configured screens. Headless widgets on inactive screens continue contributing context when their visibility policy allows it.
+
 ## Skill Model
 
 Each widget instance may expose one Widget Skill. Multiple instances of the same widget type can expose separate skills because their state, settings, room, and visible context may differ.
@@ -53,6 +55,7 @@ Skill identity:
 - `skillId`: stable capability ID, such as `jute.weather.current`.
 - `widgetInstanceId`: the dashboard widget instance exposing the skill.
 - `widgetKind`: widget type, such as `weather`, `date-time`, or `chat-history`.
+- `screenId`: dashboard screen that owns the widget instance.
 - `connectionRefs`: optional widget instance references to shared Adapter Connections. These are IDs only, not credentials.
 - `displayName`: short user-facing name.
 - `summary`: hub-reviewed capability summary for agents.

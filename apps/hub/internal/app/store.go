@@ -351,6 +351,7 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 			connectionRefsJSON := mustJSONString(widget.ConnectionRefs)
 			wDB := dashboard.WidgetInstanceDB{
 				ID:                 widget.ID,
+				ScreenID:           widget.ScreenID,
 				Kind:               widget.Kind,
 				Title:              widget.Title,
 				LayoutProfileID:    homestate.DefaultLayoutProfileID,
@@ -515,28 +516,21 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 	layout, err := s.DashboardRepo.WidgetLayout(ctx, "")
 	if err == nil {
 		cfg.Dashboard.SchemaVersion = layout.SchemaVersion
+		cfg.Dashboard.DefaultScreen = layout.DefaultScreen
+		cfg.Dashboard.ActiveScreen = layout.ActiveScreen
 		cfg.Dashboard.DefaultVariant = layout.DefaultVariant
 		cfg.Dashboard.Variants = layout.Variants
-		widgets := make([]dashboard.DashboardWidgetConfig, 0, len(layout.Widgets))
-		for _, w := range layout.Widgets {
-			widgets = append(widgets, dashboard.DashboardWidgetConfig{
-				ID:             w.ID,
-				Type:           w.Kind,
-				Title:          w.Title,
-				X:              w.X,
-				Y:              w.Y,
-				W:              w.W,
-				H:              w.H,
-				MinW:           w.MinW,
-				MinH:           w.MinH,
-				Size:           w.Size,
-				Visible:        w.Visible,
-				Mode:           w.Mode,
-				Settings:       w.Settings,
-				ConnectionRefs: w.ConnectionRefs,
+		cfg.Dashboard.Widgets = dashboardWidgetConfigs(layout.Widgets)
+		cfg.Dashboard.Screens = make([]dashboard.DashboardScreenConfig, 0, len(layout.Screens))
+		for _, screen := range layout.Screens {
+			cfg.Dashboard.Screens = append(cfg.Dashboard.Screens, dashboard.DashboardScreenConfig{
+				ID:             screen.ID,
+				Label:          screen.Label,
+				DefaultVariant: screen.DefaultVariant,
+				Variants:       screen.Variants,
+				Widgets:        dashboardWidgetConfigs(screen.Widgets),
 			})
 		}
-		cfg.Dashboard.Widgets = widgets
 	}
 
 	cfg.Agents = nil
@@ -581,6 +575,29 @@ func widgetCatalogForSeed() map[string]dashboard.WidgetCatalogItem {
 		catalog[item.Kind] = item
 	}
 	return catalog
+}
+
+func dashboardWidgetConfigs(widgets []dashboard.WidgetInstance) []dashboard.DashboardWidgetConfig {
+	result := make([]dashboard.DashboardWidgetConfig, 0, len(widgets))
+	for _, w := range widgets {
+		result = append(result, dashboard.DashboardWidgetConfig{
+			ID:             w.ID,
+			Type:           w.Kind,
+			Title:          w.Title,
+			X:              w.X,
+			Y:              w.Y,
+			W:              w.W,
+			H:              w.H,
+			MinW:           w.MinW,
+			MinH:           w.MinH,
+			Size:           w.Size,
+			Visible:        w.Visible,
+			Mode:           w.Mode,
+			Settings:       w.Settings,
+			ConnectionRefs: w.ConnectionRefs,
+		})
+	}
+	return result
 }
 
 func setupStatusForSeed(cfg config.Config, bootstrapProvided bool) homestate.SetupStatus {

@@ -62,9 +62,22 @@ type DisplayWidgetChrome struct {
 }
 
 // DashboardConfig represents grid configuration defaults.
+//
+//nolint:golines
 type DashboardConfig struct {
 	SchemaVersion int `json:"schemaVersion,omitempty" yaml:"schema-version,omitempty"`
 
+	DefaultVariant string                  `json:"defaultVariant,omitempty" yaml:"default-variant,omitempty"`
+	Variants       []LayoutVariant         `json:"variants,omitempty"       yaml:"variants,omitempty"`
+	Widgets        []DashboardWidgetConfig `json:"widgets"                  yaml:"widgets"`
+	DefaultScreen  string                  `json:"defaultScreenId,omitempty" yaml:"default-screen,omitempty"`
+	ActiveScreen   string                  `json:"activeScreenId,omitempty"  yaml:"active-screen,omitempty"`
+	Screens        []DashboardScreenConfig `json:"screens,omitempty"         yaml:"screens,omitempty"`
+}
+
+type DashboardScreenConfig struct {
+	ID             string                  `json:"id"                       yaml:"id"`
+	Label          string                  `json:"label"                    yaml:"label"`
 	DefaultVariant string                  `json:"defaultVariant,omitempty" yaml:"default-variant,omitempty"`
 	Variants       []LayoutVariant         `json:"variants,omitempty"       yaml:"variants,omitempty"`
 	Widgets        []DashboardWidgetConfig `json:"widgets"                  yaml:"widgets"`
@@ -92,11 +105,23 @@ type DashboardWidgetConfig struct {
 
 // WidgetLayout represents widget placement on the display grid.
 type WidgetLayout struct {
-	ProfileID      string           `json:"profileId"`
-	SchemaVersion  int              `json:"schemaVersion,omitempty"`
-	DefaultVariant string           `json:"defaultVariant,omitempty"`
-	Variants       []LayoutVariant  `json:"variants,omitempty"`
-	Widgets        []WidgetInstance `json:"widgets"`
+	ProfileID      string            `json:"profileId"`
+	SchemaVersion  int               `json:"schemaVersion,omitempty"`
+	DefaultScreen  string            `json:"defaultScreenId,omitempty"`
+	ActiveScreen   string            `json:"activeScreenId,omitempty"`
+	Screens        []DashboardScreen `json:"screens,omitempty"`
+	DefaultVariant string            `json:"defaultVariant,omitempty"`
+	Variants       []LayoutVariant   `json:"variants,omitempty"`
+	Widgets        []WidgetInstance  `json:"widgets"`
+}
+
+//nolint:golines
+type DashboardScreen struct {
+	ID             string           `json:"id" yaml:"id"`
+	Label          string           `json:"label" yaml:"label"`
+	DefaultVariant string           `json:"defaultVariant,omitempty" yaml:"default-variant,omitempty"`
+	Variants       []LayoutVariant  `json:"variants,omitempty" yaml:"variants,omitempty"`
+	Widgets        []WidgetInstance `json:"widgets" yaml:"widgets"`
 }
 
 type LayoutVariant struct {
@@ -135,6 +160,7 @@ const (
 
 // WidgetInstance represents an active widget.
 type WidgetInstance struct {
+	ScreenID       string            `json:"screenId,omitempty"`
 	ID             string            `json:"id"`
 	Kind           string            `json:"kind"`
 	Title          string            `json:"title"`
@@ -170,6 +196,7 @@ func (WidgetPackDB) TableName() string {
 
 type WidgetInstanceDB struct {
 	ID                 string `gorm:"primaryKey;column:id"`
+	ScreenID           string `gorm:"column:screen_id;default:'home'"`
 	Kind               string `gorm:"column:kind"`
 	Title              string `gorm:"column:title"`
 	LayoutProfileID    string `gorm:"column:layout_profile_id"`

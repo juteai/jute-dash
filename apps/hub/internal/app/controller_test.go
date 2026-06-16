@@ -20,6 +20,7 @@ import (
 
 	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/dashboard"
 	a2a "jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/mocks"
@@ -549,22 +550,28 @@ func TestServerStartupPersistsNormalizedLayoutVariantsToYAMLConfig(t *testing.T)
 	)
 
 	reloaded := waitForConfig(t, configPath, func(cfg config.Config) bool {
-		return cfg.Dashboard.SchemaVersion == 2 &&
-			cfg.Dashboard.DefaultVariant != "" &&
-			len(cfg.Dashboard.Variants) > 0
+		return cfg.Dashboard.SchemaVersion == dashboard.LayoutSchemaVersion &&
+			cfg.Dashboard.DefaultScreen != "" &&
+			len(cfg.Dashboard.Screens) > 0 &&
+			cfg.Dashboard.Screens[0].DefaultVariant != "" &&
+			len(cfg.Dashboard.Screens[0].Variants) > 0
 	})
-	if reloaded.Dashboard.SchemaVersion != 2 {
+	if reloaded.Dashboard.SchemaVersion != dashboard.LayoutSchemaVersion {
 		t.Fatalf("schema version was not persisted: %+v", reloaded.Dashboard)
 	}
-	if reloaded.Dashboard.DefaultVariant == "" || len(reloaded.Dashboard.Variants) == 0 {
-		t.Fatalf("layout variants were not persisted: %+v", reloaded.Dashboard)
+	if reloaded.Dashboard.DefaultScreen == "" || len(reloaded.Dashboard.Screens) == 0 {
+		t.Fatalf("layout screens were not persisted: %+v", reloaded.Dashboard)
 	}
-	firstWidgetID := reloaded.Dashboard.Widgets[0].ID
-	if _, ok := reloaded.Dashboard.Variants[0].Placements[firstWidgetID]; !ok {
+	screen := reloaded.Dashboard.Screens[0]
+	if screen.DefaultVariant == "" || len(screen.Variants) == 0 {
+		t.Fatalf("layout variants were not persisted: %+v", screen)
+	}
+	firstWidgetID := screen.Widgets[0].ID
+	if _, ok := screen.Variants[0].Placements[firstWidgetID]; !ok {
 		t.Fatalf(
 			"layout variant placement for %q was not persisted: %+v",
 			firstWidgetID,
-			reloaded.Dashboard.Variants[0],
+			screen.Variants[0],
 		)
 	}
 }
@@ -1069,9 +1076,10 @@ func TestWidgetLayoutPutPersistsToYAMLConfig(t *testing.T) {
 	for range 100 {
 		reloaded, err = LoadConfig(configPath)
 		if err == nil &&
-			reloaded.Dashboard.DefaultVariant == "desktop" &&
-			len(reloaded.Dashboard.Variants) > 3 &&
-			reloaded.Dashboard.Variants[3].Columns == 14 {
+			len(reloaded.Dashboard.Screens) > 0 &&
+			reloaded.Dashboard.Screens[0].DefaultVariant == "desktop" &&
+			len(reloaded.Dashboard.Screens[0].Variants) > 3 &&
+			reloaded.Dashboard.Screens[0].Variants[3].Columns == 14 {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -1079,12 +1087,13 @@ func TestWidgetLayoutPutPersistsToYAMLConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
-	if reloaded.Dashboard.DefaultVariant != "desktop" ||
-		len(reloaded.Dashboard.Variants) <= 3 ||
-		reloaded.Dashboard.Variants[3].Columns != 14 {
+	if len(reloaded.Dashboard.Screens) == 0 ||
+		reloaded.Dashboard.Screens[0].DefaultVariant != "desktop" ||
+		len(reloaded.Dashboard.Screens[0].Variants) <= 3 ||
+		reloaded.Dashboard.Screens[0].Variants[3].Columns != 14 {
 		t.Fatalf("layout was not written to YAML config: %+v", reloaded.Dashboard)
 	}
-	if got := reloaded.Dashboard.Variants[3].Placements[layout.Widgets[0].ID]; got.X != 3 || got.W != 4 {
+	if got := reloaded.Dashboard.Screens[0].Variants[3].Placements[layout.Widgets[0].ID]; got.X != 3 || got.W != 4 {
 		t.Fatalf("layout placement was not written to YAML config: %+v", got)
 	}
 }

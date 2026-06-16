@@ -14,7 +14,12 @@
     isAgentAvailable
   } from '$lib/agents';
   import { displayThemeStyle, resolveColorMode } from '$lib/themes';
-  import { selectLayoutVariant } from '$lib/layout-editor';
+  import {
+    activeDashboardScreen,
+    ensureLayoutScreens,
+    layoutForScreen,
+    selectLayoutVariant
+  } from '$lib/layout-editor';
   import type {
     Agent,
     DashboardData,
@@ -263,8 +268,10 @@
     if (!browser) {
       return '';
     }
+    const screens = ensureLayoutScreens($hubStream.dashboard.layout);
+    const activeScreen = activeDashboardScreen(screens);
     return selectLayoutVariant(
-      $hubStream.dashboard.layout,
+      layoutForScreen(screens, activeScreen.id),
       window.innerWidth,
       window.innerHeight
     ).id;
@@ -407,6 +414,7 @@
             hubStream.updateLayout(reset);
           }
         )}
+      onScreenChange={(layout) => hubStream.updateLayout(layout)}
       onManageAgents={() => openSettings('household')}
       onIssueAction={handleWidgetIssueAction}
     />

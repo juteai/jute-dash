@@ -26,10 +26,20 @@ type DisplayInfo struct {
 type DashboardInfo struct {
 	VisibleWidgetIDs []string
 	FocusedWidgetID  string
+	ActiveScreenID   string
+	Screens          []ScreenInfo
 	Stale            bool
 }
 
+type ScreenInfo struct {
+	ID               string
+	Label            string
+	VisibleWidgetIDs []string
+	Active           bool
+}
+
 type WidgetInfo struct {
+	ScreenID      string
 	ID            string
 	Kind          string
 	Title         string
@@ -59,28 +69,7 @@ func Project(_ context.Context, layout WidgetLayout) DashboardSnapshot {
 	wsCfg.Home.Locale = locale
 	wsCfg.Home.Timezone = timezone
 
-	wsWidgets := make([]widgetskills.WidgetInstance, len(layout.Widgets))
-	for i, w := range layout.Widgets {
-		wsWidgets[i] = widgetskills.WidgetInstance{
-			ID:             w.ID,
-			Kind:           w.Kind,
-			Title:          w.Title,
-			X:              w.X,
-			Y:              w.Y,
-			W:              w.W,
-			H:              w.H,
-			Visible:        w.Visible,
-			Mode:           w.Mode,
-			Size:           w.Size,
-			Settings:       w.Settings,
-			ConnectionRefs: w.ConnectionRefs,
-			Data:           w.Data,
-		}
-	}
-	wsLayout := widgetskills.WidgetLayout{
-		ProfileID: layout.ProfileID,
-		Widgets:   wsWidgets,
-	}
+	wsLayout := WidgetSkillsLayout(layout)
 
 	snap := widgetskills.Snapshot{
 		Config:      wsCfg,
@@ -109,14 +98,15 @@ func Project(_ context.Context, layout WidgetLayout) DashboardSnapshot {
 		}
 
 		info := WidgetInfo{
-			ID:    widget.ID,
-			Kind:  widget.Kind,
-			Title: widget.Title,
-			Size:  widget.Size,
-			X:     widget.X,
-			Y:     widget.Y,
-			W:     widget.W,
-			H:     widget.H,
+			ScreenID: widget.ScreenID,
+			ID:       widget.ID,
+			Kind:     widget.Kind,
+			Title:    widget.Title,
+			Size:     widget.Size,
+			X:        widget.X,
+			Y:        widget.Y,
+			W:        widget.W,
+			H:        widget.H,
 		}
 
 		if skill, ok := skillsByWidget[widget.ID]; ok {
@@ -144,10 +134,76 @@ func Project(_ context.Context, layout WidgetLayout) DashboardSnapshot {
 		Dashboard: DashboardInfo{
 			VisibleWidgetIDs: visibleWidgetIDs,
 			FocusedWidgetID:  "",
+			ActiveScreenID:   layout.ActiveScreen,
+			Screens:          screenInfos(layout),
 			Stale:            false,
 		},
 		Widgets: widgets,
 	}
+}
+
+func WidgetSkillsLayout(layout WidgetLayout) widgetskills.WidgetLayout {
+	wsWidgets := make([]widgetskills.WidgetInstance, len(layout.Widgets))
+	for i, w := range layout.Widgets {
+		wsWidgets[i] = widgetskills.WidgetInstance{
+			ScreenID:       w.ScreenID,
+			ID:             w.ID,
+			Kind:           w.Kind,
+			Title:          w.Title,
+			X:              w.X,
+			Y:              w.Y,
+			W:              w.W,
+			H:              w.H,
+			Visible:        w.Visible,
+			Mode:           w.Mode,
+			Size:           w.Size,
+			Settings:       w.Settings,
+			ConnectionRefs: w.ConnectionRefs,
+			Data:           w.Data,
+		}
+	}
+	return widgetskills.WidgetLayout{
+		ProfileID:       layout.ProfileID,
+		DefaultScreenID: layout.DefaultScreen,
+		ActiveScreenID:  layout.ActiveScreen,
+		Screens:         widgetSkillScreens(layout),
+		Widgets:         wsWidgets,
+	}
+}
+
+func widgetSkillScreens(layout WidgetLayout) []widgetskills.WidgetScreen {
+	screens := make([]widgetskills.WidgetScreen, 0, len(layout.Screens))
+	for _, screen := range layout.Screens {
+		ids := make([]string, 0, len(screen.Widgets))
+		for _, widget := range screen.Widgets {
+			ids = append(ids, widget.ID)
+		}
+		screens = append(screens, widgetskills.WidgetScreen{
+			ID:      screen.ID,
+			Label:   screen.Label,
+			Widgets: ids,
+		})
+	}
+	return screens
+}
+
+func screenInfos(layout WidgetLayout) []ScreenInfo {
+	screens := make([]ScreenInfo, 0, len(layout.Screens))
+	for _, screen := range layout.Screens {
+		ids := []string{}
+		for _, widget := range screen.Widgets {
+			if widget.Visible && widget.Mode != WidgetModeHeadless {
+				ids = append(ids, widget.ID)
+			}
+		}
+		screens = append(screens, ScreenInfo{
+			ID:               screen.ID,
+			Label:            screen.Label,
+			VisibleWidgetIDs: ids,
+			Active:           screen.ID == layout.ActiveScreen,
+		})
+	}
+	return screens
 }
 
 func firstNonEmpty(values ...string) string {

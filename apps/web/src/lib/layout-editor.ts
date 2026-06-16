@@ -1,4 +1,5 @@
 import type {
+  DashboardScreen,
   LayoutVariant,
   WidgetLayout,
   WidgetInstance,
@@ -24,6 +25,8 @@ export const MAX_ROWS = 12;
 // during drag/resize rather than derived from a fixed pixel height.
 export const GRID_GAP = 12;
 export const LAYOUT_SCHEMA_VERSION = 2;
+export const SCREEN_LAYOUT_SCHEMA_VERSION = 3;
+export const DEFAULT_DASHBOARD_SCREEN = 'home';
 export const DEFAULT_LAYOUT_VARIANT = 'tablet-landscape';
 export const MIN_GRID_COLUMNS = 1;
 export const MAX_GRID_COLUMNS = 24;
@@ -81,6 +84,269 @@ export const DEFAULT_LAYOUT_VARIANTS: Array<Omit<LayoutVariant, 'placements'>> =
 
 export function cloneLayout(layout: WidgetLayout): WidgetLayout {
   return JSON.parse(JSON.stringify(layout)) as WidgetLayout;
+}
+
+export function ensureLayoutScreens(layout: WidgetLayout): WidgetLayout {
+  const next = cloneLayout(layout);
+  if (!next.screens || next.screens.length === 0) {
+    next.screens = [
+      {
+        id: DEFAULT_DASHBOARD_SCREEN,
+        label: 'Home',
+        defaultVariant: next.defaultVariant,
+        variants: next.variants,
+        widgets: next.widgets ?? []
+      }
+    ];
+  }
+  next.schemaVersion = Math.max(
+    Number(next.schemaVersion || 0),
+    SCREEN_LAYOUT_SCHEMA_VERSION
+  );
+  next.defaultScreenId =
+    next.defaultScreenId || next.screens[0]?.id || DEFAULT_DASHBOARD_SCREEN;
+  next.activeScreenId = next.activeScreenId || next.defaultScreenId;
+  next.screens = next.screens.map((screen, index) => {
+    const id =
+      (screen.id || '').trim() || `${DEFAULT_DASHBOARD_SCREEN}-${index + 1}`;
+    const label = (screen.label || '').trim() || id;
+    const screenLayout = ensureLayoutVariants({
+      profileId: next.profileId,
+      schemaVersion: LAYOUT_SCHEMA_VERSION,
+      defaultVariant: screen.defaultVariant,
+      variants: screen.variants,
+      widgets: (screen.widgets ?? []).map((widget) => ({
+        ...widget,
+        screenId: id
+      }))
+    });
+    return {
+      id,
+      label,
+      defaultVariant: screenLayout.defaultVariant,
+      variants: screenLayout.variants,
+      widgets: screenLayout.widgets
+    };
+  });
+  if (!next.screens.some((screen) => screen.id === next.defaultScreenId)) {
+    next.defaultScreenId = next.screens[0].id;
+  }
+  if (!next.screens.some((screen) => screen.id === next.activeScreenId)) {
+    next.activeScreenId = next.defaultScreenId;
+  }
+  const active = activeDashboardScreen(next);
+  next.defaultVariant = active.defaultVariant;
+  next.variants = active.variants;
+  next.widgets = next.screens.flatMap((screen) =>
+    screen.widgets.map((widget) => ({ ...widget, screenId: screen.id }))
+  );
+  return next;
+}
+
+export function activeDashboardScreen(layout: WidgetLayout): DashboardScreen {
+  const withScreens =
+    layout.screens && layout.screens.length > 0
+      ? layout
+      : ensureLayoutScreens(layout);
+  return (
+    withScreens.screens?.find(
+      (screen) => screen.id === withScreens.activeScreenId
+    ) ??
+    withScreens.screens?.[0] ?? {
+      id: DEFAULT_DASHBOARD_SCREEN,
+      label: 'Home',
+      defaultVariant: DEFAULT_LAYOUT_VARIANT,
+      variants: [],
+      widgets: []
+    }
+  );
+}
+
+export function layoutForScreen(
+  layout: WidgetLayout,
+  screenId = ''
+): WidgetLayout {
+  const withScreens = ensureLayoutScreens(layout);
+  const screen =
+    withScreens.screens?.find((candidate) => candidate.id === screenId) ??
+    activeDashboardScreen(withScreens);
+  return {
+    profileId: withScreens.profileId,
+    schemaVersion: LAYOUT_SCHEMA_VERSION,
+    screens: withScreens.screens,
+    defaultVariant: screen.defaultVariant,
+    variants: screen.variants,
+    widgets: screen.widgets.map((widget) => ({
+      ...widget,
+      screenId: screen.id
+    }))
+  };
+}
+
+export function replaceScreenLayout(
+  layout: WidgetLayout,
+  screenId: string,
+  screenLayout: WidgetLayout
+): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  next.screens = (next.screens ?? []).map((screen) =>
+    screen.id === screenId
+      ? {
+          ...screen,
+          defaultVariant: screenLayout.defaultVariant,
+          variants: screenLayout.variants,
+          widgets: screenLayout.widgets.map((widget) => ({
+            ...widget,
+            screenId: screen.id
+          }))
+        }
+      : screen
+  );
+  return ensureLayoutScreens(next);
+}
+
+export function setActiveScreen(
+  layout: WidgetLayout,
+  screenId: string
+): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  if (!next.screens?.some((screen) => screen.id === screenId)) {
+    return next;
+  }
+  next.activeScreenId = screenId;
+  return ensureLayoutScreens(next);
+}
+
+export function uniqueScreenId(layout: WidgetLayout, label = 'Screen'): string {
+  const withScreens = ensureLayoutScreens(layout);
+  const base =
+    label
+      .replace(/[^a-z0-9-]/gi, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase() || 'screen';
+  if (!withScreens.screens?.some((screen) => screen.id === base)) return base;
+  let counter = 2;
+  while (
+    withScreens.screens?.some((screen) => screen.id === `${base}-${counter}`)
+  ) {
+    counter += 1;
+  }
+  return `${base}-${counter}`;
+}
+
+export function addDashboardScreen(layout: WidgetLayout): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  const id = uniqueScreenId(next, `Screen ${next.screens!.length + 1}`);
+  next.screens = [
+    ...(next.screens ?? []),
+    {
+      id,
+      label: `Screen ${next.screens!.length + 1}`,
+      widgets: []
+    }
+  ];
+  next.activeScreenId = id;
+  return ensureLayoutScreens(next);
+}
+
+export function renameDashboardScreen(
+  layout: WidgetLayout,
+  screenId: string,
+  label: string
+): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  next.screens = next.screens?.map((screen) =>
+    screen.id === screenId
+      ? { ...screen, label: label.trim() || screen.label }
+      : screen
+  );
+  return ensureLayoutScreens(next);
+}
+
+export function duplicateDashboardScreen(
+  layout: WidgetLayout,
+  screenId: string
+): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  const source = next.screens?.find((screen) => screen.id === screenId);
+  if (!source) return next;
+  const id = uniqueScreenId(next, `${source.label} Copy`);
+  const widgets = source.widgets.map((widget) => {
+    const widgetId = uniqueWidgetId(next, widget.kind);
+    return {
+      ...widget,
+      id: widgetId,
+      screenId: id
+    };
+  });
+  next.screens = [
+    ...(next.screens ?? []),
+    {
+      ...source,
+      id,
+      label: `${source.label} Copy`,
+      widgets,
+      variants: source.variants?.map((variant) => ({
+        ...variant,
+        placements: remapPlacementIds(
+          variant.placements,
+          source.widgets,
+          widgets
+        )
+      }))
+    }
+  ];
+  next.activeScreenId = id;
+  return ensureLayoutScreens(next);
+}
+
+export function removeDashboardScreen(
+  layout: WidgetLayout,
+  screenId: string
+): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  if ((next.screens?.length ?? 0) <= 1) return next;
+  next.screens = next.screens?.filter((screen) => screen.id !== screenId);
+  if (next.defaultScreenId === screenId) {
+    next.defaultScreenId = next.screens?.[0]?.id;
+  }
+  if (next.activeScreenId === screenId) {
+    next.activeScreenId = next.defaultScreenId;
+  }
+  return ensureLayoutScreens(next);
+}
+
+export function reorderDashboardScreen(
+  layout: WidgetLayout,
+  screenId: string,
+  direction: -1 | 1
+): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  const screens = [...(next.screens ?? [])];
+  const index = screens.findIndex((screen) => screen.id === screenId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= screens.length) return next;
+  const [screen] = screens.splice(index, 1);
+  screens.splice(target, 0, screen);
+  next.screens = screens;
+  return ensureLayoutScreens(next);
+}
+
+function remapPlacementIds(
+  placements: Record<string, WidgetPlacement>,
+  fromWidgets: WidgetInstance[],
+  toWidgets: WidgetInstance[]
+): Record<string, WidgetPlacement> {
+  const next: Record<string, WidgetPlacement> = {};
+  for (let i = 0; i < fromWidgets.length; i += 1) {
+    const from = fromWidgets[i];
+    const to = toWidgets[i];
+    if (from && to && placements[from.id]) {
+      next[to.id] = { ...placements[from.id] };
+    }
+  }
+  return next;
 }
 
 export function ensureLayoutVariants(layout: WidgetLayout): WidgetLayout {
@@ -279,11 +545,17 @@ export function rendersTile(widget: WidgetInstance): boolean {
 
 export function uniqueWidgetId(layout: WidgetLayout, kind: string): string {
   const base = kind.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
-  if (!layout.widgets.some((widget) => widget.id === base)) {
+  const usedIds = new Set([
+    ...layout.widgets.map((widget) => widget.id),
+    ...((layout.screens ?? []).flatMap((screen) =>
+      (screen.widgets ?? []).map((widget) => widget.id)
+    ) ?? [])
+  ]);
+  if (!usedIds.has(base)) {
     return base;
   }
   let counter = 2;
-  while (layout.widgets.some((widget) => widget.id === `${base}-${counter}`)) {
+  while (usedIds.has(`${base}-${counter}`)) {
     counter += 1;
   }
   return `${base}-${counter}`;

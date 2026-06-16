@@ -512,6 +512,110 @@ func TestSaveWidgetLayoutPersistsVariants(t *testing.T) {
 	}
 }
 
+func TestWidgetLayoutMigratesV2LayoutToHomeScreen(t *testing.T) {
+	layout := dashboard.WidgetLayout{
+		ProfileID:     defaultLayoutProfileID,
+		SchemaVersion: 2,
+		Widgets: []dashboard.WidgetInstance{{
+			ID:       "clock",
+			Kind:     "date-time",
+			Title:    "Clock",
+			X:        0,
+			Y:        0,
+			W:        6,
+			H:        1,
+			MinW:     3,
+			MinH:     1,
+			Size:     "wide",
+			Mode:     "ui",
+			Settings: map[string]any{},
+			Visible:  true,
+		}},
+	}
+	normalized, err := dashboard.NormalizeWidgetLayout(layout, widgetCatalogForSeed())
+	if err != nil {
+		t.Fatalf("NormalizeWidgetLayout() error = %v", err)
+	}
+	if normalized.SchemaVersion != dashboard.LayoutSchemaVersion ||
+		normalized.DefaultScreen != "home" ||
+		normalized.ActiveScreen != "home" ||
+		len(normalized.Screens) != 1 ||
+		normalized.Screens[0].Widgets[0].ScreenID != "home" {
+		t.Fatalf("layout was not migrated to home screen: %+v", normalized)
+	}
+}
+
+func TestSaveWidgetLayoutPersistsScreenIDsAndActiveScreen(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	if _, err := st.Initialize(context.Background(), DefaultConfig(), false); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	layout := DefaultWidgetLayout()
+	layout.Screens = append(layout.Screens, dashboard.DashboardScreen{
+		ID:    "music",
+		Label: "Music",
+		Widgets: []dashboard.WidgetInstance{{
+			ScreenID:       "music",
+			ID:             "music-chat",
+			Kind:           "chat-history",
+			Title:          "Music Chat",
+			X:              0,
+			Y:              0,
+			W:              6,
+			H:              2,
+			MinW:           3,
+			MinH:           1,
+			Size:           "medium",
+			Mode:           "ui",
+			Settings:       map[string]any{},
+			ConnectionRefs: map[string]string{},
+			Visible:        true,
+		}},
+	})
+	layout.ActiveScreen = "music"
+
+	if _, err := st.DashboardRepo.SaveWidgetLayout(context.Background(), layout); err != nil {
+		t.Fatalf("SaveWidgetLayout() error = %v", err)
+	}
+	reloaded, err := st.DashboardRepo.WidgetLayout(context.Background(), "")
+	if err != nil {
+		t.Fatalf("WidgetLayout() error = %v", err)
+	}
+	if reloaded.ActiveScreen != "music" || len(reloaded.Screens) != 2 {
+		t.Fatalf("screen metadata did not persist: %+v", reloaded)
+	}
+	if got := reloaded.Screens[1].Widgets[0]; got.ScreenID != "music" || got.ID != "music-chat" {
+		t.Fatalf("screen widget did not persist: %+v", got)
+	}
+
+	active, err := st.DashboardRepo.SetActiveScreen(context.Background(), "", "home")
+	if err != nil {
+		t.Fatalf("SetActiveScreen() error = %v", err)
+	}
+	if active.ActiveScreen != "home" {
+		t.Fatalf("active screen was not updated: %+v", active)
+	}
+}
+
+func TestSaveWidgetLayoutRejectsDuplicateWidgetIDsAcrossScreens(t *testing.T) {
+	layout := DefaultWidgetLayout()
+	duplicate := layout.Screens[0].Widgets[0]
+	duplicate.ScreenID = "other"
+	layout.Screens = append(layout.Screens, dashboard.DashboardScreen{
+		ID:      "other",
+		Label:   "Other",
+		Widgets: []dashboard.WidgetInstance{duplicate},
+	})
+	if _, err := dashboard.NormalizeWidgetLayout(
+		layout,
+		widgetCatalogForSeed(),
+	); !errors.Is(err, dashboard.ErrInvalidLayout) {
+		t.Fatalf("NormalizeWidgetLayout() error = %v, want ErrInvalidLayout", err)
+	}
+}
+
 func TestConfigExportsWidgetLayoutVariants(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()

@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   cloneLayout,
+  activeDashboardScreen,
+  addDashboardScreen,
+  duplicateDashboardScreen,
   ensureLayoutVariants,
+  ensureLayoutScreens,
+  layoutForScreen,
+  removeDashboardScreen,
+  renameDashboardScreen,
+  replaceScreenLayout,
+  setActiveScreen,
   uniqueWidgetId,
   nextWidgetRow,
   sizeFromDimensions,
@@ -64,6 +73,57 @@ describe('layout-editor', () => {
       true
     );
     expect(migrated.variants?.[0].placements.weather).toBeTruthy();
+  });
+
+  it('migrates legacy layouts to a default dashboard screen', () => {
+    const layout = createLayout([createWidget({ id: 'weather', w: 6, h: 1 })]);
+    const migrated = ensureLayoutScreens(layout);
+    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.defaultScreenId).toBe('home');
+    expect(migrated.activeScreenId).toBe('home');
+    expect(migrated.screens?.[0].widgets[0].screenId).toBe('home');
+  });
+
+  it('edits only the selected dashboard screen', () => {
+    let layout = ensureLayoutScreens(
+      createLayout([createWidget({ id: 'weather', kind: 'weather' })])
+    );
+    layout = addDashboardScreen(layout);
+    const active = activeDashboardScreen(layout);
+    expect(active.id).not.toBe('home');
+    const activeLayout = layoutForScreen(layout, active.id);
+    const replaced = replaceScreenLayout(layout, active.id, {
+      ...activeLayout,
+      widgets: [createWidget({ id: 'rss', kind: 'rss', title: 'News' })]
+    });
+    expect(
+      replaced.screens?.find((screen) => screen.id === 'home')?.widgets
+    ).toHaveLength(1);
+    expect(
+      replaced.screens?.find((screen) => screen.id === active.id)?.widgets[0].id
+    ).toBe('rss');
+  });
+
+  it('keeps widget ids unique across screens', () => {
+    const layout = ensureLayoutScreens(
+      createLayout([createWidget({ id: 'weather', kind: 'weather' })])
+    );
+    const withScreen = addDashboardScreen(layout);
+    const activeLayout = layoutForScreen(withScreen, withScreen.activeScreenId);
+    expect(uniqueWidgetId(activeLayout, 'weather')).toBe('weather-2');
+  });
+
+  it('renames, duplicates, removes, and activates screens', () => {
+    let layout = ensureLayoutScreens(createLayout([createWidget()]));
+    layout = renameDashboardScreen(layout, 'home', 'Kitchen');
+    expect(layout.screens?.[0].label).toBe('Kitchen');
+    layout = duplicateDashboardScreen(layout, 'home');
+    expect(layout.screens).toHaveLength(2);
+    expect(layout.activeScreenId).not.toBe('home');
+    layout = setActiveScreen(layout, 'home');
+    expect(activeDashboardScreen(layout).id).toBe('home');
+    layout = removeDashboardScreen(layout, layout.screens![1].id);
+    expect(layout.screens).toHaveLength(1);
   });
 
   it('generates unique widget IDs', () => {

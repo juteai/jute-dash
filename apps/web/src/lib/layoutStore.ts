@@ -1,10 +1,18 @@
 import { writable } from 'svelte/store';
 import {
   addWidget as editorAddWidget,
-  ensureLayoutVariants,
+  addDashboardScreen as editorAddDashboardScreen,
+  duplicateDashboardScreen as editorDuplicateDashboardScreen,
+  ensureLayoutScreens,
+  layoutForScreen,
   moveWidget as editorMoveWidget,
+  removeDashboardScreen as editorRemoveDashboardScreen,
   resizeWidget as editorResizeWidget,
   removeWidget as editorRemoveWidget,
+  renameDashboardScreen as editorRenameDashboardScreen,
+  reorderDashboardScreen as editorReorderDashboardScreen,
+  replaceScreenLayout,
+  setActiveScreen as editorSetActiveScreen,
   setVariantGridSize as editorSetVariantGridSize,
   setWidgetMode as editorSetWidgetMode,
   reorderWidget as editorReorderWidget,
@@ -12,6 +20,7 @@ import {
 } from '$lib/layout-editor';
 import {
   getWidgetCatalog,
+  saveActiveDashboardScreen,
   saveWidgetLayout,
   resetWidgetLayout
 } from '$lib/hubClient';
@@ -56,7 +65,7 @@ function createLayoutStore() {
       }
     },
     enterEdit: (currentLayout: WidgetLayout, activeVariantId = '') => {
-      const draft = ensureLayoutVariants(currentLayout);
+      const draft = ensureLayoutScreens(currentLayout);
       update((s) => ({
         ...s,
         editMode: true,
@@ -121,7 +130,7 @@ function createLayoutStore() {
         const reset = await resetWidgetLayout(fetcher, profileId);
         update((s) => ({
           ...s,
-          draftLayout: ensureLayoutVariants(reset),
+          draftLayout: ensureLayoutScreens(reset),
           saving: false
         }));
         onSuccess(reset);
@@ -140,10 +149,15 @@ function createLayoutStore() {
     ) => {
       update((s) => {
         if (!s.draftLayout) return s;
-        const res = editorAddWidget(s.draftLayout, catalogItem, mode);
+        const screenId = s.draftLayout.activeScreenId ?? '';
+        const res = editorAddWidget(
+          layoutForScreen(s.draftLayout, screenId),
+          catalogItem,
+          mode
+        );
         return {
           ...s,
-          draftLayout: res.layout,
+          draftLayout: replaceScreenLayout(s.draftLayout, screenId, res.layout),
           editIssue: res.error || ''
         };
       });
@@ -151,31 +165,54 @@ function createLayoutStore() {
     setWidgetHeadless: (widgetId: string) => {
       update((s) => {
         if (!s.draftLayout) return s;
+        const screenId = s.draftLayout.activeScreenId ?? '';
         return {
           ...s,
-          draftLayout: editorSetWidgetMode(s.draftLayout, widgetId, 'headless')
+          draftLayout: replaceScreenLayout(
+            s.draftLayout,
+            screenId,
+            editorSetWidgetMode(
+              layoutForScreen(s.draftLayout, screenId),
+              widgetId,
+              'headless'
+            )
+          )
         };
       });
     },
     restoreWidget: (widgetId: string) => {
       update((s) => {
         if (!s.draftLayout) return s;
+        const screenId = s.draftLayout.activeScreenId ?? '';
         return {
           ...s,
-          draftLayout: editorSetWidgetMode(s.draftLayout, widgetId, 'ui')
+          draftLayout: replaceScreenLayout(
+            s.draftLayout,
+            screenId,
+            editorSetWidgetMode(
+              layoutForScreen(s.draftLayout, screenId),
+              widgetId,
+              'ui'
+            )
+          )
         };
       });
     },
     reorderWidget: (widgetId: string, direction: -1 | 1) => {
       update((s) => {
         if (!s.draftLayout) return s;
+        const screenId = s.draftLayout.activeScreenId ?? '';
         return {
           ...s,
-          draftLayout: editorReorderWidget(
+          draftLayout: replaceScreenLayout(
             s.draftLayout,
-            widgetId,
-            direction,
-            s.activeVariantId
+            screenId,
+            editorReorderWidget(
+              layoutForScreen(s.draftLayout, screenId),
+              widgetId,
+              direction,
+              s.activeVariantId
+            )
           )
         };
       });
@@ -186,13 +223,18 @@ function createLayoutStore() {
     setVariantGridSize: (columns: number, rows: number) => {
       update((s) => {
         if (!s.draftLayout) return s;
+        const screenId = s.draftLayout.activeScreenId ?? '';
         return {
           ...s,
-          draftLayout: editorSetVariantGridSize(
+          draftLayout: replaceScreenLayout(
             s.draftLayout,
-            s.activeVariantId,
-            columns,
-            rows
+            screenId,
+            editorSetVariantGridSize(
+              layoutForScreen(s.draftLayout, screenId),
+              s.activeVariantId,
+              columns,
+              rows
+            )
           )
         };
       });
@@ -211,15 +253,25 @@ function createLayoutStore() {
     }) => {
       update((s) => {
         if (!s.draftLayout || !s.configuringWidgetId) return s;
-        let next = editorUpdateWidget(s.draftLayout, s.configuringWidgetId, {
+        const screenId = s.draftLayout.activeScreenId ?? '';
+        let screenLayout = layoutForScreen(s.draftLayout, screenId);
+        screenLayout = editorUpdateWidget(screenLayout, s.configuringWidgetId, {
           title: patch.title,
           settings: patch.settings,
           connectionRefs: patch.connectionRefs
         });
-        next = editorSetWidgetMode(next, s.configuringWidgetId, patch.mode);
+        screenLayout = editorSetWidgetMode(
+          screenLayout,
+          s.configuringWidgetId,
+          patch.mode
+        );
         return {
           ...s,
-          draftLayout: next,
+          draftLayout: replaceScreenLayout(
+            s.draftLayout,
+            screenId,
+            screenLayout
+          ),
           configuringWidgetId: ''
         };
       });
@@ -227,14 +279,19 @@ function createLayoutStore() {
     moveWidget: (widgetId: string, x: number, y: number) => {
       update((s) => {
         if (!s.draftLayout) return s;
+        const screenId = s.draftLayout.activeScreenId ?? '';
         return {
           ...s,
-          draftLayout: editorMoveWidget(
+          draftLayout: replaceScreenLayout(
             s.draftLayout,
-            widgetId,
-            x,
-            y,
-            s.activeVariantId
+            screenId,
+            editorMoveWidget(
+              layoutForScreen(s.draftLayout, screenId),
+              widgetId,
+              x,
+              y,
+              s.activeVariantId
+            )
           )
         };
       });
@@ -242,14 +299,19 @@ function createLayoutStore() {
     resizeWidget: (widgetId: string, w: number, h: number) => {
       update((s) => {
         if (!s.draftLayout) return s;
+        const screenId = s.draftLayout.activeScreenId ?? '';
         return {
           ...s,
-          draftLayout: editorResizeWidget(
+          draftLayout: replaceScreenLayout(
             s.draftLayout,
-            widgetId,
-            w,
-            h,
-            s.activeVariantId
+            screenId,
+            editorResizeWidget(
+              layoutForScreen(s.draftLayout, screenId),
+              widgetId,
+              w,
+              h,
+              s.activeVariantId
+            )
           )
         };
       });
@@ -257,11 +319,97 @@ function createLayoutStore() {
     removeWidget: (widgetId: string) => {
       update((s) => {
         if (!s.draftLayout) return s;
+        const screenId = s.draftLayout.activeScreenId ?? '';
         return {
           ...s,
-          draftLayout: editorRemoveWidget(s.draftLayout, widgetId)
+          draftLayout: replaceScreenLayout(
+            s.draftLayout,
+            screenId,
+            editorRemoveWidget(
+              layoutForScreen(s.draftLayout, screenId),
+              widgetId
+            )
+          )
         };
       });
+    },
+    setActiveScreen: async (
+      screenId: string,
+      fetcher: typeof fetch = window.fetch,
+      onSuccess?: (savedLayout: WidgetLayout) => void
+    ) => {
+      let editMode = false;
+      update((s) => {
+        editMode = s.editMode;
+        if (s.draftLayout) {
+          return {
+            ...s,
+            draftLayout: editorSetActiveScreen(s.draftLayout, screenId)
+          };
+        }
+        return s;
+      });
+      if (editMode) return;
+      const saved = await saveActiveDashboardScreen(fetcher, screenId);
+      onSuccess?.(saved);
+    },
+    addScreen: () => {
+      update((s) =>
+        s.draftLayout
+          ? { ...s, draftLayout: editorAddDashboardScreen(s.draftLayout) }
+          : s
+      );
+    },
+    renameScreen: (screenId: string, label: string) => {
+      update((s) =>
+        s.draftLayout
+          ? {
+              ...s,
+              draftLayout: editorRenameDashboardScreen(
+                s.draftLayout,
+                screenId,
+                label
+              )
+            }
+          : s
+      );
+    },
+    duplicateScreen: (screenId: string) => {
+      update((s) =>
+        s.draftLayout
+          ? {
+              ...s,
+              draftLayout: editorDuplicateDashboardScreen(
+                s.draftLayout,
+                screenId
+              )
+            }
+          : s
+      );
+    },
+    removeScreen: (screenId: string) => {
+      update((s) =>
+        s.draftLayout
+          ? {
+              ...s,
+              draftLayout: editorRemoveDashboardScreen(s.draftLayout, screenId)
+            }
+          : s
+      );
+    },
+    reorderScreen: (screenId: string, direction: -1 | 1) => {
+      update((s) =>
+        s.draftLayout
+          ? {
+              ...s,
+              draftLayout: editorReorderDashboardScreen(
+                s.draftLayout,
+                screenId,
+                direction
+              )
+            }
+          : s
+      );
     },
     setEditIssue: (issue: string) => {
       update((s) => ({ ...s, editIssue: issue }));
