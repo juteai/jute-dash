@@ -9,11 +9,19 @@ export const SUPPORTED_NOTIFICATION_SOUNDS = [
 export type NotificationSound = (typeof SUPPORTED_NOTIFICATION_SOUNDS)[number];
 
 type AudioContextConstructor = new () => AudioContext;
+type TimerHandle = unknown;
 
 type AudioWindow = {
   AudioContext?: AudioContextConstructor;
+  clearInterval?: (id: TimerHandle) => void;
+  setInterval?: (handler: () => void, timeout?: number) => TimerHandle;
   setTimeout: (handler: () => void, timeout?: number) => unknown;
   webkitAudioContext?: AudioContextConstructor;
+};
+
+export type NotificationSoundLoop = {
+  key: string;
+  stop: () => void;
 };
 
 const frequencyBySound: Record<Exclude<NotificationSound, 'none'>, number> = {
@@ -40,9 +48,7 @@ export function isNotificationSound(value: string): value is NotificationSound {
 
 export function playNotificationSound(
   value: unknown,
-  audioWindow: AudioWindow | undefined = typeof window === 'undefined'
-    ? undefined
-    : window
+  audioWindow: AudioWindow | undefined = defaultAudioWindow()
 ): boolean {
   const sound = normalizeNotificationSound(value);
   if (sound === 'none' || !audioWindow) {
@@ -71,4 +77,46 @@ export function playNotificationSound(
   }
   audioWindow.setTimeout(() => void ctx.close(), 900);
   return true;
+}
+
+export function startNotificationSoundLoop(
+  key: string,
+  value: unknown,
+  audioWindow: AudioWindow | undefined = defaultAudioWindow(),
+  intervalMs = 1400
+): NotificationSoundLoop | undefined {
+  const sound = normalizeNotificationSound(value);
+  if (sound === 'none' || !audioWindow?.setInterval) {
+    return undefined;
+  }
+
+  playNotificationSound(sound, audioWindow);
+  const interval = audioWindow.setInterval(() => {
+    playNotificationSound(sound, audioWindow);
+  }, intervalMs);
+
+  return {
+    key,
+    stop: () => audioWindow.clearInterval?.(interval)
+  };
+}
+
+function defaultAudioWindow(): AudioWindow | undefined {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  const browserWindow = window as typeof window & {
+    webkitAudioContext?: AudioContextConstructor;
+  };
+
+  return {
+    AudioContext: browserWindow.AudioContext,
+    webkitAudioContext: browserWindow.webkitAudioContext,
+    setTimeout: (handler, timeout) =>
+      browserWindow.setTimeout(handler, timeout),
+    setInterval: (handler, timeout) =>
+      browserWindow.setInterval(handler, timeout),
+    clearInterval: (id) => browserWindow.clearInterval(id as number)
+  };
 }

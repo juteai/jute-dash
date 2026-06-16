@@ -15,7 +15,10 @@
     formatAlertFocusTime,
     type AlertFocusItem
   } from '$lib/alerts/alertFocus';
-  import { playNotificationSound } from '$lib/alerts/notificationSound';
+  import {
+    startNotificationSoundLoop,
+    type NotificationSoundLoop
+  } from '$lib/alerts/notificationSound';
   import { createDisplayWidgetDispatcher } from '$lib/widgetActions';
   import type { DashboardData } from '$lib/types';
 
@@ -23,7 +26,7 @@
 
   let now = Date.now();
   let timer: number | undefined;
-  let playedSoundKey = '';
+  let soundLoop: NotificationSoundLoop | undefined;
 
   $: alertState = deriveAlertFocusState(data, now);
   $: primary = alertState.primary;
@@ -39,16 +42,22 @@
     if (timer) {
       window.clearInterval(timer);
     }
+    stopSoundLoop();
   });
 
   function syncSound(item: AlertFocusItem | undefined) {
     if (!item) {
-      playedSoundKey = '';
+      stopSoundLoop();
       return;
     }
-    if (item.playbackKey === playedSoundKey) return;
-    playedSoundKey = item.playbackKey;
-    playNotificationSound(item.sound);
+    if (item.playbackKey === soundLoop?.key) return;
+    stopSoundLoop();
+    soundLoop = startNotificationSoundLoop(item.playbackKey, item.sound);
+  }
+
+  function stopSoundLoop() {
+    soundLoop?.stop();
+    soundLoop = undefined;
   }
 
   async function invoke(item: AlertFocusItem, action: 'snooze' | 'dismiss') {

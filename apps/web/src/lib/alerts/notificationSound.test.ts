@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   SUPPORTED_NOTIFICATION_SOUNDS,
   normalizeNotificationSound,
-  playNotificationSound
+  playNotificationSound,
+  startNotificationSoundLoop
 } from './notificationSound';
 
 describe('notificationSound', () => {
@@ -33,10 +34,34 @@ describe('notificationSound', () => {
     expect(ctx.oscillators[0].frequency.value).toBe(520);
     expect(fake.setTimeout).toHaveBeenCalledWith(expect.any(Function), 900);
   });
+
+  it('repeats sounds until stopped', () => {
+    const fake = fakeAudioWindow();
+
+    const loop = startNotificationSoundLoop('alert-1', 'bell', fake, 1400);
+
+    expect(loop?.key).toBe('alert-1');
+    expect(fake.contexts).toHaveLength(1);
+    expect(fake.setInterval).toHaveBeenCalledWith(expect.any(Function), 1400);
+
+    fake.intervalHandlers[0]?.();
+    expect(fake.contexts).toHaveLength(2);
+
+    loop?.stop();
+    expect(fake.clearInterval).toHaveBeenCalledWith(1);
+  });
+
+  it('does not start a repeat loop for none', () => {
+    const fake = fakeAudioWindow();
+
+    expect(startNotificationSoundLoop('alert-1', 'none', fake)).toBeUndefined();
+    expect(fake.setInterval).not.toHaveBeenCalled();
+  });
 });
 
 function fakeAudioWindow() {
   const contexts: FakeAudioContext[] = [];
+  const intervalHandlers: Array<() => void> = [];
   class FakeAudioContext {
     currentTime = 10;
     destination = {};
@@ -70,8 +95,14 @@ function fakeAudioWindow() {
   }
 
   return {
+    clearInterval: vi.fn(),
     AudioContext: FakeAudioContext as unknown as typeof AudioContext,
+    setInterval: vi.fn((handler: () => void) => {
+      intervalHandlers.push(handler);
+      return 1;
+    }),
     setTimeout: vi.fn(),
+    intervalHandlers,
     contexts
   };
 }
