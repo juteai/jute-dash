@@ -238,6 +238,8 @@ Edit mode supports:
 - duplicate widget when the widget supports multiple instances;
 - reset layout profile.
 
+Widgets with `allowMultiple: false` are single-instance across the full dashboard profile, not per screen, because their hub-owned state and agent/MCP context are shared.
+
 Edit mode UI:
 
 - direct manipulation is primary: drag a tile to move, drag its corner to resize, snapping to the 12-column base grid;

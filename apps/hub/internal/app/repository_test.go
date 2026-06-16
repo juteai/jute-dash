@@ -558,9 +558,9 @@ func TestSaveWidgetLayoutPersistsScreenIDsAndActiveScreen(t *testing.T) {
 		Label: "Music",
 		Widgets: []dashboard.WidgetInstance{{
 			ScreenID:       "music",
-			ID:             "music-chat",
-			Kind:           "chat-history",
-			Title:          "Music Chat",
+			ID:             "music-markets",
+			Kind:           "markets",
+			Title:          "Music Markets",
 			X:              0,
 			Y:              0,
 			W:              6,
@@ -586,7 +586,7 @@ func TestSaveWidgetLayoutPersistsScreenIDsAndActiveScreen(t *testing.T) {
 	if reloaded.ActiveScreen != "music" || len(reloaded.Screens) != 2 {
 		t.Fatalf("screen metadata did not persist: %+v", reloaded)
 	}
-	if got := reloaded.Screens[1].Widgets[0]; got.ScreenID != "music" || got.ID != "music-chat" {
+	if got := reloaded.Screens[1].Widgets[0]; got.ScreenID != "music" || got.ID != "music-markets" {
 		t.Fatalf("screen widget did not persist: %+v", got)
 	}
 
@@ -602,6 +602,24 @@ func TestSaveWidgetLayoutPersistsScreenIDsAndActiveScreen(t *testing.T) {
 func TestSaveWidgetLayoutRejectsDuplicateWidgetIDsAcrossScreens(t *testing.T) {
 	layout := DefaultWidgetLayout()
 	duplicate := layout.Screens[0].Widgets[0]
+	duplicate.ScreenID = "other"
+	layout.Screens = append(layout.Screens, dashboard.DashboardScreen{
+		ID:      "other",
+		Label:   "Other",
+		Widgets: []dashboard.WidgetInstance{duplicate},
+	})
+	if _, err := dashboard.NormalizeWidgetLayout(
+		layout,
+		widgetCatalogForSeed(),
+	); !errors.Is(err, dashboard.ErrInvalidLayout) {
+		t.Fatalf("NormalizeWidgetLayout() error = %v, want ErrInvalidLayout", err)
+	}
+}
+
+func TestSaveWidgetLayoutRejectsDuplicateSingleInstanceKindsAcrossScreens(t *testing.T) {
+	layout := DefaultWidgetLayout()
+	duplicate := layout.Screens[0].Widgets[0]
+	duplicate.ID += "-copy"
 	duplicate.ScreenID = "other"
 	layout.Screens = append(layout.Screens, dashboard.DashboardScreen{
 		ID:      "other",

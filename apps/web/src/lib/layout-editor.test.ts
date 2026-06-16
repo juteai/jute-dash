@@ -3,6 +3,7 @@ import {
   cloneLayout,
   activeDashboardScreen,
   addDashboardScreen,
+  canAddCatalogWidget,
   duplicateDashboardScreen,
   ensureLayoutVariants,
   ensureLayoutScreens,
@@ -124,6 +125,73 @@ describe('layout-editor', () => {
     expect(activeDashboardScreen(layout).id).toBe('home');
     layout = removeDashboardScreen(layout, layout.screens![1].id);
     expect(layout.screens).toHaveLength(1);
+  });
+
+  it('prevents single-instance catalog widgets across dashboard screens', () => {
+    let layout = ensureLayoutScreens(
+      createLayout([createWidget({ id: 'spotify', kind: 'spotify' })])
+    );
+    layout = addDashboardScreen(layout);
+    const catalogItem: WidgetCatalogItem = {
+      kind: 'spotify',
+      name: 'Spotify',
+      description: 'Playback',
+      defaultTitle: 'Spotify',
+      defaultW: 4,
+      defaultH: 2,
+      minW: 2,
+      minH: 1,
+      defaultSize: 'medium',
+      overflow: 'clip',
+      allowMultiple: false
+    };
+    expect(canAddCatalogWidget(layout, catalogItem)).toBe(false);
+    expect(
+      canAddCatalogWidget(layout, {
+        ...catalogItem,
+        kind: 'rss',
+        allowMultiple: true
+      })
+    ).toBe(true);
+  });
+
+  it('does not duplicate single-instance widgets when duplicating a screen', () => {
+    const layout = ensureLayoutScreens(
+      createLayout([
+        createWidget({ id: 'spotify', kind: 'spotify' }),
+        createWidget({ id: 'rss', kind: 'rss' })
+      ])
+    );
+    const duplicated = duplicateDashboardScreen(layout, 'home', [
+      {
+        kind: 'spotify',
+        name: 'Spotify',
+        description: 'Playback',
+        defaultTitle: 'Spotify',
+        defaultW: 4,
+        defaultH: 2,
+        minW: 2,
+        minH: 1,
+        defaultSize: 'medium',
+        overflow: 'clip',
+        allowMultiple: false
+      },
+      {
+        kind: 'rss',
+        name: 'RSS',
+        description: 'Feeds',
+        defaultTitle: 'News',
+        defaultW: 4,
+        defaultH: 2,
+        minW: 2,
+        minH: 1,
+        defaultSize: 'medium',
+        overflow: 'scroll',
+        allowMultiple: true
+      }
+    ]);
+    const copy = duplicated.screens?.find((screen) => screen.id !== 'home');
+    expect(copy?.widgets.map((widget) => widget.kind)).toEqual(['rss']);
   });
 
   it('generates unique widget IDs', () => {

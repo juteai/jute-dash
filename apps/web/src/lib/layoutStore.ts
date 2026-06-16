@@ -2,6 +2,7 @@ import { writable } from 'svelte/store';
 import {
   addWidget as editorAddWidget,
   addDashboardScreen as editorAddDashboardScreen,
+  canAddCatalogWidget,
   duplicateDashboardScreen as editorDuplicateDashboardScreen,
   ensureLayoutScreens,
   layoutForScreen,
@@ -150,6 +151,12 @@ function createLayoutStore() {
       update((s) => {
         if (!s.draftLayout) return s;
         const screenId = s.draftLayout.activeScreenId ?? '';
+        if (!canAddCatalogWidget(s.draftLayout, catalogItem)) {
+          return {
+            ...s,
+            editIssue: `${catalogItem.name} is already added to this dashboard.`
+          };
+        }
         const res = editorAddWidget(
           layoutForScreen(s.draftLayout, screenId),
           catalogItem,
@@ -381,7 +388,8 @@ function createLayoutStore() {
               ...s,
               draftLayout: editorDuplicateDashboardScreen(
                 s.draftLayout,
-                screenId
+                screenId,
+                s.widgetCatalog
               )
             }
           : s

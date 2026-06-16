@@ -266,13 +266,20 @@ export function renameDashboardScreen(
 
 export function duplicateDashboardScreen(
   layout: WidgetLayout,
-  screenId: string
+  screenId: string,
+  catalog: WidgetCatalogItem[] = []
 ): WidgetLayout {
   const next = ensureLayoutScreens(layout);
   const source = next.screens?.find((screen) => screen.id === screenId);
   if (!source) return next;
   const id = uniqueScreenId(next, `${source.label} Copy`);
-  const widgets = source.widgets.map((widget) => {
+  const singleInstanceKinds = new Set(
+    catalog.filter((item) => !item.allowMultiple).map((item) => item.kind)
+  );
+  const sourceWidgets = source.widgets.filter(
+    (widget) => !singleInstanceKinds.has(widget.kind)
+  );
+  const widgets = sourceWidgets.map((widget) => {
     const widgetId = uniqueWidgetId(next, widget.kind);
     return {
       ...widget,
@@ -291,7 +298,7 @@ export function duplicateDashboardScreen(
         ...variant,
         placements: remapPlacementIds(
           variant.placements,
-          source.widgets,
+          sourceWidgets,
           widgets
         )
       }))
@@ -541,6 +548,23 @@ export function isHeadless(widget: WidgetInstance): boolean {
 /** A widget draws a tile when it is present and not headless. */
 export function rendersTile(widget: WidgetInstance): boolean {
   return widget.visible && !isHeadless(widget);
+}
+
+export function widgetsAcrossScreens(layout: WidgetLayout): WidgetInstance[] {
+  const withScreens = ensureLayoutScreens(layout);
+  return withScreens.screens?.flatMap((screen) => screen.widgets ?? []) ?? [];
+}
+
+export function canAddCatalogWidget(
+  layout: WidgetLayout,
+  item: WidgetCatalogItem
+): boolean {
+  if (item.allowMultiple) {
+    return true;
+  }
+  return !widgetsAcrossScreens(layout).some(
+    (widget) => widget.kind === item.kind
+  );
 }
 
 export function uniqueWidgetId(layout: WidgetLayout, kind: string): string {

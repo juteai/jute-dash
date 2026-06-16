@@ -19,6 +19,7 @@
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import {
     activeDashboardScreen,
+    canAddCatalogWidget,
     ensureLayoutScreens,
     ensureLayoutVariants,
     layoutForScreen,
@@ -121,12 +122,7 @@
   }
 
   function canAddWidget(item: WidgetCatalogItem) {
-    return (
-      item.allowMultiple ||
-      !activeScreen.widgets.some(
-        (widget) => widget.kind === item.kind && widget.visible
-      )
-    );
+    return canAddCatalogWidget(layoutWithScreens, item);
   }
 
   function addWidget(kind: string, mode: 'ui' | 'headless' = 'ui') {
@@ -211,6 +207,7 @@
 
 <section
   class="dashboard-view"
+  class:dashboard-view--screen-dots={screens.length > 1 && !editMode}
   aria-label="Jute dashboard"
   on:pointerdown={startSwipe}
   on:pointermove={moveSwipe}
@@ -627,14 +624,12 @@
     justify-content: flex-end;
   }
   .screen-dots {
-    position: fixed;
-    left: 50%;
-    bottom: max(14px, env(safe-area-inset-bottom));
-    z-index: 12;
+    align-self: center;
+    flex: 0 0 auto;
+    z-index: 2;
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    transform: translateX(-50%);
     padding: 6px 8px;
     border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
     border-radius: 999px;

@@ -258,10 +258,10 @@ func NormalizeWidgetLayout(layout WidgetLayout, catalog map[string]WidgetCatalog
 	layout = applyCompatibilityFieldsToScreens(layout)
 	layout = EnsureLayoutScreens(layout)
 	seenIDs := map[string]bool{}
+	seenSingleInstanceKinds := map[string]string{}
 
 	for screenIndex := range layout.Screens {
 		screen := &layout.Screens[screenIndex]
-		seenKinds := map[string]bool{}
 		for i := range screen.Widgets {
 			widget := &screen.Widgets[i]
 			widget.ScreenID = screen.ID
@@ -286,13 +286,17 @@ func NormalizeWidgetLayout(layout WidgetLayout, catalog map[string]WidgetCatalog
 			}
 			seenIDs[widget.ID] = true
 			if ok {
-				if !item.AllowMultiple && seenKinds[widget.Kind] {
-					return WidgetLayout{}, fmt.Errorf(
-						"%w: duplicate widget kind %q on screen %q",
-						ErrInvalidLayout,
-						widget.Kind,
-						screen.ID,
-					)
+				if !item.AllowMultiple {
+					if firstScreen, exists := seenSingleInstanceKinds[widget.Kind]; exists {
+						return WidgetLayout{}, fmt.Errorf(
+							"%w: duplicate widget kind %q across screens %q and %q",
+							ErrInvalidLayout,
+							widget.Kind,
+							firstScreen,
+							screen.ID,
+						)
+					}
+					seenSingleInstanceKinds[widget.Kind] = screen.ID
 				}
 				if widget.Title == "" {
 					widget.Title = item.DefaultTitle
@@ -310,7 +314,6 @@ func NormalizeWidgetLayout(layout WidgetLayout, catalog map[string]WidgetCatalog
 					widget.MinH = item.MinH
 				}
 			}
-			seenKinds[widget.Kind] = true
 			if err := validateWidgetInstance(*widget); err != nil {
 				return WidgetLayout{}, err
 			}
