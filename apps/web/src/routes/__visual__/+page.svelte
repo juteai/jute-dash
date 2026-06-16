@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import AlarmFocusOverlay from '$lib/components/alarms/AlarmFocusOverlay.svelte';
   import DashboardGrid from '$lib/components/display/DashboardGrid.svelte';
   import { displayThemeStyle } from '$lib/themes';
   import type {
@@ -66,10 +67,10 @@
         }
       };
     }
-    return okPayload(kind);
+    return okPayload(kind, visualState);
   }
 
-  function okPayload(kind: string) {
+  function okPayload(kind: string, visualState: string) {
     switch (kind) {
       case 'weather':
         return {
@@ -182,6 +183,149 @@
             ]
           }
         };
+      case 'timers-alarms':
+        return {
+          status: 'ok',
+          data: {
+            active:
+              visualState === 'timers-empty'
+                ? []
+                : [
+                    {
+                      id: 'timer-visual',
+                      kind: 'timer',
+                      label: 'Tea',
+                      status: 'active',
+                      dueAt:
+                        visualState === 'ringing'
+                          ? new Date(Date.now() - 1000).toISOString()
+                          : new Date(Date.now() + 305000).toISOString(),
+                      durationSeconds: 300,
+                      remainingSeconds: visualState === 'ringing' ? 0 : 305,
+                      sound: 'chime'
+                    },
+                    {
+                      id: 'alarm-visual',
+                      kind: 'alarm',
+                      label: 'School run',
+                      status: 'active',
+                      dueAt: new Date(Date.now() + 3600000).toISOString(),
+                      time: '07:30',
+                      weekdays: [1, 2, 3, 4, 5],
+                      remainingSeconds: 3600,
+                      recurring: true,
+                      sound: 'bell'
+                    }
+                  ],
+            ringing:
+              visualState === 'ringing'
+                ? [
+                    {
+                      id: 'timer-visual',
+                      kind: 'timer',
+                      label: 'Tea',
+                      status: 'active',
+                      dueAt: new Date(Date.now() - 1000).toISOString(),
+                      sound: 'chime',
+                      remainingSeconds: 0,
+                      ringing: true
+                    }
+                  ]
+                : [],
+            notificationSound: 'chime',
+            defaultSnoozeMins: 9,
+            generatedAt: new Date().toISOString(),
+            timezone: 'Europe/London'
+          }
+        };
+      case 'calendar': {
+        if (visualState === 'calendar-empty') {
+          return {
+            status: 'ok',
+            data: {
+              events: [],
+              nextEvent: null,
+              alerts: [],
+              ringing: [],
+              ringingCount: 0,
+              alertLeadMinutes: 10,
+              defaultSnoozeMins: 9,
+              notificationSound: 'chime',
+              generatedAt: new Date().toISOString()
+            }
+          };
+        }
+
+        const eventStart =
+          visualState === 'calendar-ringing'
+            ? new Date(Date.now() + 3 * 60000).toISOString()
+            : new Date(Date.now() + 45 * 60000).toISOString();
+        const eventEnd = new Date(
+          new Date(eventStart).getTime() + 45 * 60000
+        ).toISOString();
+        const alert = {
+          id: 'calendar:school-assembly',
+          kind: 'calendar-event',
+          label: 'School assembly',
+          status: 'active',
+          dueAt:
+            visualState === 'calendar-ringing'
+              ? new Date(Date.now() - 1000).toISOString()
+              : new Date(Date.now() + 35 * 60000).toISOString(),
+          eventStart,
+          eventEnd,
+          calendar: 'Family',
+          sound: 'chime',
+          ringing: visualState === 'calendar-ringing',
+          defaultSnoozeMins: 9
+        };
+        return {
+          status: 'ok',
+          data: {
+            events: [
+              {
+                id: 'school-assembly',
+                uid: 'school-assembly',
+                title: 'School assembly',
+                calendar: 'Family',
+                start: eventStart,
+                end: eventEnd,
+                allDay: false,
+                location: 'Hall',
+                source: 'ics'
+              },
+              {
+                id: 'bin-day',
+                uid: 'bin-day',
+                title: 'Bins out',
+                calendar: 'Home',
+                start: new Date(Date.now() + 24 * 3600000).toISOString(),
+                end: new Date(
+                  Date.now() + 24 * 3600000 + 15 * 60000
+                ).toISOString(),
+                allDay: false,
+                source: 'ics'
+              }
+            ],
+            nextEvent: {
+              id: 'school-assembly',
+              title: 'School assembly',
+              calendar: 'Family',
+              start: eventStart,
+              end: eventEnd,
+              location: 'Hall'
+            },
+            alerts: [alert],
+            ringing: visualState === 'calendar-ringing' ? [alert] : [],
+            ringingCount: visualState === 'calendar-ringing' ? 1 : 0,
+            alertLeadMinutes: 10,
+            defaultSnoozeMins: 9,
+            notificationSound: 'chime',
+            generatedAt: new Date().toISOString(),
+            source: 'ics'
+          }
+        };
+      }
       default:
         return { status: 'ok', data: {} };
     }
@@ -219,7 +363,18 @@
         3,
         2,
         visualState
-      )
+      ),
+      widget(
+        'timers-alarms',
+        'timers-alarms',
+        'Timers',
+        3,
+        4,
+        3,
+        2,
+        visualState
+      ),
+      widget('calendar', 'calendar', 'Calendar', 6, 4, 3, 2, visualState)
     ];
 
     return {
@@ -326,6 +481,9 @@
     selectedAgent={data.agents[0]}
     selectedAvailability="available"
   />
+  {#if state === 'ringing' || state === 'calendar-ringing'}
+    <AlarmFocusOverlay {data} />
+  {/if}
 </main>
 
 <style>

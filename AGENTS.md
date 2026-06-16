@@ -83,6 +83,8 @@ The core built-in widgets are:
 7. `apple-music`: Apple Music playback state and controls through a shared Adapter Connection.
 8. `philips-hue`: Philips Hue light state and controls through a shared Adapter Connection.
 9. `zigbee2mqtt`: Zigbee2MQTT device state and controls through a shared Adapter Connection.
+10. `timers-alarms`: Local timers, one-off and recurring alarms, notification sounds, snooze, dismiss, and cancel through hub actions.
+11. `calendar`: Calendar-account events from iCalendar feeds, event alert lead times, notification sounds, snooze, and dismiss through hub actions.
 
 ## Visual Customization Rules
 

@@ -5,6 +5,7 @@
   import DashboardView from '$lib/components/display/DashboardView.svelte';
   import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
   import VoiceOverlay from '$lib/components/display/VoiceOverlay.svelte';
+  import AlarmFocusOverlay from '$lib/components/alarms/AlarmFocusOverlay.svelte';
   import OfflineState from '$lib/components/display/OfflineState.svelte';
   import StatusRibbon from '$lib/components/display/StatusRibbon.svelte';
   import { backgroundImageURL } from '$lib/hubClient';
@@ -487,6 +488,8 @@
         on:cancel={cancelVoiceSession}
       />
     {/if}
+
+    <AlarmFocusOverlay data={$hubStream.dashboard} />
 
     {#if $hubStream.displayNotifications.length > 0}
       <div

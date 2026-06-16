@@ -22,6 +22,63 @@ func (_m *ActionLayoutStore) EXPECT() *ActionLayoutStore_Expecter {
 	return &ActionLayoutStore_Expecter{mock: &_m.Mock}
 }
 
+// SaveWidgetLayout provides a mock function with given fields: ctx, layout
+func (_m *ActionLayoutStore) SaveWidgetLayout(ctx context.Context, layout dashboard.WidgetLayout) (dashboard.WidgetLayout, error) {
+	ret := _m.Called(ctx, layout)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SaveWidgetLayout")
+	}
+
+	var r0 dashboard.WidgetLayout
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, dashboard.WidgetLayout) (dashboard.WidgetLayout, error)); ok {
+		return rf(ctx, layout)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, dashboard.WidgetLayout) dashboard.WidgetLayout); ok {
+		r0 = rf(ctx, layout)
+	} else {
+		r0 = ret.Get(0).(dashboard.WidgetLayout)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, dashboard.WidgetLayout) error); ok {
+		r1 = rf(ctx, layout)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ActionLayoutStore_SaveWidgetLayout_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveWidgetLayout'
+type ActionLayoutStore_SaveWidgetLayout_Call struct {
+	*mock.Call
+}
+
+// SaveWidgetLayout is a helper method to define mock.On call
+//   - ctx context.Context
+//   - layout dashboard.WidgetLayout
+func (_e *ActionLayoutStore_Expecter) SaveWidgetLayout(ctx interface{}, layout interface{}) *ActionLayoutStore_SaveWidgetLayout_Call {
+	return &ActionLayoutStore_SaveWidgetLayout_Call{Call: _e.mock.On("SaveWidgetLayout", ctx, layout)}
+}
+
+func (_c *ActionLayoutStore_SaveWidgetLayout_Call) Run(run func(ctx context.Context, layout dashboard.WidgetLayout)) *ActionLayoutStore_SaveWidgetLayout_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(dashboard.WidgetLayout))
+	})
+	return _c
+}
+
+func (_c *ActionLayoutStore_SaveWidgetLayout_Call) Return(_a0 dashboard.WidgetLayout, _a1 error) *ActionLayoutStore_SaveWidgetLayout_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ActionLayoutStore_SaveWidgetLayout_Call) RunAndReturn(run func(context.Context, dashboard.WidgetLayout) (dashboard.WidgetLayout, error)) *ActionLayoutStore_SaveWidgetLayout_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // WidgetLayout provides a mock function with given fields: ctx, profileID
 func (_m *ActionLayoutStore) WidgetLayout(ctx context.Context, profileID string) (dashboard.WidgetLayout, error) {
 	ret := _m.Called(ctx, profileID)

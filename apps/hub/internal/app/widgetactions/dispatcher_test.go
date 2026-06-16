@@ -28,6 +28,13 @@ func (s fakeLayoutStore) WidgetLayout(_ context.Context, _ string) (dashboard.Wi
 	return s.layout, s.err
 }
 
+func (s fakeLayoutStore) SaveWidgetLayout(
+	_ context.Context,
+	layout dashboard.WidgetLayout,
+) (dashboard.WidgetLayout, error) {
+	return layout, s.err
+}
+
 type fakeConnectionResolver struct {
 	result widgets.ConnectionResolution
 }

@@ -308,6 +308,8 @@ Initial built-in skills:
 - `jute.date_time.current`: read date, time, timezone, locale, and display format.
 - `jute.weather.current`: read weather condition, temperature, humidity, wind, sunrise, sunset, and freshness.
 - `jute.chat_history.current`: read available agents, selected agent, recent conversation summaries, and conversation availability.
+- `jute.timers_alarms.control`: create timers and alarms, read active alerts, set sounds, snooze, dismiss, and cancel.
+- `jute.calendar.events`: read upcoming events, read due event alerts, set alert lead minutes, set event notification sounds, snooze, and dismiss event alerts.
 
 ## Security Posture
 

@@ -54,6 +54,18 @@ _Avoid_: widget capability, widget tool, widget plugin
 The current runtime declaration of a Widget's identity, settings schema, Adapter Connection requirements, and optional Widget Skill. It lives in Go under `widgets/{kind}/hub`; manifest files such as `widget.yaml` are future work, not the current source of truth.
 _Avoid_: widget.yaml (when describing current runtime behavior), widget.json
 
+**Alert Focus**:
+The full-screen Display state shown when a timer, alarm, or calendar event alert is due. It is derived from hydrated Widget data plus the current Display clock, and it delegates snooze or dismiss back through Widget actions.
+_Avoid_: alarm modal, timer popup, notification screen
+
+**Notification Sound Policy**:
+The shared alert sound contract used by alert-capable Widgets and the Display. The v1 supported sounds are `chime`, `bell`, `pulse`, `soft`, and `none`; unsupported values fall back to `chime` unless a valid widget fallback is supplied.
+_Avoid_: ringtone system, audio theme, sound plugin
+
+**Alert Time State**:
+The time-derived status for an alert item: future, due/ringing, snoozed until a later due time, dismissed, cancelled, or expired after its event end. The Hub owns durable Alert Time State; the Display only derives a renderable focus state from Hub-provided data.
+_Avoid_: browser alarm state, local reminder state
+
 ### Themes and customization
 
 **Theme**:

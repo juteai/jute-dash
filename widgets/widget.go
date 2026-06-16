@@ -243,10 +243,20 @@ type ActionInput struct {
 	Actor     string
 }
 
+type SettingsMutationResult struct {
+	Body     map[string]any
+	Settings map[string]any
+}
+
 type ConnectionAwareWidget interface {
 	Widget
 	RequiredConnections() []ConnectionRequirement
 	FetchDataWithConnections(ctx context.Context, input RuntimeInput) (RuntimePayload, error)
+}
+
+type SettingsMutatingActionWidget interface {
+	Widget
+	InvokeActionWithSettings(ctx context.Context, input ActionInput) (SettingsMutationResult, error)
 }
 
 type ConnectionAwareActionWidget interface {
