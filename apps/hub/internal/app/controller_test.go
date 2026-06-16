@@ -181,7 +181,8 @@ func TestEventsStreamDisplayActions(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	ctx := t.Context()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/v1/events", nil)
 	if err != nil {
 		t.Fatalf("create request: %v", err)
