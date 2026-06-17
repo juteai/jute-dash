@@ -5,6 +5,7 @@ type JSONValue = Record<string, unknown> | unknown[];
 type MockHubOptions = {
   agents?: 'available' | 'none';
   status?: 'ok' | 'degraded';
+  layout?: 'default' | 'core-widgets';
   widgetState?:
     | 'ok'
     | 'empty'
@@ -233,6 +234,48 @@ async function handleAPI(
     }
     return json(route, { status: 'linked', connectionId: 'spotify-main' });
   }
+  if (
+    path === '/api/v1/integrations/spotify/web-playback-token' &&
+    method === 'GET'
+  ) {
+    return json(route, {
+      accessToken: 'mock-web-playback-token',
+      expiresAt: Date.now() + 3_600_000,
+      scope: 'streaming user-read-playback-state'
+    });
+  }
+  if (
+    path === '/api/v1/integrations/apple-music/music-kit-token' &&
+    method === 'GET'
+  ) {
+    return json(route, {
+      developerToken: 'mock-music-kit-token',
+      userToken: 'mock-apple-music-user-token'
+    });
+  }
+  if (
+    path === '/api/v1/integrations/apple-music/user-token' &&
+    method === 'POST'
+  ) {
+    return json(route, { status: 'linked', connectionId: 'apple-music-main' });
+  }
+  if (
+    path.match(/^\/api\/v1\/widgets\/[^/]+\/actions\/[^/]+$/) &&
+    method === 'POST'
+  ) {
+    const action = path.split('/').pop();
+    return json(route, {
+      status: 'accepted',
+      action,
+      results: [
+        {
+          id: 'mock-result',
+          name: 'Mock Result',
+          uri: 'spotify:track:mock-result'
+        }
+      ]
+    });
+  }
   if (path.startsWith('/api/v1/proxy/agents/') && method === 'POST') {
     return handleA2A(route, options.chatFailure);
   }
@@ -315,11 +358,15 @@ async function safeBody(request: Request) {
 function mockState(options: MockHubOptions) {
   const agents = options.agents === 'none' ? [] : [agent()];
   const status = appStatus(options.status ?? 'ok', agents.length);
+  const widgetLayout =
+    options.layout === 'core-widgets'
+      ? coreWidgetsLayout(options.widgetState ?? 'ok')
+      : layout(options.widgetState ?? 'ok');
   return {
     config: config(agents),
     home: home(),
     agents,
-    layout: layout(options.widgetState ?? 'ok'),
+    layout: widgetLayout,
     catalog: catalog(),
     voice: voice(),
     status,
@@ -335,6 +382,14 @@ function mockState(options: MockHubOptions) {
         name: 'Spotify',
         settings: { auth_type: 'user_app_pkce', client_id: 'client-id' },
         secretRefs: { refresh_token: 'secret:spotify-refresh' },
+        enabled: true
+      },
+      {
+        id: 'apple-music-main',
+        kind: 'apple-music',
+        name: 'Apple Music',
+        settings: { auth_type: 'music_kit' },
+        secretRefs: { user_token: 'secret:apple-music-user' },
         enabled: true
       }
     ],
@@ -358,6 +413,12 @@ function mockState(options: MockHubOptions) {
             secret: false
           }
         ]
+      },
+      {
+        kind: 'apple-music',
+        displayName: 'Apple Music',
+        description: 'Apple Music playback',
+        fields: []
       }
     ]
   };
@@ -561,6 +622,113 @@ function layout(state: NonNullable<MockHubOptions['widgetState']>) {
   };
 }
 
+function coreWidgetsLayout(state: NonNullable<MockHubOptions['widgetState']>) {
+  const widgets = [
+    widget('date-time', 'date-time', 'Date & Time', 0, 0, 3, 2, {
+      status: 'available'
+    }),
+    widget('weather', 'weather', 'Weather', 3, 0, 3, 2, weatherData(state)),
+    widget('rss', 'rss', 'Headlines', 0, 2, 3, 2, okWidgetData('rss')),
+    widget(
+      'markets',
+      'markets',
+      'Markets',
+      3,
+      2,
+      3,
+      2,
+      okWidgetData('markets')
+    ),
+    withConnection(
+      widget(
+        'spotify',
+        'spotify',
+        'Spotify',
+        0,
+        4,
+        3,
+        2,
+        okWidgetData('spotify')
+      ),
+      'spotify-main'
+    ),
+    withConnection(
+      widget(
+        'apple-music',
+        'apple-music',
+        'Apple Music',
+        3,
+        4,
+        3,
+        2,
+        okWidgetData('apple-music')
+      ),
+      'apple-music-main'
+    ),
+    widget(
+      'philips-hue',
+      'philips-hue',
+      'Hue',
+      0,
+      6,
+      3,
+      2,
+      okWidgetData('philips-hue')
+    ),
+    widget(
+      'zigbee2mqtt',
+      'zigbee2mqtt',
+      'Zigbee',
+      3,
+      6,
+      3,
+      2,
+      okWidgetData('zigbee2mqtt')
+    ),
+    widget('chat-history', 'chat-history', 'Saved Chats', 0, 8, 3, 2, {
+      status: 'available'
+    }),
+    widget(
+      'timers-alarms',
+      'timers-alarms',
+      'Timers',
+      3,
+      8,
+      3,
+      2,
+      okWidgetData('timers-alarms')
+    ),
+    widget(
+      'calendar',
+      'calendar',
+      'Calendar',
+      0,
+      10,
+      3,
+      2,
+      okWidgetData('calendar')
+    )
+  ];
+  return {
+    profileId: 'test-profile',
+    schemaVersion: 3,
+    defaultScreenId: 'main',
+    activeScreenId: 'main',
+    defaultVariant: 'desktop',
+    variants: variants(widgets),
+    widgets,
+    screens: [
+      {
+        id: 'main',
+        label: 'Main',
+        defaultVariant: 'desktop',
+        variants: variants(widgets),
+        widgets
+      }
+    ]
+  };
+}
+
 function variants(widgets: ReturnType<typeof widget>[]) {
   return [
     {
@@ -568,7 +736,7 @@ function variants(widgets: ReturnType<typeof widget>[]) {
       label: 'Phone',
       minWidth: 0,
       columns: 1,
-      rows: 8,
+      rows: Math.max(8, widgets.length * 2),
       gap: 12,
       placements: placements(widgets, 1)
     },
@@ -577,7 +745,7 @@ function variants(widgets: ReturnType<typeof widget>[]) {
       label: 'Desktop',
       minWidth: 768,
       columns: 6,
-      rows: 4,
+      rows: Math.max(4, ...widgets.map((item) => item.y + item.h)),
       gap: 12,
       placements: placements(widgets, 6)
     }
@@ -621,6 +789,176 @@ function widget(
     mode: 'ui',
     data
   };
+}
+
+function withConnection<T extends ReturnType<typeof widget>>(
+  item: T,
+  connectionId: string
+) {
+  return {
+    ...item,
+    connectionRefs: { account: connectionId }
+  };
+}
+
+function okWidgetData(kind: string) {
+  switch (kind) {
+    case 'rss':
+      return {
+        status: 'ok',
+        data: [
+          {
+            feedName: 'Home',
+            items: [
+              {
+                title: 'Household automations are calm today',
+                link: 'https://example.com/home',
+                pubDate: now
+              }
+            ]
+          }
+        ]
+      };
+    case 'markets':
+      return {
+        status: 'ok',
+        data: [
+          {
+            symbol: 'AAPL',
+            name: 'Apple',
+            price: 192.4,
+            currency: 'USD',
+            change: 1.2,
+            changePercent: 0.62
+          }
+        ]
+      };
+    case 'spotify':
+    case 'apple-music':
+      return {
+        status: 'ok',
+        data: {
+          track_title: 'Home Mode',
+          artist_name: 'Jute Dash',
+          is_playing: true,
+          volume: 48,
+          progress_ms: 64000,
+          duration_ms: 180000,
+          track_uri: `${kind}:track:home-mode`,
+          top_albums: [
+            {
+              id: `${kind}-album-1`,
+              name: 'Morning Loop',
+              artist_name: 'Jute Dash',
+              uri: `${kind}:album:morning-loop`,
+              album_art_url: ''
+            }
+          ]
+        }
+      };
+    case 'philips-hue':
+      return {
+        status: 'ok',
+        data: {
+          devices: [
+            { id: 'kitchen-light', name: 'Kitchen light', state: true },
+            { id: 'hall-light', name: 'Hall light', state: false }
+          ]
+        }
+      };
+    case 'zigbee2mqtt':
+      return {
+        status: 'ok',
+        data: {
+          devices: [
+            {
+              id: 'desk-lamp',
+              name: 'Desk lamp',
+              type: 'light',
+              state: true
+            },
+            {
+              id: 'entry-temp',
+              name: 'Entry temperature',
+              type: 'sensor',
+              value: '20.1 C'
+            }
+          ]
+        }
+      };
+    case 'timers-alarms':
+      return {
+        status: 'ok',
+        data: {
+          active: [
+            {
+              id: 'timer-tea',
+              kind: 'timer',
+              label: 'Tea',
+              status: 'active',
+              dueAt: '2099-06-17T09:05:00.000Z',
+              durationSeconds: 300,
+              remainingSeconds: 305,
+              sound: 'chime'
+            },
+            {
+              id: 'alarm-school-run',
+              kind: 'alarm',
+              label: 'School run',
+              status: 'active',
+              dueAt: '2099-06-17T10:00:00.000Z',
+              time: '07:30',
+              weekdays: [1, 2, 3, 4, 5],
+              remainingSeconds: 3600,
+              recurring: true,
+              sound: 'bell'
+            }
+          ],
+          ringing: [],
+          notificationSound: 'chime',
+          defaultSnoozeMins: 9,
+          generatedAt: now,
+          timezone: 'Europe/London'
+        }
+      };
+    case 'calendar':
+      return {
+        status: 'ok',
+        data: {
+          events: [
+            {
+              id: 'school-assembly',
+              uid: 'school-assembly',
+              title: 'School assembly',
+              calendar: 'Family',
+              start: '2099-06-17T09:45:00.000Z',
+              end: '2099-06-17T10:30:00.000Z',
+              allDay: false,
+              location: 'Hall',
+              source: 'ics'
+            }
+          ],
+          nextEvent: {
+            id: 'school-assembly',
+            title: 'School assembly',
+            calendar: 'Family',
+            start: '2099-06-17T09:45:00.000Z',
+            end: '2099-06-17T10:30:00.000Z',
+            location: 'Hall'
+          },
+          alerts: [],
+          ringing: [],
+          ringingCount: 0,
+          alertLeadMinutes: 10,
+          defaultSnoozeMins: 9,
+          notificationSound: 'chime',
+          generatedAt: now,
+          source: 'ics'
+        }
+      };
+    default:
+      return { status: 'ok', data: {} };
+  }
 }
 
 function weatherData(state: NonNullable<MockHubOptions['widgetState']>) {
