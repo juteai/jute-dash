@@ -401,6 +401,10 @@ func (r *Repository) ActiveTTSProvider(ctx context.Context, deviceProfileID stri
 	if locale == "" {
 		locale = ttsVoiceLocale(manifest, voiceID)
 	}
+	modelID := strings.TrimSpace(settings.TTSModelID)
+	if modelID == "" {
+		modelID = manifest.TTS.DefaultModelID
+	}
 	switch manifest.Transport.Type {
 	case "wyoming":
 		return WyomingTTSProvider{
@@ -413,7 +417,7 @@ func (r *Repository) ActiveTTSProvider(ctx context.Context, deviceProfileID stri
 		return HTTPJSONTTSProvider{
 			ProviderID: provider.ID,
 			Endpoint:   manifest.Transport.Endpoint,
-			ModelID:    manifest.TTS.DefaultModelID,
+			ModelID:    modelID,
 			VoiceID:    voiceID,
 			Locale:     locale,
 		}, nil

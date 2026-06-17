@@ -1008,6 +1008,7 @@ func TestActiveTTSProviderResolvesSelectedHTTPJSONProvider(t *testing.T) {
 	defer st.Close()
 	bootstrap := DefaultConfig()
 	bootstrap.Voice.TTSProviderID = "http-tts"
+	bootstrap.Voice.TTSModelID = "selected-model"
 	bootstrap.Voice.TTSVoiceID = "amy"
 	bootstrap.Voice.TTSLocale = "en-GB"
 	bootstrap.Voice.TTSEnabled = true
@@ -1029,7 +1030,7 @@ func TestActiveTTSProviderResolvesSelectedHTTPJSONProvider(t *testing.T) {
 	}
 	if httpJSON.ProviderID != "http-tts" ||
 		httpJSON.Endpoint != "http://127.0.0.1:10501/tts" ||
-		httpJSON.ModelID != "local-model" ||
+		httpJSON.ModelID != "selected-model" ||
 		httpJSON.VoiceID != "amy" ||
 		httpJSON.Locale != "en-GB" {
 		t.Fatalf("unexpected active TTS provider: %+v", httpJSON)
