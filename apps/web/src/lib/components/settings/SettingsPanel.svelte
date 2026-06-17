@@ -9,6 +9,7 @@
   import RoomsSettings from './RoomsSettings.svelte';
   import TilesSettings from './TilesSettings.svelte';
   import AgentsSettings from './AgentsSettings.svelte';
+  import VoiceSettings from './VoiceSettings.svelte';
 
   export let activeSection:
     | 'household'
@@ -111,33 +112,7 @@
           config, then restart the stack to change it.
         </p>
       {:else if activeSection === 'voice'}
-        <div class="settings-status-grid">
-          <div>
-            <span>Status</span><strong
-              >{$hubStream.dashboard.voice.serviceStatus}</strong
-            >
-          </div>
-          <div>
-            <span>State</span><strong>{$hubStream.dashboard.voice.state}</strong
-            >
-          </div>
-          <div>
-            <span>STT provider</span><strong
-              >{$hubStream.dashboard.voice.sttProviderId ||
-                'not configured'}</strong
-            >
-          </div>
-          <div>
-            <span>TTS provider</span><strong
-              >{$hubStream.dashboard.voice.ttsProviderId ||
-                'not configured'}</strong
-            >
-          </div>
-        </div>
-        <p class="settings-help">
-          Voice provider selection is planned next. This panel currently shows
-          the safe hub status only.
-        </p>
+        <VoiceSettings />
       {:else}
         <div class="settings-status-grid">
           <div>

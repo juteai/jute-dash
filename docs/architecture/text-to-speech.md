@@ -18,6 +18,22 @@ Default architecture path:
 
 The first implementation should prioritize playback, cancellation, and provider health over advanced voice styling.
 
+## Non-Canonical Fallback Decision
+
+`htgo-tts` is **not a canonical provider path** for v1. It is MIT licensed and convenient for Go
+experiments, but it is closer to a playback/helper package than a manifest-driven local neural TTS
+provider. It may be revisited only as a trusted `command` or external sidecar wrapper after the
+command-provider policy is enabled for a household or device profile. It must not bypass Voice
+Provider Pack manifests, hub speech policy, sensitive-output handling, provider health reporting, or
+the visual-first failure model.
+
+Browser `speechSynthesis` is **supported only as a non-canonical display fallback**. It can be used
+for settings voice preview or explicitly degraded display-only speech after the hub has approved the
+text for speech. It is not available for headless satellites, cannot be the default household TTS
+provider, and cannot speak sensitive content unless the same hub speech policy would allow a
+canonical provider to speak it. Voice availability is browser/OS dependent, so settings must present
+it as opportunistic rather than guaranteed.
+
 ## Component Flow
 
 ```mermaid
@@ -98,24 +114,61 @@ TTS provider manifests declare:
 
 For low-latency local playback, prefer PCM or WAV. For network transfer, Opus or MP3 may be acceptable when supported.
 
+## Wyoming TTS Path
+
+The first local-first TTS provider path is Wyoming over loopback or LAN TCP. Jute sends a
+`synthesize` request with hub-approved text and the selected voice/locale, then reads Wyoming
+`audio-start`, `audio-chunk`, and `audio-stop` events. The adapter returns playable PCM audio bytes
+with provider ID, voice ID, locale, sample rate, sample width, channel count, content type, playback
+kind, and duration metadata.
+
+Wyoming TTS health uses safe provider states:
+
+- invalid or unsafe endpoint: `misconfigured`;
+- unreachable endpoint: `offline`;
+- successful local/LAN connection: `available`.
+
+The adapter never embeds credentials in endpoints and does not upload text to cloud providers unless
+cloud opt-in and a cloud provider pack are explicitly selected.
+
+At runtime, the hub resolves the selected TTS Provider Pack from SQLite and attaches a provider only
+when the manifest is a local/offline Wyoming TTS pack, the provider health is `available` or
+`degraded`, required credentials are satisfied, and TTS is enabled for the device profile. Public
+provider and voice-listing APIs continue to omit transport endpoints and credential metadata.
+If a device profile references a voice ID that the current provider manifest no longer declares, the
+hub falls back to the manifest's default voice before returning `GET /api/v1/tts/voices` metadata or
+calling the active provider. Voice listing may be scoped with `deviceProfileId`; otherwise the default
+display profile is used.
+
 ## API Contracts
 
-The current voice foundation does not synthesize or play TTS audio. It only persists selected TTS provider and voice IDs beside the rest of device voice settings so later TTS APIs can use the same configuration surface.
+The voice foundation persists selected TTS provider, model, voice, locale, speed, and volume beside the rest of device voice settings so playback APIs can use the same configuration surface.
 
-Future hub APIs:
+Implemented foundation APIs:
 
-- `GET /api/v1/tts/voices`: returns voices for the selected provider or a requested provider ID.
+- `GET /api/v1/tts/voices`: returns voices for the selected provider or a requested `providerId`,
+  scoped to the default profile or requested `deviceProfileId`.
 - `POST /api/v1/tts/preview`: synthesizes a short user-confirmed preview phrase.
 - `POST /api/v1/tts/speak`: queues speech for approved assistant text or explicit UI action.
 - `POST /api/v1/tts/stop`: stops current playback.
 
-Future events:
+The preview/speak HTTP implementation applies hub speech policy, emits safe TTS state events, and returns a control response. When a selected local Wyoming provider is available, the server attaches it to the controller, calls the provider synthesis path, and returns safe playback metadata such as content type, sample format, duration, and audio byte count without putting raw audio bytes on the JSON or SSE surface. Without an attached provider, the same API remains a safe control/event path for UI integration tests.
+
+`POST /api/v1/tts/stop` records `tts.stopped` as a terminal state for the active action and cancels
+any in-flight provider synthesis context, including barge-in stops. If the provider returns after
+that cancellation, the hub preserves the stopped state instead of converting the action to a
+provider failure.
+
+Implemented events:
 
 - `tts.started`: synthesis or playback has begun.
-- `tts.chunk`: optional streaming progress event for chunked playback.
 - `tts.completed`: playback completed.
 - `tts.failed`: synthesis or playback failed.
 - `tts.stopped`: user, policy, barge-in, or timeout stopped playback.
+
+Future events:
+
+- `tts.chunk`: optional streaming progress event for chunked playback.
 
 Every TTS event includes `id`, `type`, `createdAt`, `deviceId`, optional `conversationId`, optional `turnId`, and `payload`.
 
@@ -142,17 +195,17 @@ Cache keys include:
 - provider ID;
 - model ID;
 - voice ID;
-- locale;
+- effective locale from the request or device profile fallback;
 - normalized text hash;
 - style or instruction hash;
 - speed;
 - output format.
 
-Rules:
+Foundation cache rules:
 
 - do not cache sensitive responses by default;
 - do not cache cloud TTS output unless the user enables it;
-- provide a settings action to clear the cache;
+- expose cache eligibility without writing cache files yet;
 - never use raw text as a cache filename.
 
 ## Failure Behavior

@@ -15,6 +15,7 @@ Jute Dash is a local-first home assistant platform built around a headless-capab
 - [MCP Bridge](mcp-bridge.md): optional local MCP tool and context surface for trusted A2A agents.
 - [Voice And Wake Word Architecture](voice.md): local-first hybrid voice, wake word, STT/TTS providers, follow-up listening, and conversation UI.
 - [Voice Provider Packs](voice-providers.md): selectable STT/TTS provider plugins, manifests, transports, health checks, and contribution rules.
+- [Headless Voice Satellites](voice-satellites.md): pairing, authentication, safe events, provider placement, provisioning, and multi-room privacy for future satellite nodes.
 - [Text-To-Speech](text-to-speech.md): spoken response policy, provider choices, playback, caching, and TTS UI contracts.
 - [Distribution](distribution.md): multi-platform builds, release artifacts, Docker, PWA/kiosk, Raspberry Pi, and future native wrappers.
 - [UX Customization](ux-customization.md): dashboard experience, themes, layout profiles, ambient mode, and persistence.

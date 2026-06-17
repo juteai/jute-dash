@@ -39,6 +39,7 @@ type Server struct {
 	display         *displayactions.Dispatcher
 	voiceDispatcher *voice.Dispatcher
 	turnRunner      *agents.Runner
+	voiceRuntime    *voiceConversationRuntime
 	mu              sync.Mutex
 	started         time.Time
 	version         string
@@ -258,6 +259,7 @@ func newServer(
 		syncer:          syncer,
 		display:         display,
 		voiceDispatcher: voiceDispatcher,
+		voiceRuntime:    newVoiceConversationRuntime(),
 		started:         time.Now().UTC(),
 		version:         version,
 	}
@@ -295,6 +297,9 @@ func newServer(
 	mux.HandleFunc("/healthz", server.handleHealth)
 	mux.HandleFunc("/api/v1/status", server.handleStatus)
 	mux.HandleFunc("/api/v1/config", server.handleConfig)
+	mux.HandleFunc("/api/v1/voice/transcripts/final", server.handleVoiceFinalTranscript)
+	mux.HandleFunc("/api/v1/voice/satellites", server.handleVoiceSatellites)
+	mux.HandleFunc("/api/v1/voice/satellites/", server.handleVoiceSatelliteRoutes)
 
 	// Registrations
 	homestate.NewController(
@@ -319,9 +324,22 @@ func newServer(
 
 	dashboard.NewBackgroundsController(backgroundsDir).RegisterRoutes(mux)
 
-	voice.NewController(
+	var ttsProvider voice.TTSProvider
+	if providerStore, ok := server.voiceStore.(interface {
+		ActiveTTSProvider(context.Context, string) (voice.TTSProvider, error)
+	}); ok {
+		if provider, err := providerStore.ActiveTTSProvider(
+			context.Background(),
+			voice.DefaultDeviceProfileID,
+		); err == nil {
+			ttsProvider = provider
+		}
+	}
+	voice.NewControllerWithTTSProvider(
 		server.voiceStore,
 		server.voiceDispatcher,
+		server.voiceRuntime.cancelAll,
+		ttsProvider,
 	).RegisterRoutes(mux)
 
 	agents.NewController(agents.ControllerOptions{

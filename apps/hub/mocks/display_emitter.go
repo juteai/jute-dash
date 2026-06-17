@@ -21,6 +21,151 @@ func (_m *DisplayEmitter) EXPECT() *DisplayEmitter_Expecter {
 	return &DisplayEmitter_Expecter{mock: &_m.Mock}
 }
 
+// EmitConversationEvent provides a mock function with given fields: eventType, deviceID, conversationID, payload
+func (_m *DisplayEmitter) EmitConversationEvent(eventType string, deviceID string, conversationID string, payload interface{}) voice.VoiceEvent {
+	ret := _m.Called(eventType, deviceID, conversationID, payload)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EmitConversationEvent")
+	}
+
+	var r0 voice.VoiceEvent
+	if rf, ok := ret.Get(0).(func(string, string, string, interface{}) voice.VoiceEvent); ok {
+		r0 = rf(eventType, deviceID, conversationID, payload)
+	} else {
+		r0 = ret.Get(0).(voice.VoiceEvent)
+	}
+
+	return r0
+}
+
+// DisplayEmitter_EmitConversationEvent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EmitConversationEvent'
+type DisplayEmitter_EmitConversationEvent_Call struct {
+	*mock.Call
+}
+
+// EmitConversationEvent is a helper method to define mock.On call
+//   - eventType string
+//   - deviceID string
+//   - conversationID string
+//   - payload interface{}
+func (_e *DisplayEmitter_Expecter) EmitConversationEvent(eventType interface{}, deviceID interface{}, conversationID interface{}, payload interface{}) *DisplayEmitter_EmitConversationEvent_Call {
+	return &DisplayEmitter_EmitConversationEvent_Call{Call: _e.mock.On("EmitConversationEvent", eventType, deviceID, conversationID, payload)}
+}
+
+func (_c *DisplayEmitter_EmitConversationEvent_Call) Run(run func(eventType string, deviceID string, conversationID string, payload interface{})) *DisplayEmitter_EmitConversationEvent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(string), args[2].(string), args[3].(interface{}))
+	})
+	return _c
+}
+
+func (_c *DisplayEmitter_EmitConversationEvent_Call) Return(_a0 voice.VoiceEvent) *DisplayEmitter_EmitConversationEvent_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *DisplayEmitter_EmitConversationEvent_Call) RunAndReturn(run func(string, string, string, interface{}) voice.VoiceEvent) *DisplayEmitter_EmitConversationEvent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// EmitSatelliteEvent provides a mock function with given fields: eventType, satellite, payload
+func (_m *DisplayEmitter) EmitSatelliteEvent(eventType string, satellite voice.SatelliteProjection, payload voice.SatelliteEventPayload) voice.VoiceEvent {
+	ret := _m.Called(eventType, satellite, payload)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EmitSatelliteEvent")
+	}
+
+	var r0 voice.VoiceEvent
+	if rf, ok := ret.Get(0).(func(string, voice.SatelliteProjection, voice.SatelliteEventPayload) voice.VoiceEvent); ok {
+		r0 = rf(eventType, satellite, payload)
+	} else {
+		r0 = ret.Get(0).(voice.VoiceEvent)
+	}
+
+	return r0
+}
+
+// DisplayEmitter_EmitSatelliteEvent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EmitSatelliteEvent'
+type DisplayEmitter_EmitSatelliteEvent_Call struct {
+	*mock.Call
+}
+
+// EmitSatelliteEvent is a helper method to define mock.On call
+//   - eventType string
+//   - satellite voice.SatelliteProjection
+//   - payload voice.SatelliteEventPayload
+func (_e *DisplayEmitter_Expecter) EmitSatelliteEvent(eventType interface{}, satellite interface{}, payload interface{}) *DisplayEmitter_EmitSatelliteEvent_Call {
+	return &DisplayEmitter_EmitSatelliteEvent_Call{Call: _e.mock.On("EmitSatelliteEvent", eventType, satellite, payload)}
+}
+
+func (_c *DisplayEmitter_EmitSatelliteEvent_Call) Run(run func(eventType string, satellite voice.SatelliteProjection, payload voice.SatelliteEventPayload)) *DisplayEmitter_EmitSatelliteEvent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(voice.SatelliteProjection), args[2].(voice.SatelliteEventPayload))
+	})
+	return _c
+}
+
+func (_c *DisplayEmitter_EmitSatelliteEvent_Call) Return(_a0 voice.VoiceEvent) *DisplayEmitter_EmitSatelliteEvent_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *DisplayEmitter_EmitSatelliteEvent_Call) RunAndReturn(run func(string, voice.SatelliteProjection, voice.SatelliteEventPayload) voice.VoiceEvent) *DisplayEmitter_EmitSatelliteEvent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// EmitTTSEvent provides a mock function with given fields: eventType, deviceID, response
+func (_m *DisplayEmitter) EmitTTSEvent(eventType string, deviceID string, response voice.TTSActionResponse) voice.VoiceEvent {
+	ret := _m.Called(eventType, deviceID, response)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EmitTTSEvent")
+	}
+
+	var r0 voice.VoiceEvent
+	if rf, ok := ret.Get(0).(func(string, string, voice.TTSActionResponse) voice.VoiceEvent); ok {
+		r0 = rf(eventType, deviceID, response)
+	} else {
+		r0 = ret.Get(0).(voice.VoiceEvent)
+	}
+
+	return r0
+}
+
+// DisplayEmitter_EmitTTSEvent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EmitTTSEvent'
+type DisplayEmitter_EmitTTSEvent_Call struct {
+	*mock.Call
+}
+
+// EmitTTSEvent is a helper method to define mock.On call
+//   - eventType string
+//   - deviceID string
+//   - response voice.TTSActionResponse
+func (_e *DisplayEmitter_Expecter) EmitTTSEvent(eventType interface{}, deviceID interface{}, response interface{}) *DisplayEmitter_EmitTTSEvent_Call {
+	return &DisplayEmitter_EmitTTSEvent_Call{Call: _e.mock.On("EmitTTSEvent", eventType, deviceID, response)}
+}
+
+func (_c *DisplayEmitter_EmitTTSEvent_Call) Run(run func(eventType string, deviceID string, response voice.TTSActionResponse)) *DisplayEmitter_EmitTTSEvent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(string), args[2].(voice.TTSActionResponse))
+	})
+	return _c
+}
+
+func (_c *DisplayEmitter_EmitTTSEvent_Call) Return(_a0 voice.VoiceEvent) *DisplayEmitter_EmitTTSEvent_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *DisplayEmitter_EmitTTSEvent_Call) RunAndReturn(run func(string, string, voice.TTSActionResponse) voice.VoiceEvent) *DisplayEmitter_EmitTTSEvent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // EmitVoiceStateChanged provides a mock function with given fields: deviceProfileID, payload
 func (_m *DisplayEmitter) EmitVoiceStateChanged(deviceProfileID string, payload voice.VoiceStatePayload) voice.VoiceEvent {
 	ret := _m.Called(deviceProfileID, payload)

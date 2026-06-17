@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,8 +20,13 @@ import (
 
 	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/dashboard"
+	"jute-dash/apps/hub/internal/app/filesync"
+	"jute-dash/apps/hub/internal/app/homestate"
+	"jute-dash/apps/hub/internal/app/voice"
 	a2a "jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
+	"jute-dash/apps/hub/internal/pkg/registry"
 	"jute-dash/apps/hub/mocks"
 
 	"github.com/stretchr/testify/mock"
@@ -126,6 +132,77 @@ func TestEventsStreamDisplayActions(t *testing.T) {
 	}
 	if !sawNotification {
 		t.Fatal("event stream did not include display.notification")
+	}
+}
+
+func TestEventsStreamVoiceStateChanges(t *testing.T) {
+	handler := New(testConfig(), "test")
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/v1/events", nil)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("open event stream: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	for range 8 {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read initial event stream: %v", err)
+		}
+		if strings.Contains(line, "event: hub.connected") {
+			break
+		}
+	}
+
+	postReq, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/api/v1/voice/unmute", nil)
+	if err != nil {
+		t.Fatalf("create unmute request: %v", err)
+	}
+	postResp, err := ts.Client().Do(postReq)
+	if err != nil {
+		t.Fatalf("unmute voice: %v", err)
+	}
+	_ = postResp.Body.Close()
+	if postResp.StatusCode != http.StatusOK {
+		t.Fatalf("unmute status = %d", postResp.StatusCode)
+	}
+
+	var sawVoiceState bool
+	var sawSafeStatus bool
+	for range 20 {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read event stream: %v", err)
+		}
+		if strings.Contains(line, "event: voice.state_changed") {
+			sawVoiceState = true
+		}
+		if strings.Contains(line, `"deviceId":"default-display"`) &&
+			strings.Contains(line, `"serviceStatus":"not_configured"`) &&
+			!strings.Contains(strings.ToLower(line), "secret") {
+			sawSafeStatus = true
+		}
+		if sawVoiceState && sawSafeStatus {
+			break
+		}
+	}
+	if !sawVoiceState {
+		t.Fatal("event stream did not include voice.state_changed")
+	}
+	if !sawSafeStatus {
+		t.Fatal("event stream did not include safe voice status payload")
 	}
 }
 
@@ -533,6 +610,151 @@ func TestVoiceMuteEndpointsUpdateState(t *testing.T) {
 	}
 }
 
+func TestVoiceSettingsPatchPersistsSafeSettings(t *testing.T) {
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+	handler := NewServer(
+		testConfig(),
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		"",
+		nil,
+	)
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/voice/settings",
+		bytes.NewBufferString(`{
+			"enabled": true,
+			"wakeWordModelId": "hey-jute",
+			"wakeWordPhrase": "Hey Jute",
+			"wakeSensitivity": 0.4,
+			"sttProviderId": "local-stt",
+			"ttsProviderId": "local-tts",
+			"ttsVoiceId": "amy",
+			"ttsEnabled": true,
+			"ttsLocale": "en-GB",
+			"ttsSpeed": 1.15,
+			"ttsVolume": 0,
+			"preferredAgentId": "house",
+			"cloudOptIn": true,
+			"commandProvidersEnabled": true,
+			"followupWindowSeconds": 9,
+			"microphoneProfile": "kitchen-array"
+		}`),
+	)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body VoiceStatusResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.Enabled ||
+		body.WakeWordModelID != "hey-jute" ||
+		body.WakeWordPhrase != "Hey Jute" ||
+		body.WakeSensitivity != 0.4 ||
+		body.STTProviderID != "local-stt" ||
+		body.TTSProviderID != "local-tts" ||
+		body.TTSVoiceID != "amy" ||
+		!body.TTSEnabled ||
+		body.TTSLocale != "en-GB" ||
+		body.TTSSpeed != 1.15 ||
+		body.TTSVolume != 0 ||
+		body.PreferredAgentID != "house" ||
+		!body.CloudOptIn ||
+		!body.CommandProvidersEnabled ||
+		body.FollowupWindowSeconds != 9 ||
+		body.MicrophoneProfile != "kitchen-array" {
+		t.Fatalf("unexpected voice settings response: %+v", body)
+	}
+}
+
+func TestVoiceSettingsPatchRejectsUnsafeOrInvalidPayloads(t *testing.T) {
+	handler := New(testConfig(), "test")
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "secret reference field",
+			body: `{"enabled":true,"credentialEnv":"OPENAI_API_KEY"}`,
+		},
+		{
+			name: "raw credential field",
+			body: `{"enabled":true,"apiKey":"secret-value"}`,
+		},
+		{
+			name: "invalid followup",
+			body: `{"followupWindowSeconds":45}`,
+		},
+		{
+			name: "trailing credential payload",
+			body: `{"enabled":true,"cloudOptIn":false,"commandProvidersEnabled":false}{"apiKey":"secret-value","credentialEnv":"OPENAI_API_KEY"}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(
+				http.MethodPatch,
+				"/api/v1/voice/settings",
+				bytes.NewBufferString(tt.body),
+			)
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), "OPENAI_API_KEY") ||
+				strings.Contains(rec.Body.String(), "secret-value") {
+				t.Fatalf("response leaked unsafe payload: %s", rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestVoiceSettingsPatchRejectsTrailingCredentialPayloadWithoutLoggingIt(t *testing.T) {
+	handler := New(testConfig(), "test")
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	loggedHandler := RequestLogger(logger)(handler)
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/voice/settings",
+		bytes.NewBufferString(
+			`{"enabled":true,"cloudOptIn":false,"commandProvidersEnabled":false}{"apiKey":"secret-value","credentialEnv":"OPENAI_API_KEY"}`,
+		),
+	)
+	rec := httptest.NewRecorder()
+
+	loggedHandler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	for _, leaked := range []string{
+		"secret-value",
+		"OPENAI_API_KEY",
+		"credentialEnv",
+		"apiKey",
+	} {
+		if strings.Contains(rec.Body.String(), leaked) {
+			t.Fatalf("response leaked %q: %s", leaked, rec.Body.String())
+		}
+		if strings.Contains(logs.String(), leaked) {
+			t.Fatalf("request log leaked %q: %s", leaked, logs.String())
+		}
+	}
+}
+
 func TestVoiceProvidersEndpointReturnsStableEmptyList(t *testing.T) {
 	handler := New(testConfig(), "test")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/voice/providers", nil)
@@ -551,6 +773,1795 @@ func TestVoiceProvidersEndpointReturnsStableEmptyList(t *testing.T) {
 	}
 	if body.Providers == nil || len(body.Providers) != 0 {
 		t.Fatalf("unexpected providers response: %+v", body.Providers)
+	}
+}
+
+func TestTTSVoicesEndpointReturnsSelectedProviderVoices(t *testing.T) {
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+	cfg := testConfig()
+	cfg.Voice.TTSProviderID = "local-tts"
+	cfg.Voice.TTSVoiceID = "amy"
+	cfg.Voice.TTSLocale = "en-GB"
+	cfg.Voice.TTSSpeed = 1.1
+	cfg.Voice.TTSVolume = 0.8
+	insertTTSProvider(t, runtimeStore, "local-tts", "available", true, nil)
+	deviceProfileID := "bedroom-display"
+	selectedVoice := "dan"
+	selectedLocale := "cy-GB"
+	selectedSpeed := 0.9
+	selectedVolume := 0.4
+	if err := runtimeStore.DB().Create(&voice.SettingsDB{
+		DeviceProfileID: deviceProfileID,
+		TTSProviderID:   cfg.Voice.TTSProviderID,
+		TTSVoiceID:      selectedVoice,
+		TTSLocale:       selectedLocale,
+		TTSSpeed:        selectedSpeed,
+		TTSVolume:       selectedVolume,
+	}).Error; err != nil {
+		t.Fatalf("seed device profile voice settings: %v", err)
+	}
+	handler := NewServer(
+		cfg,
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		"",
+		nil,
+	)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/tts/voices?providerId=local-tts&deviceProfileId=bedroom-display",
+		nil,
+	)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		ProviderID   string     `json:"providerId"`
+		SetupStatus  string     `json:"setupStatus"`
+		HealthStatus string     `json:"healthStatus"`
+		VoiceID      string     `json:"selectedVoiceId"`
+		Locale       string     `json:"locale"`
+		Speed        float64    `json:"speed"`
+		Volume       float64    `json:"volume"`
+		Voices       []TTSVoice `json:"voices"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.ProviderID != "local-tts" ||
+		body.SetupStatus != "available" ||
+		body.HealthStatus != "available" ||
+		body.VoiceID != "dan" ||
+		body.Locale != "cy-GB" ||
+		body.Speed != 0.9 ||
+		body.Volume != 0.4 ||
+		len(body.Voices) != 2 {
+		t.Fatalf("unexpected TTS voices response: %+v", body)
+	}
+}
+
+func TestTTSSpeakSensitiveOutputDefaultsToVisualOnly(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.TTSProviderID = "local-tts"
+	cfg.Voice.TTSVoiceID = "amy"
+	handler := New(cfg, "test")
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/tts/speak",
+		bytes.NewBufferString(`{"text":"the door code is 1234","conversationId":"conversation-1","cache":true}`),
+	)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body TTSActionResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.VisualOnly ||
+		body.State != "visual_only" ||
+		body.Reason != "sensitive_output_visual_only" ||
+		body.CacheEligible ||
+		body.CacheKey != "" {
+		t.Fatalf("unexpected sensitive TTS response: %+v", body)
+	}
+}
+
+func TestTTSActionRejectsTrailingSensitivePayloadWithoutLoggingIt(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.TTSProviderID = "local-tts"
+	cfg.Voice.TTSVoiceID = "amy"
+	handler := New(cfg, "test")
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	loggedHandler := RequestLogger(logger)(handler)
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/tts/speak",
+		bytes.NewBufferString(`{"text":"hello kitchen"}{"text":"the door code is 9876","apiKey":"secret-value"}`),
+	)
+	rec := httptest.NewRecorder()
+
+	loggedHandler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	for _, leaked := range []string{
+		"door code",
+		"9876",
+		"secret-value",
+		"apiKey",
+	} {
+		if strings.Contains(rec.Body.String(), leaked) {
+			t.Fatalf("response leaked %q: %s", leaked, rec.Body.String())
+		}
+		if strings.Contains(logs.String(), leaked) {
+			t.Fatalf("request log leaked %q: %s", leaked, logs.String())
+		}
+	}
+}
+
+func TestTTSStopRejectsTrailingCredentialPayloadWithoutLoggingIt(t *testing.T) {
+	handler := New(testConfig(), "test")
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	loggedHandler := RequestLogger(logger)(handler)
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/tts/stop",
+		bytes.NewBufferString(`{"reason":"barge_in"}{"credentialEnv":"OPENAI_API_KEY","token":"secret-value"}`),
+	)
+	rec := httptest.NewRecorder()
+
+	loggedHandler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	for _, leaked := range []string{
+		"OPENAI_API_KEY",
+		"secret-value",
+		"credentialEnv",
+	} {
+		if strings.Contains(rec.Body.String(), leaked) {
+			t.Fatalf("response leaked %q: %s", leaked, rec.Body.String())
+		}
+		if strings.Contains(logs.String(), leaked) {
+			t.Fatalf("request log leaked %q: %s", leaked, logs.String())
+		}
+	}
+}
+
+func TestTTSSpeakAndStopEndpointsEmitSafeEvents(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.TTSProviderID = "local-tts"
+	cfg.Voice.TTSVoiceID = "amy"
+	dispatcher := displayactions.NewDispatcher()
+	handler := newServer(
+		cfg,
+		"test",
+		nil,
+		SetupStatus{Complete: true},
+		DefaultWidgetLayout(),
+		nil,
+		nil,
+		nil,
+		"",
+		dispatcher,
+	)
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	streamReq, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/v1/events", nil)
+	if err != nil {
+		t.Fatalf("create stream request: %v", err)
+	}
+	streamResp, err := ts.Client().Do(streamReq)
+	if err != nil {
+		t.Fatalf("open event stream: %v", err)
+	}
+	defer streamResp.Body.Close()
+	reader := bufio.NewReader(streamResp.Body)
+	for range 8 {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read initial stream: %v", err)
+		}
+		if strings.Contains(line, "event: hub.connected") {
+			break
+		}
+	}
+
+	speakReq, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		ts.URL+"/api/v1/tts/speak",
+		bytes.NewBufferString(
+			`{"text":"hello kitchen","conversationId":"conversation-1","turnId":"turn-1","cache":true}`,
+		),
+	)
+	if err != nil {
+		t.Fatalf("create speak request: %v", err)
+	}
+	speakResp, err := ts.Client().Do(speakReq)
+	if err != nil {
+		t.Fatalf("speak request: %v", err)
+	}
+	_ = speakResp.Body.Close()
+	if speakResp.StatusCode != http.StatusOK {
+		t.Fatalf("speak status = %d", speakResp.StatusCode)
+	}
+
+	stopReq, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		ts.URL+"/api/v1/tts/stop",
+		bytes.NewBufferString(`{"reason":"barge_in"}`),
+	)
+	if err != nil {
+		t.Fatalf("create stop request: %v", err)
+	}
+	stopResp, err := ts.Client().Do(stopReq)
+	if err != nil {
+		t.Fatalf("stop request: %v", err)
+	}
+	var stopBody TTSActionResponse
+	if err := json.NewDecoder(stopResp.Body).Decode(&stopBody); err != nil {
+		t.Fatalf("decode stop response: %v", err)
+	}
+	_ = stopResp.Body.Close()
+	if stopBody.State != "stopped" || stopBody.Reason != "barge_in" {
+		t.Fatalf("unexpected stop response: %+v", stopBody)
+	}
+
+	sawStarted := false
+	sawCompleted := false
+	sawStopped := false
+	for range 40 {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read stream: %v", err)
+		}
+		if strings.Contains(line, "event: tts.started") {
+			sawStarted = true
+		}
+		if strings.Contains(line, "event: tts.completed") {
+			sawCompleted = true
+		}
+		if strings.Contains(line, "event: tts.stopped") {
+			sawStopped = true
+		}
+		if strings.Contains(line, "token") || strings.Contains(line, "secret") {
+			t.Fatalf("TTS event leaked sensitive text: %s", line)
+		}
+		if sawStarted && sawCompleted && sawStopped {
+			break
+		}
+	}
+	if !sawStarted || !sawCompleted || !sawStopped {
+		t.Fatalf("missing TTS events: started=%v completed=%v stopped=%v", sawStarted, sawCompleted, sawStopped)
+	}
+}
+
+func TestVoiceFinalTranscriptStartsHubOwnedAgentTurn(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-voice-1",
+			Status:         "completed",
+			Text:           "The kitchen lights are on.",
+		}, nil
+	}
+	handler := NewWithMessageSender(cfg, "test", client)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/transcripts/final",
+		bytes.NewBufferString(`{"text":"turn on the kitchen lights","deviceId":"kitchen-display"}`),
+	)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body VoiceFinalTranscriptResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.Followup.Active || body.Followup.Turns != 1 || body.Followup.MaxTurns != maxVoiceSessionTurns {
+		t.Fatalf("unexpected follow-up response: %+v", body.Followup)
+	}
+	if len(client.SentMessages) != 1 {
+		t.Fatalf("expected one A2A send, got %d", len(client.SentMessages))
+	}
+	sent := client.SentMessages[0]
+	if sent.Text != "turn on the kitchen lights" ||
+		sent.ConversationID == "" ||
+		sent.BearerToken != "" {
+		t.Fatalf("unexpected A2A request: %+v", sent)
+	}
+}
+
+func TestVoiceFinalTranscriptEmitsDisplayEventsInOrder(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-voice-order",
+			Status:         "completed",
+			Text:           "Done.",
+		}, nil
+	}
+	syncer := filesync.NewInMemorySyncer(cfg)
+	cards := agents.NewCardService()
+	manager := agents.NewAgentManager(syncer, cards, "")
+	dispatcher := voice.NewDispatcher()
+	server := &Server{
+		cfg:             cfg,
+		agentsManager:   manager,
+		messages:        client,
+		voiceStore:      voice.NewMemoryRepositoryFromConfig(cfg.Voice),
+		voiceDispatcher: dispatcher,
+		voiceRuntime:    newVoiceConversationRuntime(),
+	}
+	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
+		GetRegistry:    manager.ActiveRegistry,
+		GetAgentConfig: manager.ConfiguredAgent,
+		GetAgentCardCache: func(context.Context, registry.Agent) (agents.AgentCardCache, bool) {
+			return agents.AgentCardCache{
+				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
+				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
+			}, true
+		},
+		GetDashboardContext: func(context.Context) map[string]any {
+			return map[string]any{}
+		},
+		Messages: client,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	events := dispatcher.Subscribe(ctx)
+
+	_, err := server.submitFinalTranscript(ctx, VoiceFinalTranscriptRequest{
+		Text:     "turn on the kitchen lights",
+		DeviceID: "kitchen-display",
+	})
+	if err != nil {
+		t.Fatalf("submitFinalTranscript() error = %v", err)
+	}
+	expected := []string{
+		voice.EventConversationStarted,
+		voice.EventVoiceTranscriptFinal,
+		voice.EventConversationTurnStarted,
+		voice.EventConversationTurnCompleted,
+		voice.EventConversationFollowupStarted,
+	}
+	got := make([]string, 0, len(expected))
+	conversationID := client.SentMessages[0].ConversationID
+	for len(got) < len(expected) {
+		select {
+		case event := <-events:
+			voiceEvent, ok := event.Data.(voice.VoiceEvent)
+			if !ok {
+				t.Fatalf("unexpected event data: %+v", event.Data)
+			}
+			got = append(got, event.Type)
+			if voiceEvent.DeviceID != "kitchen-display" || voiceEvent.ConversationID != conversationID {
+				t.Fatalf("event lost display routing context: %+v", voiceEvent)
+			}
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for ordered voice events, got %v", got)
+		}
+	}
+	if fmt.Sprint(got) != fmt.Sprint(expected) {
+		t.Fatalf("voice events out of order: got %v want %v", got, expected)
+	}
+}
+
+func TestVoiceFinalTranscriptStreamsAssistantTextSafely(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.StubSendMessage(a2a.SendMessageResult{
+		ConversationID: "voice-conversation-1",
+		Status:         "completed",
+		Text:           "The kitchen token=secret lights are on.",
+	}, nil)
+	handler := NewWithMessageSender(cfg, "test", client)
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	streamReq, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/v1/events", nil)
+	if err != nil {
+		t.Fatalf("create event stream request: %v", err)
+	}
+	streamResp, err := ts.Client().Do(streamReq)
+	if err != nil {
+		t.Fatalf("open event stream: %v", err)
+	}
+	defer streamResp.Body.Close()
+	if streamResp.StatusCode != http.StatusOK {
+		t.Fatalf("event stream status = %d", streamResp.StatusCode)
+	}
+	reader := bufio.NewReader(streamResp.Body)
+	for range 8 {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read initial event stream: %v", err)
+		}
+		if strings.Contains(line, "event: hub.connected") {
+			break
+		}
+	}
+
+	postReq, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		ts.URL+"/api/v1/voice/transcripts/final",
+		bytes.NewBufferString(`{"text":"turn on the kitchen lights","deviceId":"kitchen-display"}`),
+	)
+	if err != nil {
+		t.Fatalf("create transcript request: %v", err)
+	}
+	postResp, err := ts.Client().Do(postReq)
+	if err != nil {
+		t.Fatalf("post final transcript: %v", err)
+	}
+	_ = postResp.Body.Close()
+	if postResp.StatusCode != http.StatusOK {
+		t.Fatalf("transcript status = %d", postResp.StatusCode)
+	}
+
+	var awaitingTurnCompletedData bool
+	for range 40 {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read voice event stream: %v", err)
+		}
+		if strings.Contains(line, "event: conversation.turn_completed") {
+			awaitingTurnCompletedData = true
+			continue
+		}
+		if awaitingTurnCompletedData && strings.HasPrefix(line, "data: ") {
+			if strings.Contains(line, "token=secret") {
+				t.Fatalf("turn completed event leaked assistant secret text: %s", line)
+			}
+			if !strings.Contains(line, `"text":"The kitchen token=[redacted] lights are on."`) {
+				t.Fatalf("turn completed event omitted safe assistant text: %s", line)
+			}
+			return
+		}
+	}
+	t.Fatal("event stream did not include conversation.turn_completed data")
+}
+
+func TestSTTTurnProcessorSubmitsThroughServerFinalTranscriptSink(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-stt-1",
+			Status:         "completed",
+			Text:           "Done.",
+		}, nil
+	}
+	syncer := filesync.NewInMemorySyncer(cfg)
+	cards := agents.NewCardService()
+	manager := agents.NewAgentManager(syncer, cards, "")
+	store := &fixtureActiveSTTVoiceStore{
+		MemoryRepository: voice.NewMemoryRepositoryFromConfig(cfg.Voice),
+		provider: &fixtureAppSTTProvider{
+			result: voice.STTResult{
+				Text:       "turn on token=secret kitchen lights",
+				ProviderID: "local-stt",
+				ModelID:    "tiny-en",
+				Language:   "en-GB",
+				Duration:   40 * time.Millisecond,
+			},
+		},
+	}
+	server := &Server{
+		cfg:             cfg,
+		agentsManager:   manager,
+		messages:        client,
+		voiceStore:      store,
+		voiceDispatcher: voice.NewDispatcher(),
+		voiceRuntime:    newVoiceConversationRuntime(),
+	}
+	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
+		GetRegistry:    manager.ActiveRegistry,
+		GetAgentConfig: manager.ConfiguredAgent,
+		GetAgentCardCache: func(context.Context, registry.Agent) (agents.AgentCardCache, bool) {
+			return agents.AgentCardCache{
+				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
+				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
+			}, true
+		},
+		GetDashboardContext: func(context.Context) map[string]any {
+			return map[string]any{}
+		},
+		Messages: client,
+	})
+	processor, err := server.newSTTTurnProcessor(context.Background(), "", "kitchen-display")
+	if err != nil {
+		t.Fatalf("newSTTTurnProcessor() error = %v", err)
+	}
+
+	transcript, err := processor.Process(context.Background(), fixtureAppUtterance())
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+
+	if transcript.Text != "turn on token=[redacted] kitchen lights" ||
+		transcript.DeviceID != "kitchen-display" ||
+		transcript.ProviderID != "local-stt" {
+		t.Fatalf("unexpected transcript: %+v", transcript)
+	}
+	if len(client.SentMessages) != 1 {
+		t.Fatalf("expected one A2A send, got %d", len(client.SentMessages))
+	}
+	if client.SentMessages[0].Text != "turn on token=[redacted] kitchen lights" ||
+		client.SentMessages[0].ConversationID == "" {
+		t.Fatalf("unexpected A2A request: %+v", client.SentMessages[0])
+	}
+}
+
+func TestLocalVoiceServiceBuilderRoutesCapturedUtteranceThroughSTT(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-local-voice-1",
+			Status:         "completed",
+			Text:           "Done.",
+		}, nil
+	}
+	syncer := filesync.NewInMemorySyncer(cfg)
+	cards := agents.NewCardService()
+	manager := agents.NewAgentManager(syncer, cards, "")
+	store := &fixtureActiveSTTVoiceStore{
+		MemoryRepository: voice.NewMemoryRepositoryFromConfig(cfg.Voice),
+		provider: &fixtureAppSTTProvider{
+			result: voice.STTResult{
+				Text:       "turn on the kitchen lights",
+				ProviderID: "local-stt",
+				ModelID:    "tiny-en",
+				Language:   "en-GB",
+				Duration:   40 * time.Millisecond,
+			},
+		},
+	}
+	server := &Server{
+		cfg:             cfg,
+		agentsManager:   manager,
+		messages:        client,
+		voiceStore:      store,
+		voiceDispatcher: voice.NewDispatcher(),
+		voiceRuntime:    newVoiceConversationRuntime(),
+	}
+	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
+		GetRegistry:    manager.ActiveRegistry,
+		GetAgentConfig: manager.ConfiguredAgent,
+		GetAgentCardCache: func(context.Context, registry.Agent) (agents.AgentCardCache, bool) {
+			return agents.AgentCardCache{
+				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
+				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
+			}, true
+		},
+		GetDashboardContext: func(context.Context) map[string]any {
+			return map[string]any{}
+		},
+		Messages: client,
+	})
+	start := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	service, err := server.newLocalVoiceService(
+		context.Background(),
+		"",
+		"kitchen-display",
+		fixtureAppCapture{frames: []voice.AudioFrame{
+			fixtureAppFrame(start, 0, 0),
+			fixtureAppFrame(start, 100*time.Millisecond, 42),
+			fixtureAppFrame(start, 200*time.Millisecond, 0),
+			fixtureAppFrame(start, 300*time.Millisecond, 0),
+		}},
+		fixtureAppVAD{threshold: 10},
+	)
+	if err != nil {
+		t.Fatalf("newLocalVoiceService() error = %v", err)
+	}
+
+	if err := service.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	waitForSentMessages(t, client, 1)
+
+	if client.SentMessages[0].Text != "turn on the kitchen lights" ||
+		client.SentMessages[0].ConversationID == "" {
+		t.Fatalf("unexpected A2A request: %+v", client.SentMessages[0])
+	}
+}
+
+func TestLocalVoiceServiceBuilderEmitsRecoverableErrorWhenSTTFails(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	syncer := filesync.NewInMemorySyncer(cfg)
+	cards := agents.NewCardService()
+	manager := agents.NewAgentManager(syncer, cards, "")
+	dispatcher := voice.NewDispatcher()
+	store := &fixtureActiveSTTVoiceStore{
+		MemoryRepository: voice.NewMemoryRepositoryFromConfig(cfg.Voice),
+		provider: &fixtureAppSTTProvider{
+			err: errors.New("dial tcp 127.0.0.1:10300: token=secret unavailable"),
+		},
+	}
+	server := &Server{
+		cfg:             cfg,
+		agentsManager:   manager,
+		messages:        client,
+		voiceStore:      store,
+		voiceDispatcher: dispatcher,
+		voiceRuntime:    newVoiceConversationRuntime(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events := dispatcher.Subscribe(ctx)
+	start := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	service, err := server.newLocalVoiceService(
+		context.Background(),
+		"",
+		"kitchen-display",
+		fixtureAppCapture{frames: []voice.AudioFrame{
+			fixtureAppFrame(start, 0, 42),
+			fixtureAppFrame(start, 100*time.Millisecond, 0),
+			fixtureAppFrame(start, 200*time.Millisecond, 0),
+		}},
+		fixtureAppVAD{threshold: 10},
+	)
+	if err != nil {
+		t.Fatalf("newLocalVoiceService() error = %v", err)
+	}
+
+	if err := service.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	event := waitForVoiceStateEvent(t, events, voice.ServiceStateError)
+	recovered := waitForVoiceStateEvent(t, events, "wake_listening")
+
+	if len(client.SentMessages) != 0 {
+		t.Fatalf("STT failure should not send A2A messages: %+v", client.SentMessages)
+	}
+	payload, ok := event.Data.(voice.VoiceEvent)
+	if !ok {
+		t.Fatalf("unexpected event data: %+v", event.Data)
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+	if strings.Contains(string(raw), "127.0.0.1") ||
+		strings.Contains(string(raw), "token=secret") ||
+		strings.Contains(string(raw), "dial tcp") {
+		t.Fatalf("voice error event leaked provider details: %s", raw)
+	}
+	recoveredPayload, ok := recovered.Data.(voice.VoiceEvent)
+	if !ok {
+		t.Fatalf("unexpected recovery event data: %+v", recovered.Data)
+	}
+	state, ok := recoveredPayload.Payload.(voice.VoiceStatePayload)
+	if !ok || state.State != "wake_listening" || state.ServiceStatus != "ready" {
+		t.Fatalf("unexpected recovery state after STT failure: %+v", recoveredPayload.Payload)
+	}
+}
+
+func TestVoiceFinalTranscriptContinuesFollowupConversation(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-followup",
+			Status:         "completed",
+			Text:           "Done.",
+		}, nil
+	}
+	handler := NewWithMessageSender(cfg, "test", client)
+
+	first := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/transcripts/final",
+		bytes.NewBufferString(`{"text":"start a timer"}`),
+	)
+	firstRec := httptest.NewRecorder()
+	handler.ServeHTTP(firstRec, first)
+	if firstRec.Code != http.StatusOK {
+		t.Fatalf("first status = %d: %s", firstRec.Code, firstRec.Body.String())
+	}
+	firstConversationID := client.SentMessages[0].ConversationID
+
+	second := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/transcripts/final",
+		bytes.NewBufferString(`{"text":"make it ten minutes","conversationId":"`+firstConversationID+`"}`),
+	)
+	secondRec := httptest.NewRecorder()
+	handler.ServeHTTP(secondRec, second)
+	if secondRec.Code != http.StatusOK {
+		t.Fatalf("second status = %d: %s", secondRec.Code, secondRec.Body.String())
+	}
+	if len(client.SentMessages) != 2 {
+		t.Fatalf("expected two A2A sends, got %d", len(client.SentMessages))
+	}
+	if client.SentMessages[1].ConversationID != firstConversationID {
+		t.Fatalf("follow-up used wrong conversation: %+v", client.SentMessages[1])
+	}
+}
+
+func TestVoiceFinalTranscriptEndsFollowupAfterMaxTurns(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-followup-limit",
+			Status:         "completed",
+			Text:           "Done.",
+		}, nil
+	}
+	syncer := filesync.NewInMemorySyncer(cfg)
+	cards := agents.NewCardService()
+	manager := agents.NewAgentManager(syncer, cards, "")
+	dispatcher := voice.NewDispatcher()
+	server := &Server{
+		cfg:             cfg,
+		agentsManager:   manager,
+		messages:        client,
+		voiceStore:      voice.NewMemoryRepositoryFromConfig(cfg.Voice),
+		voiceDispatcher: dispatcher,
+		voiceRuntime:    newVoiceConversationRuntime(),
+	}
+	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
+		GetRegistry:    manager.ActiveRegistry,
+		GetAgentConfig: manager.ConfiguredAgent,
+		GetAgentCardCache: func(context.Context, registry.Agent) (agents.AgentCardCache, bool) {
+			return agents.AgentCardCache{
+				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
+				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
+			}, true
+		},
+		GetDashboardContext: func(context.Context) map[string]any {
+			return map[string]any{}
+		},
+		Messages: client,
+	})
+
+	var response VoiceFinalTranscriptResponse
+	conversationID := ""
+	for i := range maxVoiceSessionTurns {
+		req := VoiceFinalTranscriptRequest{
+			Text:           "turn",
+			ConversationID: conversationID,
+			DeviceID:       "kitchen-display",
+		}
+		var err error
+		response, err = server.submitFinalTranscript(context.Background(), req)
+		if err != nil {
+			t.Fatalf("turn %d submitFinalTranscript() error = %v", i, err)
+		}
+		if conversationID == "" {
+			conversationID = client.SentMessages[0].ConversationID
+		}
+	}
+
+	if response.Followup.Active ||
+		response.Followup.Turns != maxVoiceSessionTurns ||
+		response.Followup.MaxTurns != maxVoiceSessionTurns ||
+		response.Followup.ExpiresAt != "" {
+		t.Fatalf("expected inactive follow-up at max turns, got %+v", response.Followup)
+	}
+	if len(client.SentMessages) != maxVoiceSessionTurns {
+		t.Fatalf("expected %d A2A sends, got %d", maxVoiceSessionTurns, len(client.SentMessages))
+	}
+
+	_, err := server.submitFinalTranscript(context.Background(), VoiceFinalTranscriptRequest{
+		Text:           "one too many",
+		ConversationID: conversationID,
+		DeviceID:       "kitchen-display",
+	})
+	var transcriptErr voiceTranscriptError
+	ok := errors.As(err, &transcriptErr)
+	if !ok || transcriptErr.status != http.StatusConflict {
+		t.Fatalf("expected follow-up conflict after max turns, got %T %v", err, err)
+	}
+	if len(client.SentMessages) != maxVoiceSessionTurns {
+		t.Fatalf("follow-up limit should block extra A2A send, got %d sends", len(client.SentMessages))
+	}
+}
+
+func TestVoiceFinalTranscriptRejectsRawAudioPayloads(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	handler := New(cfg, "test")
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "pre-roll pcm",
+			body: `{"text":"hello","preRollPcm":"raw-audio"}`,
+		},
+		{
+			name: "raw audio pcm",
+			body: `{"text":"hello","rawAudioPcm":"raw-audio"}`,
+		},
+		{
+			name: "audio frames",
+			body: `{"text":"hello","frames":[{"pcm":"raw-audio"}]}`,
+		},
+		{
+			name: "provider internals",
+			body: `{"text":"hello","providerPayload":{"audio":"raw-audio","secret":"token=secret"}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/api/v1/voice/transcripts/final",
+				bytes.NewBufferString(tt.body),
+			)
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), "raw-audio") ||
+				strings.Contains(rec.Body.String(), "token=secret") {
+				t.Fatalf("error response leaked raw payload: %s", rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestVoiceTranscriptRequestLoggingOmitsRawTranscriptsAndAudio(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-log-safety",
+			Status:         "completed",
+			Text:           "Done.",
+		}, nil
+	}
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	handler := RequestLogger(logger)(NewWithMessageSender(cfg, "test", client))
+
+	transcriptNeedle := "RAW_TRANSCRIPT_SHOULD_NOT_BE_LOGGED"
+	audioNeedle := "RAW_AUDIO_SHOULD_NOT_BE_LOGGED"
+	validReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/transcripts/final",
+		bytes.NewBufferString(`{"text":"`+transcriptNeedle+`","deviceId":"kitchen-display"}`),
+	)
+	validRec := httptest.NewRecorder()
+	handler.ServeHTTP(validRec, validReq)
+	if validRec.Code != http.StatusOK {
+		t.Fatalf("valid transcript status = %d: %s", validRec.Code, validRec.Body.String())
+	}
+
+	rawAudioReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/transcripts/final",
+		bytes.NewBufferString(
+			`{"text":"hello","rawAudioPcm":"`+audioNeedle+`","frames":[{"pcm":"`+audioNeedle+`"}],"providerPayload":{"audio":"`+audioNeedle+`"}}`,
+		),
+	)
+	rawAudioRec := httptest.NewRecorder()
+	handler.ServeHTTP(rawAudioRec, rawAudioReq)
+	if rawAudioRec.Code != http.StatusBadRequest {
+		t.Fatalf("raw audio status = %d: %s", rawAudioRec.Code, rawAudioRec.Body.String())
+	}
+
+	logBody := logs.String()
+	for _, leaked := range []string{
+		transcriptNeedle,
+		audioNeedle,
+		"rawAudioPcm",
+		"frames",
+		"providerPayload",
+	} {
+		if strings.Contains(logBody, leaked) {
+			t.Fatalf("request log leaked %q: %s", leaked, logBody)
+		}
+	}
+	if !strings.Contains(logBody, "/api/v1/voice/transcripts/final") {
+		t.Fatalf("expected request metadata in logs, got %s", logBody)
+	}
+}
+
+func TestVoiceFinalTranscriptCancelClearsFollowup(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{ConversationID: req.ConversationID, Status: "completed", Text: "Done."}, nil
+	}
+	handler := NewWithMessageSender(cfg, "test", client)
+
+	first := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/transcripts/final",
+		bytes.NewBufferString(`{"text":"start listening"}`),
+	)
+	firstRec := httptest.NewRecorder()
+	handler.ServeHTTP(firstRec, first)
+	if firstRec.Code != http.StatusOK {
+		t.Fatalf("first status = %d: %s", firstRec.Code, firstRec.Body.String())
+	}
+	conversationID := client.SentMessages[0].ConversationID
+
+	cancelReq := httptest.NewRequest(http.MethodPost, "/api/v1/voice/cancel", nil)
+	cancelRec := httptest.NewRecorder()
+	handler.ServeHTTP(cancelRec, cancelReq)
+	if cancelRec.Code != http.StatusOK {
+		t.Fatalf("cancel status = %d: %s", cancelRec.Code, cancelRec.Body.String())
+	}
+
+	followup := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/transcripts/final",
+		bytes.NewBufferString(`{"text":"continue","conversationId":"`+conversationID+`"}`),
+	)
+	followupRec := httptest.NewRecorder()
+	handler.ServeHTTP(followupRec, followup)
+	if followupRec.Code != http.StatusConflict {
+		t.Fatalf("expected expired follow-up after cancel, got %d: %s", followupRec.Code, followupRec.Body.String())
+	}
+}
+
+func TestVoiceCancelEmitsConversationEndedEvent(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{ConversationID: req.ConversationID, Status: "completed", Text: "Done."}, nil
+	}
+	handler := NewWithMessageSender(cfg, "test", client)
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	streamReq, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/v1/events", nil)
+	if err != nil {
+		t.Fatalf("create event stream request: %v", err)
+	}
+	streamResp, err := ts.Client().Do(streamReq)
+	if err != nil {
+		t.Fatalf("open event stream: %v", err)
+	}
+	defer streamResp.Body.Close()
+	if streamResp.StatusCode != http.StatusOK {
+		t.Fatalf("event stream status = %d", streamResp.StatusCode)
+	}
+	reader := bufio.NewReader(streamResp.Body)
+	for range 8 {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read initial event stream: %v", err)
+		}
+		if strings.Contains(line, "event: hub.connected") {
+			break
+		}
+	}
+
+	firstReq, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		ts.URL+"/api/v1/voice/transcripts/final",
+		bytes.NewBufferString(`{"text":"start listening","deviceId":"kitchen-display"}`),
+	)
+	if err != nil {
+		t.Fatalf("create transcript request: %v", err)
+	}
+	firstResp, err := ts.Client().Do(firstReq)
+	if err != nil {
+		t.Fatalf("post final transcript: %v", err)
+	}
+	_ = firstResp.Body.Close()
+	if firstResp.StatusCode != http.StatusOK {
+		t.Fatalf("transcript status = %d", firstResp.StatusCode)
+	}
+	if len(client.SentMessages) != 1 {
+		t.Fatalf("expected one A2A send, got %d", len(client.SentMessages))
+	}
+	conversationID := client.SentMessages[0].ConversationID
+
+	cancelReq, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/api/v1/voice/cancel", nil)
+	if err != nil {
+		t.Fatalf("create cancel request: %v", err)
+	}
+	cancelResp, err := ts.Client().Do(cancelReq)
+	if err != nil {
+		t.Fatalf("cancel request: %v", err)
+	}
+	_ = cancelResp.Body.Close()
+	if cancelResp.StatusCode != http.StatusOK {
+		t.Fatalf("cancel status = %d", cancelResp.StatusCode)
+	}
+
+	var awaitingEndedData bool
+	for range 60 {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read voice event stream: %v", err)
+		}
+		if strings.Contains(line, "event: conversation.ended") {
+			awaitingEndedData = true
+			continue
+		}
+		if awaitingEndedData && strings.HasPrefix(line, "data: ") {
+			if !strings.Contains(line, `"conversationId":"`+conversationID+`"`) ||
+				!strings.Contains(line, `"deviceId":"kitchen-display"`) ||
+				!strings.Contains(line, `"reason":"canceled"`) {
+				t.Fatalf("conversation ended event did not describe cancellation safely: %s", line)
+			}
+			return
+		}
+	}
+	t.Fatal("event stream did not include conversation.ended after cancel")
+}
+
+func TestVoiceFinalTranscriptReturnsSafeAgentFailure(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	client := a2a.NewInMemoryClient()
+	client.StubSendMessage(
+		a2a.SendMessageResult{},
+		errors.New("token SECRET_VALUE failed at https://agent.example.com/private"),
+	)
+	handler := NewWithMessageSender(cfg, "test", client)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/transcripts/final",
+		bytes.NewBufferString(`{"text":"hello"}`),
+	)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "SECRET_VALUE") ||
+		strings.Contains(rec.Body.String(), "agent.example.com/private") {
+		t.Fatalf("agent failure leaked internals: %s", rec.Body.String())
+	}
+}
+
+func TestSatelliteFinalTranscriptStartsHubOwnedAgentTurn(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-satellite-1",
+			Status:         "completed",
+			Text:           "Satellite turn complete.",
+		}, nil
+	}
+	handler, _ := newSatelliteVoiceTestHandler(t, cfg, client, voice.SatelliteStatusPaired)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/satellites/sat-kitchen/transcripts/final",
+		bytes.NewBufferString(`{"text":"turn on the kitchen lights"}`),
+	)
+	req.Header.Set("X-Jute-Satellite-Auth", "secret-ref-kitchen")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body VoiceFinalTranscriptResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.Followup.Active || body.Followup.Turns != 1 {
+		t.Fatalf("unexpected follow-up response: %+v", body.Followup)
+	}
+	if len(client.SentMessages) != 1 {
+		t.Fatalf("expected one A2A send, got %d", len(client.SentMessages))
+	}
+	sent := client.SentMessages[0]
+	if sent.Text != "turn on the kitchen lights" ||
+		sent.ConversationID == "" ||
+		sent.BearerToken != "" {
+		t.Fatalf("unexpected A2A request: %+v", sent)
+	}
+}
+
+func TestSatelliteFinalTranscriptResponseOmitsDashboardContextAndAgentCredentials(t *testing.T) {
+	const agentToken = "satellite-agent-token-should-not-echo"
+	const dashboardSecret = "private-widget-state-should-not-echo"
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	cfg.Agents[0].Auth = &AuthConfig{Type: "bearer", EnvToken: "SATELLITE_AGENT_TOKEN"}
+	t.Setenv("SATELLITE_AGENT_TOKEN", agentToken)
+	agents.SetEnvReader(os.Getenv)
+
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-satellite-secret-boundary",
+			Status:         "completed",
+			Text:           "Done.",
+		}, nil
+	}
+	syncer := filesync.NewInMemorySyncer(cfg)
+	cards := agents.NewCardService()
+	manager := agents.NewAgentManager(syncer, cards, "")
+	voiceStore := voice.NewMemoryRepositoryFromConfig(cfg.Voice)
+	if _, err := voiceStore.SaveSatelliteInstall(context.Background(), voice.SatelliteRecord{
+		ID:                  "sat-kitchen",
+		DisplayName:         "Kitchen Satellite",
+		RoomLabel:           "Kitchen",
+		DeviceProfileID:     "kitchen-voice",
+		Status:              voice.SatelliteStatusPaired,
+		CredentialSecretRef: "secret-ref-kitchen",
+	}); err != nil {
+		t.Fatalf("SaveSatelliteInstall() error = %v", err)
+	}
+	server := &Server{
+		cfg:             cfg,
+		agentsManager:   manager,
+		messages:        client,
+		voiceStore:      voiceStore,
+		voiceDispatcher: voice.NewDispatcher(),
+		voiceRuntime:    newVoiceConversationRuntime(),
+	}
+	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
+		GetRegistry:    manager.ActiveRegistry,
+		GetAgentConfig: manager.ConfiguredAgent,
+		GetAgentCardCache: func(context.Context, registry.Agent) (agents.AgentCardCache, bool) {
+			return agents.AgentCardCache{
+				SelectedEndpointURL:       "https://agent.example.com/a2a/v1",
+				SelectedProtocolBinding:   a2a.ProtocolJSONRPC,
+				DashboardContextSupported: true,
+			}, true
+		},
+		GetDashboardContext: func(context.Context) map[string]any {
+			return map[string]any{
+				"dashboard": map[string]any{
+					"privateWidgetState": dashboardSecret,
+				},
+			}
+		},
+		Messages: client,
+	})
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/satellites/sat-kitchen/transcripts/final",
+		bytes.NewBufferString(`{"text":"turn on the kitchen lights"}`),
+	)
+	req.Header.Set("X-Jute-Satellite-Auth", "secret-ref-kitchen")
+	rec := httptest.NewRecorder()
+
+	server.handleVoiceSatelliteRoutes(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(client.SentMessages) != 1 {
+		t.Fatalf("expected one A2A send, got %d", len(client.SentMessages))
+	}
+	sent := client.SentMessages[0]
+	if sent.BearerToken != agentToken {
+		t.Fatalf("agent request did not use hub-owned bearer token: %+v", sent)
+	}
+	metadata, ok := sent.Metadata[a2a.DashboardContextExtensionURI].(map[string]any)
+	if !ok {
+		t.Fatalf("agent request did not include dashboard context extension: %+v", sent.Metadata)
+	}
+	if !strings.Contains(fmt.Sprint(metadata), dashboardSecret) {
+		t.Fatalf("agent dashboard context did not include expected test value: %+v", metadata)
+	}
+	for _, leaked := range []string{
+		agentToken,
+		dashboardSecret,
+		a2a.DashboardContextExtensionURI,
+		"Bearer",
+		"privateWidgetState",
+		"secret-ref-kitchen",
+	} {
+		if strings.Contains(rec.Body.String(), leaked) {
+			t.Fatalf("satellite response leaked %q: %s", leaked, rec.Body.String())
+		}
+	}
+}
+
+func TestSatelliteFinalTranscriptCannotContinueDisplayFollowupConversation(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-cross-device-1",
+			Status:         "completed",
+			Text:           "Done.",
+		}, nil
+	}
+	handler, _ := newSatelliteVoiceTestHandler(t, cfg, client, voice.SatelliteStatusPaired)
+
+	displayReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/transcripts/final",
+		bytes.NewBufferString(
+			`{"text":"start a timer","deviceProfileId":"default-display","deviceId":"kitchen-display"}`,
+		),
+	)
+	displayRec := httptest.NewRecorder()
+	handler.ServeHTTP(displayRec, displayReq)
+	if displayRec.Code != http.StatusOK {
+		t.Fatalf("display status = %d: %s", displayRec.Code, displayRec.Body.String())
+	}
+	if len(client.SentMessages) != 1 || client.SentMessages[0].ConversationID == "" {
+		t.Fatalf("expected display A2A send with conversation ID, got %+v", client.SentMessages)
+	}
+	displayConversationID := client.SentMessages[0].ConversationID
+
+	satelliteReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/satellites/sat-kitchen/transcripts/final",
+		bytes.NewBufferString(`{"text":"make it ten minutes","conversationId":"`+displayConversationID+`"}`),
+	)
+	satelliteReq.Header.Set("X-Jute-Satellite-Auth", "secret-ref-kitchen")
+	satelliteRec := httptest.NewRecorder()
+	handler.ServeHTTP(satelliteRec, satelliteReq)
+
+	if satelliteRec.Code != http.StatusConflict {
+		t.Fatalf(
+			"satellite status = %d, want %d: %s",
+			satelliteRec.Code,
+			http.StatusConflict,
+			satelliteRec.Body.String(),
+		)
+	}
+	if strings.Contains(satelliteRec.Body.String(), displayConversationID) ||
+		strings.Contains(satelliteRec.Body.String(), "start a timer") {
+		t.Fatalf("source mismatch response leaked conversation detail: %s", satelliteRec.Body.String())
+	}
+	if len(client.SentMessages) != 1 {
+		t.Fatalf("mismatched satellite follow-up should not send A2A messages: %+v", client.SentMessages)
+	}
+}
+
+func TestVoiceSatellitesProjectionAndSafeUpdate(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	client := a2a.NewInMemoryClient()
+	handler, _ := newSatelliteVoiceTestHandler(t, cfg, client, voice.SatelliteStatusUpdateRequired)
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/voice/satellites", nil)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list status = %d: %s", listRec.Code, listRec.Body.String())
+	}
+	if strings.Contains(listRec.Body.String(), "secret-ref-kitchen") ||
+		strings.Contains(strings.ToLower(listRec.Body.String()), "credential") {
+		t.Fatalf("satellite list leaked credentials: %s", listRec.Body.String())
+	}
+	var listBody struct {
+		Satellites []voice.SatelliteProjection `json:"satellites"`
+	}
+	if err := json.NewDecoder(listRec.Body).Decode(&listBody); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(listBody.Satellites) != 1 ||
+		listBody.Satellites[0].ID != "sat-kitchen" ||
+		!listBody.Satellites[0].Enabled ||
+		listBody.Satellites[0].Status != voice.SatelliteStatusUpdateRequired {
+		t.Fatalf("unexpected satellite list: %+v", listBody.Satellites)
+	}
+
+	patchReq := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/voice/satellites/sat-kitchen",
+		bytes.NewBufferString(
+			`{"displayName":"Kitchen Voice","roomLabel":"Kitchen","deviceProfileId":"kitchen-profile","enabled":false}`,
+		),
+	)
+	patchRec := httptest.NewRecorder()
+	handler.ServeHTTP(patchRec, patchReq)
+
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("patch status = %d: %s", patchRec.Code, patchRec.Body.String())
+	}
+	var patched voice.SatelliteProjection
+	if err := json.NewDecoder(patchRec.Body).Decode(&patched); err != nil {
+		t.Fatalf("decode patch: %v", err)
+	}
+	if patched.DisplayName != "Kitchen Voice" ||
+		patched.RoomLabel != "Kitchen" ||
+		patched.DeviceProfileID != "kitchen-profile" ||
+		patched.Enabled {
+		t.Fatalf("unexpected patched satellite: %+v", patched)
+	}
+	if strings.Contains(patchRec.Body.String(), "secret-ref-kitchen") {
+		t.Fatalf("satellite patch leaked secret reference: %s", patchRec.Body.String())
+	}
+
+	transcriptReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/satellites/sat-kitchen/transcripts/final",
+		bytes.NewBufferString(`{"text":"hello"}`),
+	)
+	transcriptReq.Header.Set("X-Jute-Satellite-Auth", "secret-ref-kitchen")
+	transcriptRec := httptest.NewRecorder()
+	handler.ServeHTTP(transcriptRec, transcriptReq)
+
+	if transcriptRec.Code != http.StatusForbidden {
+		t.Fatalf(
+			"disabled satellite credential should not work, got %d: %s",
+			transcriptRec.Code,
+			transcriptRec.Body.String(),
+		)
+	}
+}
+
+func TestVoiceSatelliteSettingsRejectsTrailingCredentialPayloadWithoutMutation(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	client := a2a.NewInMemoryClient()
+	handler, _ := newSatelliteVoiceTestHandler(t, cfg, client, voice.SatelliteStatusPaired)
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	loggedHandler := RequestLogger(logger)(handler)
+	patchReq := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/voice/satellites/sat-kitchen",
+		bytes.NewBufferString(
+			`{"displayName":"Kitchen Voice"}{"credentialSecretRef":"secret-ref-leak","rawCredential":"token=secret"}`,
+		),
+	)
+	patchRec := httptest.NewRecorder()
+
+	loggedHandler.ServeHTTP(patchRec, patchReq)
+
+	if patchRec.Code != http.StatusBadRequest {
+		t.Fatalf("patch status = %d, want %d: %s", patchRec.Code, http.StatusBadRequest, patchRec.Body.String())
+	}
+	for _, leaked := range []string{
+		"secret-ref-leak",
+		"rawCredential",
+		"token=secret",
+		"credentialSecretRef",
+	} {
+		if strings.Contains(patchRec.Body.String(), leaked) {
+			t.Fatalf("response leaked %q: %s", leaked, patchRec.Body.String())
+		}
+		if strings.Contains(logs.String(), leaked) {
+			t.Fatalf("request log leaked %q: %s", leaked, logs.String())
+		}
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/voice/satellites/sat-kitchen", nil)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get status = %d: %s", getRec.Code, getRec.Body.String())
+	}
+	var satellite voice.SatelliteProjection
+	if err := json.NewDecoder(getRec.Body).Decode(&satellite); err != nil {
+		t.Fatalf("decode satellite: %v", err)
+	}
+	if satellite.DisplayName != "Kitchen Satellite" {
+		t.Fatalf("rejected trailing patch mutated satellite: %+v", satellite)
+	}
+	if strings.Contains(getRec.Body.String(), "secret-ref-kitchen") ||
+		strings.Contains(strings.ToLower(getRec.Body.String()), "credential") {
+		t.Fatalf("satellite projection leaked credential material: %s", getRec.Body.String())
+	}
+}
+
+func TestSatelliteEventIngressRejectsTrailingUnsafePayloadWithoutLoggingIt(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	client := a2a.NewInMemoryClient()
+	handler, _ := newSatelliteVoiceTestHandler(t, cfg, client, voice.SatelliteStatusPaired)
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	loggedHandler := RequestLogger(logger)(handler)
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/satellites/sat-kitchen/events",
+		bytes.NewBufferString(
+			`{"type":"voice.satellite_health_changed","health":"available"}{"rawAudioPcm":"RAW_AUDIO_SHOULD_NOT_LOG","providerCredential":"token=secret"}`,
+		),
+	)
+	req.Header.Set("X-Jute-Satellite-Auth", "secret-ref-kitchen")
+	rec := httptest.NewRecorder()
+
+	loggedHandler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	for _, leaked := range []string{
+		"RAW_AUDIO_SHOULD_NOT_LOG",
+		"providerCredential",
+		"token=secret",
+		"rawAudioPcm",
+		"secret-ref-kitchen",
+	} {
+		if strings.Contains(rec.Body.String(), leaked) {
+			t.Fatalf("response leaked %q: %s", leaked, rec.Body.String())
+		}
+		if strings.Contains(logs.String(), leaked) {
+			t.Fatalf("request log leaked %q: %s", leaked, logs.String())
+		}
+	}
+	if len(client.SentMessages) != 0 {
+		t.Fatalf("rejected satellite event sent A2A messages: %+v", client.SentMessages)
+	}
+}
+
+func TestVoiceSatelliteRevocationProjectionDisablesOldCredentials(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	client := a2a.NewInMemoryClient()
+	handler, _ := newSatelliteVoiceTestHandler(t, cfg, client, voice.SatelliteStatusPaired)
+
+	revokeReq := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/voice/satellites/sat-kitchen",
+		bytes.NewBufferString(`{"revoke":true}`),
+	)
+	revokeRec := httptest.NewRecorder()
+	handler.ServeHTTP(revokeRec, revokeReq)
+
+	if revokeRec.Code != http.StatusOK {
+		t.Fatalf("revoke status = %d: %s", revokeRec.Code, revokeRec.Body.String())
+	}
+	var revoked voice.SatelliteProjection
+	if err := json.NewDecoder(revokeRec.Body).Decode(&revoked); err != nil {
+		t.Fatalf("decode revoke: %v", err)
+	}
+	if revoked.Status != voice.SatelliteStatusRevoked ||
+		revoked.Enabled ||
+		revoked.RevokedAt == "" {
+		t.Fatalf("unexpected revoked projection: %+v", revoked)
+	}
+
+	transcriptReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/satellites/sat-kitchen/transcripts/final",
+		bytes.NewBufferString(`{"text":"hello"}`),
+	)
+	transcriptReq.Header.Set("X-Jute-Satellite-Auth", "secret-ref-kitchen")
+	transcriptRec := httptest.NewRecorder()
+	handler.ServeHTTP(transcriptRec, transcriptReq)
+
+	if transcriptRec.Code != http.StatusForbidden {
+		t.Fatalf(
+			"revoked satellite credential should not work, got %d: %s",
+			transcriptRec.Code,
+			transcriptRec.Body.String(),
+		)
+	}
+}
+
+func TestSatelliteFinalTranscriptRejectsUnsafeAndUnauthorizedRequests(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	client := a2a.NewInMemoryClient()
+	handler, _ := newSatelliteVoiceTestHandler(t, cfg, client, voice.SatelliteStatusPaired)
+
+	tests := []struct {
+		name       string
+		auth       string
+		body       string
+		wantStatus int
+	}{
+		{
+			name:       "missing auth",
+			body:       `{"text":"hello"}`,
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "wrong auth",
+			auth:       "wrong-secret",
+			body:       `{"text":"hello"}`,
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "raw audio field rejected",
+			auth:       "secret-ref-kitchen",
+			body:       `{"text":"hello","rawAudioPcm":"RAW_AUDIO_SHOULD_NOT_ECHO token=secret"}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "partial transcript field rejected",
+			auth:       "secret-ref-kitchen",
+			body:       `{"text":"hello","partialTranscript":"PARTIAL_SHOULD_NOT_ECHO"}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "provider internals rejected",
+			auth:       "secret-ref-kitchen",
+			body:       `{"text":"hello","providerPayload":{"secret":"token=secret"}}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "trailing raw audio object rejected",
+			auth:       "secret-ref-kitchen",
+			body:       `{"text":"hello"}{"rawAudioPcm":"RAW_AUDIO_SHOULD_NOT_ECHO","providerPayload":{"secret":"token=secret"}}`,
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/api/v1/voice/satellites/sat-kitchen/transcripts/final",
+				bytes.NewBufferString(tt.body),
+			)
+			if tt.auth != "" {
+				req.Header.Set("X-Jute-Satellite-Auth", tt.auth)
+			}
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d: %s", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			for _, leaked := range []string{
+				"RAW_AUDIO_SHOULD_NOT_ECHO",
+				"PARTIAL_SHOULD_NOT_ECHO",
+				"token=secret",
+				"rawAudioPcm",
+				"providerPayload",
+			} {
+				if strings.Contains(rec.Body.String(), leaked) {
+					t.Fatalf("response leaked %q: %s", leaked, rec.Body.String())
+				}
+			}
+		})
+	}
+	if len(client.SentMessages) != 0 {
+		t.Fatalf("rejected satellite requests sent A2A messages: %+v", client.SentMessages)
+	}
+}
+
+func TestSatelliteFinalTranscriptRejectsRevokedSatellite(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	client := a2a.NewInMemoryClient()
+	handler, _ := newSatelliteVoiceTestHandler(t, cfg, client, voice.SatelliteStatusRevoked)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/satellites/sat-kitchen/transcripts/final",
+		bytes.NewBufferString(`{"text":"hello"}`),
+	)
+	req.Header.Set("X-Jute-Satellite-Auth", "secret-ref-kitchen")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+	if len(client.SentMessages) != 0 {
+		t.Fatalf("revoked satellite sent A2A messages: %+v", client.SentMessages)
+	}
+}
+
+func TestSatelliteFinalTranscriptFollowupLimitsUseHubRuntime(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.FollowupWindowSeconds = 8
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{ConversationID: req.ConversationID, Status: "completed", Text: "Done."}, nil
+	}
+	handler, _ := newSatelliteVoiceTestHandler(t, cfg, client, voice.SatelliteStatusPaired)
+
+	conversationID := ""
+	for i := range maxVoiceSessionTurns {
+		body := `{"text":"turn"}`
+		if conversationID != "" {
+			body = `{"text":"turn","conversationId":"` + conversationID + `"}`
+		}
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/voice/satellites/sat-kitchen/transcripts/final",
+			bytes.NewBufferString(body),
+		)
+		req.Header.Set("X-Jute-Satellite-Auth", "secret-ref-kitchen")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("turn %d status = %d: %s", i, rec.Code, rec.Body.String())
+		}
+		if conversationID == "" {
+			conversationID = client.SentMessages[0].ConversationID
+		}
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/satellites/sat-kitchen/transcripts/final",
+		bytes.NewBufferString(`{"text":"one too many","conversationId":"`+conversationID+`"}`),
+	)
+	req.Header.Set("X-Jute-Satellite-Auth", "secret-ref-kitchen")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected follow-up limit conflict, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(client.SentMessages) != maxVoiceSessionTurns {
+		t.Fatalf("follow-up limit should block extra A2A send, got %d sends", len(client.SentMessages))
+	}
+}
+
+func TestSatelliteTranscriptRequestLoggingOmitsRawTranscriptsAndAudio(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{ConversationID: req.ConversationID, Status: "completed", Text: "Done."}, nil
+	}
+	handler, _ := newSatelliteVoiceTestHandler(t, cfg, client, voice.SatelliteStatusPaired)
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	loggedHandler := RequestLogger(logger)(handler)
+
+	transcriptNeedle := "SATELLITE_RAW_TRANSCRIPT_SHOULD_NOT_BE_LOGGED"
+	audioNeedle := "SATELLITE_RAW_AUDIO_SHOULD_NOT_BE_LOGGED"
+	validReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/satellites/sat-kitchen/transcripts/final",
+		bytes.NewBufferString(`{"text":"`+transcriptNeedle+`"}`),
+	)
+	validReq.Header.Set("X-Jute-Satellite-Auth", "secret-ref-kitchen")
+	validRec := httptest.NewRecorder()
+	loggedHandler.ServeHTTP(validRec, validReq)
+	if validRec.Code != http.StatusOK {
+		t.Fatalf("valid satellite transcript status = %d: %s", validRec.Code, validRec.Body.String())
+	}
+
+	rawAudioReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/satellites/sat-kitchen/transcripts/final",
+		bytes.NewBufferString(`{"text":"hello","rawAudioPcm":"`+audioNeedle+`"}`),
+	)
+	rawAudioReq.Header.Set("X-Jute-Satellite-Auth", "secret-ref-kitchen")
+	rawAudioRec := httptest.NewRecorder()
+	loggedHandler.ServeHTTP(rawAudioRec, rawAudioReq)
+	if rawAudioRec.Code != http.StatusBadRequest {
+		t.Fatalf("raw audio status = %d: %s", rawAudioRec.Code, rawAudioRec.Body.String())
+	}
+
+	trailingAudioNeedle := "SATELLITE_TRAILING_RAW_AUDIO_SHOULD_NOT_BE_LOGGED"
+	trailingReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/satellites/sat-kitchen/transcripts/final",
+		bytes.NewBufferString(
+			`{"text":"hello"}{"rawAudioPcm":"`+trailingAudioNeedle+`","providerCredential":"token=secret"}`,
+		),
+	)
+	trailingReq.Header.Set("X-Jute-Satellite-Auth", "secret-ref-kitchen")
+	trailingRec := httptest.NewRecorder()
+	loggedHandler.ServeHTTP(trailingRec, trailingReq)
+	if trailingRec.Code != http.StatusBadRequest {
+		t.Fatalf("trailing raw audio status = %d: %s", trailingRec.Code, trailingRec.Body.String())
+	}
+
+	logBody := logs.String()
+	for _, leaked := range []string{
+		transcriptNeedle,
+		audioNeedle,
+		trailingAudioNeedle,
+		"rawAudioPcm",
+		"providerCredential",
+		"token=secret",
+		"secret-ref-kitchen",
+	} {
+		if strings.Contains(logBody, leaked) {
+			t.Fatalf("request log leaked %q: %s", leaked, logBody)
+		}
+	}
+	if !strings.Contains(logBody, "/api/v1/voice/satellites/sat-kitchen/transcripts/final") {
+		t.Fatalf("expected satellite request metadata in logs, got %s", logBody)
 	}
 }
 
@@ -1711,6 +3722,174 @@ func openInitializedServerStore(t *testing.T) *Store {
 		t.Fatalf("initialize store: %v", err)
 	}
 	return runtimeStore
+}
+
+func newSatelliteVoiceTestHandler(
+	t *testing.T,
+	cfg config.Config,
+	client *a2a.InMemoryClient,
+	status string,
+) (http.Handler, *voice.MemoryRepository) {
+	t.Helper()
+	voiceStore := voice.NewMemoryRepositoryFromConfig(cfg.Voice)
+	if _, err := voiceStore.SaveSatelliteInstall(context.Background(), voice.SatelliteRecord{
+		ID:                  "sat-kitchen",
+		DisplayName:         "Kitchen Satellite",
+		RoomLabel:           "Kitchen",
+		DeviceProfileID:     "kitchen-voice",
+		Status:              status,
+		CredentialSecretRef: "secret-ref-kitchen",
+	}); err != nil {
+		t.Fatalf("SaveSatelliteInstall() error = %v", err)
+	}
+	handler := newServer(
+		cfg,
+		"test",
+		client,
+		homestate.SetupStatus{Complete: true},
+		dashboard.DefaultWidgetLayout(),
+		nil,
+		nil,
+		voiceStore,
+		"",
+		nil,
+	)
+	return handler, voiceStore
+}
+
+type fixtureActiveSTTVoiceStore struct {
+	*voice.MemoryRepository
+
+	provider voice.STTProvider
+}
+
+func (s *fixtureActiveSTTVoiceStore) ActiveSTTProvider(context.Context, string) (voice.STTProvider, error) {
+	return s.provider, nil
+}
+
+type fixtureAppSTTProvider struct {
+	result voice.STTResult
+	err    error
+	seen   voice.CapturedUtterance
+}
+
+func (p *fixtureAppSTTProvider) Transcribe(
+	_ context.Context,
+	utterance voice.CapturedUtterance,
+) (voice.STTResult, error) {
+	p.seen = utterance
+	if p.err != nil {
+		return voice.STTResult{}, p.err
+	}
+	return p.result, nil
+}
+
+func fixtureAppUtterance() voice.CapturedUtterance {
+	start := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	return voice.CapturedUtterance{
+		Frames: []voice.AudioFrame{{
+			PCM:         []byte{1, 2, 3, 4},
+			SampleRate:  16000,
+			SampleWidth: 2,
+			Channels:    1,
+			Timestamp:   start,
+			Duration:    40 * time.Millisecond,
+		}},
+		StartedAt:  start,
+		EndedAt:    start.Add(40 * time.Millisecond),
+		SampleRate: 16000,
+		Channels:   1,
+	}
+}
+
+type fixtureAppCapture struct {
+	frames []voice.AudioFrame
+}
+
+func (c fixtureAppCapture) Capture(ctx context.Context) (<-chan voice.AudioFrame, <-chan error) {
+	frames := make(chan voice.AudioFrame)
+	errs := make(chan error)
+	go func() {
+		defer close(frames)
+		defer close(errs)
+		for _, frame := range c.frames {
+			select {
+			case <-ctx.Done():
+				return
+			case frames <- frame:
+			}
+		}
+	}()
+	return frames, errs
+}
+
+type fixtureAppVAD struct {
+	threshold byte
+}
+
+func (v fixtureAppVAD) Speech(frame voice.AudioFrame) bool {
+	for _, sample := range frame.PCM {
+		if sample >= v.threshold {
+			return true
+		}
+	}
+	return false
+}
+
+func fixtureAppFrame(start time.Time, offset time.Duration, sample byte) voice.AudioFrame {
+	return voice.AudioFrame{
+		PCM:         []byte{sample},
+		SampleRate:  16000,
+		SampleWidth: 2,
+		Channels:    1,
+		Timestamp:   start.Add(offset),
+		Duration:    100 * time.Millisecond,
+	}
+}
+
+func waitForSentMessages(t *testing.T, client *a2a.InMemoryClient, count int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(client.SentMessages) >= count {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %d sent message(s), got %d", count, len(client.SentMessages))
+}
+
+func waitForVoiceStateEvent(
+	t *testing.T,
+	events <-chan displayactions.Event,
+	state string,
+) displayactions.Event {
+	t.Helper()
+	timeout := time.After(2 * time.Second)
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				t.Fatalf("event stream closed before voice state %q", state)
+			}
+			if event.Type != voice.EventVoiceStateChanged {
+				continue
+			}
+			voiceEvent, ok := event.Data.(voice.VoiceEvent)
+			if !ok {
+				t.Fatalf("unexpected voice state event data: %+v", event.Data)
+			}
+			payload, ok := voiceEvent.Payload.(voice.VoiceStatePayload)
+			if !ok {
+				t.Fatalf("unexpected voice state payload: %+v", voiceEvent.Payload)
+			}
+			if payload.State == state {
+				return event
+			}
+		case <-timeout:
+			t.Fatalf("timed out waiting for voice state %q", state)
+		}
+	}
 }
 
 // Removed fakeMessageSender, fakeTaskHistorySender, fakeStreamingSender structs in favor of a2a.InMemoryClient

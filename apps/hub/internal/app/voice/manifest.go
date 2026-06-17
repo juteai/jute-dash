@@ -1,0 +1,518 @@
+package voice
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+const (
+	ProviderKindWakeWord = "wake-word"
+	ProviderKindSTT      = "stt"
+	ProviderKindTTS      = "tts"
+	ProviderKindSTTTTS   = "stt-tts"
+)
+
+type ProviderManifest struct {
+	ID           string               `json:"id"`
+	Name         string               `json:"name"`
+	Version      string               `json:"version"`
+	Kind         string               `json:"kind"`
+	Transport    TransportManifest    `json:"transport"`
+	Capabilities ProviderCapabilities `json:"capabilities"`
+	Hardware     map[string]bool      `json:"hardware"`
+	Credentials  []CredentialManifest `json:"credentials"`
+	License      LicenseManifest      `json:"license"`
+	Contribution ContributionManifest `json:"contribution"`
+	WakeWord     WakeWordManifest     `json:"wakeWord,omitempty"`
+	TTS          TTSManifest          `json:"tts,omitempty"`
+}
+
+type TransportManifest struct {
+	Type     string   `json:"type"`
+	Endpoint string   `json:"endpoint,omitempty"`
+	Command  string   `json:"command,omitempty"`
+	Args     []string `json:"args,omitempty"`
+}
+
+type CredentialManifest struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Source   string `json:"source"`
+	Env      string `json:"env,omitempty"`
+	Required bool   `json:"required"`
+}
+
+type LicenseManifest struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+type ContributionManifest struct {
+	Source      string   `json:"source"`
+	Maintainers []string `json:"maintainers"`
+}
+
+type WakeWordManifest struct {
+	DefaultModelID string                  `json:"defaultModelId"`
+	Phrase         string                  `json:"phrase,omitempty"`
+	Languages      []string                `json:"languages,omitempty"`
+	Sensitivity    float64                 `json:"sensitivity,omitempty"`
+	Models         []WakeWordModelManifest `json:"models,omitempty"`
+}
+
+type WakeWordModelManifest struct {
+	ID          string   `json:"id"`
+	Path        string   `json:"path"`
+	Phrase      string   `json:"phrase,omitempty"`
+	Languages   []string `json:"languages,omitempty"`
+	Sensitivity float64  `json:"sensitivity,omitempty"`
+}
+
+type TTSManifest struct {
+	DefaultVoiceID string             `json:"defaultVoiceId,omitempty"`
+	DefaultModelID string             `json:"defaultModelId,omitempty"`
+	Voices         []TTSVoiceManifest `json:"voices,omitempty"`
+}
+
+type TTSVoiceManifest struct {
+	ID            string   `json:"id"`
+	Label         string   `json:"label"`
+	Locale        string   `json:"locale"`
+	ModelID       string   `json:"modelId,omitempty"`
+	Styles        []string `json:"styles,omitempty"`
+	OutputFormats []string `json:"outputFormats,omitempty"`
+}
+
+func DecodeProviderManifest(raw string) (ProviderManifest, error) {
+	var manifest ProviderManifest
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&manifest); err != nil {
+		return ProviderManifest{}, fmt.Errorf("decode provider manifest: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return ProviderManifest{}, errors.New("decode provider manifest: trailing JSON data")
+	}
+	return manifest, nil
+}
+
+func ValidateProviderManifest(manifest ProviderManifest) []string {
+	var problems []string
+	if strings.TrimSpace(manifest.ID) == "" {
+		problems = append(problems, "id is required")
+	}
+	if strings.TrimSpace(manifest.Name) == "" {
+		problems = append(problems, "name is required")
+	}
+	if strings.TrimSpace(manifest.Version) == "" {
+		problems = append(problems, "version is required")
+	}
+	if !validProviderKind(manifest.Kind) {
+		problems = append(problems, "kind must be wake-word, stt, tts, or stt-tts")
+	}
+	if strings.TrimSpace(manifest.Transport.Type) == "" {
+		problems = append(problems, "transport.type is required")
+	}
+	problems = append(problems, validateTransport(manifest.Transport, manifest.Capabilities.Offline, manifest.Kind)...)
+	problems = append(problems, validateCredentials(manifest.Credentials)...)
+	problems = append(problems, validateContribution(manifest.Contribution)...)
+	if strings.TrimSpace(manifest.License.Name) == "" {
+		problems = append(problems, "license.name is required")
+	}
+	if strings.TrimSpace(manifest.License.URL) == "" {
+		problems = append(problems, "license.url is required")
+	}
+	if manifest.Kind == ProviderKindWakeWord {
+		problems = append(problems, validateWakeWordManifest(manifest.WakeWord)...)
+	}
+	if manifest.Kind == ProviderKindTTS || manifest.Kind == ProviderKindSTTTTS {
+		problems = append(problems, validateTTSManifest(manifest.TTS)...)
+	}
+	return problems
+}
+
+func validateContribution(contribution ContributionManifest) []string {
+	var problems []string
+	if strings.TrimSpace(contribution.Source) == "" {
+		problems = append(problems, "contribution.source is required")
+	}
+	if len(contribution.Maintainers) == 0 {
+		problems = append(problems, "contribution.maintainers must include at least one maintainer")
+	}
+	for i, maintainer := range contribution.Maintainers {
+		if strings.TrimSpace(maintainer) == "" {
+			problems = append(problems, fmt.Sprintf("contribution.maintainers[%d] is required", i))
+		}
+	}
+	return problems
+}
+
+func validateCredentials(credentials []CredentialManifest) []string {
+	var problems []string
+	seen := map[string]struct{}{}
+	for i, credential := range credentials {
+		location := fmt.Sprintf("credentials[%d]", i)
+		id := strings.TrimSpace(credential.ID)
+		if id == "" {
+			problems = append(problems, location+".id is required")
+		} else if _, ok := seen[id]; ok {
+			problems = append(problems, location+".id must be unique")
+		}
+		seen[id] = struct{}{}
+		if strings.TrimSpace(credential.Label) == "" {
+			problems = append(problems, location+".label is required")
+		}
+		if credential.Source != "env" {
+			problems = append(problems, location+".source must be env")
+		}
+		if strings.TrimSpace(credential.Env) == "" {
+			problems = append(problems, location+".env is required for env credentials")
+		}
+		if containsRawCredentialValue(credential.ID) ||
+			containsRawCredentialValue(credential.Label) ||
+			containsRawCredentialValue(credential.Env) {
+			problems = append(problems, location+" must reference a secret without embedding credential values")
+		}
+	}
+	return problems
+}
+
+func validProviderKind(kind string) bool {
+	switch kind {
+	case ProviderKindWakeWord, ProviderKindSTT, ProviderKindTTS, ProviderKindSTTTTS:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateTransport(transport TransportManifest, offline bool, kind string) []string {
+	var problems []string
+	switch transport.Type {
+	case "builtin":
+		return nil
+	case "wyoming":
+		if strings.TrimSpace(transport.Endpoint) == "" {
+			return []string{"transport.endpoint is required for wyoming providers"}
+		}
+		if !safeLocalEndpoint(transport.Endpoint, true) {
+			problems = append(problems, "transport.endpoint must be loopback or LAN-scoped for wyoming providers")
+		}
+	case "http-json":
+		if strings.TrimSpace(transport.Endpoint) == "" {
+			return []string{"transport.endpoint is required for http-json providers"}
+		}
+		if !safeHTTPEndpoint(transport.Endpoint, offline) {
+			problems = append(
+				problems,
+				"transport.endpoint must be local/LAN HTTP or HTTPS for remote http-json providers",
+			)
+		}
+	case "command":
+		if strings.TrimSpace(transport.Command) == "" {
+			problems = append(problems, "transport.command is required for command providers")
+		}
+		if !filepath.IsAbs(transport.Command) {
+			problems = append(problems, "transport.command must be absolute for command providers")
+		}
+		if isSTTCapableProviderKind(kind) {
+			if !hasCommandArg(transport.Args, "{modelId}") {
+				problems = append(problems, "transport.args must include {modelId} for STT-capable command providers")
+			}
+			if !hasCommandArg(transport.Args, "{inputPath}") {
+				problems = append(problems, "transport.args must include {inputPath} for STT-capable command providers")
+			}
+		}
+		if kind == ProviderKindWakeWord && !hasCommandArg(transport.Args, "{inputPath}") {
+			problems = append(problems, "transport.args must include {inputPath} for wake-word command providers")
+		}
+	default:
+		problems = append(problems, "transport.type must be wyoming, http-json, command, or builtin")
+	}
+	return problems
+}
+
+func isSTTCapableProviderKind(kind string) bool {
+	return kind == ProviderKindSTT || kind == ProviderKindSTTTTS
+}
+
+func hasCommandArg(args []string, want string) bool {
+	for _, arg := range args {
+		if strings.TrimSpace(arg) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func validateWakeWordManifest(wake WakeWordManifest) []string {
+	var problems []string
+	if strings.TrimSpace(wake.DefaultModelID) == "" {
+		problems = append(problems, "wakeWord.defaultModelId is required")
+	}
+	if wake.Sensitivity < 0 || wake.Sensitivity > 1 {
+		problems = append(problems, "wakeWord.sensitivity must be between 0 and 1")
+	}
+	declaredModels := map[string]struct{}{}
+	for i, model := range wake.Models {
+		location := fmt.Sprintf("wakeWord.models[%d]", i)
+		if strings.TrimSpace(model.ID) == "" {
+			problems = append(problems, location+".id is required")
+		}
+		if strings.TrimSpace(model.Path) == "" {
+			problems = append(problems, location+".path is required")
+		}
+		if unsafeModelPath(model.Path) {
+			problems = append(problems, location+".path must be a relative provider-pack asset path")
+		}
+		if model.Sensitivity < 0 || model.Sensitivity > 1 {
+			problems = append(problems, location+".sensitivity must be between 0 and 1")
+		}
+		modelID := strings.TrimSpace(model.ID)
+		if modelID != "" {
+			if _, ok := declaredModels[modelID]; ok {
+				problems = append(problems, location+".id must be unique")
+			}
+			declaredModels[modelID] = struct{}{}
+		}
+	}
+	if _, ok := declaredModels[wake.DefaultModelID]; strings.TrimSpace(wake.DefaultModelID) != "" && !ok {
+		problems = append(problems, "wakeWord.defaultModelId must reference a declared wakeWord model")
+	}
+	return problems
+}
+
+func validateTTSManifest(tts TTSManifest) []string {
+	var problems []string
+	if len(tts.Voices) == 0 {
+		problems = append(problems, "tts.voices must declare at least one voice")
+	}
+	declaredVoices := map[string]struct{}{}
+	for i, voice := range tts.Voices {
+		location := fmt.Sprintf("tts.voices[%d]", i)
+		if strings.TrimSpace(voice.ID) == "" {
+			problems = append(problems, location+".id is required")
+		}
+		if strings.TrimSpace(voice.Label) == "" {
+			problems = append(problems, location+".label is required")
+		}
+		if strings.TrimSpace(voice.Locale) == "" {
+			problems = append(problems, location+".locale is required")
+		}
+		voiceID := strings.TrimSpace(voice.ID)
+		if voiceID != "" {
+			if _, ok := declaredVoices[voiceID]; ok {
+				problems = append(problems, location+".id must be unique")
+			}
+			declaredVoices[voiceID] = struct{}{}
+		}
+	}
+	if _, ok := declaredVoices[tts.DefaultVoiceID]; strings.TrimSpace(tts.DefaultVoiceID) != "" && !ok {
+		problems = append(problems, "tts.defaultVoiceId must reference a declared voice")
+	}
+	return problems
+}
+
+func unsafeModelPath(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" || filepath.IsAbs(path) || strings.Contains(path, `\`) {
+		return true
+	}
+	if u, err := url.Parse(path); err == nil && u.Scheme != "" {
+		return true
+	}
+	clean := filepath.Clean(path)
+	return clean == "." || clean == ".." || strings.HasPrefix(clean, "../")
+}
+
+func safeLocalEndpoint(raw string, allowLAN bool) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	if endpointContainsCredentialMaterial(u) {
+		return false
+	}
+	host := u.Hostname()
+	if host == "" {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return host == "localhost"
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	return allowLAN && (ip.IsPrivate() || ip.IsLinkLocalUnicast())
+}
+
+func safeHTTPEndpoint(raw string, offline bool) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	if endpointContainsCredentialMaterial(u) {
+		return false
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+	if safeLocalEndpoint(raw, true) {
+		return true
+	}
+	return !offline && u.Scheme == "https"
+}
+
+func endpointContainsCredentialMaterial(u *url.URL) bool {
+	if u.User != nil {
+		return true
+	}
+	for key, values := range u.Query() {
+		if credentialQueryKey(key) {
+			return true
+		}
+		for _, value := range values {
+			if containsRawCredentialValue(value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func credentialQueryKey(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	for _, fragment := range []string{
+		"token",
+		"secret",
+		"password",
+		"credential",
+		"authorization",
+		"auth",
+		"apikey",
+		"api_key",
+		"api-key",
+		"key",
+	} {
+		if strings.Contains(key, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsRawCredentialValue(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	lower := strings.ToLower(value)
+	for _, fragment := range []string{
+		"bearer ",
+		"token:",
+		"token=",
+		"secret:",
+		"secret=",
+		"password:",
+		"password=",
+		"api_key=",
+		"api-key=",
+		"apikey=",
+		"sk-",
+		"xoxb-",
+	} {
+		if strings.Contains(lower, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func wakeWordSummary(manifest ProviderManifest) *WakeWordProviderSummary {
+	if manifest.Kind != ProviderKindWakeWord {
+		return nil
+	}
+	models := make([]WakeWordModelSummary, 0, len(manifest.WakeWord.Models))
+	for _, model := range manifest.WakeWord.Models {
+		models = append(models, WakeWordModelSummary{
+			ID:          model.ID,
+			Phrase:      model.Phrase,
+			Languages:   append([]string(nil), model.Languages...),
+			Sensitivity: model.Sensitivity,
+		})
+	}
+	return &WakeWordProviderSummary{
+		DefaultModelID: manifest.WakeWord.DefaultModelID,
+		Phrase:         manifest.WakeWord.Phrase,
+		Languages:      append([]string(nil), manifest.WakeWord.Languages...),
+		Sensitivity:    manifest.WakeWord.Sensitivity,
+		Models:         models,
+	}
+}
+
+func ttsVoicesFromManifest(manifest ProviderManifest) []TTSVoice {
+	voices := make([]TTSVoice, 0, len(manifest.TTS.Voices))
+	for _, voice := range manifest.TTS.Voices {
+		voices = append(voices, TTSVoice{
+			ID:            voice.ID,
+			Label:         voice.Label,
+			Locale:        voice.Locale,
+			ModelID:       voice.ModelID,
+			Styles:        append([]string(nil), voice.Styles...),
+			OutputFormats: append([]string(nil), voice.OutputFormats...),
+		})
+	}
+	return voices
+}
+
+func ttsVoiceLocale(manifest ProviderManifest, voiceID string) string {
+	voiceID = strings.TrimSpace(voiceID)
+	for _, voice := range manifest.TTS.Voices {
+		if strings.TrimSpace(voice.ID) == voiceID {
+			return strings.TrimSpace(voice.Locale)
+		}
+	}
+	return ""
+}
+
+func ttsSelectedVoiceID(manifest ProviderManifest, selectedVoiceID string) string {
+	selectedVoiceID = strings.TrimSpace(selectedVoiceID)
+	for _, voice := range manifest.TTS.Voices {
+		if strings.TrimSpace(voice.ID) == selectedVoiceID {
+			return selectedVoiceID
+		}
+	}
+	return strings.TrimSpace(manifest.TTS.DefaultVoiceID)
+}
+
+func firstLanguage(languages []string) string {
+	for _, language := range languages {
+		if language = strings.TrimSpace(language); language != "" {
+			return language
+		}
+	}
+	return ""
+}
+
+func missingRequiredCredential(manifest ProviderManifest) bool {
+	for _, credential := range manifest.Credentials {
+		if !credential.Required {
+			continue
+		}
+		if credential.Source != "env" || strings.TrimSpace(credential.Env) == "" {
+			return true
+		}
+		if _, ok := os.LookupEnv(credential.Env); !ok {
+			return true
+		}
+	}
+	return false
+}

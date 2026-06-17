@@ -22,6 +22,64 @@ func (_m *Store) EXPECT() *Store_Expecter {
 	return &Store_Expecter{mock: &_m.Mock}
 }
 
+// AuthenticateSatellite provides a mock function with given fields: ctx, id, authProof
+func (_m *Store) AuthenticateSatellite(ctx context.Context, id string, authProof string) (voice.SatelliteProjection, error) {
+	ret := _m.Called(ctx, id, authProof)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AuthenticateSatellite")
+	}
+
+	var r0 voice.SatelliteProjection
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (voice.SatelliteProjection, error)); ok {
+		return rf(ctx, id, authProof)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) voice.SatelliteProjection); ok {
+		r0 = rf(ctx, id, authProof)
+	} else {
+		r0 = ret.Get(0).(voice.SatelliteProjection)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, id, authProof)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Store_AuthenticateSatellite_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AuthenticateSatellite'
+type Store_AuthenticateSatellite_Call struct {
+	*mock.Call
+}
+
+// AuthenticateSatellite is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - authProof string
+func (_e *Store_Expecter) AuthenticateSatellite(ctx interface{}, id interface{}, authProof interface{}) *Store_AuthenticateSatellite_Call {
+	return &Store_AuthenticateSatellite_Call{Call: _e.mock.On("AuthenticateSatellite", ctx, id, authProof)}
+}
+
+func (_c *Store_AuthenticateSatellite_Call) Run(run func(ctx context.Context, id string, authProof string)) *Store_AuthenticateSatellite_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *Store_AuthenticateSatellite_Call) Return(_a0 voice.SatelliteProjection, _a1 error) *Store_AuthenticateSatellite_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Store_AuthenticateSatellite_Call) RunAndReturn(run func(context.Context, string, string) (voice.SatelliteProjection, error)) *Store_AuthenticateSatellite_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CancelVoice provides a mock function with given fields: ctx, deviceProfileID
 func (_m *Store) CancelVoice(ctx context.Context, deviceProfileID string) (voice.Settings, error) {
 	ret := _m.Called(ctx, deviceProfileID)
@@ -75,6 +133,63 @@ func (_c *Store_CancelVoice_Call) Return(_a0 voice.Settings, _a1 error) *Store_C
 }
 
 func (_c *Store_CancelVoice_Call) RunAndReturn(run func(context.Context, string) (voice.Settings, error)) *Store_CancelVoice_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SaveVoiceSettings provides a mock function with given fields: ctx, req
+func (_m *Store) SaveVoiceSettings(ctx context.Context, req voice.SettingsUpdateRequest) (voice.Settings, error) {
+	ret := _m.Called(ctx, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SaveVoiceSettings")
+	}
+
+	var r0 voice.Settings
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, voice.SettingsUpdateRequest) (voice.Settings, error)); ok {
+		return rf(ctx, req)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, voice.SettingsUpdateRequest) voice.Settings); ok {
+		r0 = rf(ctx, req)
+	} else {
+		r0 = ret.Get(0).(voice.Settings)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, voice.SettingsUpdateRequest) error); ok {
+		r1 = rf(ctx, req)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Store_SaveVoiceSettings_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveVoiceSettings'
+type Store_SaveVoiceSettings_Call struct {
+	*mock.Call
+}
+
+// SaveVoiceSettings is a helper method to define mock.On call
+//   - ctx context.Context
+//   - req voice.SettingsUpdateRequest
+func (_e *Store_Expecter) SaveVoiceSettings(ctx interface{}, req interface{}) *Store_SaveVoiceSettings_Call {
+	return &Store_SaveVoiceSettings_Call{Call: _e.mock.On("SaveVoiceSettings", ctx, req)}
+}
+
+func (_c *Store_SaveVoiceSettings_Call) Run(run func(ctx context.Context, req voice.SettingsUpdateRequest)) *Store_SaveVoiceSettings_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(voice.SettingsUpdateRequest))
+	})
+	return _c
+}
+
+func (_c *Store_SaveVoiceSettings_Call) Return(_a0 voice.Settings, _a1 error) *Store_SaveVoiceSettings_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Store_SaveVoiceSettings_Call) RunAndReturn(run func(context.Context, voice.SettingsUpdateRequest) (voice.Settings, error)) *Store_SaveVoiceSettings_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -137,6 +252,122 @@ func (_c *Store_SetVoiceMuted_Call) RunAndReturn(run func(context.Context, strin
 	return _c
 }
 
+// TTSVoices provides a mock function with given fields: ctx, providerID, deviceProfileID
+func (_m *Store) TTSVoices(ctx context.Context, providerID string, deviceProfileID string) (voice.TTSVoicesResponse, error) {
+	ret := _m.Called(ctx, providerID, deviceProfileID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for TTSVoices")
+	}
+
+	var r0 voice.TTSVoicesResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (voice.TTSVoicesResponse, error)); ok {
+		return rf(ctx, providerID, deviceProfileID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) voice.TTSVoicesResponse); ok {
+		r0 = rf(ctx, providerID, deviceProfileID)
+	} else {
+		r0 = ret.Get(0).(voice.TTSVoicesResponse)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, providerID, deviceProfileID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Store_TTSVoices_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'TTSVoices'
+type Store_TTSVoices_Call struct {
+	*mock.Call
+}
+
+// TTSVoices is a helper method to define mock.On call
+//   - ctx context.Context
+//   - providerID string
+//   - deviceProfileID string
+func (_e *Store_Expecter) TTSVoices(ctx interface{}, providerID interface{}, deviceProfileID interface{}) *Store_TTSVoices_Call {
+	return &Store_TTSVoices_Call{Call: _e.mock.On("TTSVoices", ctx, providerID, deviceProfileID)}
+}
+
+func (_c *Store_TTSVoices_Call) Run(run func(ctx context.Context, providerID string, deviceProfileID string)) *Store_TTSVoices_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *Store_TTSVoices_Call) Return(_a0 voice.TTSVoicesResponse, _a1 error) *Store_TTSVoices_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Store_TTSVoices_Call) RunAndReturn(run func(context.Context, string, string) (voice.TTSVoicesResponse, error)) *Store_TTSVoices_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateSatellite provides a mock function with given fields: ctx, id, req
+func (_m *Store) UpdateSatellite(ctx context.Context, id string, req voice.SatelliteUpdateRequest) (voice.SatelliteProjection, error) {
+	ret := _m.Called(ctx, id, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateSatellite")
+	}
+
+	var r0 voice.SatelliteProjection
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, voice.SatelliteUpdateRequest) (voice.SatelliteProjection, error)); ok {
+		return rf(ctx, id, req)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, voice.SatelliteUpdateRequest) voice.SatelliteProjection); ok {
+		r0 = rf(ctx, id, req)
+	} else {
+		r0 = ret.Get(0).(voice.SatelliteProjection)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, voice.SatelliteUpdateRequest) error); ok {
+		r1 = rf(ctx, id, req)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Store_UpdateSatellite_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateSatellite'
+type Store_UpdateSatellite_Call struct {
+	*mock.Call
+}
+
+// UpdateSatellite is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - req voice.SatelliteUpdateRequest
+func (_e *Store_Expecter) UpdateSatellite(ctx interface{}, id interface{}, req interface{}) *Store_UpdateSatellite_Call {
+	return &Store_UpdateSatellite_Call{Call: _e.mock.On("UpdateSatellite", ctx, id, req)}
+}
+
+func (_c *Store_UpdateSatellite_Call) Run(run func(ctx context.Context, id string, req voice.SatelliteUpdateRequest)) *Store_UpdateSatellite_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(voice.SatelliteUpdateRequest))
+	})
+	return _c
+}
+
+func (_c *Store_UpdateSatellite_Call) Return(_a0 voice.SatelliteProjection, _a1 error) *Store_UpdateSatellite_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Store_UpdateSatellite_Call) RunAndReturn(run func(context.Context, string, voice.SatelliteUpdateRequest) (voice.SatelliteProjection, error)) *Store_UpdateSatellite_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // VoiceProviders provides a mock function with given fields: ctx
 func (_m *Store) VoiceProviders(ctx context.Context) ([]voice.ProviderPack, error) {
 	ret := _m.Called(ctx)
@@ -191,6 +422,121 @@ func (_c *Store_VoiceProviders_Call) Return(_a0 []voice.ProviderPack, _a1 error)
 }
 
 func (_c *Store_VoiceProviders_Call) RunAndReturn(run func(context.Context) ([]voice.ProviderPack, error)) *Store_VoiceProviders_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// VoiceSatellite provides a mock function with given fields: ctx, id
+func (_m *Store) VoiceSatellite(ctx context.Context, id string) (voice.SatelliteProjection, error) {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for VoiceSatellite")
+	}
+
+	var r0 voice.SatelliteProjection
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) (voice.SatelliteProjection, error)); ok {
+		return rf(ctx, id)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string) voice.SatelliteProjection); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Get(0).(voice.SatelliteProjection)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Store_VoiceSatellite_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'VoiceSatellite'
+type Store_VoiceSatellite_Call struct {
+	*mock.Call
+}
+
+// VoiceSatellite is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+func (_e *Store_Expecter) VoiceSatellite(ctx interface{}, id interface{}) *Store_VoiceSatellite_Call {
+	return &Store_VoiceSatellite_Call{Call: _e.mock.On("VoiceSatellite", ctx, id)}
+}
+
+func (_c *Store_VoiceSatellite_Call) Run(run func(ctx context.Context, id string)) *Store_VoiceSatellite_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *Store_VoiceSatellite_Call) Return(_a0 voice.SatelliteProjection, _a1 error) *Store_VoiceSatellite_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Store_VoiceSatellite_Call) RunAndReturn(run func(context.Context, string) (voice.SatelliteProjection, error)) *Store_VoiceSatellite_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// VoiceSatellites provides a mock function with given fields: ctx
+func (_m *Store) VoiceSatellites(ctx context.Context) ([]voice.SatelliteProjection, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for VoiceSatellites")
+	}
+
+	var r0 []voice.SatelliteProjection
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) ([]voice.SatelliteProjection, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) []voice.SatelliteProjection); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]voice.SatelliteProjection)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Store_VoiceSatellites_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'VoiceSatellites'
+type Store_VoiceSatellites_Call struct {
+	*mock.Call
+}
+
+// VoiceSatellites is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *Store_Expecter) VoiceSatellites(ctx interface{}) *Store_VoiceSatellites_Call {
+	return &Store_VoiceSatellites_Call{Call: _e.mock.On("VoiceSatellites", ctx)}
+}
+
+func (_c *Store_VoiceSatellites_Call) Run(run func(ctx context.Context)) *Store_VoiceSatellites_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *Store_VoiceSatellites_Call) Return(_a0 []voice.SatelliteProjection, _a1 error) *Store_VoiceSatellites_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Store_VoiceSatellites_Call) RunAndReturn(run func(context.Context) ([]voice.SatelliteProjection, error)) *Store_VoiceSatellites_Call {
 	_c.Call.Return(run)
 	return _c
 }

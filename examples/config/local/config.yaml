@@ -44,11 +44,17 @@ voice:
     enabled: false
     muted-by-default: true
     wake-word-model-id: ""
+    wake-word-phrase: ""
+    wake-sensitivity: 0.5
     stt-provider-id: ""
     tts-provider-id: ""
     stt-model-id: ""
     tts-model-id: ""
     tts-voice-id: ""
+    tts-enabled: false
+    tts-locale: en
+    tts-speed: 1
+    tts-volume: 1
     preferred-agent-id: mock-agent
     cloud-opt-in: false
     command-providers-enabled: false

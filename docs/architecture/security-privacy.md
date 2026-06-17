@@ -43,6 +43,9 @@ Rules:
 - voice logs exclude raw audio and raw transcripts by default;
 - ambient mode avoids showing transcripts unless the user has enabled visible conversation history.
 
+Headless voice satellites follow the same policy and add explicit pairing, revocation, safe event
+ingress, and multi-room privacy constraints defined in [Headless Voice Satellites](voice-satellites.md).
+
 ## Voice Provider Security
 
 Voice Provider Packs are untrusted by default unless they are built into Jute.
@@ -53,6 +56,7 @@ Rules:
 - do not use Go dynamic plugins for v1 voice providers;
 - validate `jute.voice.provider.json` before showing a provider in settings;
 - store provider secrets as references, not raw manifest values;
+- reject provider endpoints that embed usernames, passwords, tokens, or other credentials in the URL;
 - keep command-provider transport disabled unless explicitly enabled;
 - require TLS for non-local HTTP JSON providers;
 - label cloud STT/TTS providers clearly before enabling them;

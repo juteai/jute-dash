@@ -12,7 +12,13 @@ import type {
   TilesSettings,
   UserFacingIssue,
   VoiceProvider,
+  VoiceSatellite,
+  VoiceSatelliteUpdate,
+  VoiceFinalTranscriptRequest,
+  VoiceFinalTranscriptResponse,
+  VoiceSettingsUpdate,
   VoiceStatus,
+  TTSVoicesResponse,
   WidgetCatalogItem,
   WidgetLayout
 } from '$lib/types';
@@ -334,7 +340,84 @@ export async function getVoiceProviders(
     fetcher,
     '/api/v1/voice/providers'
   );
-  return response.providers;
+  return (response.providers ?? []).map(safeVoiceProvider);
+}
+
+export async function getVoiceSatellites(
+  fetcher: typeof fetch
+): Promise<VoiceSatellite[]> {
+  const response = await getJSON<{ satellites: VoiceSatellite[] }>(
+    fetcher,
+    '/api/v1/voice/satellites'
+  );
+  return (response.satellites ?? []).map(safeVoiceSatellite);
+}
+
+export async function updateVoiceSatellite(
+  fetcher: typeof fetch,
+  satelliteId: string,
+  update: VoiceSatelliteUpdate
+): Promise<VoiceSatellite> {
+  const response = await fetcher(
+    `${API_BASE}/api/v1/voice/satellites/${encodeURIComponent(satelliteId)}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(update)
+    }
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Jute API request failed');
+  }
+  return safeVoiceSatellite((await response.json()) as VoiceSatellite);
+}
+
+export async function getTTSVoices(
+  fetcher: typeof fetch,
+  providerId = ''
+): Promise<TTSVoicesResponse> {
+  const suffix = providerId
+    ? `?providerId=${encodeURIComponent(providerId)}`
+    : '';
+  return safeTTSVoicesResponse(
+    await getJSON<TTSVoicesResponse>(fetcher, `/api/v1/tts/voices${suffix}`)
+  );
+}
+
+export async function saveVoiceSettings(
+  fetcher: typeof fetch,
+  settings: VoiceSettingsUpdate
+): Promise<VoiceStatus> {
+  const response = await fetcher(`${API_BASE}/api/v1/voice/settings`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(settings)
+  });
+  if (!response.ok) {
+    throw await hubError(response, 'Jute API request failed');
+  }
+  return response.json() as Promise<VoiceStatus>;
+}
+
+export async function submitVoiceFinalTranscript(
+  fetcher: typeof fetch,
+  transcript: VoiceFinalTranscriptRequest
+): Promise<VoiceFinalTranscriptResponse> {
+  const response = await fetcher(`${API_BASE}/api/v1/voice/transcripts/final`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(transcript)
+  });
+  if (!response.ok) {
+    throw await hubError(response, 'Jute API request failed');
+  }
+  return response.json() as Promise<VoiceFinalTranscriptResponse>;
 }
 
 export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {
@@ -516,11 +599,17 @@ function fallbackVoiceStatus(): VoiceStatus {
     serviceStatus: 'not_configured',
     deviceProfileId: 'fallback-display',
     wakeWordModelId: '',
+    wakeWordPhrase: '',
+    wakeSensitivity: 0.5,
     sttProviderId: '',
     ttsProviderId: '',
     sttModelId: '',
     ttsModelId: '',
     ttsVoiceId: '',
+    ttsEnabled: false,
+    ttsLocale: 'en',
+    ttsSpeed: 1,
+    ttsVolume: 1,
     preferredAgentId: '',
     cloudOptIn: false,
     commandProvidersEnabled: false,
@@ -528,6 +617,119 @@ function fallbackVoiceStatus(): VoiceStatus {
     microphoneProfile: '',
     updatedAt: new Date().toISOString()
   };
+}
+
+function safeVoiceSatellite(satellite: VoiceSatellite): VoiceSatellite {
+  return {
+    id: satellite.id,
+    displayName: redactCredentialText(satellite.displayName) ?? '',
+    roomLabel: redactCredentialText(satellite.roomLabel),
+    deviceProfileId: redactCredentialText(satellite.deviceProfileId) ?? '',
+    enabled: satellite.enabled,
+    status: safeSatelliteStatus(satellite.status),
+    version: redactCredentialText(satellite.version),
+    pairedAt: redactCredentialText(satellite.pairedAt) ?? '',
+    revokedAt: redactCredentialText(satellite.revokedAt),
+    lastSeenAt: redactCredentialText(satellite.lastSeenAt),
+    createdAt: redactCredentialText(satellite.createdAt) ?? '',
+    updatedAt: redactCredentialText(satellite.updatedAt) ?? ''
+  };
+}
+
+function safeSatelliteStatus(status: string): string {
+  const allowed = new Set([
+    'paired',
+    'offline',
+    'revoked',
+    'update_required',
+    'misconfigured',
+    'auth_failed'
+  ]);
+  return allowed.has(status) ? status : 'misconfigured';
+}
+
+function safeVoiceProvider(provider: VoiceProvider): VoiceProvider {
+  return {
+    id: provider.id,
+    name: provider.name,
+    version: provider.version,
+    kind: provider.kind,
+    transportType: provider.transportType,
+    capabilities: provider.capabilities
+      ? {
+          streaming: Boolean(provider.capabilities.streaming),
+          partialTranscripts: Boolean(provider.capabilities.partialTranscripts),
+          offline: Boolean(provider.capabilities.offline),
+          languages: safeStringArray(provider.capabilities.languages),
+          inputFormats: safeStringArray(provider.capabilities.inputFormats),
+          outputFormats: safeStringArray(provider.capabilities.outputFormats)
+        }
+      : undefined,
+    wakeWord: provider.wakeWord
+      ? {
+          defaultModelId: provider.wakeWord.defaultModelId,
+          phrase: provider.wakeWord.phrase,
+          languages: safeStringArray(provider.wakeWord.languages),
+          sensitivity: provider.wakeWord.sensitivity,
+          models: provider.wakeWord.models?.map((model) => ({
+            id: model.id,
+            phrase: model.phrase,
+            languages: safeStringArray(model.languages),
+            sensitivity: model.sensitivity
+          }))
+        }
+      : undefined,
+    healthStatus: provider.healthStatus,
+    lastActivationAt: provider.lastActivationAt,
+    lastError: redactCredentialText(provider.lastError),
+    updatedAt: provider.updatedAt
+  };
+}
+
+function safeTTSVoicesResponse(response: TTSVoicesResponse): TTSVoicesResponse {
+  return {
+    providerId: response.providerId,
+    providerName: redactCredentialText(response.providerName),
+    healthStatus: response.healthStatus,
+    setupStatus: response.setupStatus,
+    selectedVoiceId: response.selectedVoiceId,
+    selectedModelId: response.selectedModelId,
+    locale: redactCredentialText(response.locale) ?? '',
+    speed: Number(response.speed),
+    volume: Number(response.volume),
+    cloudProvider: Boolean(response.cloudProvider),
+    voices: (response.voices ?? []).map((voice) => ({
+      id: voice.id,
+      label: redactCredentialText(voice.label) ?? '',
+      locale: redactCredentialText(voice.locale) ?? '',
+      modelId: redactCredentialText(voice.modelId),
+      styles: safeStringArray(voice.styles),
+      outputFormats: safeStringArray(voice.outputFormats)
+    }))
+  };
+}
+
+function safeStringArray(values: string[] | undefined): string[] | undefined {
+  if (!values) {
+    return undefined;
+  }
+  return values.flatMap((value) => {
+    const redacted = redactCredentialText(value);
+    return redacted ? [redacted] : [];
+  });
+}
+
+function redactCredentialText(value: string | undefined): string | undefined {
+  if (!value) {
+    return value;
+  }
+  return value
+    .replace(/\b(?:https?|wss?|tcp):\/\/[^\s)]+/gi, '[redacted-url]')
+    .replace(/token=[^\s&]+/gi, 'token=[redacted]')
+    .replace(/secret[:=][^\s&]+/gi, 'secret=[redacted]')
+    .replace(/password[:=][^\s&]+/gi, 'password=[redacted]')
+    .replace(/api[_-]?key[:=][^\s&]+/gi, 'api_key=[redacted]')
+    .replace(/sk-[A-Za-z0-9_-]+/g, 'sk-[redacted]');
 }
 
 async function postVoiceControl(

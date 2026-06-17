@@ -81,8 +81,14 @@ voice:
   enabled: true
   muted-by-default: false
   wake-word-model-id: openwakeword-hey-jute
+  wake-word-phrase: Hey Jute
+  wake-sensitivity: 0.7
   stt-provider-id: wyoming-local
   tts-provider-id: ""
+  tts-enabled: true
+  tts-locale: en-GB
+  tts-speed: 1.1
+  tts-volume: 0.8
   preferred-agent-id: house
   cloud-opt-in: false
   command-providers-enabled: false
@@ -148,6 +154,13 @@ tiles: []
 		t.Fatalf("unexpected YAML MCP scopes: %s", got)
 	}
 	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" ||
+		cfg.Voice.WakeWordModelID != "openwakeword-hey-jute" ||
+		cfg.Voice.WakeWordPhrase != "Hey Jute" ||
+		cfg.Voice.WakeSensitivity != 0.7 ||
+		!cfg.Voice.TTSEnabled ||
+		cfg.Voice.TTSLocale != "en-GB" ||
+		cfg.Voice.TTSSpeed != 1.1 ||
+		cfg.Voice.TTSVolume != 0.8 ||
 		cfg.Voice.FollowupWindowSeconds != 9 {
 		t.Fatalf("unexpected YAML voice config: %+v", cfg.Voice)
 	}
@@ -282,6 +295,10 @@ func TestJSONConfigLoadsVoiceFields(t *testing.T) {
 			"mutedByDefault": false,
 			"sttProviderId": "wyoming-local",
 			"ttsProviderId": "tts-local",
+			"ttsEnabled": true,
+			"ttsLocale": "en-US",
+			"ttsSpeed": 1.2,
+			"ttsVolume": 0.75,
 			"preferredAgentId": "house",
 			"sensitiveOutputPolicy": "visual_only_sensitive",
 			"followupWindowSeconds": 7
@@ -297,6 +314,10 @@ func TestJSONConfigLoadsVoiceFields(t *testing.T) {
 	}
 	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" ||
 		cfg.Voice.TTSProviderID != "tts-local" ||
+		!cfg.Voice.TTSEnabled ||
+		cfg.Voice.TTSLocale != "en-US" ||
+		cfg.Voice.TTSSpeed != 1.2 ||
+		cfg.Voice.TTSVolume != 0.75 ||
 		cfg.Voice.FollowupWindowSeconds != 7 {
 		t.Fatalf("unexpected JSON voice config: %+v", cfg.Voice)
 	}

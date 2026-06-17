@@ -438,8 +438,11 @@
       <VoiceOverlay
         voice={$hubStream.dashboard.voice}
         voiceOrbState={$hubStream.voiceOrbState}
+        voiceMessages={$hubStream.voiceMessages}
         voiceTranscript={$hubStream.voiceTranscript}
         assistantSpeech={$hubStream.assistantSpeech}
+        voiceError={$hubStream.voiceError}
+        followupExpiresAt={$hubStream.voiceFollowupExpiresAt}
         on:toggleMute={toggleVoiceMute}
         on:cancel={cancelVoiceSession}
       />

@@ -165,6 +165,8 @@ Initial table families:
 
 Provider manifests and widget manifests are validated records. They are not executable code and are not durable sources of truth outside the hub store. A2A agent registrations are YAML-backed in the current pre-v1 implementation; a later settings store migration may promote agents into normalized tables after the add/edit UX has settled.
 
+`voice_settings` stores per-device wake model ID, wake phrase, wake sensitivity threshold, selected STT/TTS providers, TTS model/voice/locale/speed/volume, follow-up timing, and privacy controls. `voice_provider_packs` stores validated provider manifests and safe health metadata, including wake-word provider model summaries and TTS voice metadata without credential values or raw audio.
+
 Use stable string IDs for user-facing records so import/export and future sync can preserve identity.
 
 Use UTC ISO-8601 strings for public API timestamps.
@@ -266,6 +268,10 @@ Setup and settings APIs:
 - `GET /api/v1/setup/status`
 - `GET /api/v1/settings/household`
 - `PATCH /api/v1/settings/household`
+- `GET /api/v1/voice/status`
+- `PATCH /api/v1/voice/settings`
+
+Voice settings are device-profile durable settings owned by the hub. The display may keep unsaved form edits in memory, but saved voice enablement, provider IDs, wake thresholds, locale, follow-up window, cloud opt-in, command-provider enablement, sensitive-output policy, and microphone profile must be written through the hub API and persisted in SQLite.
 - `GET /api/v1/settings/rooms`
 - `PUT /api/v1/settings/rooms`
 - `GET /api/v1/settings/tiles`

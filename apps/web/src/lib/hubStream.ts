@@ -15,16 +15,29 @@ import type {
   DisplayFocusWidget,
   UserFacingIssue,
   WidgetLayout,
+  VoiceConversationMessage,
   VoiceStatus
 } from '$lib/types';
+
+export type VoiceOrbState =
+  | 'idle'
+  | 'listening'
+  | 'thinking'
+  | 'speaking'
+  | 'followup'
+  | 'error';
 
 export interface HubStreamState {
   dashboard: DashboardData;
   displayNotifications: DisplayNotification[];
   focusedWidgetId: string;
-  voiceOrbState: 'idle' | 'listening' | 'thinking' | 'speaking' | 'followup';
+  voiceOrbState: VoiceOrbState;
+  voiceConversationId: string;
+  voiceMessages: VoiceConversationMessage[];
   voiceTranscript: string;
   assistantSpeech: string;
+  voiceError: string;
+  voiceFollowupExpiresAt: string;
   showVoiceOverlay: boolean;
   retrying: boolean;
 }
@@ -68,11 +81,17 @@ const initialStub: DashboardData = {
     serviceStatus: 'not_configured',
     deviceProfileId: '',
     wakeWordModelId: '',
+    wakeWordPhrase: '',
+    wakeSensitivity: 0.5,
     sttProviderId: '',
     ttsProviderId: '',
     sttModelId: '',
     ttsModelId: '',
     ttsVoiceId: '',
+    ttsEnabled: false,
+    ttsLocale: 'en',
+    ttsSpeed: 1,
+    ttsVolume: 1,
     preferredAgentId: '',
     cloudOptIn: false,
     commandProvidersEnabled: false,
@@ -118,11 +137,63 @@ const initialState: HubStreamState = {
   displayNotifications: [],
   focusedWidgetId: '',
   voiceOrbState: 'idle',
+  voiceConversationId: '',
+  voiceMessages: [],
   voiceTranscript: '',
   assistantSpeech: '',
+  voiceError: '',
+  voiceFollowupExpiresAt: '',
   showVoiceOverlay: false,
   retrying: false
 };
+
+function eventConversationID(event: { conversationId?: string }): string {
+  return typeof event.conversationId === 'string' ? event.conversationId : '';
+}
+
+function safeEventTextLength(text: unknown): string | undefined {
+  return typeof text === 'string' ? `chars=${text.length}` : undefined;
+}
+
+function voiceMessageID(prefix: string, event: { id?: string }): string {
+  return typeof event.id === 'string' && event.id
+    ? `${prefix}-${event.id}`
+    : `${prefix}-${Date.now()}`;
+}
+
+function appendOrReplaceVoiceMessage(
+  messages: VoiceConversationMessage[],
+  message: VoiceConversationMessage
+): VoiceConversationMessage[] {
+  const next = messages.filter((item) => item.id !== message.id);
+  return [...next, message].slice(-8);
+}
+
+function safeVoiceError(reason: unknown): string {
+  switch (reason) {
+    case 'agent_failure':
+      return 'The agent could not complete that voice turn.';
+    case 'stt_failure':
+    case 'transcription_failed':
+      return "I didn't catch that. Try again when listening resumes.";
+    case 'tts_failure':
+    case 'synthesis_failed':
+      return 'Speech playback is unavailable. The visual response is still available.';
+    case 'sensitive_output_visual_only':
+    case 'sensitive_output_requires_confirmation':
+      return 'Sensitive response is visual-only.';
+    case 'provider_failure':
+    case 'provider_unavailable':
+      return 'The selected voice provider is unavailable.';
+    case 'followup_expired':
+      return 'The follow-up window expired.';
+    case 'canceled':
+    case 'followup_limit_reached':
+      return '';
+    default:
+      return 'Voice session ended.';
+  }
+}
 
 function createHubStreamStore() {
   const { subscribe, update } = writable<HubStreamState>(initialState);
@@ -370,6 +441,9 @@ function createHubStreamStore() {
       });
 
       eventSource.addEventListener('voice.wake_detected', (event) => {
+        const e = parseDisplayEvent<{ conversationId?: string }>(
+          (event as MessageEvent).data
+        );
         logger.sse(event.type);
         if (voiceEndedTimeout) {
           window.clearTimeout(voiceEndedTimeout);
@@ -377,86 +451,261 @@ function createHubStreamStore() {
         }
         update((s) => ({
           ...s,
+          voiceConversationId: eventConversationID(e ?? {}),
+          voiceMessages: [],
           voiceOrbState: 'listening',
           voiceTranscript: '',
           assistantSpeech: '',
+          voiceError: '',
+          voiceFollowupExpiresAt: '',
           showVoiceOverlay: true
         }));
       });
 
       eventSource.addEventListener('voice.transcript.partial', (event) => {
-        const e = parseDisplayEvent<{ payload?: { text?: string } }>(
-          (event as MessageEvent).data
-        );
+        const e = parseDisplayEvent<{
+          id?: string;
+          conversationId?: string;
+          createdAt?: string;
+          payload?: { text?: string };
+        }>((event as MessageEvent).data);
         const text = e?.payload?.text;
-        logger.sse(event.type, text ? `text="${text}"` : undefined);
+        logger.sse(event.type, safeEventTextLength(text));
         update((s) => ({
           ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
           voiceTranscript: typeof text === 'string' ? text : s.voiceTranscript,
-          voiceOrbState: 'listening'
+          voiceOrbState: 'listening',
+          voiceError: '',
+          showVoiceOverlay: true
         }));
       });
 
       eventSource.addEventListener('voice.transcript.final', (event) => {
-        const e = parseDisplayEvent<{ payload?: { text?: string } }>(
-          (event as MessageEvent).data
-        );
+        const e = parseDisplayEvent<{
+          id?: string;
+          conversationId?: string;
+          createdAt?: string;
+          payload?: { text?: string };
+        }>((event as MessageEvent).data);
         const text = e?.payload?.text;
-        logger.sse(event.type, text ? `text="${text}"` : undefined);
+        logger.sse(event.type, safeEventTextLength(text));
         update((s) => ({
           ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
           voiceTranscript: typeof text === 'string' ? text : s.voiceTranscript,
-          voiceOrbState: 'listening'
+          voiceMessages:
+            typeof text === 'string' && text
+              ? appendOrReplaceVoiceMessage(s.voiceMessages, {
+                  id: voiceMessageID('user', e ?? {}),
+                  role: 'user',
+                  text,
+                  createdAt:
+                    typeof e?.createdAt === 'string'
+                      ? e.createdAt
+                      : new Date().toISOString(),
+                  status: 'final'
+                })
+              : s.voiceMessages,
+          voiceOrbState: 'listening',
+          voiceError: '',
+          showVoiceOverlay: true
+        }));
+      });
+
+      eventSource.addEventListener('conversation.started', (event) => {
+        const e = parseDisplayEvent<{ conversationId?: string }>(
+          (event as MessageEvent).data
+        );
+        logger.sse(event.type);
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceError: '',
+          showVoiceOverlay: true
         }));
       });
 
       eventSource.addEventListener('conversation.turn_started', (event) => {
+        const e = parseDisplayEvent<{ conversationId?: string }>(
+          (event as MessageEvent).data
+        );
         logger.sse(event.type);
-        update((s) => ({ ...s, voiceOrbState: 'thinking' }));
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceOrbState: 'thinking',
+          voiceError: '',
+          showVoiceOverlay: true
+        }));
       });
 
       eventSource.addEventListener('conversation.turn_completed', (event) => {
         const e = parseDisplayEvent<{
-          payload?: { speech?: string; text?: string };
+          id?: string;
+          conversationId?: string;
+          createdAt?: string;
+          payload?: { speech?: string; text?: string; status?: string };
         }>((event as MessageEvent).data);
         const speech = e?.payload?.speech;
         const text = e?.payload?.text;
-        logger.sse(event.type, text ? `text="${text}"` : undefined);
+        const assistantText =
+          typeof speech === 'string'
+            ? speech
+            : typeof text === 'string'
+              ? text
+              : '';
+        logger.sse(event.type, safeEventTextLength(assistantText));
         update((s) => ({
           ...s,
-          assistantSpeech:
-            typeof speech === 'string'
-              ? speech
-              : typeof text === 'string'
-                ? text
-                : s.assistantSpeech,
-          voiceOrbState: 'speaking'
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          assistantSpeech: assistantText || s.assistantSpeech,
+          voiceMessages: assistantText
+            ? appendOrReplaceVoiceMessage(s.voiceMessages, {
+                id: voiceMessageID('assistant', e ?? {}),
+                role: 'assistant',
+                text: assistantText,
+                createdAt:
+                  typeof e?.createdAt === 'string'
+                    ? e.createdAt
+                    : new Date().toISOString(),
+                status: 'speaking'
+              })
+            : s.voiceMessages,
+          voiceOrbState: 'speaking',
+          voiceError: '',
+          showVoiceOverlay: true
         }));
       });
 
       eventSource.addEventListener('conversation.followup_started', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { expiresAt?: string };
+        }>((event as MessageEvent).data);
         logger.sse(event.type);
         update((s) => ({
           ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
           voiceOrbState: 'followup',
-          voiceTranscript: ''
+          voiceTranscript: '',
+          voiceFollowupExpiresAt:
+            typeof e?.payload?.expiresAt === 'string'
+              ? e.payload.expiresAt
+              : s.voiceFollowupExpiresAt,
+          voiceError: '',
+          showVoiceOverlay: true
+        }));
+      });
+
+      eventSource.addEventListener('tts.started', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { state?: string };
+        }>((event as MessageEvent).data);
+        logger.sse(event.type, e?.payload?.state);
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceOrbState: 'speaking',
+          voiceError: '',
+          showVoiceOverlay: true
+        }));
+      });
+
+      eventSource.addEventListener('tts.completed', (event) => {
+        const e = parseDisplayEvent<{ conversationId?: string }>(
+          (event as MessageEvent).data
+        );
+        logger.sse(event.type);
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceOrbState: 'followup',
+          voiceError: '',
+          showVoiceOverlay: true
+        }));
+      });
+
+      eventSource.addEventListener('tts.stopped', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { reason?: string; state?: string };
+        }>((event as MessageEvent).data);
+        const reason = e?.payload?.reason;
+        const policyMessage =
+          reason === 'sensitive_output_visual_only' ||
+          reason === 'sensitive_output_requires_confirmation'
+            ? safeVoiceError(reason)
+            : '';
+        logger.sse(event.type);
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceOrbState: policyMessage ? 'followup' : 'listening',
+          voiceError:
+            reason === 'barge_in'
+              ? 'Speech stopped. Listening for your follow-up.'
+              : policyMessage,
+          showVoiceOverlay: true
+        }));
+      });
+
+      eventSource.addEventListener('tts.failed', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { reason?: string };
+        }>((event as MessageEvent).data);
+        logger.sse(event.type);
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceOrbState: 'error',
+          voiceError: safeVoiceError(e?.payload?.reason || 'tts_failure'),
+          showVoiceOverlay: true
         }));
       });
 
       eventSource.addEventListener('conversation.ended', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { reason?: string };
+        }>((event as MessageEvent).data);
+        const error = safeVoiceError(e?.payload?.reason);
         logger.sse(event.type);
-        update((s) => ({ ...s, voiceOrbState: 'idle' }));
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceOrbState: error ? 'error' : 'idle',
+          voiceError: error,
+          showVoiceOverlay: Boolean(error) || s.showVoiceOverlay
+        }));
         if (voiceEndedTimeout) {
           window.clearTimeout(voiceEndedTimeout);
         }
         voiceEndedTimeout = window.setTimeout(() => {
           update((s) => {
-            if (s.voiceOrbState === 'idle') {
+            if (s.voiceOrbState === 'idle' || s.voiceOrbState === 'error') {
               return {
                 ...s,
                 showVoiceOverlay: false,
+                voiceConversationId: '',
+                voiceMessages: [],
                 voiceTranscript: '',
-                assistantSpeech: ''
+                assistantSpeech: '',
+                voiceError: '',
+                voiceFollowupExpiresAt: ''
               };
             }
             return s;
@@ -579,6 +828,12 @@ function createHubStreamStore() {
         update((s) => ({
           ...s,
           voiceOrbState: 'idle',
+          voiceConversationId: '',
+          voiceMessages: [],
+          voiceTranscript: '',
+          assistantSpeech: '',
+          voiceError: '',
+          voiceFollowupExpiresAt: '',
           showVoiceOverlay: false
         }));
       } catch (err) {

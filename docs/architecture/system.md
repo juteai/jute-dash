@@ -90,9 +90,12 @@ Initial API families:
 - `/api/v1/devices`: future device profile and per-device settings.
 - `/api/v1/voice/status`: current voice state, provider, mute, and follow-up status foundation.
 - `/api/v1/voice/mute`, `/api/v1/voice/unmute`, `/api/v1/voice/cancel`: current voice state controls.
-- `/api/v1/voice/providers`: current provider-list response shape and future STT/TTS provider pack discovery, details, and health tests.
-- `/api/v1/tts`: future voice listing, preview, speak, and stop controls.
-- Conversation history and typed turns currently use the A2A JavaScript SDK through the agent proxy rather than Jute-specific conversation routes.
+- `/api/v1/voice/providers`: current provider-list response shape and future provider pack discovery, details, and health tests.
+- `/api/v1/voice/settings`: current hub-owned settings patch API for device-profile voice enablement, wake/STT/TTS selections, language, follow-up bounds, cloud opt-in, command-provider enablement, microphone profile, and sensitive-output policy.
+- `/api/v1/voice/transcripts/final`: hub-owned ingress for final transcripts from the local voice service; the hub emits transcript/conversation events, enforces follow-up limits, and routes text through the A2A runner without accepting raw audio or pre-roll buffers.
+- `/api/v1/tts/voices`: current TTS provider voice listing and health/setup response.
+- `/api/v1/tts/preview`, `/api/v1/tts/speak`, `/api/v1/tts/stop`: current speech-policy and transient TTS state controls; future provider-backed synthesis and playback will use the same surface.
+- Conversation history and typed display turns currently use the A2A JavaScript SDK through the agent proxy rather than Jute-specific conversation routes.
 - `/api/v1/events`: currently a minimal SSE endpoint. Future releases will use it for replayable home, widget, agent, voice, and task updates.
 - `/api/v1/settings/household`: current home, display, and weather settings.
 - `/api/v1/settings/rooms`: current editable room list.
@@ -163,7 +166,7 @@ Persisted data:
 - cached Agent Cards, ETags, selected bindings, and health checks when persistent caching is enabled;
 - room/device mappings and adapter metadata;
 - no local conversation transcript store in the current implementation; conversation history is read from agents through A2A `ListTasks` and `GetTask`;
-- voice settings, wake-word model IDs, provider pack choices, STT/TTS model IDs, TTS voice IDs, follow-up windows, cloud opt-in, command-provider enablement, sensitive-output speech policy, and microphone profiles;
+- voice settings, wake-word model IDs, provider pack choices, STT/TTS model IDs, TTS voice IDs, TTS locale/speed/volume, follow-up windows, cloud opt-in, command-provider enablement, sensitive-output speech policy, and microphone profiles;
 - voice provider pack installation records, manifests, health state, and non-secret settings;
 - MCP bridge enablement, auth references, endpoint settings, and per-agent MCP scopes;
 - automation schedules when introduced.

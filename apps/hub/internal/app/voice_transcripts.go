@@ -1,0 +1,535 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
+	"jute-dash/apps/hub/internal/app/agents"
+	"jute-dash/apps/hub/internal/app/voice"
+	"jute-dash/apps/hub/internal/pkg/httphelper"
+)
+
+type VoiceFinalTranscriptRequest struct {
+	Text            string `json:"text"`
+	DeviceProfileID string `json:"deviceProfileId,omitempty"`
+	DeviceID        string `json:"deviceId,omitempty"`
+	ConversationID  string `json:"conversationId,omitempty"`
+	AgentID         string `json:"agentId,omitempty"`
+}
+
+type VoiceSatelliteFinalTranscriptRequest struct {
+	Text           string `json:"text"`
+	ConversationID string `json:"conversationId,omitempty"`
+}
+
+type VoiceFinalTranscriptResponse struct {
+	Conversation agents.ConversationDetail `json:"conversation"`
+	Followup     VoiceFollowupResponse     `json:"followup"`
+}
+
+type VoiceFollowupResponse struct {
+	Active    bool   `json:"active"`
+	ExpiresAt string `json:"expiresAt,omitempty"`
+	Turns     int    `json:"turns"`
+	MaxTurns  int    `json:"maxTurns"`
+}
+
+var _ voice.FinalTranscriptSink = (*Server)(nil)
+
+type voiceTranscriptError struct {
+	status  int
+	message string
+}
+
+func (e voiceTranscriptError) Error() string {
+	return e.message
+}
+
+func (s *Server) handleVoiceFinalTranscript(w http.ResponseWriter, r *http.Request) {
+	if !httphelper.RequireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	var req VoiceFinalTranscriptRequest
+	if err := decodeStrictJSON(r.Body, &req); err != nil {
+		httphelper.WriteError(w, http.StatusBadRequest, "invalid final transcript request")
+		return
+	}
+	s.handleFinalTranscriptRequest(w, r, req)
+}
+
+func (s *Server) SubmitFinalTranscript(ctx context.Context, transcript voice.FinalTranscript) error {
+	_, err := s.submitFinalTranscript(ctx, VoiceFinalTranscriptRequest{
+		Text:            transcript.Text,
+		DeviceProfileID: transcript.DeviceProfileID,
+		DeviceID:        transcript.DeviceID,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) newSTTTurnProcessor(
+	ctx context.Context,
+	deviceProfileID, deviceID string,
+) (*voice.STTTurnProcessor, error) {
+	providerStore, ok := s.voiceStore.(interface {
+		ActiveSTTProvider(context.Context, string) (voice.STTProvider, error)
+	})
+	if !ok {
+		return nil, errors.New("STT provider store is unavailable")
+	}
+	provider, err := providerStore.ActiveSTTProvider(ctx, deviceProfileID)
+	if err != nil {
+		return nil, err
+	}
+	if provider == nil {
+		return nil, errors.New("STT provider is unavailable")
+	}
+	return voice.NewSTTTurnProcessor(provider, s, deviceProfileID, deviceID), nil
+}
+
+func (s *Server) newLocalVoiceService(
+	ctx context.Context,
+	deviceProfileID string,
+	deviceID string,
+	capture voice.AudioCapture,
+	vad voice.VoiceActivityDetector,
+) (*voice.LocalVoiceService, error) {
+	settings, err := s.voiceStore.VoiceSettings(ctx, deviceProfileID)
+	if err != nil {
+		return nil, err
+	}
+	if deviceProfileID == "" {
+		deviceProfileID = settings.DeviceProfileID
+	}
+	if deviceID == "" {
+		deviceID = deviceProfileID
+	}
+	processor, err := s.newSTTTurnProcessor(ctx, deviceProfileID, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	return voice.NewLocalVoiceService(
+		voice.VoiceServiceConfig{
+			Enabled:  settings.Enabled,
+			Muted:    settings.Muted,
+			DeviceID: deviceID,
+		},
+		capture,
+		vad,
+		s.voiceDispatcher,
+		func(utterance voice.CapturedUtterance) {
+			if _, err := processor.Process(ctx, utterance); err != nil && s.voiceDispatcher != nil {
+				s.voiceDispatcher.EmitVoiceStateChanged(deviceID, voice.VoiceStatePayload{
+					Enabled:       settings.Enabled,
+					Muted:         settings.Muted,
+					State:         voice.ServiceStateError,
+					ServiceStatus: "degraded",
+				})
+			}
+		},
+	), nil
+}
+
+func (s *Server) handleFinalTranscriptRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+	req VoiceFinalTranscriptRequest,
+) {
+	response, err := s.submitFinalTranscript(r.Context(), req)
+	if err != nil {
+		var transcriptErr voiceTranscriptError
+		if errors.As(err, &transcriptErr) {
+			httphelper.WriteError(w, transcriptErr.status, transcriptErr.message)
+			return
+		}
+		httphelper.WriteError(w, http.StatusInternalServerError, "voice transcript could not be processed")
+		return
+	}
+	httphelper.WriteJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) submitFinalTranscript(
+	ctx context.Context,
+	req VoiceFinalTranscriptRequest,
+) (VoiceFinalTranscriptResponse, error) {
+	req.Text = strings.TrimSpace(req.Text)
+	if req.Text == "" {
+		return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+			status:  http.StatusBadRequest,
+			message: "text is required",
+		}
+	}
+	settings, err := s.voiceStore.VoiceSettings(ctx, req.DeviceProfileID)
+	if err != nil {
+		return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+			status:  http.StatusInternalServerError,
+			message: "voice settings are unavailable",
+		}
+	}
+	if !settings.Enabled || settings.Muted {
+		return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+			status:  http.StatusConflict,
+			message: "voice is not listening",
+		}
+	}
+
+	session, started, err := s.voiceRuntime.beginTurn(
+		req.ConversationID,
+		settings,
+		voiceSourceDeviceProfileID(req, settings),
+		deviceID(req),
+	)
+	if err != nil {
+		if errors.Is(err, errVoiceFollowupExpired) {
+			s.voiceDispatcher.EmitConversationEvent(
+				voice.EventConversationEnded,
+				deviceID(req),
+				req.ConversationID,
+				map[string]any{"reason": "followup_expired"},
+			)
+			return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+				status:  http.StatusConflict,
+				message: "voice follow-up window expired",
+			}
+		}
+		if errors.Is(err, errVoiceFollowupSourceMismatch) {
+			return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+				status:  http.StatusConflict,
+				message: "voice follow-up source mismatch",
+			}
+		}
+		return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+			status:  http.StatusInternalServerError,
+			message: "voice conversation is unavailable",
+		}
+	}
+	conversationID := session.ConversationID
+	agentID := s.voiceAgentID(req.AgentID, settings)
+
+	if started {
+		s.voiceDispatcher.EmitConversationEvent(
+			voice.EventConversationStarted,
+			deviceID(req),
+			conversationID,
+			map[string]any{"agentId": agentID},
+		)
+	}
+	s.voiceDispatcher.EmitVoiceTranscript(
+		voice.EventVoiceTranscriptFinal,
+		deviceID(req),
+		conversationID,
+		req.Text,
+	)
+
+	detail, err := s.turnRunner.Run(
+		ctx,
+		conversationID,
+		agents.ConversationTurnRequest{
+			AgentID: agentID,
+			Text:    req.Text,
+		},
+		s.voiceAgentEventCallback(deviceID(req)),
+	)
+	if err != nil {
+		s.voiceRuntime.end(conversationID)
+		s.voiceDispatcher.EmitConversationEvent(
+			voice.EventConversationEnded,
+			deviceID(req),
+			conversationID,
+			map[string]any{"reason": "agent_failure"},
+		)
+		return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+			status:  http.StatusBadGateway,
+			message: "agent turn could not be completed",
+		}
+	}
+
+	session = s.voiceRuntime.completeTurn(conversationID, settings)
+	if sessionComplete(session) {
+		s.voiceRuntime.end(conversationID)
+		s.voiceDispatcher.EmitConversationEvent(
+			voice.EventConversationEnded,
+			deviceID(req),
+			conversationID,
+			map[string]any{
+				"reason":   "followup_limit_reached",
+				"turns":    session.Turns,
+				"maxTurns": maxVoiceSessionTurns,
+			},
+		)
+		return VoiceFinalTranscriptResponse{
+			Conversation: detail,
+			Followup: VoiceFollowupResponse{
+				Active:   false,
+				Turns:    session.Turns,
+				MaxTurns: maxVoiceSessionTurns,
+			},
+		}, nil
+	}
+	s.voiceDispatcher.EmitConversationEvent(
+		voice.EventConversationFollowupStarted,
+		deviceID(req),
+		conversationID,
+		map[string]any{
+			"expiresAt": session.ExpiresAt.Format(time.RFC3339Nano),
+			"turns":     session.Turns,
+			"maxTurns":  maxVoiceSessionTurns,
+		},
+	)
+
+	return VoiceFinalTranscriptResponse{
+		Conversation: detail,
+		Followup: VoiceFollowupResponse{
+			Active:    true,
+			ExpiresAt: session.ExpiresAt.Format(time.RFC3339Nano),
+			Turns:     session.Turns,
+			MaxTurns:  maxVoiceSessionTurns,
+		},
+	}, nil
+}
+
+func sessionComplete(session voiceConversationSession) bool {
+	return session.Turns >= maxVoiceSessionTurns
+}
+
+func (s *Server) handleVoiceSatelliteRoutes(w http.ResponseWriter, r *http.Request) {
+	const prefix = "/api/v1/voice/satellites/"
+	suffix := strings.TrimPrefix(r.URL.Path, prefix)
+	parts := strings.Split(strings.Trim(suffix, "/"), "/")
+	if len(parts) == 1 && parts[0] != "" {
+		s.handleVoiceSatellite(w, r, parts[0])
+		return
+	}
+	if len(parts) == 2 && parts[1] == "events" {
+		s.handleVoiceSatelliteEvent(w, r, parts[0])
+		return
+	}
+	if len(parts) == 3 && parts[1] == "transcripts" && parts[2] == "final" {
+		s.handleVoiceSatelliteFinalTranscript(w, r, parts[0])
+		return
+	}
+	http.NotFound(w, r)
+}
+
+func (s *Server) handleVoiceSatellites(w http.ResponseWriter, r *http.Request) {
+	if !httphelper.RequireMethod(w, r, http.MethodGet) {
+		return
+	}
+	satellites, err := s.voiceStore.VoiceSatellites(r.Context())
+	if err != nil {
+		httphelper.WriteError(w, http.StatusInternalServerError, "voice satellites are unavailable")
+		return
+	}
+	httphelper.WriteJSON(w, http.StatusOK, map[string]any{"satellites": satellites})
+}
+
+func (s *Server) handleVoiceSatellite(w http.ResponseWriter, r *http.Request, satelliteID string) {
+	switch r.Method {
+	case http.MethodGet:
+		satellite, err := s.voiceStore.VoiceSatellite(r.Context(), satelliteID)
+		if err != nil {
+			httphelper.WriteError(w, http.StatusNotFound, "voice satellite was not found")
+			return
+		}
+		httphelper.WriteJSON(w, http.StatusOK, satellite)
+	case http.MethodPatch:
+		var req voice.SatelliteUpdateRequest
+		if err := decodeStrictJSON(r.Body, &req); err != nil {
+			httphelper.WriteError(w, http.StatusBadRequest, "invalid satellite settings request")
+			return
+		}
+		satellite, err := s.voiceStore.UpdateSatellite(r.Context(), satelliteID, req)
+		if err != nil {
+			if strings.Contains(err.Error(), "required") {
+				httphelper.WriteError(w, http.StatusBadRequest, "invalid satellite settings request")
+				return
+			}
+			httphelper.WriteError(w, http.StatusNotFound, "voice satellite was not found")
+			return
+		}
+		httphelper.WriteJSON(w, http.StatusOK, satellite)
+	default:
+		w.Header().Set("Allow", strings.Join([]string{http.MethodGet, http.MethodPatch}, ", "))
+		httphelper.WriteError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *Server) authenticateVoiceSatellite(
+	w http.ResponseWriter,
+	r *http.Request,
+	satelliteID string,
+) (voice.SatelliteProjection, bool) {
+	satellite, err := s.voiceStore.AuthenticateSatellite(
+		r.Context(),
+		satelliteID,
+		r.Header.Get("X-Jute-Satellite-Auth"),
+	)
+	if err != nil {
+		httphelper.WriteError(w, http.StatusForbidden, "satellite is not authorized")
+		return voice.SatelliteProjection{}, false
+	}
+	return satellite, true
+}
+
+func (s *Server) handleVoiceSatelliteEvent(w http.ResponseWriter, r *http.Request, satelliteID string) {
+	if !httphelper.RequireMethod(w, r, http.MethodPost) {
+		return
+	}
+	satellite, ok := s.authenticateVoiceSatellite(w, r, satelliteID)
+	if !ok {
+		return
+	}
+
+	req, err := voice.DecodeSatelliteEventRequest(r.Body)
+	if err != nil {
+		httphelper.WriteError(w, http.StatusBadRequest, "invalid satellite event request")
+		return
+	}
+	eventType, payload, err := voice.SatelliteEventPayloadFromRequest(req)
+	if err != nil {
+		httphelper.WriteError(w, http.StatusBadRequest, "invalid satellite event request")
+		return
+	}
+	event := s.voiceDispatcher.EmitSatelliteEvent(eventType, satellite, payload)
+	httphelper.WriteJSON(w, http.StatusAccepted, event)
+}
+
+func (s *Server) handleVoiceSatelliteFinalTranscript(w http.ResponseWriter, r *http.Request, satelliteID string) {
+	if !httphelper.RequireMethod(w, r, http.MethodPost) {
+		return
+	}
+	satellite, ok := s.authenticateVoiceSatellite(w, r, satelliteID)
+	if !ok {
+		return
+	}
+
+	var req VoiceSatelliteFinalTranscriptRequest
+	if err := decodeStrictJSON(r.Body, &req); err != nil {
+		httphelper.WriteError(w, http.StatusBadRequest, "invalid satellite final transcript request")
+		return
+	}
+
+	s.handleFinalTranscriptRequest(w, r, VoiceFinalTranscriptRequest{
+		Text:            req.Text,
+		DeviceProfileID: satellite.DeviceProfileID,
+		DeviceID:        satellite.ID,
+		ConversationID:  req.ConversationID,
+	})
+}
+
+func decodeStrictJSON(r io.Reader, dst any) error {
+	decoder := json.NewDecoder(r)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("trailing JSON data")
+	}
+	return nil
+}
+
+func (s *Server) voiceAgentID(requested string, settings voice.Settings) string {
+	if agentID := strings.TrimSpace(requested); agentID != "" {
+		return agentID
+	}
+	if agentID := strings.TrimSpace(settings.PreferredAgentID); agentID != "" {
+		return agentID
+	}
+	if agentID := strings.TrimSpace(s.cfg.Voice.PreferredAgentID); agentID != "" {
+		return agentID
+	}
+	for _, agent := range s.agentsManager.List(context.Background(), false) {
+		if agent.Enabled {
+			return agent.ID
+		}
+	}
+	return ""
+}
+
+func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) error {
+	return func(event agents.Event) error {
+		switch event.Kind {
+		case agents.EventTurnStarted:
+			s.voiceDispatcher.EmitConversationEvent(
+				voice.EventConversationTurnStarted,
+				deviceID,
+				event.ConversationID,
+				map[string]any{
+					"agentId": event.AgentID,
+					"status":  event.Status,
+				},
+			)
+		case agents.EventTurnCompleted:
+			payload := map[string]any{
+				"agentId": event.AgentID,
+				"status":  "completed",
+			}
+			if event.Detail != nil {
+				payload["status"] = event.Detail.Conversation.Status
+				payload["taskId"] = event.Detail.Conversation.LatestTaskID
+				if text := latestAssistantMessageText(*event.Detail); text != "" {
+					payload["text"] = text
+				}
+			}
+			s.voiceDispatcher.EmitConversationEvent(
+				voice.EventConversationTurnCompleted,
+				deviceID,
+				event.ConversationID,
+				payload,
+			)
+		case agents.EventStatusChanged:
+			s.voiceDispatcher.EmitConversationEvent(
+				voice.EventConversationTurnStarted,
+				deviceID,
+				event.ConversationID,
+				map[string]any{
+					"agentId": event.AgentID,
+					"taskId":  event.TaskID,
+					"status":  event.Status,
+				},
+			)
+		}
+		return nil
+	}
+}
+
+func latestAssistantMessageText(detail agents.ConversationDetail) string {
+	for i := len(detail.Messages) - 1; i >= 0; i-- {
+		message := detail.Messages[i]
+		if message.Role == "assistant" {
+			if text := strings.TrimSpace(message.Content); text != "" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func deviceID(req VoiceFinalTranscriptRequest) string {
+	if id := strings.TrimSpace(req.DeviceID); id != "" {
+		return id
+	}
+	if id := strings.TrimSpace(req.DeviceProfileID); id != "" {
+		return id
+	}
+	return "default-display"
+}
+
+func voiceSourceDeviceProfileID(req VoiceFinalTranscriptRequest, settings voice.Settings) string {
+	if id := strings.TrimSpace(req.DeviceProfileID); id != "" {
+		return id
+	}
+	if id := strings.TrimSpace(settings.DeviceProfileID); id != "" {
+		return id
+	}
+	return "default-display"
+}
