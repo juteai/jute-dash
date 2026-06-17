@@ -11,6 +11,7 @@
 
   export let widget: WidgetInstance;
   export let editMode = false;
+  export let resizable = editMode;
   export let focused = false;
   export let chrome = 'solid';
   export let overflow: 'clip' | 'scroll' | 'expand' = 'clip';
@@ -130,7 +131,7 @@
     {/if}
   </div>
 
-  {#if editMode}
+  {#if resizable}
     <button
       type="button"
       class="widget-resize-dot widget-resize-dot--right"
