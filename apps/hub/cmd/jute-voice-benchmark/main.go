@@ -41,12 +41,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 	wakeCommand := flags.String(
 		"wake-command",
 		"",
-		"run a wake-word command provider over fixture-manifest WAV files; use {fixture} in wake-command-args or it is appended",
+		"run a wake-word command provider over fixture-manifest WAV files; use {inputPath} in wake-command-args or it is appended",
 	)
 	wakeCommandArgs := flags.String(
 		"wake-command-args",
 		"",
-		"space-separated wake command args; {fixture} is replaced with the temporary WAV fixture path",
+		"space-separated wake command args; {inputPath} is replaced with the temporary WAV fixture path",
 	)
 	wakeCommandArgsJSON := flags.String(
 		"wake-command-args-json",
@@ -57,12 +57,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 	sttCommand := flags.String(
 		"stt-command",
 		"",
-		"run an STT command provider over fixture-manifest WAV files; use {fixture} in stt-command-args or it is appended",
+		"run an STT command provider over fixture-manifest WAV files; use {inputPath} in stt-command-args or it is appended",
 	)
 	sttCommandArgs := flags.String(
 		"stt-command-args",
 		"",
-		"space-separated STT command args; {fixture} is replaced with the temporary WAV fixture path",
+		"space-separated STT command args; {inputPath} is replaced with the temporary WAV fixture path",
 	)
 	sttCommandArgsJSON := flags.String(
 		"stt-command-args-json",
@@ -3186,8 +3186,9 @@ func voiceCommandArgs(args []string, fixturePath string, fixtureID string) []str
 	out := make([]string, 0, len(args)+1)
 	replaced := false
 	for _, arg := range args {
-		if strings.Contains(arg, "{fixture}") {
+		if strings.Contains(arg, "{inputPath}") || strings.Contains(arg, "{fixture}") {
 			replaced = true
+			arg = strings.ReplaceAll(arg, "{inputPath}", fixturePath)
 			out = append(out, strings.ReplaceAll(arg, "{fixture}", fixturePath))
 			continue
 		}

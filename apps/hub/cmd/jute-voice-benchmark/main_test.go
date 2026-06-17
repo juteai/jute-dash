@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -3804,6 +3805,18 @@ func TestVoiceBenchmarkCommandSTTCommandHelper(t *testing.T) {
 		`{"text":"turn on the lights","providerId":"go-whisper-fixture","modelId":"tiny-en","language":"en-GB","durationMs":42}`,
 	)
 	os.Exit(0)
+}
+
+func TestVoiceCommandArgsAcceptsInputPathPlaceholder(t *testing.T) {
+	got := voiceCommandArgs(
+		[]string{"detect", "--input", "{inputPath}", "--fixture-id", "{fixtureId}"},
+		"/tmp/input.wav",
+		"positive-wake",
+	)
+	want := []string{"detect", "--input", "/tmp/input.wav", "--fixture-id", "positive-wake"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("voiceCommandArgs() = %#v, want %#v", got, want)
+	}
 }
 
 func TestVoiceBenchmarkCommandRejectsAmbiguousCommandArgs(t *testing.T) {

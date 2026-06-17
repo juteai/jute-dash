@@ -142,7 +142,7 @@ Use this shape only after command providers are enabled for the target household
 }
 ```
 
-The fixture validator requires the command path to be absolute and the arguments to remain an explicit argv array with a `{fixture}` placeholder for the temporary WAV path. The adapter must avoid shell interpolation, write temporary audio files under a Jute-controlled runtime directory, and remove those files after transcription.
+The fixture validator requires the command path to be absolute and the arguments to remain an explicit argv array with a `{inputPath}` placeholder for the temporary WAV path. The adapter must avoid shell interpolation, write temporary audio files under a Jute-controlled runtime directory, and remove those files after transcription.
 
 ## Benchmark Plan
 
@@ -260,7 +260,7 @@ The command verifies the manifest, WAV files, and JUT-13 fixture requirements, t
 Run a local command-style go-whisper sidecar or CLI over the same fixture manifest with
 `-stt-command`. The command path must be absolute; bare command names resolved through `PATH` are
 rejected for closure evidence. The benchmark command writes each validated fixture utterance to a temporary WAV,
-replaces `{fixture}` in `-stt-command-args` with that path, removes the temporary file after the
+replaces `{inputPath}` in `-stt-command-args` with that path, removes the temporary file after the
 provider returns, and emits a normal `BenchmarkReport`:
 
 ```sh
@@ -268,7 +268,7 @@ go run ./apps/hub/cmd/jute-voice-benchmark \
   -fixture-manifest stt-fixtures.json \
   -fixture-dir . \
   -stt-command /absolute/path/to/go-whisper-command \
-  -stt-command-args-json '["transcribe", "--model", "tiny.en", "--input", "{fixture}", "--json"]' \
+  -stt-command-args-json '["transcribe", "--model", "tiny.en", "--input", "{inputPath}", "--json"]' \
   -provider-id go-whisper-command \
   -model-id tiny.en \
   -model-hash sha256:replace-with-model-hash \
