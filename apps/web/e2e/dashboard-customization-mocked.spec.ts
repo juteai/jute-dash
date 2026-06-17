@@ -83,6 +83,58 @@ test('dragging and resizing a widget persists changed desktop placement', async 
   expect(weather?.h).toBeGreaterThanOrEqual(1);
 });
 
+test('dashboard screen management persists add rename duplicate delete and active screen', async ({
+  page
+}) => {
+  const hub = await createMockHub(page);
+  await page.goto('/');
+  await expect(page.getByLabel('Widget dashboard')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Edit dashboard' }).click();
+  await page.getByRole('button', { name: 'Add screen' }).click();
+  await expect(page.getByLabel('Dashboard screen')).toHaveValue('screen-2');
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.type()).toBe('prompt');
+    await dialog.accept('Morning');
+  });
+  await page.getByRole('button', { name: 'Rename screen' }).click();
+  await expect(page.getByLabel('Dashboard screen')).toContainText('Morning');
+
+  await page.getByRole('button', { name: 'Duplicate screen' }).click();
+  await expect(page.getByLabel('Dashboard screen')).toHaveValue('morning-copy');
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.type()).toBe('confirm');
+    await dialog.accept();
+  });
+  await page.getByRole('button', { name: 'Delete screen' }).click();
+  await expect(page.getByLabel('Dashboard screen')).toHaveValue('main');
+
+  await page.getByRole('button', { name: 'Done' }).click();
+  await hub.expectWrite('PUT', '/api/v1/widgets/layout');
+  const saved = latestLayoutWrite(hub.writes);
+  expect(saved?.activeScreenId).toBe('main');
+  expect(saved?.screens?.map((screen) => screen.id)).toEqual([
+    'main',
+    'screen-2'
+  ]);
+  expect(
+    saved?.screens?.find((screen) => screen.id === 'screen-2')
+  ).toMatchObject({
+    label: 'Morning',
+    widgets: []
+  });
+
+  await page.getByRole('button', { name: 'Show Morning' }).click();
+  const activeOnly = hub.writes.findLast(
+    (write) =>
+      write.method === 'PATCH' &&
+      write.path === '/api/v1/widgets/layout/active-screen'
+  )?.body as { screenId?: string } | undefined;
+  expect(activeOnly).toEqual({ screenId: 'screen-2' });
+});
+
 function widgetFrame(page: Page, id: string) {
   return page.locator(`[data-widget-id="${id}"] .widget-frame`);
 }
@@ -131,6 +183,19 @@ async function placement(page: Page, widgetId: string) {
       h: Number.parseInt(styles.gridRowEnd.replace('span ', ''), 10)
     };
   }, widgetId);
+}
+
+function latestLayoutWrite(
+  writes: Array<{ method: string; path: string; body: unknown }>
+) {
+  return writes.findLast(
+    (write) => write.method === 'PUT' && write.path === '/api/v1/widgets/layout'
+  )?.body as
+    | {
+        activeScreenId?: string;
+        screens?: Array<{ id: string; label: string; widgets: unknown[] }>;
+      }
+    | undefined;
 }
 
 async function expectDashboardGeometry(page: Page) {
