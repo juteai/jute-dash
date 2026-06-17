@@ -360,7 +360,8 @@
     >
       <WidgetFrame
         {widget}
-        editMode={fineEdit}
+        {editMode}
+        resizable={fineEdit}
         focused={focusedWidgetId === widget.id}
         chrome={resolveWidgetChrome(widget, data.config.display)}
         overflow={(widget.overflow ?? 'clip') as 'clip' | 'scroll' | 'expand'}
