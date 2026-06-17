@@ -411,6 +411,13 @@ function mockState(options: MockHubOptions) {
             label: 'Bridge host',
             required: false,
             secret: false
+          },
+          {
+            id: 'username',
+            type: 'string',
+            label: 'Username secret reference',
+            required: false,
+            secret: true
           }
         ]
       },
@@ -585,6 +592,27 @@ function catalog() {
           slot: 'account',
           kind: 'spotify',
           displayName: 'Spotify account',
+          required: true
+        }
+      ]
+    },
+    {
+      kind: 'philips-hue',
+      name: 'Philips Hue',
+      description: 'Hue lights',
+      defaultTitle: 'Hue',
+      defaultW: 3,
+      defaultH: 2,
+      minW: 1,
+      minH: 1,
+      defaultSize: 'wide',
+      overflow: 'clip',
+      allowMultiple: true,
+      connectionRequirements: [
+        {
+          slot: 'bridge',
+          kind: 'philips-hue',
+          displayName: 'Hue bridge',
           required: true
         }
       ]
