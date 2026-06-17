@@ -356,6 +356,61 @@ func TestTTSSpeakUsesProviderAndReturnsSafePlaybackMetadata(t *testing.T) {
 	assertJSONOmits(t, emitter.ttsEvents, "AQIDBA", string([]byte{1, 2, 3, 4}), "rawAudio")
 }
 
+func TestTTSSpeakResolvesActiveProviderAtRequestTime(t *testing.T) {
+	active := &fixtureControllerTTSProvider{
+		result: TTSAudioResult{
+			Audio:        []byte{1, 2},
+			ProviderID:   "current-tts",
+			VoiceID:      "current-voice",
+			ContentType:  "audio/pcm",
+			PlaybackKind: "audio",
+		},
+	}
+	stale := &fixtureControllerTTSProvider{
+		result: TTSAudioResult{
+			Audio:        []byte{9, 9},
+			ProviderID:   "stale-tts",
+			VoiceID:      "stale-voice",
+			ContentType:  "audio/pcm",
+			PlaybackKind: "audio",
+		},
+	}
+	store := dynamicControllerTTSStore{
+		MemoryRepository: NewMemoryRepositoryFromConfig(Config{
+			TTSProviderID: "current-tts",
+			TTSVoiceID:    "current-voice",
+			TTSEnabled:    true,
+		}),
+		provider: active,
+	}
+	controller := NewControllerWithTTSProvider(store, nil, nil, stale)
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/tts/speak",
+		strings.NewReader(`{"text":"hello"}`),
+	)
+	rr := httptest.NewRecorder()
+
+	controller.handleTTSSpeak(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var body TTSActionResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.ProviderID != "current-tts" || body.VoiceID != "current-voice" || body.AudioBytes != 2 {
+		t.Fatalf("expected active provider response, got %+v", body)
+	}
+	if active.request.Text != "hello" {
+		t.Fatalf("active provider was not called: %+v", active.request)
+	}
+	if stale.request.Text != "" {
+		t.Fatalf("stale injected provider was called: %+v", stale.request)
+	}
+}
+
 func TestTTSSpeakUsesWyomingProviderAndReturnsSafePlaybackMetadata(t *testing.T) {
 	store := NewMemoryRepositoryFromConfig(Config{
 		TTSProviderID: "local-tts",
@@ -766,6 +821,17 @@ type fixtureControllerTTSProvider struct {
 	request TTSRequest
 	result  TTSAudioResult
 	err     error
+}
+
+type dynamicControllerTTSStore struct {
+	*MemoryRepository
+
+	provider TTSProvider
+	err      error
+}
+
+func (s dynamicControllerTTSStore) ActiveTTSProvider(context.Context, string) (TTSProvider, error) {
+	return s.provider, s.err
 }
 
 func (p *fixtureControllerTTSProvider) Synthesize(_ context.Context, req TTSRequest) (TTSAudioResult, error) {

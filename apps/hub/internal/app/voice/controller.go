@@ -290,8 +290,15 @@ func (c *Controller) handleTTSAction(w http.ResponseWriter, r *http.Request, act
 	if c.display != nil {
 		c.display.EmitTTSEvent(EventTTSStarted, "default-display", response)
 	}
-	if c.ttsProvider != nil {
-		audio, err := c.ttsProvider.Synthesize(synthesisCtx, req)
+	if provider, err := c.activeTTSProvider(synthesisCtx); err != nil {
+		response = c.tts.Fail(response.ID, "provider_unavailable")
+		if c.display != nil {
+			c.display.EmitTTSEvent(EventTTSFailed, "default-display", response)
+		}
+		httphelper.WriteJSON(w, http.StatusOK, response)
+		return
+	} else if provider != nil {
+		audio, err := provider.Synthesize(synthesisCtx, req)
 		if err != nil {
 			response = c.tts.Fail(response.ID, "provider_unavailable")
 			if response.State == TTSStateStopped {
@@ -317,6 +324,16 @@ func (c *Controller) handleTTSAction(w http.ResponseWriter, r *http.Request, act
 		c.display.EmitTTSEvent(EventTTSCompleted, "default-display", response)
 	}
 	httphelper.WriteJSON(w, http.StatusOK, response)
+}
+
+func (c *Controller) activeTTSProvider(ctx context.Context) (TTSProvider, error) {
+	store, ok := c.store.(interface {
+		ActiveTTSProvider(ctx context.Context, deviceProfileID string) (TTSProvider, error)
+	})
+	if ok {
+		return store.ActiveTTSProvider(ctx, "")
+	}
+	return c.ttsProvider, nil
 }
 
 func (c *Controller) handleTTSStop(w http.ResponseWriter, r *http.Request) {
