@@ -67,6 +67,10 @@ Run one binary that serves the hub API and display:
 juted --config /etc/jute/config.yaml
 ```
 
+Set `JUTE_DISPLAY_DIR=/path/to/apps/web/build` or pass `--display-dir` to serve local display assets
+instead of the embedded release assets. Pass `--headless` to disable display serving and run only the
+hub APIs/background services.
+
 Once SQLite persistence exists, `--config` bootstraps an empty runtime store. Runtime settings then live in the data directory.
 
 ### Docker

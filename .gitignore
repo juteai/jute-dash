@@ -15,6 +15,8 @@ apps/web/coverage/
 apps/web/.env
 apps/web/.env.*
 !apps/web/.env.example
+apps/hub/internal/app/displaydist/*
+!apps/hub/internal/app/displaydist/placeholder.txt
 
 # Local runtime
 data/
