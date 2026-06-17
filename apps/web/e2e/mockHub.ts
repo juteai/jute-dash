@@ -730,6 +730,7 @@ function coreWidgetsLayout(state: NonNullable<MockHubOptions['widgetState']>) {
 }
 
 function variants(widgets: ReturnType<typeof widget>[]) {
+  const rowCount = Math.max(4, ...widgets.map((item) => item.y + item.h));
   return [
     {
       id: 'phone',
@@ -741,11 +742,41 @@ function variants(widgets: ReturnType<typeof widget>[]) {
       placements: placements(widgets, 1)
     },
     {
+      id: 'tablet-portrait',
+      label: 'Tablet',
+      minWidth: 641,
+      orientation: 'portrait',
+      columns: 6,
+      rows: rowCount,
+      gap: 12,
+      placements: placements(widgets, 6)
+    },
+    {
+      id: 'tablet-landscape',
+      label: 'Tablet wide',
+      minWidth: 768,
+      orientation: 'landscape',
+      columns: 6,
+      rows: rowCount,
+      gap: 12,
+      placements: placements(widgets, 6)
+    },
+    {
       id: 'desktop',
       label: 'Desktop',
-      minWidth: 768,
+      minWidth: 1024,
       columns: 6,
-      rows: Math.max(4, ...widgets.map((item) => item.y + item.h)),
+      rows: rowCount,
+      gap: 12,
+      placements: placements(widgets, 6)
+    },
+    {
+      id: 'wall',
+      label: 'Wall',
+      minWidth: 1600,
+      orientation: 'landscape',
+      columns: 6,
+      rows: rowCount,
       gap: 12,
       placements: placements(widgets, 6)
     }
