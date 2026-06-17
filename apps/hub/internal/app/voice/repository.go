@@ -392,7 +392,7 @@ func (r *Repository) ActiveTTSProvider(ctx context.Context, deviceProfileID stri
 	if !manifest.Capabilities.Offline || missingRequiredCredential(manifest) {
 		return nil, nil
 	}
-	if manifest.Transport.Type != "wyoming" || strings.TrimSpace(manifest.Transport.Endpoint) == "" {
+	if strings.TrimSpace(manifest.Transport.Endpoint) == "" {
 		return nil, nil
 	}
 
@@ -401,12 +401,25 @@ func (r *Repository) ActiveTTSProvider(ctx context.Context, deviceProfileID stri
 	if locale == "" {
 		locale = ttsVoiceLocale(manifest, voiceID)
 	}
-	return WyomingTTSProvider{
-		ProviderID: provider.ID,
-		Endpoint:   manifest.Transport.Endpoint,
-		VoiceID:    voiceID,
-		Locale:     locale,
-	}, nil
+	switch manifest.Transport.Type {
+	case "wyoming":
+		return WyomingTTSProvider{
+			ProviderID: provider.ID,
+			Endpoint:   manifest.Transport.Endpoint,
+			VoiceID:    voiceID,
+			Locale:     locale,
+		}, nil
+	case "http-json":
+		return HTTPJSONTTSProvider{
+			ProviderID: provider.ID,
+			Endpoint:   manifest.Transport.Endpoint,
+			ModelID:    manifest.TTS.DefaultModelID,
+			VoiceID:    voiceID,
+			Locale:     locale,
+		}, nil
+	default:
+		return nil, nil
+	}
 }
 
 func (r *Repository) EnsureDefaultVoiceSettings(ctx context.Context, voice Config) error {

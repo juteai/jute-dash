@@ -1003,6 +1003,39 @@ func TestActiveTTSProviderResolvesSelectedWyomingProvider(t *testing.T) {
 	}
 }
 
+func TestActiveTTSProviderResolvesSelectedHTTPJSONProvider(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	bootstrap := DefaultConfig()
+	bootstrap.Voice.TTSProviderID = "http-tts"
+	bootstrap.Voice.TTSVoiceID = "amy"
+	bootstrap.Voice.TTSLocale = "en-GB"
+	bootstrap.Voice.TTSEnabled = true
+	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	insertTTSProviderWithTransport(t, st, "http-tts", "available", true, nil, voice.TransportManifest{
+		Type:     "http-json",
+		Endpoint: "http://127.0.0.1:10501/tts",
+	})
+
+	provider, err := st.VoiceRepo.ActiveTTSProvider(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ActiveTTSProvider() error = %v", err)
+	}
+	httpJSON, ok := provider.(voice.HTTPJSONTTSProvider)
+	if !ok {
+		t.Fatalf("expected HTTPJSONTTSProvider, got %T", provider)
+	}
+	if httpJSON.ProviderID != "http-tts" ||
+		httpJSON.Endpoint != "http://127.0.0.1:10501/tts" ||
+		httpJSON.ModelID != "local-model" ||
+		httpJSON.VoiceID != "amy" ||
+		httpJSON.Locale != "en-GB" {
+		t.Fatalf("unexpected active TTS provider: %+v", httpJSON)
+	}
+}
+
 func TestActiveTTSProviderFallsBackWhenSelectedVoiceIsNoLongerDeclared(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
@@ -1168,6 +1201,19 @@ func insertTTSProvider(
 			Endpoint: "https://tts.example.com/v1",
 		}
 	}
+	insertTTSProviderWithTransport(t, st, providerID, health, offline, credentials, transport)
+}
+
+func insertTTSProviderWithTransport(
+	t *testing.T,
+	st *Store,
+	providerID string,
+	health string,
+	offline bool,
+	credentials []voice.CredentialManifest,
+	transport voice.TransportManifest,
+) {
+	t.Helper()
 	if credentials == nil {
 		credentials = []voice.CredentialManifest{}
 	}

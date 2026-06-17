@@ -152,7 +152,7 @@ Implemented foundation APIs:
 - `POST /api/v1/tts/speak`: queues speech for approved assistant text or explicit UI action.
 - `POST /api/v1/tts/stop`: stops current playback.
 
-The preview/speak HTTP implementation applies hub speech policy, emits safe TTS state events, and returns a control response. When a selected local Wyoming provider is available, the server attaches it to the controller, calls the provider synthesis path, and returns safe playback metadata such as content type, sample format, duration, and audio byte count without putting raw audio bytes on the JSON or SSE surface. Without an attached provider, the same API remains a safe control/event path for UI integration tests.
+The preview/speak HTTP implementation applies hub speech policy, emits safe TTS state events, and returns a control response. When a selected local Wyoming or HTTP JSON provider is available, the server calls the provider synthesis path and returns safe playback metadata such as content type, sample format, duration, and audio byte count without putting raw audio bytes on the JSON or SSE surface. Without an attached provider, the same API remains a safe control/event path for UI integration tests.
 
 `POST /api/v1/tts/stop` records `tts.stopped` as a terminal state for the active action and cancels
 any in-flight provider synthesis context, including barge-in stops. If the provider returns after
