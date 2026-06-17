@@ -675,6 +675,37 @@ func TestActiveSTTProviderResolvesSelectedWyomingProvider(t *testing.T) {
 	}
 }
 
+func TestActiveSTTProviderResolvesSelectedHTTPJSONProvider(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	bootstrap := DefaultConfig()
+	bootstrap.Voice.Enabled = true
+	bootstrap.Voice.STTProviderID = "go-whisper"
+	bootstrap.Voice.STTModelID = "tiny-en"
+	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	insertSTTProviderWithTransport(t, st, "go-whisper", "available", true, nil, voice.TransportManifest{
+		Type:     "http-json",
+		Endpoint: "http://127.0.0.1:8081/transcribe",
+	})
+
+	provider, err := st.VoiceRepo.ActiveSTTProvider(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ActiveSTTProvider() error = %v", err)
+	}
+	httpJSON, ok := provider.(voice.HTTPJSONSTTProvider)
+	if !ok {
+		t.Fatalf("expected HTTPJSONSTTProvider, got %T", provider)
+	}
+	if httpJSON.ProviderID != "go-whisper" ||
+		httpJSON.Endpoint != "http://127.0.0.1:8081/transcribe" ||
+		httpJSON.ModelID != "tiny-en" ||
+		httpJSON.Language != "en-GB" {
+		t.Fatalf("unexpected active STT provider: %+v", httpJSON)
+	}
+}
+
 func TestActiveSTTProviderIgnoresUnsupportedOrUnsafeProviders(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1164,6 +1195,19 @@ func insertSTTProvider(
 			Endpoint: "https://stt.example.com/v1",
 		}
 	}
+	insertSTTProviderWithTransport(t, st, providerID, health, offline, credentials, transport)
+}
+
+func insertSTTProviderWithTransport(
+	t *testing.T,
+	st *Store,
+	providerID string,
+	health string,
+	offline bool,
+	credentials []voice.CredentialManifest,
+	transport voice.TransportManifest,
+) {
+	t.Helper()
 	if credentials == nil {
 		credentials = []voice.CredentialManifest{}
 	}

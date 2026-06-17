@@ -202,6 +202,7 @@ Use `http-json` for sidecars, cloud adapters, and provider services that need or
 
 Rules:
 
+- local STT sidecars receive one captured utterance as WAV-in-JSON and return final transcript JSON;
 - cloud providers must declare `offline: false`;
 - credentials are read by the hub or voice service from secret references;
 - endpoints must not contain userinfo, credential query parameters, or raw credential values;

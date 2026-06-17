@@ -250,16 +250,29 @@ func (r *Repository) ActiveSTTProvider(ctx context.Context, deviceProfileID stri
 	if !manifest.Capabilities.Offline || missingRequiredCredential(manifest) {
 		return nil, nil
 	}
-	if manifest.Transport.Type != "wyoming" || strings.TrimSpace(manifest.Transport.Endpoint) == "" {
-		return nil, nil
+	switch manifest.Transport.Type {
+	case "wyoming":
+		if strings.TrimSpace(manifest.Transport.Endpoint) == "" {
+			return nil, nil
+		}
+		return WyomingSTTProvider{
+			ProviderID: provider.ID,
+			Endpoint:   manifest.Transport.Endpoint,
+			ModelID:    strings.TrimSpace(settings.STTModelID),
+			Language:   firstLanguage(manifest.Capabilities.Languages),
+		}, nil
+	case "http-json":
+		if strings.TrimSpace(manifest.Transport.Endpoint) == "" {
+			return nil, nil
+		}
+		return HTTPJSONSTTProvider{
+			ProviderID: provider.ID,
+			Endpoint:   manifest.Transport.Endpoint,
+			ModelID:    strings.TrimSpace(settings.STTModelID),
+			Language:   firstLanguage(manifest.Capabilities.Languages),
+		}, nil
 	}
-
-	return WyomingSTTProvider{
-		ProviderID: provider.ID,
-		Endpoint:   manifest.Transport.Endpoint,
-		ModelID:    strings.TrimSpace(settings.STTModelID),
-		Language:   firstLanguage(manifest.Capabilities.Languages),
-	}, nil
+	return nil, nil
 }
 
 func (r *Repository) TTSVoices(ctx context.Context, providerID, deviceProfileID string) (TTSVoicesResponse, error) {

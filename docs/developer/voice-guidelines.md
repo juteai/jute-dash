@@ -36,6 +36,8 @@ Provider transports:
 - `command` for trusted local wrappers, disabled unless explicitly enabled;
 - `builtin` for adapters shipped with Jute.
 
+STT `http-json` sidecars receive one captured utterance as WAV-in-JSON and return final transcript JSON.
+
 Each provider has a `jute.voice.provider.json` manifest. The manifest declares provider ID, name, version, kind, transport, supported locales, streaming support, offline/network behavior, audio formats, hardware hints, license, and contribution metadata.
 
 Manifests may declare credential requirements, but they must only contain secret references. Never put raw API keys, tokens, passwords, or OAuth refresh tokens in a provider manifest.
