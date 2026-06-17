@@ -246,9 +246,13 @@ func EncodeBenchmarkWAV(utterance CapturedUtterance) ([]byte, error) {
 		return nil, errors.New("benchmark WAV requires positive sample rate and mono audio")
 	}
 	pcm := flattenUtterancePCM(utterance)
+	byteRateInt := sampleRate * channels * BenchmarkSampleWidth
+	if len(pcm) > math.MaxUint32 || byteRateInt > math.MaxUint32 {
+		return nil, errors.New("benchmark WAV is too large")
+	}
 	var buf bytes.Buffer
 	dataSize := uint32(len(pcm))
-	byteRate := uint32(sampleRate * channels * BenchmarkSampleWidth)
+	byteRate := uint32(byteRateInt) //nolint:gosec // byteRateInt is checked above against math.MaxUint32.
 	blockAlign := uint16(channels * BenchmarkSampleWidth)
 
 	buf.WriteString("RIFF")

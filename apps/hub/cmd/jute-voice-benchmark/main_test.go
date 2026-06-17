@@ -582,7 +582,6 @@ func TestVoiceBenchmarkCommandAcceptsCompleteJUT13ClosureBundle(t *testing.T) {
 func TestVoiceBenchmarkCommandComposesCompleteJUT13ClosureBundle(t *testing.T) {
 	dir := t.TempDir()
 	source := providerClosureBundleFile{
-		Issue: "JUT-13",
 		Decision: providerClosureDecision{
 			Status:    "documented-external-provider",
 			Rationale: "Benchmark and packaging evidence support keeping go-whisper documented externally for v1.",
@@ -742,7 +741,6 @@ func TestVoiceBenchmarkCommandComposesCompleteJUT13ClosureBundle(t *testing.T) {
 func TestVoiceBenchmarkCommandComposesCompleteJUT11ClosureBundleWithBaseline(t *testing.T) {
 	dir := t.TempDir()
 	source := providerClosureBundleFile{
-		Issue: "JUT-11",
 		Decision: providerClosureDecision{
 			Status:    "defer",
 			Rationale: "Build, packaging, model, candidate benchmark, and baseline evidence support deferring pmdroid microWakeWord for v1.",
@@ -3802,7 +3800,7 @@ func TestVoiceBenchmarkCommandSTTCommandHelper(t *testing.T) {
 	if _, err := os.Stat(fixturePath); err != nil {
 		t.Fatalf("fixture path unavailable: %v", err)
 	}
-	fmt.Print(
+	_, _ = os.Stdout.WriteString(
 		`{"text":"turn on the lights","providerId":"go-whisper-fixture","modelId":"tiny-en","language":"en-GB","durationMs":42}`,
 	)
 	os.Exit(0)
@@ -4028,10 +4026,10 @@ func TestVoiceBenchmarkCommandWakeCommandHelper(t *testing.T) {
 		t.Fatalf("fixture path unavailable: %v", err)
 	}
 	detected := fixtureID == "positive-wake"
-	fmt.Printf(
+	_, _ = os.Stdout.WriteString(fmt.Sprintf(
 		`{"detected":%t,"providerId":"pmdroid-microwakeword-fixture","modelId":"okay-nabu","confidence":0.92,"latencyMs":38}`,
 		detected,
-	)
+	))
 	os.Exit(0)
 }
 

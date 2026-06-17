@@ -168,6 +168,7 @@ func (r *Repository) VoiceProviders(ctx context.Context) ([]ProviderPack, error)
 	return providers, nil
 }
 
+//nolint:nilnil // nil provider with nil error means voice has no usable wake provider.
 func (r *Repository) ActiveWakeProvider(ctx context.Context, deviceProfileID, deviceID string) (WakeProvider, error) {
 	settings, err := r.VoiceSettings(ctx, deviceProfileID)
 	if err != nil {
@@ -218,6 +219,7 @@ func (r *Repository) ActiveWakeProvider(ctx context.Context, deviceProfileID, de
 	return nil, nil
 }
 
+//nolint:nilnil,nilerr // nil provider with nil error means voice has no usable STT provider.
 func (r *Repository) ActiveSTTProvider(ctx context.Context, deviceProfileID string) (STTProvider, error) {
 	settings, err := r.VoiceSettings(ctx, deviceProfileID)
 	if err != nil {
@@ -335,6 +337,7 @@ func (r *Repository) TTSVoices(ctx context.Context, providerID, deviceProfileID 
 	return response, nil
 }
 
+//nolint:nilnil,nilerr // nil provider with nil error means voice has no usable TTS provider.
 func (r *Repository) ActiveTTSProvider(ctx context.Context, deviceProfileID string) (TTSProvider, error) {
 	settings, err := r.VoiceSettings(ctx, deviceProfileID)
 	if err != nil {

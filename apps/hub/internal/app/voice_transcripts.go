@@ -497,6 +497,17 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) err
 					"status":  event.Status,
 				},
 			)
+		case agents.EventAssistantDelta:
+		case agents.EventTurnFailed:
+			s.voiceDispatcher.EmitConversationEvent(
+				voice.EventConversationTurnCompleted,
+				deviceID,
+				event.ConversationID,
+				map[string]any{
+					"agentId": event.AgentID,
+					"status":  "failed",
+				},
+			)
 		}
 		return nil
 	}

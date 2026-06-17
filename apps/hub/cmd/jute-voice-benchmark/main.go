@@ -3128,7 +3128,7 @@ func runFixtureCommand(
 	tempPath := temp.Name()
 	defer os.Remove(tempPath)
 	if _, err := temp.Write(raw); err != nil {
-		temp.Close()
+		_ = temp.Close()
 		return nil, err
 	}
 	if err := temp.Close(); err != nil {
@@ -3139,7 +3139,14 @@ func runFixtureCommand(
 	}
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(commandCtx, command, voiceCommandArgs(args, tempPath, fixtureID)...)
+	cmd := exec.CommandContext( //nolint:gosec // command providers are explicit user opt-in benchmark integrations.
+		commandCtx,
+		command,
+		voiceCommandArgs(
+			args,
+			tempPath,
+			fixtureID,
+		)...)
 	cmd.Env = append(os.Environ(), helperEnv+"=1")
 	output, err := cmd.Output()
 	if commandCtx.Err() != nil {

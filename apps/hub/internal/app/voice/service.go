@@ -414,7 +414,7 @@ func (b *preRollBuffer) add(frame AudioFrame, window time.Duration) {
 	b.items = b.items[start:]
 }
 
-func (b preRollBuffer) frames() []AudioFrame {
+func (b *preRollBuffer) frames() []AudioFrame {
 	return cloneAudioFrames(b.items)
 }
 

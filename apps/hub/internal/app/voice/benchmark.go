@@ -182,10 +182,6 @@ type WakeBenchmarkResult struct {
 	ProviderReturned bool                    `json:"providerReturned"`
 }
 
-type STTBenchmarkProvider interface {
-	Transcribe(ctx context.Context, utterance CapturedUtterance) (STTResult, error)
-}
-
 type STTBenchmarkResult struct {
 	FixtureID          string                  `json:"fixtureId"`
 	ProviderID         string                  `json:"providerId"`
@@ -210,7 +206,7 @@ type WakeBenchmarkSuite struct {
 
 type STTBenchmarkSuite struct {
 	Issue    string
-	Provider STTBenchmarkProvider
+	Provider STTProvider
 	Env      BenchmarkEnvironment
 	Fixtures []BenchmarkFixture
 	Gaps     []string
@@ -271,7 +267,7 @@ func RunWakeBenchmarkSuite(ctx context.Context, suite WakeBenchmarkSuite) Benchm
 
 func RunSTTBenchmark(
 	ctx context.Context,
-	provider STTBenchmarkProvider,
+	provider STTProvider,
 	fixture BenchmarkFixture,
 ) STTBenchmarkResult {
 	result := STTBenchmarkResult{
