@@ -268,9 +268,10 @@ plus provider ID, model ID, language, and utterance duration to the hub-owned vo
 pipeline. It does not call A2A agents directly and does not log raw audio.
 
 At runtime, the hub resolves the selected STT Provider Pack from SQLite and activates an STT
-provider only when voice is enabled, the manifest is a local/offline Wyoming or `http-json` STT
-pack, required credentials are satisfied, and provider health is `available` or `degraded`. Public
-provider summaries continue to omit transport endpoints and credential metadata.
+provider only when voice is enabled, the manifest is a local/offline Wyoming, `http-json`, or
+explicitly-enabled `command` STT pack, required credentials are satisfied, and provider health is
+`available` or `degraded`. Public provider summaries continue to omit transport endpoints and
+credential metadata.
 
 Captured utterances flow through a hub-owned STT turn processor: the local voice service hands off a
 cloned utterance, the selected provider returns transcript metadata, and only the sanitized final

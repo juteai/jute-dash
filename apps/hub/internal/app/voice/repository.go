@@ -271,6 +271,17 @@ func (r *Repository) ActiveSTTProvider(ctx context.Context, deviceProfileID stri
 			ModelID:    strings.TrimSpace(settings.STTModelID),
 			Language:   firstLanguage(manifest.Capabilities.Languages),
 		}, nil
+	case "command":
+		if !settings.CommandProvidersEnabled || strings.TrimSpace(manifest.Transport.Command) == "" {
+			return nil, nil
+		}
+		return CommandSTTProvider{
+			ProviderID: provider.ID,
+			Command:    manifest.Transport.Command,
+			Args:       append([]string(nil), manifest.Transport.Args...),
+			ModelID:    strings.TrimSpace(settings.STTModelID),
+			Language:   firstLanguage(manifest.Capabilities.Languages),
+		}, nil
 	}
 	return nil, nil
 }

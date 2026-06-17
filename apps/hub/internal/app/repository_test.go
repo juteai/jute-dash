@@ -706,6 +706,64 @@ func TestActiveSTTProviderResolvesSelectedHTTPJSONProvider(t *testing.T) {
 	}
 }
 
+func TestActiveSTTProviderResolvesSelectedCommandProviderWhenEnabled(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	bootstrap := DefaultConfig()
+	bootstrap.Voice.Enabled = true
+	bootstrap.Voice.CommandProvidersEnabled = true
+	bootstrap.Voice.STTProviderID = "go-whisper-command"
+	bootstrap.Voice.STTModelID = "tiny-en"
+	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	insertSTTProviderWithTransport(t, st, "go-whisper-command", "available", true, nil, voice.TransportManifest{
+		Type:    "command",
+		Command: "/usr/local/bin/gowhisper",
+		Args:    []string{"transcribe", "--model", "{modelId}", "--input", "{inputPath}", "--json"},
+	})
+
+	provider, err := st.VoiceRepo.ActiveSTTProvider(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ActiveSTTProvider() error = %v", err)
+	}
+	command, ok := provider.(voice.CommandSTTProvider)
+	if !ok {
+		t.Fatalf("expected CommandSTTProvider, got %T", provider)
+	}
+	if command.ProviderID != "go-whisper-command" ||
+		command.Command != "/usr/local/bin/gowhisper" ||
+		command.ModelID != "tiny-en" ||
+		command.Language != "en-GB" ||
+		strings.Join(command.Args, " ") != "transcribe --model {modelId} --input {inputPath} --json" {
+		t.Fatalf("unexpected active STT provider: %+v", command)
+	}
+}
+
+func TestActiveSTTProviderIgnoresCommandProviderWhenDisabled(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	bootstrap := DefaultConfig()
+	bootstrap.Voice.Enabled = true
+	bootstrap.Voice.STTProviderID = "go-whisper-command"
+	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	insertSTTProviderWithTransport(t, st, "go-whisper-command", "available", true, nil, voice.TransportManifest{
+		Type:    "command",
+		Command: "/usr/local/bin/gowhisper",
+		Args:    []string{"transcribe", "--model", "{modelId}", "--input", "{inputPath}", "--json"},
+	})
+
+	provider, err := st.VoiceRepo.ActiveSTTProvider(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ActiveSTTProvider() error = %v", err)
+	}
+	if provider != nil {
+		t.Fatalf("expected no active STT provider, got %T", provider)
+	}
+}
+
 func TestActiveSTTProviderIgnoresUnsupportedOrUnsafeProviders(t *testing.T) {
 	tests := []struct {
 		name        string

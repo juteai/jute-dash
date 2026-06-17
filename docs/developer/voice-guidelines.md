@@ -37,6 +37,7 @@ Provider transports:
 - `builtin` for adapters shipped with Jute.
 
 STT `http-json` sidecars receive one captured utterance as WAV-in-JSON and return final transcript JSON.
+STT `command` providers receive a temporary WAV path through `{inputPath}` and never run unless command providers are enabled.
 
 Each provider has a `jute.voice.provider.json` manifest. The manifest declares provider ID, name, version, kind, transport, supported locales, streaming support, offline/network behavior, audio formats, hardware hints, license, and contribution metadata.
 
