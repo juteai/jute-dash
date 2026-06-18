@@ -167,6 +167,16 @@
         }
       ];
     }
+    if (!speechRecognitionConstructor(window)) {
+      measurements = [
+        ...measurements,
+        {
+          label: 'Browser STT cold start',
+          value: 'unavailable',
+          detail: 'SpeechRecognition is not exposed in this browser context'
+        }
+      ];
+    }
     matrixNotes = `${navigator.platform || 'unknown platform'} | ${
       window.matchMedia('(display-mode: standalone)').matches
         ? 'standalone/PWA'
