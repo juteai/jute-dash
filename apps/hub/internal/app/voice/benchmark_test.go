@@ -666,6 +666,7 @@ func TestBenchmarkAcceptanceExpectationsProvideIssueDefaults(t *testing.T) {
 		len(wake.RequiredFixtureIDs) != 4 ||
 		wake.RequiredFixtureIDs[0] != "positive-wake" ||
 		wake.RequiredFixtureIDs[3] != "conversation-long" ||
+		wake.RequiredProviderIDContains != "pmdroid" ||
 		!wake.RequireModelHash ||
 		!wake.RequireAllWakeMatches ||
 		!wake.RequireResourceSamples ||
@@ -692,6 +693,36 @@ func TestBenchmarkAcceptanceExpectationsProvideIssueDefaults(t *testing.T) {
 
 	if _, ok := BenchmarkAcceptanceExpectations("JUT-6"); ok {
 		t.Fatalf("did not expect browser spike benchmark preset")
+	}
+}
+
+func TestValidateBenchmarkReportRequiresJUT11PmdroidProvider(t *testing.T) {
+	wake := true
+	report := NewWakeBenchmarkReport("JUT-11", BenchmarkEnvironment{
+		ProviderID:   "wyoming-openwakeword",
+		ProviderKind: "wake-word",
+		ModelID:      "okay-nabu",
+		ModelHash:    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	}, []WakeBenchmarkResult{{
+		FixtureID:        "positive-wake",
+		ProviderID:       "wyoming-openwakeword",
+		ModelID:          "okay-nabu",
+		ExpectedWake:     &wake,
+		Detected:         true,
+		MatchesExpected:  true,
+		Latency:          45 * time.Millisecond,
+		ResourceSample:   BenchmarkResourceSample{Duration: 45 * time.Millisecond},
+		ProviderReturned: true,
+	}}, nil)
+	expectations, ok := BenchmarkAcceptanceExpectations("JUT-11")
+	if !ok {
+		t.Fatalf("expected JUT-11 acceptance preset")
+	}
+
+	problems := ValidateBenchmarkReport(report, expectations)
+
+	if !hasProblem(problems, "environment.providerId must identify pmdroid") {
+		t.Fatalf("expected pmdroid provider identity problem, got %v", problems)
 	}
 }
 

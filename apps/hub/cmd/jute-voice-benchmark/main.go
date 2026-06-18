@@ -1012,7 +1012,7 @@ func validateProviderClosureBundle(file providerClosureBundleFile, bundle *provi
 		modelManifestProblems := validateClosureBundleModelsAgainstProviderManifest(issue, validModels, manifest)
 		problems = appendPrefixedProblems(problems, "model", modelManifestProblems)
 	}
-	report, reportProblems := validateClosureBundleBenchmark(issue, file.BenchmarkReport)
+	report, reportProblems := validateClosureBundleBenchmark(issue, file.BenchmarkReport, false)
 	if len(reportProblems) == 0 {
 		bundle.BenchmarkAccepted = true
 		modelMatchProblems := validateClosureBundleBenchmarkModel(issue, report, validModels)
@@ -1023,7 +1023,7 @@ func validateProviderClosureBundle(file providerClosureBundleFile, bundle *provi
 	problems = appendPrefixedProblems(problems, "benchmark", reportProblems)
 	switch issue {
 	case "JUT-11":
-		baseline, baselineProblems := validateClosureBundleBenchmark(issue, file.BaselineReport)
+		baseline, baselineProblems := validateClosureBundleBenchmark(issue, file.BaselineReport, true)
 		if len(baselineProblems) == 0 {
 			bundle.BaselineAccepted = true
 			fixtureMatchProblems := validateClosureBundleReportFixtures(baseline, fixtureManifest)
@@ -1267,7 +1267,11 @@ func validateProviderClosureDecision(issue string, decision providerClosureDecis
 	return uniqueEvidenceProblems(problems)
 }
 
-func validateClosureBundleBenchmark(issue string, raw json.RawMessage) (voice.BenchmarkReport, []string) {
+func validateClosureBundleBenchmark(
+	issue string,
+	raw json.RawMessage,
+	baseline bool,
+) (voice.BenchmarkReport, []string) {
 	if len(raw) == 0 {
 		return voice.BenchmarkReport{}, []string{"benchmarkReport is required"}
 	}
@@ -1278,6 +1282,9 @@ func validateClosureBundleBenchmark(issue string, raw json.RawMessage) (voice.Be
 	expectations, ok := voice.BenchmarkAcceptanceExpectations(issue)
 	if !ok {
 		return report, []string{fmt.Sprintf("no acceptance preset is defined for issue %q", issue)}
+	}
+	if baseline && issue == "JUT-11" {
+		expectations.RequiredProviderIDContains = ""
 	}
 	problems := voice.ValidateBenchmarkReport(report, expectations)
 	if !isConcreteBenchmarkEnvironmentRuntime(report.Environment) {
@@ -2238,6 +2245,9 @@ func validateComparisonAcceptancePreset(
 			firstNonEmpty(issue, baseline.Issue),
 		)
 		return 2
+	}
+	if firstNonEmpty(issue, baseline.Issue) == "JUT-11" {
+		baselineExpectations.RequiredProviderIDContains = ""
 	}
 	candidateProblems := voice.ValidateBenchmarkReport(candidate, candidateExpectations)
 	baselineProblems := voice.ValidateBenchmarkReport(baseline, baselineExpectations)

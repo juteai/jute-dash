@@ -115,13 +115,14 @@ func BenchmarkAcceptanceExpectations(issue string) (BenchmarkReportExpectations,
 	switch safeIdentifier(issue) {
 	case "JUT-11":
 		return BenchmarkReportExpectations{
-			Issue:                  "JUT-11",
-			Kind:                   "wake-word",
-			MinResults:             4,
-			RequiredFixtureIDs:     []string{"positive-wake", "near-miss", "ambient-room", "conversation-long"},
-			RequireModelHash:       true,
-			RequireAllWakeMatches:  true,
-			RequireResourceSamples: true,
+			Issue:                      "JUT-11",
+			Kind:                       "wake-word",
+			MinResults:                 4,
+			RequiredFixtureIDs:         []string{"positive-wake", "near-miss", "ambient-room", "conversation-long"},
+			RequiredProviderIDContains: "pmdroid",
+			RequireModelHash:           true,
+			RequireAllWakeMatches:      true,
+			RequireResourceSamples:     true,
 		}, true
 	case "JUT-13":
 		return BenchmarkReportExpectations{

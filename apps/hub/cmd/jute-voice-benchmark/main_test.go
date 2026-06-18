@@ -1559,7 +1559,7 @@ func TestProviderClosureBundleRejectsBenchmarkReportWithoutGeneratedAt(t *testin
 		}
 	}`)
 
-	_, problems := validateClosureBundleBenchmark("JUT-13", raw)
+	_, problems := validateClosureBundleBenchmark("JUT-13", raw, false)
 
 	if !containsProblem(problems, "generatedAt must be RFC3339") {
 		t.Fatalf("expected generatedAt problem, got %v", problems)
@@ -1596,7 +1596,7 @@ func TestProviderClosureBundleRejectsBenchmarkReportWithoutRuntime(t *testing.T)
 		}
 	}`)
 
-	_, problems := validateClosureBundleBenchmark("JUT-13", raw)
+	_, problems := validateClosureBundleBenchmark("JUT-13", raw, false)
 
 	if !containsProblem(problems, "benchmark environment runtime must identify a concrete OS/arch and Go version") {
 		t.Fatalf("expected benchmark runtime problem, got %v", problems)
@@ -2304,7 +2304,7 @@ func TestVoiceBenchmarkCommandComparisonAcceptancePresetRequiresJUT11ProviderRol
 			}
 		}`, provider, provider, provider, provider, provider)
 	}
-	if err := os.WriteFile(candidatePath, []byte(reportJSON("wyoming-openwakeword")), 0o600); err != nil {
+	if err := os.WriteFile(candidatePath, []byte(reportJSON("pmdroid-microwakeword")), 0o600); err != nil {
 		t.Fatalf("write candidate: %v", err)
 	}
 	if err := os.WriteFile(baselinePath, []byte(reportJSON("wyoming-porcupine")), 0o600); err != nil {
@@ -2327,7 +2327,6 @@ func TestVoiceBenchmarkCommandComparisonAcceptancePresetRequiresJUT11ProviderRol
 		)
 	}
 	for _, want := range []string{
-		"JUT-11 candidate provider must be pmdroid/microWakeWord",
 		"JUT-11 baseline provider must be openWakeWord/Wyoming",
 	} {
 		if !strings.Contains(stdout.String(), want) {
