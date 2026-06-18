@@ -418,7 +418,7 @@ The command verifies the manifest, WAV files, and JUT-11 fixture requirements, t
 Run a local command-style pmdroid/microWakeWord wrapper over the same fixture manifest with
 `-wake-command`. The command path must be absolute; bare command names resolved through `PATH` are
 rejected for closure evidence. The benchmark command writes each validated fixture utterance to a temporary WAV,
-replaces `{inputPath}` and `{fixtureId}` in `-wake-command-args`, removes the temporary file after the
+replaces `{inputPath}`, `{fixtureId}`, `{modelId}`, and `{language}` in `-wake-command-args`, removes the temporary file after the
 provider returns, and emits a normal `BenchmarkReport`:
 
 ```sh
@@ -426,7 +426,7 @@ go run ./apps/hub/cmd/jute-voice-benchmark \
   -fixture-manifest wake-fixtures.json \
   -fixture-dir . \
   -wake-command /absolute/path/to/microwakeword-wrapper \
-  -wake-command-args-json '["detect", "--model", "okay-nabu", "--fixture-id", "{fixtureId}", "--input", "{inputPath}", "--json"]' \
+  -wake-command-args-json '["detect", "--model", "{modelId}", "--language", "{language}", "--fixture-id", "{fixtureId}", "--input", "{inputPath}", "--json"]' \
   -provider-id pmdroid-microwakeword \
   -model-id okay-nabu \
   -model-hash sha256:replace-with-model-hash \

@@ -2817,6 +2817,7 @@ type wakeCommandProvider struct {
 	timeout    time.Duration
 	providerID string
 	modelID    string
+	language   string
 	fixtureID  string
 }
 
@@ -2882,6 +2883,7 @@ func writeWakeCommandBenchmarkReport(w io.Writer, inputs wakeCommandBenchmarkInp
 			timeout:    inputs.timeout,
 			providerID: inputs.env.ProviderID,
 			modelID:    inputs.env.ModelID,
+			language:   fixture.Language,
 			fixtureID:  fixture.ID,
 		}
 		results = append(results, voice.RunWakeBenchmark(context.Background(), provider, fixture))
@@ -2947,6 +2949,7 @@ func writeSTTCommandBenchmarkReport(w io.Writer, inputs sttCommandBenchmarkInput
 		timeout:    inputs.timeout,
 		providerID: inputs.env.ProviderID,
 		modelID:    inputs.env.ModelID,
+		language:   fixtures[0].Language,
 	}
 	report := voice.RunSTTBenchmarkSuite(context.Background(), voice.STTBenchmarkSuite{
 		Issue:    manifest.Issue,
@@ -2988,6 +2991,8 @@ func (p *wakeCommandProvider) DetectWake(
 		p.args,
 		p.timeout,
 		p.fixtureID,
+		p.modelID,
+		p.language,
 		utterance,
 		"JUTE_WAKE_COMMAND_HELPER",
 	)
@@ -3050,7 +3055,17 @@ func (p *sttCommandProvider) Transcribe(
 	if p == nil || strings.TrimSpace(p.command) == "" {
 		return voice.STTResult{}, errors.New("stt command provider unavailable")
 	}
-	output, err := runFixtureCommand(ctx, p.command, p.args, p.timeout, "", utterance, "JUTE_STT_COMMAND_HELPER")
+	output, err := runFixtureCommand(
+		ctx,
+		p.command,
+		p.args,
+		p.timeout,
+		"",
+		p.modelID,
+		p.language,
+		utterance,
+		"JUTE_STT_COMMAND_HELPER",
+	)
 	if err != nil {
 		return voice.STTResult{}, err
 	}
@@ -3114,6 +3129,8 @@ func runFixtureCommand(
 	args []string,
 	timeout time.Duration,
 	fixtureID string,
+	modelID string,
+	language string,
 	utterance voice.CapturedUtterance,
 	helperEnv string,
 ) ([]byte, error) {
@@ -3146,6 +3163,8 @@ func runFixtureCommand(
 			args,
 			tempPath,
 			fixtureID,
+			modelID,
+			language,
 		)...)
 	cmd.Env = append(os.Environ(), helperEnv+"=1")
 	output, err := cmd.Output()
@@ -3179,7 +3198,7 @@ func parseVoiceCommandArgs(args string, argsJSON string, label string) ([]string
 	return parsed, nil
 }
 
-func voiceCommandArgs(args []string, fixturePath string, fixtureID string) []string {
+func voiceCommandArgs(args []string, fixturePath string, fixtureID string, modelID string, language string) []string {
 	if len(args) == 0 {
 		return []string{fixturePath}
 	}
@@ -3188,11 +3207,13 @@ func voiceCommandArgs(args []string, fixturePath string, fixtureID string) []str
 	for _, arg := range args {
 		if strings.Contains(arg, "{inputPath}") || strings.Contains(arg, "{fixture}") {
 			replaced = true
-			arg = strings.ReplaceAll(arg, "{inputPath}", fixturePath)
-			out = append(out, strings.ReplaceAll(arg, "{fixture}", fixturePath))
-			continue
 		}
-		out = append(out, strings.ReplaceAll(arg, "{fixtureId}", fixtureID))
+		arg = strings.ReplaceAll(arg, "{inputPath}", fixturePath)
+		arg = strings.ReplaceAll(arg, "{fixture}", fixturePath)
+		arg = strings.ReplaceAll(arg, "{fixtureId}", fixtureID)
+		arg = strings.ReplaceAll(arg, "{modelId}", modelID)
+		arg = strings.ReplaceAll(arg, "{language}", language)
+		out = append(out, arg)
 	}
 	if !replaced {
 		out = append(out, fixturePath)

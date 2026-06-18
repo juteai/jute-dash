@@ -3740,7 +3740,8 @@ func TestVoiceBenchmarkCommandRunsSTTCommandOverFixtures(t *testing.T) {
 		"-fixture-manifest", manifestPath,
 		"-fixture-dir", dir,
 		"-stt-command", os.Args[0],
-		"-stt-command-args-json", `["-test.run=TestVoiceBenchmarkCommandSTTCommandHelper","--","{fixture}"]`,
+		"-stt-command-args-json",
+		`["-test.run=TestVoiceBenchmarkCommandSTTCommandHelper","--","{fixture}","{modelId}","{language}"]`,
 		"-provider-id", "go-whisper-fixture",
 		"-model-id", "tiny-en",
 		"-model-hash", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -3789,9 +3790,13 @@ func TestVoiceBenchmarkCommandSTTCommandHelper(t *testing.T) {
 		return
 	}
 	fixturePath := ""
+	modelID := ""
+	language := ""
 	for index, arg := range os.Args {
-		if arg == "--" && index+1 < len(os.Args) {
+		if arg == "--" && index+3 < len(os.Args) {
 			fixturePath = os.Args[index+1]
+			modelID = os.Args[index+2]
+			language = os.Args[index+3]
 			break
 		}
 	}
@@ -3801,6 +3806,12 @@ func TestVoiceBenchmarkCommandSTTCommandHelper(t *testing.T) {
 	if _, err := os.Stat(fixturePath); err != nil {
 		t.Fatalf("fixture path unavailable: %v", err)
 	}
+	if modelID != "tiny-en" {
+		t.Fatalf("unexpected model id: %q", modelID)
+	}
+	if language != "en-GB" {
+		t.Fatalf("unexpected language: %q", language)
+	}
 	_, _ = os.Stdout.WriteString(
 		`{"text":"turn on the lights","providerId":"go-whisper-fixture","modelId":"tiny-en","language":"en-GB","durationMs":42}`,
 	)
@@ -3809,11 +3820,31 @@ func TestVoiceBenchmarkCommandSTTCommandHelper(t *testing.T) {
 
 func TestVoiceCommandArgsAcceptsInputPathPlaceholder(t *testing.T) {
 	got := voiceCommandArgs(
-		[]string{"detect", "--input", "{inputPath}", "--fixture-id", "{fixtureId}"},
+		[]string{
+			"detect",
+			"--input={inputPath}",
+			"--fixture-id",
+			"{fixtureId}",
+			"--model",
+			"{modelId}",
+			"--language",
+			"{language}",
+		},
 		"/tmp/input.wav",
 		"positive-wake",
+		"okay-nabu",
+		"en",
 	)
-	want := []string{"detect", "--input", "/tmp/input.wav", "--fixture-id", "positive-wake"}
+	want := []string{
+		"detect",
+		"--input=/tmp/input.wav",
+		"--fixture-id",
+		"positive-wake",
+		"--model",
+		"okay-nabu",
+		"--language",
+		"en",
+	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("voiceCommandArgs() = %#v, want %#v", got, want)
 	}
@@ -3972,7 +4003,7 @@ func TestVoiceBenchmarkCommandRunsWakeCommandOverFixtures(t *testing.T) {
 		"-wake-command",
 		os.Args[0],
 		"-wake-command-args-json",
-		`["-test.run=TestVoiceBenchmarkCommandWakeCommandHelper","--","{fixtureId}","{fixture}"]`,
+		`["-test.run=TestVoiceBenchmarkCommandWakeCommandHelper","--","{fixtureId}","{fixture}","{modelId}","{language}"]`,
 		"-provider-id",
 		"pmdroid-microwakeword-fixture",
 		"-model-id",
@@ -4025,10 +4056,14 @@ func TestVoiceBenchmarkCommandWakeCommandHelper(t *testing.T) {
 	}
 	fixtureID := ""
 	fixturePath := ""
+	modelID := ""
+	language := ""
 	for index, arg := range os.Args {
-		if arg == "--" && index+2 < len(os.Args) {
+		if arg == "--" && index+4 < len(os.Args) {
 			fixtureID = os.Args[index+1]
 			fixturePath = os.Args[index+2]
+			modelID = os.Args[index+3]
+			language = os.Args[index+4]
 			break
 		}
 	}
@@ -4037,6 +4072,12 @@ func TestVoiceBenchmarkCommandWakeCommandHelper(t *testing.T) {
 	}
 	if _, err := os.Stat(fixturePath); err != nil {
 		t.Fatalf("fixture path unavailable: %v", err)
+	}
+	if modelID != "okay-nabu" {
+		t.Fatalf("unexpected model id: %q", modelID)
+	}
+	if language != "en" {
+		t.Fatalf("unexpected language: %q", language)
 	}
 	detected := fixtureID == "positive-wake"
 	_, _ = os.Stdout.WriteString(fmt.Sprintf(
