@@ -396,13 +396,13 @@
     recognizing = false;
   }
 
-  function speakPreview() {
+  async function speakPreview() {
     if (!window.speechSynthesis) {
       status = 'speechSynthesis is unavailable.';
       return;
     }
     const startedAt = performance.now();
-    const voices = window.speechSynthesis.getVoices();
+    const voices = await speechSynthesisVoices();
     const utterance = new SpeechSynthesisUtterance(
       transcript || 'Jute browser voice preview'
     );
@@ -425,6 +425,25 @@
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
     status = 'Playing browser-local speech preview.';
+  }
+
+  function speechSynthesisVoices(): Promise<SpeechSynthesisVoice[]> {
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      return Promise.resolve(voices);
+    }
+    return new Promise((resolve) => {
+      const timeout = window.setTimeout(() => {
+        window.speechSynthesis.removeEventListener('voiceschanged', onVoices);
+        resolve(window.speechSynthesis.getVoices());
+      }, 1000);
+      function onVoices() {
+        window.clearTimeout(timeout);
+        window.speechSynthesis.removeEventListener('voiceschanged', onVoices);
+        resolve(window.speechSynthesis.getVoices());
+      }
+      window.speechSynthesis.addEventListener('voiceschanged', onVoices);
+    });
   }
 
   function manualEvidenceMeasurements(): BrowserVoiceMeasurement[] {
