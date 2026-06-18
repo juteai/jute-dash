@@ -672,9 +672,13 @@ export function validateBrowserVoiceRunMatrix(
     }
     if (
       !row.browserSTTMeasured ||
-      !hasExpectedRowEvidence(row.evidence.browserSTT, [
-        'Browser STT cold start'
-      ])
+      !hasExpectedRowEvidence(
+        row.evidence.browserSTT,
+        ['Browser STT cold start'],
+        {
+          requireNumericOrGenericUnsupported: true
+        }
+      )
     ) {
       problems.push(`${prefix} is missing browser STT evidence`);
     }
@@ -1082,6 +1086,7 @@ function hasExpectedRowEvidence(
   options: {
     disallowGenericUnsupported?: boolean;
     requireNumericMeasurement?: boolean;
+    requireNumericOrGenericUnsupported?: boolean;
   } = {}
 ): boolean {
   const chunks = value
@@ -1122,6 +1127,13 @@ function hasExpectedRowEvidence(
       return false;
     }
     if (options.requireNumericMeasurement && !/\d/.test(measured)) {
+      return false;
+    }
+    if (
+      options.requireNumericOrGenericUnsupported &&
+      !/\d/.test(measured) &&
+      !['unsupported', 'unavailable'].includes(measured)
+    ) {
       return false;
     }
     return true;
