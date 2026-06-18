@@ -178,6 +178,15 @@
             }
           ]
         : []),
+      ...(navigator.hardwareConcurrency
+        ? [
+            {
+              label: 'CPU',
+              value: `${navigator.hardwareConcurrency} logical cores`,
+              detail: 'navigator.hardwareConcurrency browser hint'
+            }
+          ]
+        : []),
       ...(deviceMemory
         ? [
             {
