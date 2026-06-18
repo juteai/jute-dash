@@ -42,12 +42,6 @@ func run() error {
 	configPath := flag.String("config", os.Getenv("JUTE_CONFIG"), "optional path to Jute bootstrap config YAML or JSON")
 	dataDirOverride := flag.String("data-dir", os.Getenv("JUTE_DATA_DIR"), "override Jute runtime data directory")
 	listenOverride := flag.String("listen", os.Getenv("JUTE_LISTEN"), "override listen address")
-	headless := flag.Bool("headless", false, "disable serving the display UI")
-	displayDir := flag.String(
-		"display-dir",
-		os.Getenv("JUTE_DISPLAY_DIR"),
-		"serve display assets from this directory instead of embedded assets",
-	)
 	flag.Parse()
 
 	ctx := context.Background()
@@ -129,10 +123,6 @@ func run() error {
 		runtimeStore.VoiceRepo,
 		*configPath,
 		displayActions,
-		app.DisplayAssets{
-			Headless:  *headless,
-			Directory: *displayDir,
-		},
 	)
 	logger.Info("jute data directory", "path", dataDir)
 

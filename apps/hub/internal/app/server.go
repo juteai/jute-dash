@@ -138,7 +138,6 @@ func NewServer(
 	voiceStore voice.Store,
 	configPath string,
 	display *displayactions.Dispatcher,
-	displayAssets ...DisplayAssets,
 ) http.Handler {
 	layout := dashboard.DefaultWidgetLayout()
 	if layoutStore != nil {
@@ -157,7 +156,6 @@ func NewServer(
 		voiceStore,
 		configPath,
 		display,
-		displayAssets...,
 	)
 }
 
@@ -172,7 +170,6 @@ func newServer(
 	voiceStore voice.Store,
 	configPath string,
 	display *displayactions.Dispatcher,
-	displayAssets ...DisplayAssets,
 ) http.Handler {
 	if messageSender == nil {
 		messageSender = a2aclient.NewJSONRPCClient()
@@ -364,9 +361,6 @@ func newServer(
 	// SSE broker mount
 	broker := events.NewBroker(server.display, server.voiceDispatcher)
 	mux.Handle("/api/v1/events", broker)
-	if handler := displayAssetHandler(selectedDisplayAssets(displayAssets)); handler != nil {
-		mux.Handle("/", handler)
-	}
 
 	handler := withCommonHeaders(withCORS(mux))
 	return RequestLogger(slog.Default() /*nolint:sloglint // use default global logger */)(handler)

@@ -4,9 +4,9 @@
 
 Jute ships as several artifacts built from the same hub and display foundation:
 
-- **Hub binary:** Go binary for API, persistence, local services, and optional static display serving.
+- **Hub binary:** Go binary for API, persistence, and local services.
 - **Docker image:** multi-arch image for home servers, NAS devices, and development.
-- **PWA/kiosk web app:** browser install target served by the hub.
+- **PWA/kiosk web app:** browser install target deployed separately from the hub.
 - **Raspberry Pi/systemd package:** install script and service unit for wall display and headless nodes.
 - **Desktop wrapper:** later Tauri wrapper around the display UI for macOS, Windows, and Linux.
 
@@ -15,9 +15,7 @@ The standalone hub binary is the primary v1 distribution target.
 ## Build Strategy
 
 - Build SvelteKit as static client assets.
-- Serve built display assets from a configured directory.
-- Allow `JUTE_DISPLAY_DIR` during development and packaging to serve local web assets.
-- Keep the hub usable with `--headless` or equivalent runtime setting.
+- Serve the display app separately from the hub.
 
 ## CI/CD
 
@@ -60,14 +58,11 @@ cd apps/web && npm run dev
 
 ### Hub Binary
 
-Run one binary that serves the hub API and display:
+Run one binary that serves the hub API:
 
 ```sh
 juted --config /etc/jute/config.yaml
 ```
-
-Set `JUTE_DISPLAY_DIR=/path/to/apps/web/build` or pass `--display-dir` to serve local display assets.
-Pass `--headless` to disable display serving and run only the hub APIs/background services.
 
 Once SQLite persistence exists, `--config` bootstraps an empty runtime store. Runtime settings then live in the data directory.
 
