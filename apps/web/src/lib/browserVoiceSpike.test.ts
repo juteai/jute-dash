@@ -1416,6 +1416,48 @@ describe('browserVoiceSnapshot', () => {
     );
   });
 
+  it('accepts browser-reported hardware and device memory evidence', () => {
+    const report = browserVoiceReport({
+      snapshot: {
+        userAgent:
+          'Mozilla/5.0 AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',
+        secureContext: true,
+        online: true,
+        capabilities: []
+      },
+      measurements: [
+        { label: 'Microphone permission', value: '90 ms' },
+        { label: 'Browser STT cold start', value: 'unavailable' },
+        { label: 'TTS cold start', value: '25 ms' },
+        { label: 'Hardware', value: 'MacIntel, 10 logical cores' },
+        { label: 'Model download size', value: '0 MB' },
+        { label: 'Memory', value: '8 GB device memory' },
+        { label: 'Offline behavior', value: 'browser STT unavailable offline' }
+      ],
+      platform: 'MacIntel',
+      standalone: false,
+      transcriptCaptured: true,
+      submittedThroughHub: true,
+      hubReceipt: hubReceiptAt()
+    });
+    const matrix = browserVoiceRunMatrix([report], '2026-06-15T16:19:35.000Z');
+
+    expect(matrix.rows[0].hardwareMeasured).toBe(true);
+    expect(matrix.rows[0].cpuMemoryMeasured).toBe(true);
+    expect(matrix.rows[0].gaps).not.toContain(
+      'device hardware note not measured'
+    );
+    expect(matrix.rows[0].gaps).not.toContain(
+      'CPU or memory note not measured'
+    );
+    expect(matrix.acceptance.problems).not.toContain(
+      'desktop-chromium row is missing device hardware evidence'
+    );
+    expect(matrix.acceptance.problems).not.toContain(
+      'desktop-chromium row is missing CPU or memory evidence'
+    );
+  });
+
   it('does not accept placeholder model download size as evidence', () => {
     const report = browserVoiceReport({
       snapshot: {

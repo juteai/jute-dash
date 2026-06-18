@@ -134,6 +134,19 @@
         memory?: { usedJSHeapSize?: number; jsHeapSizeLimit?: number };
       }
     ).memory;
+    const deviceMemory = (navigator as Navigator & { deviceMemory?: number })
+      .deviceMemory;
+    const hardwareEvidence = [
+      navigator.platform,
+      navigator.hardwareConcurrency
+        ? `${navigator.hardwareConcurrency} logical cores`
+        : '',
+      Number.isFinite(navigator.maxTouchPoints)
+        ? `${navigator.maxTouchPoints} touch points`
+        : ''
+    ]
+      .filter(Boolean)
+      .join(', ');
     measurements = [
       {
         label: 'Browser',
@@ -155,6 +168,25 @@
           ? `limit ${formatBytes(memory.jsHeapSizeLimit)}`
           : 'browser does not expose memory metrics'
       },
+      ...(hardwareEvidence
+        ? [
+            {
+              label: 'Hardware',
+              value: hardwareEvidence,
+              detail:
+                'browser-reported platform, logical CPU cores, and touch points'
+            }
+          ]
+        : []),
+      ...(deviceMemory
+        ? [
+            {
+              label: 'Memory',
+              value: `${deviceMemory} GB device memory`,
+              detail: 'navigator.deviceMemory browser hint'
+            }
+          ]
+        : []),
       {
         label: 'Model download size',
         value: '0 MB',
