@@ -1,27 +1,24 @@
-package app
+package voice
 
 import (
 	"errors"
 	"strings"
 	"sync"
 	"time"
-
-	"jute-dash/apps/hub/internal/app/agents"
-	"jute-dash/apps/hub/internal/app/voice"
 )
 
 const (
 	defaultVoiceFollowupWindow = 8 * time.Second
 	maxVoiceSessionDuration    = 45 * time.Second
-	maxVoiceSessionTurns       = 5
+	MaxConversationTurns       = 5
 )
 
 var (
-	errVoiceFollowupExpired        = errors.New("voice follow-up window expired")
-	errVoiceFollowupSourceMismatch = errors.New("voice follow-up source mismatch")
+	ErrFollowupExpired        = errors.New("voice follow-up window expired")
+	ErrFollowupSourceMismatch = errors.New("voice follow-up source mismatch")
 )
 
-type voiceConversationSession struct {
+type ConversationSession struct {
 	ConversationID  string
 	DeviceProfileID string
 	DeviceID        string
@@ -30,25 +27,25 @@ type voiceConversationSession struct {
 	Turns           int
 }
 
-type voiceConversationRuntime struct {
+type ConversationRuntime struct {
 	mu       sync.Mutex
 	now      func() time.Time
-	sessions map[string]voiceConversationSession
+	sessions map[string]ConversationSession
 }
 
-func newVoiceConversationRuntime() *voiceConversationRuntime {
-	return &voiceConversationRuntime{
+func NewConversationRuntime() *ConversationRuntime {
+	return &ConversationRuntime{
 		now:      func() time.Time { return time.Now().UTC() },
-		sessions: map[string]voiceConversationSession{},
+		sessions: map[string]ConversationSession{},
 	}
 }
 
-func (r *voiceConversationRuntime) beginTurn(
+func (r *ConversationRuntime) BeginTurn(
 	conversationID string,
-	settings voice.Settings,
+	settings Settings,
 	deviceProfileID string,
 	deviceID string,
-) (voiceConversationSession, bool, error) {
+) (ConversationSession, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -57,8 +54,8 @@ func (r *voiceConversationRuntime) beginTurn(
 	deviceProfileID = normalizeVoiceSourceID(deviceProfileID, settings.DeviceProfileID)
 	deviceID = normalizeVoiceSourceID(deviceID, deviceProfileID)
 	if conversationID == "" {
-		conversationID = "voice-conversation-" + agents.NewLocalID()
-		session := voiceConversationSession{
+		conversationID = newID("voice-conversation")
+		session := ConversationSession{
 			ConversationID:  conversationID,
 			DeviceProfileID: deviceProfileID,
 			DeviceID:        deviceID,
@@ -72,25 +69,25 @@ func (r *voiceConversationRuntime) beginTurn(
 	session, ok := r.sessions[conversationID]
 	if !ok || sessionExpired(session, now) {
 		delete(r.sessions, conversationID)
-		return voiceConversationSession{}, false, errVoiceFollowupExpired
+		return ConversationSession{}, false, ErrFollowupExpired
 	}
 	if !sameVoiceSource(session, deviceProfileID, deviceID) {
-		return voiceConversationSession{}, false, errVoiceFollowupSourceMismatch
+		return ConversationSession{}, false, ErrFollowupSourceMismatch
 	}
 	return session, false, nil
 }
 
-func (r *voiceConversationRuntime) completeTurn(
+func (r *ConversationRuntime) CompleteTurn(
 	conversationID string,
-	settings voice.Settings,
-) voiceConversationSession {
+	settings Settings,
+) ConversationSession {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	now := r.now().UTC()
 	session, ok := r.sessions[conversationID]
 	if !ok {
-		session = voiceConversationSession{
+		session = ConversationSession{
 			ConversationID: conversationID,
 			StartedAt:      now,
 		}
@@ -101,33 +98,37 @@ func (r *voiceConversationRuntime) completeTurn(
 	return session
 }
 
-func (r *voiceConversationRuntime) end(conversationID string) {
+func (r *ConversationRuntime) End(conversationID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.sessions, strings.TrimSpace(conversationID))
 }
 
-func (r *voiceConversationRuntime) cancelAll() []voice.CancelledConversation {
+func (r *ConversationRuntime) CancelAll() []CancelledConversation {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	cancelled := make([]voice.CancelledConversation, 0, len(r.sessions))
+	cancelled := make([]CancelledConversation, 0, len(r.sessions))
 	for _, session := range r.sessions {
-		cancelled = append(cancelled, voice.CancelledConversation{
+		cancelled = append(cancelled, CancelledConversation{
 			ConversationID: session.ConversationID,
 			DeviceID:       session.DeviceID,
 		})
 	}
-	r.sessions = map[string]voiceConversationSession{}
+	r.sessions = map[string]ConversationSession{}
 	return cancelled
 }
 
-func sessionExpired(session voiceConversationSession, now time.Time) bool {
-	return !session.ExpiresAt.IsZero() && now.After(session.ExpiresAt) ||
-		!session.StartedAt.IsZero() && now.Sub(session.StartedAt) >= maxVoiceSessionDuration ||
-		session.Turns >= maxVoiceSessionTurns
+func ConversationComplete(session ConversationSession) bool {
+	return session.Turns >= MaxConversationTurns
 }
 
-func followupWindow(settings voice.Settings) time.Duration {
+func sessionExpired(session ConversationSession, now time.Time) bool {
+	return !session.ExpiresAt.IsZero() && now.After(session.ExpiresAt) ||
+		!session.StartedAt.IsZero() && now.Sub(session.StartedAt) >= maxVoiceSessionDuration ||
+		session.Turns >= MaxConversationTurns
+}
+
+func followupWindow(settings Settings) time.Duration {
 	if settings.FollowupWindowSeconds <= 0 {
 		return defaultVoiceFollowupWindow
 	}
@@ -145,7 +146,7 @@ func normalizeVoiceSourceID(value, fallback string) string {
 	return strings.TrimSpace(fallback)
 }
 
-func sameVoiceSource(session voiceConversationSession, deviceProfileID, deviceID string) bool {
+func sameVoiceSource(session ConversationSession, deviceProfileID, deviceID string) bool {
 	return strings.TrimSpace(session.DeviceProfileID) == strings.TrimSpace(deviceProfileID) &&
 		strings.TrimSpace(session.DeviceID) == strings.TrimSpace(deviceID)
 }

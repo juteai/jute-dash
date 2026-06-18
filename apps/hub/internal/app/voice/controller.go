@@ -36,18 +36,29 @@ type TTSProvider interface {
 }
 
 type Controller struct {
-	store       Store
-	display     DisplayEmitter
-	tts         *TTSRuntime
-	ttsProvider TTSProvider
-	cancel      func() []CancelledConversation
+	store   Store
+	display DisplayEmitter
+	speaker *Speaker
+	cancel  func() []CancelledConversation
 }
 
 func NewController(store Store, display DisplayEmitter, cancel func() []CancelledConversation) *Controller {
+	return NewControllerWithSpeaker(store, display, cancel, NewSpeaker(store, display, nil))
+}
+
+func NewControllerWithSpeaker(
+	store Store,
+	display DisplayEmitter,
+	cancel func() []CancelledConversation,
+	speaker *Speaker,
+) *Controller {
+	if speaker == nil {
+		speaker = NewSpeaker(store, display, nil)
+	}
 	return &Controller{
 		store:   store,
 		display: display,
-		tts:     NewTTSRuntime(),
+		speaker: speaker,
 		cancel:  cancel,
 	}
 }
@@ -58,9 +69,7 @@ func NewControllerWithTTSProvider(
 	cancel func() []CancelledConversation,
 	provider TTSProvider,
 ) *Controller {
-	controller := NewController(store, display, cancel)
-	controller.ttsProvider = provider
-	return controller
+	return NewControllerWithSpeaker(store, display, cancel, NewSpeaker(store, display, provider))
 }
 
 func DecodeSettingsUpdateRequest(r io.Reader) (SettingsUpdateRequest, error) {
@@ -259,74 +268,12 @@ func (c *Controller) handleTTSAction(w http.ResponseWriter, r *http.Request, act
 		httphelper.WriteError(w, http.StatusBadRequest, "invalid TTS request")
 		return
 	}
-	response, err := c.Speak(r.Context(), "default-display", action, req)
+	response, err := c.speaker.Speak(r.Context(), DefaultDeviceProfileID, action, req)
 	if err != nil {
 		httphelper.WriteError(w, http.StatusInternalServerError, "voice settings are unavailable")
 		return
 	}
 	httphelper.WriteJSON(w, http.StatusOK, response)
-}
-
-func (c *Controller) Speak(ctx context.Context, deviceID, action string, req TTSRequest) (TTSActionResponse, error) {
-	settings, err := c.store.VoiceSettings(ctx, "")
-	if err != nil {
-		return TTSActionResponse{}, err
-	}
-	req = effectiveTTSRequest(req, settings)
-	allowed, reason := speechPolicyAllows(req, settings)
-	synthesisCtx, cancelSynthesis := context.WithCancel(ctx)
-	defer cancelSynthesis()
-	response := c.tts.Begin(action, req, settings, cancelSynthesis)
-	if !allowed {
-		response = c.tts.VisualOnly(response.ID, reason)
-		if c.display != nil {
-			c.display.EmitTTSEvent(EventTTSStopped, deviceID, response)
-		}
-		return response, nil
-	}
-	if c.display != nil {
-		c.display.EmitTTSEvent(EventTTSStarted, deviceID, response)
-	}
-	if provider, err := c.activeTTSProvider(synthesisCtx); err != nil {
-		response = c.tts.Fail(response.ID, "provider_unavailable")
-		if c.display != nil {
-			c.display.EmitTTSEvent(EventTTSFailed, deviceID, response)
-		}
-		return response, nil
-	} else if provider != nil {
-		audio, err := provider.Synthesize(synthesisCtx, req)
-		if err != nil {
-			response = c.tts.Fail(response.ID, "provider_unavailable")
-			if response.State == TTSStateStopped {
-				return response, nil
-			}
-			if c.display != nil {
-				c.display.EmitTTSEvent(EventTTSFailed, deviceID, response)
-			}
-			return response, nil
-		}
-		response = c.tts.CompleteWithAudio(response.ID, audio)
-	} else {
-		response.State = TTSStatePlayback
-		response = c.tts.Complete(response.ID)
-	}
-	if response.State == TTSStateStopped {
-		return response, nil
-	}
-	if c.display != nil {
-		c.display.EmitTTSEvent(EventTTSCompleted, deviceID, response)
-	}
-	return response, nil
-}
-
-func (c *Controller) activeTTSProvider(ctx context.Context) (TTSProvider, error) {
-	store, ok := c.store.(interface {
-		ActiveTTSProvider(ctx context.Context, deviceProfileID string) (TTSProvider, error)
-	})
-	if ok {
-		return store.ActiveTTSProvider(ctx, "")
-	}
-	return c.ttsProvider, nil
 }
 
 func (c *Controller) handleTTSStop(w http.ResponseWriter, r *http.Request) {
@@ -342,9 +289,6 @@ func (c *Controller) handleTTSStop(w http.ResponseWriter, r *http.Request) {
 		}
 		req = decoded
 	}
-	response := c.tts.Stop(req)
-	if c.display != nil {
-		c.display.EmitTTSEvent(EventTTSStopped, "default-display", response)
-	}
+	response := c.speaker.Stop(DefaultDeviceProfileID, req)
 	httphelper.WriteJSON(w, http.StatusOK, response)
 }

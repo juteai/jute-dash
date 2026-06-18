@@ -182,14 +182,14 @@ func (s *Server) submitFinalTranscript(
 		}
 	}
 
-	session, started, err := s.voiceRuntime.beginTurn(
+	session, started, err := s.voiceRuntime.BeginTurn(
 		req.ConversationID,
 		settings,
 		voiceSourceDeviceProfileID(req, settings),
 		deviceID(req),
 	)
 	if err != nil {
-		if errors.Is(err, errVoiceFollowupExpired) {
+		if errors.Is(err, voice.ErrFollowupExpired) {
 			s.voiceDispatcher.EmitConversationEvent(
 				voice.EventConversationEnded,
 				deviceID(req),
@@ -201,7 +201,7 @@ func (s *Server) submitFinalTranscript(
 				message: "voice follow-up window expired",
 			}
 		}
-		if errors.Is(err, errVoiceFollowupSourceMismatch) {
+		if errors.Is(err, voice.ErrFollowupSourceMismatch) {
 			return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
 				status:  http.StatusConflict,
 				message: "voice follow-up source mismatch",
@@ -240,7 +240,7 @@ func (s *Server) submitFinalTranscript(
 		s.voiceAgentEventCallback(deviceID(req)),
 	)
 	if err != nil {
-		s.voiceRuntime.end(conversationID)
+		s.voiceRuntime.End(conversationID)
 		s.voiceDispatcher.EmitConversationEvent(
 			voice.EventConversationEnded,
 			deviceID(req),
@@ -253,9 +253,9 @@ func (s *Server) submitFinalTranscript(
 		}
 	}
 
-	session = s.voiceRuntime.completeTurn(conversationID, settings)
-	if sessionComplete(session) {
-		s.voiceRuntime.end(conversationID)
+	session = s.voiceRuntime.CompleteTurn(conversationID, settings)
+	if voice.ConversationComplete(session) {
+		s.voiceRuntime.End(conversationID)
 		s.voiceDispatcher.EmitConversationEvent(
 			voice.EventConversationEnded,
 			deviceID(req),
@@ -263,7 +263,7 @@ func (s *Server) submitFinalTranscript(
 			map[string]any{
 				"reason":   "followup_limit_reached",
 				"turns":    session.Turns,
-				"maxTurns": maxVoiceSessionTurns,
+				"maxTurns": voice.MaxConversationTurns,
 			},
 		)
 		return VoiceFinalTranscriptResponse{
@@ -271,7 +271,7 @@ func (s *Server) submitFinalTranscript(
 			Followup: VoiceFollowupResponse{
 				Active:   false,
 				Turns:    session.Turns,
-				MaxTurns: maxVoiceSessionTurns,
+				MaxTurns: voice.MaxConversationTurns,
 			},
 		}, nil
 	}
@@ -282,7 +282,7 @@ func (s *Server) submitFinalTranscript(
 		map[string]any{
 			"expiresAt": session.ExpiresAt.Format(time.RFC3339Nano),
 			"turns":     session.Turns,
-			"maxTurns":  maxVoiceSessionTurns,
+			"maxTurns":  voice.MaxConversationTurns,
 		},
 	)
 
@@ -292,13 +292,9 @@ func (s *Server) submitFinalTranscript(
 			Active:    true,
 			ExpiresAt: session.ExpiresAt.Format(time.RFC3339Nano),
 			Turns:     session.Turns,
-			MaxTurns:  maxVoiceSessionTurns,
+			MaxTurns:  voice.MaxConversationTurns,
 		},
 	}, nil
-}
-
-func sessionComplete(session voiceConversationSession) bool {
-	return session.Turns >= maxVoiceSessionTurns
 }
 
 func decodeStrictJSON(r io.Reader, dst any) error {
@@ -445,7 +441,7 @@ func (s *Server) speakVoiceAssistantText(
 	deviceID, conversationID, taskID, text string,
 ) {
 	text = strings.TrimSpace(text)
-	if text == "" || s.voiceController == nil {
+	if text == "" || s.voiceSpeaker == nil {
 		return
 	}
 	settings, err := s.voiceStore.VoiceSettings(ctx, voice.DefaultDeviceProfileID)
@@ -457,7 +453,7 @@ func (s *Server) speakVoiceAssistantText(
 	go func() {
 		ttsCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 		defer cancel()
-		_, _ = s.voiceController.Speak(
+		_, _ = s.voiceSpeaker.Speak(
 			ttsCtx,
 			deviceID,
 			voice.TTSActionSpeak,

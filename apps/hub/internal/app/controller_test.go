@@ -1407,7 +1407,7 @@ func TestVoiceFinalTranscriptStartsHubOwnedAgentTurn(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !body.Followup.Active || body.Followup.Turns != 1 || body.Followup.MaxTurns != maxVoiceSessionTurns {
+	if !body.Followup.Active || body.Followup.Turns != 1 || body.Followup.MaxTurns != voice.MaxConversationTurns {
 		t.Fatalf("unexpected follow-up response: %+v", body.Followup)
 	}
 	if len(client.SentMessages) != 1 {
@@ -1445,7 +1445,7 @@ func TestVoiceFinalTranscriptEmitsDisplayEventsInOrder(t *testing.T) {
 		messages:        client,
 		voiceStore:      voice.NewMemoryRepositoryFromConfig(cfg.Voice),
 		voiceDispatcher: dispatcher,
-		voiceRuntime:    newVoiceConversationRuntime(),
+		voiceRuntime:    voice.NewConversationRuntime(),
 	}
 	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
 		GetRegistry:    manager.ActiveRegistry,
@@ -1527,9 +1527,9 @@ func TestVoiceFinalTranscriptTriggersTTSEvents(t *testing.T) {
 		messages:        client,
 		voiceStore:      store,
 		voiceDispatcher: dispatcher,
-		voiceRuntime:    newVoiceConversationRuntime(),
+		voiceRuntime:    voice.NewConversationRuntime(),
 	}
-	server.voiceController = voice.NewController(store, dispatcher, nil)
+	server.voiceSpeaker = voice.NewSpeaker(store, dispatcher, nil)
 	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
 		GetRegistry:    manager.ActiveRegistry,
 		GetAgentConfig: manager.ConfiguredAgent,
@@ -1696,7 +1696,7 @@ func TestLocalVoiceServiceBuilderRoutesCapturedUtteranceThroughSTT(t *testing.T)
 		messages:        client,
 		voiceStore:      store,
 		voiceDispatcher: voice.NewDispatcher(),
-		voiceRuntime:    newVoiceConversationRuntime(),
+		voiceRuntime:    voice.NewConversationRuntime(),
 	}
 	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
 		GetRegistry:    manager.ActiveRegistry,
@@ -1762,7 +1762,7 @@ func TestLocalVoiceServiceBuilderEmitsRecoverableErrorWhenSTTFails(t *testing.T)
 		messages:        client,
 		voiceStore:      store,
 		voiceDispatcher: dispatcher,
-		voiceRuntime:    newVoiceConversationRuntime(),
+		voiceRuntime:    voice.NewConversationRuntime(),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1885,7 +1885,7 @@ func TestVoiceFinalTranscriptEndsFollowupAfterMaxTurns(t *testing.T) {
 		messages:        client,
 		voiceStore:      voice.NewMemoryRepositoryFromConfig(cfg.Voice),
 		voiceDispatcher: dispatcher,
-		voiceRuntime:    newVoiceConversationRuntime(),
+		voiceRuntime:    voice.NewConversationRuntime(),
 	}
 	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
 		GetRegistry:    manager.ActiveRegistry,
@@ -1904,7 +1904,7 @@ func TestVoiceFinalTranscriptEndsFollowupAfterMaxTurns(t *testing.T) {
 
 	var response VoiceFinalTranscriptResponse
 	conversationID := ""
-	for i := range maxVoiceSessionTurns {
+	for i := range voice.MaxConversationTurns {
 		req := VoiceFinalTranscriptRequest{
 			Text:           "turn",
 			ConversationID: conversationID,
@@ -1921,13 +1921,13 @@ func TestVoiceFinalTranscriptEndsFollowupAfterMaxTurns(t *testing.T) {
 	}
 
 	if response.Followup.Active ||
-		response.Followup.Turns != maxVoiceSessionTurns ||
-		response.Followup.MaxTurns != maxVoiceSessionTurns ||
+		response.Followup.Turns != voice.MaxConversationTurns ||
+		response.Followup.MaxTurns != voice.MaxConversationTurns ||
 		response.Followup.ExpiresAt != "" {
 		t.Fatalf("expected inactive follow-up at max turns, got %+v", response.Followup)
 	}
-	if len(client.SentMessages) != maxVoiceSessionTurns {
-		t.Fatalf("expected %d A2A sends, got %d", maxVoiceSessionTurns, len(client.SentMessages))
+	if len(client.SentMessages) != voice.MaxConversationTurns {
+		t.Fatalf("expected %d A2A sends, got %d", voice.MaxConversationTurns, len(client.SentMessages))
 	}
 
 	_, err := server.submitFinalTranscript(context.Background(), VoiceFinalTranscriptRequest{
@@ -1940,7 +1940,7 @@ func TestVoiceFinalTranscriptEndsFollowupAfterMaxTurns(t *testing.T) {
 	if !ok || transcriptErr.status != http.StatusConflict {
 		t.Fatalf("expected follow-up conflict after max turns, got %T %v", err, err)
 	}
-	if len(client.SentMessages) != maxVoiceSessionTurns {
+	if len(client.SentMessages) != voice.MaxConversationTurns {
 		t.Fatalf("follow-up limit should block extra A2A send, got %d sends", len(client.SentMessages))
 	}
 }
