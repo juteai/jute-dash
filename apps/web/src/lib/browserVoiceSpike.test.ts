@@ -1666,6 +1666,45 @@ describe('browserVoiceSnapshot', () => {
     );
   });
 
+  it('accepts browser offline snapshot as offline behavior evidence', () => {
+    const report = browserVoiceReport({
+      snapshot: {
+        userAgent:
+          'Mozilla/5.0 AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',
+        secureContext: true,
+        online: false,
+        capabilities: []
+      },
+      measurements: [
+        { label: 'Microphone permission', value: '90 ms' },
+        { label: 'Browser STT cold start', value: 'unavailable' },
+        { label: 'TTS cold start', value: '25 ms' },
+        { label: 'Hardware', value: 'MacBook Pro M3, 18 GB RAM' },
+        { label: 'Model download size', value: '0 MB' },
+        { label: 'CPU', value: '8 percent average' },
+        {
+          label: 'Offline behavior',
+          value: 'browser reported offline at snapshot'
+        }
+      ],
+      platform: 'MacIntel',
+      standalone: false,
+      transcriptCaptured: true,
+      submittedThroughHub: true,
+      hubReceipt: hubReceiptAt()
+    });
+    const matrix = browserVoiceRunMatrix([report], '2026-06-15T16:19:45.000Z');
+
+    expect(matrix.rows[0].target).toBe('offline-display');
+    expect(matrix.rows[0].offlineBehaviorMeasured).toBe(true);
+    expect(matrix.rows[0].gaps).not.toContain(
+      'offline behavior note not measured'
+    );
+    expect(matrix.acceptance.problems).not.toContain(
+      'offline-display row is missing offline behavior evidence'
+    );
+  });
+
   it('summarizes browser voice matrix evidence for Linear comments', () => {
     const report = browserVoiceReport({
       snapshot: {

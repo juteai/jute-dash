@@ -177,6 +177,16 @@
         }
       ];
     }
+    if (!navigator.onLine) {
+      measurements = [
+        ...measurements,
+        {
+          label: 'Offline behavior',
+          value: 'browser reported offline at snapshot',
+          detail: 'navigator.onLine was false when the run was recorded'
+        }
+      ];
+    }
     matrixNotes = `${navigator.platform || 'unknown platform'} | ${
       window.matchMedia('(display-mode: standalone)').matches
         ? 'standalone/PWA'
