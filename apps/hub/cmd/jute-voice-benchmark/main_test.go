@@ -3621,6 +3621,53 @@ func TestVoiceBenchmarkCommandFixtureManifestAcceptancePresetRejectsDuplicateFix
 	}
 }
 
+func TestVoiceBenchmarkCommandFixtureManifestAcceptancePresetRejectsDuplicateFixtureHashes(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "stt"), 0o755); err != nil {
+		t.Fatalf("create fixture dir: %v", err)
+	}
+	hash := writeToneFixtureForTest(t, dir, filepath.Join("stt", "short-command.wav"), "short-command")
+	raw, err := os.ReadFile(filepath.Join(dir, "stt", "short-command.wav"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "stt", "extra-command.wav"), raw, 0o600); err != nil {
+		t.Fatalf("write duplicate fixture: %v", err)
+	}
+	manifestPath := filepath.Join(dir, "stt-fixtures.json")
+	manifest := fmt.Sprintf(`{
+		"issue": "JUT-13",
+		"kind": "stt",
+		"fixtures": [
+			{"id": "short-command", "path": "stt/short-command.wav", "sha256": %q, "source": "synthetic-test", "recordedAt": "2026-06-17T00:00:00Z", "consent": true, "expectedTranscript": "turn on the lights", "language": "en-GB"},
+			{"id": "extra-command", "path": "stt/extra-command.wav", "sha256": %q, "source": "synthetic-test", "recordedAt": "2026-06-17T00:00:00Z", "consent": true, "expectedTranscript": "turn off the lights", "language": "en-GB"}
+		]
+	}`, hash, hash)
+	if err := os.WriteFile(manifestPath, []byte(manifest), 0o600); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{
+		"-fixture-manifest", manifestPath,
+		"-fixture-dir", dir,
+		"-acceptance-preset",
+	}, strings.NewReader(""), &stdout, &stderr)
+
+	if code != 1 {
+		t.Fatalf("expected fixture preset validation failure, got code %d", code)
+	}
+	if !strings.Contains(
+		stdout.String(),
+		"fixture manifest fixtures short-command and extra-command must not share sha256",
+	) {
+		t.Fatalf("expected duplicate hash output:\n%s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "fixture manifest has 1 validation problem") {
+		t.Fatalf("expected validation stderr, got %q", stderr.String())
+	}
+}
+
 func TestVoiceBenchmarkCommandEmitsPublicFixtureFailureReportWithAcceptanceProblems(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "stt"), 0o755); err != nil {
@@ -4533,7 +4580,7 @@ func writeToneFixtureForTest(t *testing.T, dir string, relativePath string, fixt
 	t.Helper()
 	fixture, err := voice.NewBenchmarkToneFixture(fixtureID, "fixture", voice.BenchmarkAudioSpec{
 		Duration:  60 * time.Millisecond,
-		Frequency: 440,
+		Frequency: 440 + float64(len(fixtureID)*10),
 		Amplitude: 0.2,
 	})
 	if err != nil {

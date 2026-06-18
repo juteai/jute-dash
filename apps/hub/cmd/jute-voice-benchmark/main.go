@@ -3320,6 +3320,7 @@ func validateFixtureManifestAcceptancePreset(manifest voice.BenchmarkFixtureSetM
 	}
 	entries := map[string]voice.BenchmarkFixtureManifest{}
 	seen := map[string]bool{}
+	fixtureBySHA := map[string]string{}
 	var problems []string
 	for _, fixture := range manifest.Fixtures {
 		fixtureID := strings.TrimSpace(fixture.ID)
@@ -3328,9 +3329,25 @@ func validateFixtureManifestAcceptancePreset(manifest voice.BenchmarkFixtureSetM
 		}
 		if seen[fixtureID] {
 			problems = append(problems, fmt.Sprintf("fixture manifest has duplicate fixture %s", fixtureID))
+			continue
 		}
 		seen[fixtureID] = true
 		entries[fixtureID] = fixture
+		sha := strings.ToLower(strings.TrimSpace(fixture.SHA256))
+		if isSafeSHA256(sha) {
+			if previousFixtureID := fixtureBySHA[sha]; previousFixtureID != "" {
+				problems = append(
+					problems,
+					fmt.Sprintf(
+						"fixture manifest fixtures %s and %s must not share sha256",
+						previousFixtureID,
+						fixtureID,
+					),
+				)
+			} else {
+				fixtureBySHA[sha] = fixtureID
+			}
+		}
 	}
 	for _, fixtureID := range expectations.RequiredFixtureIDs {
 		if !seen[fixtureID] {
