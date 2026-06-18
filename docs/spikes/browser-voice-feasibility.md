@@ -87,8 +87,10 @@ saved run or row artifacts must be generated at or after any cited hub receipt s
 The Manual Evidence panel records values that the browser cannot reliably measure itself:
 
 - browser STT cold-start timing or an unsupported/offline note;
-- WASM/model download size, including `0 MB` when no local model asset is downloaded;
-- CPU and memory notes from the browser task manager or OS monitor;
+- WASM/model download size when a future local model path is added; the current spike route records
+  `0 MB` automatically because it does not load a WASM or Transformers model;
+- CPU and memory notes from the browser task manager or OS monitor when browser-native hardware,
+  CPU, JS heap, or device-memory hints are absent or too coarse;
 - device hardware notes such as device model, CPU class, RAM, or kiosk hardware;
 - offline behavior from a disconnected-network run.
 
@@ -113,11 +115,16 @@ Record these values for each run:
 - secure context and online/offline state;
 - microphone permission latency;
 - sample rate, base latency, and input tracks;
-- rough JS heap when exposed by the browser, plus a manual CPU or memory note when the browser reports `unknown`;
+- rough JS heap when exposed by the browser;
+- browser-native hardware/CPU hints when exposed: platform, logical cores, touch points, and
+  `navigator.deviceMemory`;
+- manual CPU or memory notes when browser-native values are absent or too coarse;
 - browser STT availability, cold-start time, and whether it works offline;
 - browser TTS voice count and cold-start time;
-- any model download size for WASM or Transformers.js experiments;
-- CPU and memory notes from the browser task manager or OS monitor;
+- any model download size for WASM or Transformers.js experiments, with `0 MB` for the current
+  no-model route;
+- CPU and memory notes from the browser task manager or OS monitor when browser hints are
+  insufficient;
 - device hardware notes for the measured target.
 - offline behavior in a disconnected-network or browser-offline run.
 
