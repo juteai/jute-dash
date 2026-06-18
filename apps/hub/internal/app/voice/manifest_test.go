@@ -133,16 +133,7 @@ func validWakeWordManifest() ProviderManifest {
 			Offline:   true,
 			Languages: []string{"en", "en-GB"},
 		},
-		Hardware:    map[string]bool{"cpu": true},
 		Credentials: []CredentialManifest{},
-		License: LicenseManifest{
-			Name: "Apache-2.0",
-			URL:  "https://example.com/license",
-		},
-		Contribution: ContributionManifest{
-			Source:      "https://example.com/openwakeword",
-			Maintainers: []string{"example"},
-		},
 		WakeWord: WakeWordManifest{
 			DefaultModelID: "hey-jute",
 			Phrase:         "Hey Jute",

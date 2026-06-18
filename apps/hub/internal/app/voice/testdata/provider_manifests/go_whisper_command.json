@@ -13,25 +13,7 @@
     "partialTranscripts": false,
     "offline": true,
     "languages": ["en", "en-GB", "en-US"],
-    "inputFormats": ["audio/wav;rate=16000"],
-    "outputFormats": ["application/json"]
+    "inputFormats": ["audio/wav;rate=16000"]
   },
-  "hardware": {
-    "cpu": true,
-    "gpu": false,
-    "coreml": false,
-    "cuda": false,
-    "vulkan": false,
-    "metal": false,
-    "raspberryPi": false
-  },
-  "credentials": [],
-  "license": {
-    "name": "Apache-2.0",
-    "url": "https://github.com/mutablelogic/go-whisper/blob/main/LICENSE"
-  },
-  "contribution": {
-    "source": "https://github.com/mutablelogic/go-whisper",
-    "maintainers": ["mutablelogic"]
-  }
+  "credentials": []
 }

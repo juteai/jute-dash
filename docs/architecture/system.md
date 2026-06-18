@@ -94,7 +94,7 @@ Initial API families:
 - `/api/v1/voice/settings`: current hub-owned settings patch API for device-profile voice enablement, wake/STT/TTS selections, language, follow-up bounds, cloud opt-in, command-provider enablement, microphone profile, and sensitive-output policy.
 - `/api/v1/voice/transcripts/final`: hub-owned ingress for final transcripts from the local voice service; the hub emits transcript/conversation events, enforces follow-up limits, and routes text through the A2A runner without accepting raw audio or pre-roll buffers.
 - `/api/v1/tts/voices`: current TTS provider voice listing and health/setup response.
-- `/api/v1/tts/preview`, `/api/v1/tts/speak`, `/api/v1/tts/stop`: current speech-policy and transient TTS state controls; future provider-backed synthesis and playback will use the same surface.
+- `/api/v1/tts/speak`, `/api/v1/tts/stop`: current speech-policy and transient TTS state controls; future provider-backed synthesis and playback will use the same surface.
 - Conversation history and typed display turns currently use the A2A JavaScript SDK through the agent proxy rather than Jute-specific conversation routes.
 - `/api/v1/events`: currently a minimal SSE endpoint. Future releases will use it for replayable home, widget, agent, voice, and task updates.
 - `/api/v1/settings/household`: current home, display, and weather settings.

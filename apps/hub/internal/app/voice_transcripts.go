@@ -34,8 +34,6 @@ type VoiceFollowupResponse struct {
 	MaxTurns  int    `json:"maxTurns"`
 }
 
-var _ voice.FinalTranscriptSink = (*Server)(nil)
-
 type voiceTranscriptError struct {
 	status  int
 	message string
@@ -58,22 +56,7 @@ func (s *Server) handleVoiceFinalTranscript(w http.ResponseWriter, r *http.Reque
 	s.handleFinalTranscriptRequest(w, r, req)
 }
 
-func (s *Server) SubmitFinalTranscript(ctx context.Context, transcript voice.FinalTranscript) error {
-	_, err := s.submitFinalTranscript(ctx, VoiceFinalTranscriptRequest{
-		Text:            transcript.Text,
-		DeviceProfileID: transcript.DeviceProfileID,
-		DeviceID:        transcript.DeviceID,
-	})
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *Server) newSTTTurnProcessor(
-	ctx context.Context,
-	deviceProfileID, deviceID string,
-) (*voice.STTTurnProcessor, error) {
+func (s *Server) activeSTTProvider(ctx context.Context, deviceProfileID string) (voice.STTProvider, error) {
 	providerStore, ok := s.voiceStore.(interface {
 		ActiveSTTProvider(context.Context, string) (voice.STTProvider, error)
 	})
@@ -87,7 +70,7 @@ func (s *Server) newSTTTurnProcessor(
 	if provider == nil {
 		return nil, errors.New("STT provider is unavailable")
 	}
-	return voice.NewSTTTurnProcessor(provider, s, deviceProfileID, deviceID), nil
+	return provider, nil
 }
 
 func (s *Server) newLocalVoiceService(
@@ -107,7 +90,7 @@ func (s *Server) newLocalVoiceService(
 	if deviceID == "" {
 		deviceID = deviceProfileID
 	}
-	processor, err := s.newSTTTurnProcessor(ctx, deviceProfileID, deviceID)
+	sttProvider, err := s.activeSTTProvider(ctx, deviceProfileID)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +114,20 @@ func (s *Server) newLocalVoiceService(
 		wakeProvider,
 		s.voiceDispatcher,
 		func(utterance voice.CapturedUtterance) {
-			if _, err := processor.Process(ctx, utterance); err != nil && s.voiceDispatcher != nil {
+			result, err := sttProvider.Transcribe(ctx, utterance)
+			if err == nil {
+				transcript, transcriptErr := voice.FinalTranscriptFromSTT(result, deviceProfileID, deviceID)
+				if transcriptErr != nil {
+					err = transcriptErr
+				} else {
+					_, err = s.submitFinalTranscript(ctx, VoiceFinalTranscriptRequest{
+						Text:            transcript.Text,
+						DeviceProfileID: transcript.DeviceProfileID,
+						DeviceID:        transcript.DeviceID,
+					})
+				}
+			}
+			if err != nil && s.voiceDispatcher != nil {
 				s.voiceDispatcher.EmitVoiceStateChanged(deviceID, voice.VoiceStatePayload{
 					Enabled:       settings.Enabled,
 					Muted:         settings.Muted,

@@ -259,7 +259,6 @@ export type VoiceProviderCapabilities = {
   offline: boolean;
   languages?: string[];
   inputFormats?: string[];
-  outputFormats?: string[];
 };
 
 export type VoiceWakeWordSummary = {
@@ -307,8 +306,6 @@ export type TTSVoice = {
   label: string;
   locale: string;
   modelId?: string;
-  styles?: string[];
-  outputFormats?: string[];
 };
 
 export type TTSVoicesResponse = {

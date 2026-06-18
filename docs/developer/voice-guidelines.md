@@ -26,18 +26,17 @@ Provider transports:
 
 STT `command` providers receive a temporary WAV path through `{inputPath}` and never run unless command providers are enabled.
 
-Each provider has a `jute.voice.provider.json` manifest. The manifest declares provider ID, name, version, kind, transport, supported locales, streaming support, offline/network behavior, audio formats, hardware hints, license, and contribution metadata.
+Each provider has a `jute.voice.provider.json` manifest. The manifest declares provider ID, name, version, kind, transport, supported locales, streaming support, offline/network behavior, and audio formats.
 
 Manifests may declare credential requirements, but they must only contain secret references. Never put raw API keys, tokens, passwords, or OAuth refresh tokens in a provider manifest.
 
-Supported provider kinds are `wake-word`, `stt`, `tts`, and `stt-tts`. Wake-word providers use the same provider-pack envelope as STT/TTS providers and add a `wakeWord` section with declared model IDs, provider-pack-relative model paths, phrases, languages, and default sensitivity.
+Supported provider kinds are `wake-word`, `stt`, and `tts`. Wake-word providers use the same provider-pack envelope as STT/TTS providers and add a `wakeWord` section with declared model IDs, provider-pack-relative model paths, phrases, languages, and default sensitivity.
 
 Manifest validation rejects:
 
 - undeclared default wake models;
 - wake model paths that are absolute, remote, or escape the provider pack;
-- credential declarations with missing IDs, missing labels, unsupported sources, missing env references, duplicate IDs, or raw credential-looking values;
-- missing license metadata.
+- credential declarations with missing IDs, missing labels, unsupported sources, missing env references, duplicate IDs, or raw credential-looking values.
 
 Wake-word providers should report:
 
@@ -80,7 +79,7 @@ Provider status values should be:
 - `degraded`;
 - `disabled`.
 
-Provider tests must use synthetic audio or user-confirmed preview text. Do not use recent household transcripts, live microphone audio, or secrets for health checks.
+Provider tests must use synthetic audio or explicit test text. Do not use recent household transcripts, live microphone audio, or secrets for health checks.
 
 ## Provider Contribution Rules
 
@@ -173,4 +172,4 @@ Voice Provider Packs are distinct from widgets and A2A agents. A voice provider 
 5. Add Voice Provider Pack manifest validation and provider health state.
 6. Add STT provider selection, starting with hub-owned command providers.
 7. Route final transcripts into the A2A message/task pipeline.
-8. Add optional TTS provider selection, voice listing, preview, playback, and stop controls.
+8. Add optional TTS provider selection, voice listing, playback, and stop controls.

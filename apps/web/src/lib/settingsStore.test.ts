@@ -102,8 +102,7 @@ describe('settingsStore', () => {
                 partialTranscripts: true,
                 offline: true,
                 languages: ['en-GB'],
-                inputFormats: ['audio/pcm;rate=16000'],
-                outputFormats: ['text/plain']
+                inputFormats: ['audio/pcm;rate=16000']
               },
               healthStatus: 'misconfigured',
               lastError: 'provider failed token=provider-secret',
@@ -184,8 +183,6 @@ describe('settingsStore', () => {
               label: 'Amy token=voice-secret',
               locale: 'en-GB',
               modelId: 'tts-secret=voice',
-              styles: ['neutral', 'token=style-secret'],
-              outputFormats: ['audio/wav', 'apiKey=format-secret'],
               providerPayload: { apiKey: 'sk-voice-secret' }
             }
           ]
@@ -199,7 +196,6 @@ describe('settingsStore', () => {
 
     expect(state.ttsVoices?.providerName).toBe('Local TTS token=[redacted]');
     expect(state.ttsVoices?.voices[0].label).toBe('Amy token=[redacted]');
-    expect(state.ttsVoices?.voices[0].styles).toContain('token=[redacted]');
     const serialized = JSON.stringify(state.ttsVoices);
     expect(serialized).not.toContain('credentialSecretRef');
     expect(serialized).not.toContain('endpoint');
@@ -437,8 +433,7 @@ describe('settingsStore', () => {
                 partialTranscripts: false,
                 offline: false,
                 languages: ['en-GB'],
-                inputFormats: ['text/plain'],
-                outputFormats: ['audio/pcm']
+                inputFormats: ['text/plain']
               },
               healthStatus: 'available',
               updatedAt: '2026-06-16T10:00:00Z'
@@ -506,8 +501,7 @@ describe('settingsStore', () => {
                 partialTranscripts: false,
                 offline: true,
                 languages: ['en-GB'],
-                inputFormats: ['audio/pcm'],
-                outputFormats: ['text/plain']
+                inputFormats: ['audio/pcm']
               },
               healthStatus: 'available',
               updatedAt: '2026-06-16T10:00:00Z'

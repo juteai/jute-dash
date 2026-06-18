@@ -243,7 +243,7 @@ func (r *Repository) ActiveSTTProvider(ctx context.Context, deviceProfileID stri
 	if err != nil || len(ValidateProviderManifest(manifest)) > 0 {
 		return nil, nil
 	}
-	if manifest.Kind != ProviderKindSTT && manifest.Kind != ProviderKindSTTTTS {
+	if manifest.Kind != ProviderKindSTT {
 		return nil, nil
 	}
 	if !manifest.Capabilities.Offline || missingRequiredCredential(manifest) {
@@ -302,7 +302,7 @@ func (r *Repository) TTSVoices(ctx context.Context, providerID, deviceProfileID 
 		response.SetupStatus = "misconfigured"
 		return response, nil
 	}
-	if manifest.Kind != ProviderKindTTS && manifest.Kind != ProviderKindSTTTTS {
+	if manifest.Kind != ProviderKindTTS {
 		response.SetupStatus = "disabled"
 		return response, nil
 	}
@@ -369,7 +369,7 @@ func (r *Repository) ActiveTTSProvider(ctx context.Context, deviceProfileID stri
 	if err != nil || len(ValidateProviderManifest(manifest)) > 0 {
 		return nil, nil
 	}
-	if manifest.Kind != ProviderKindTTS && manifest.Kind != ProviderKindSTTTTS {
+	if manifest.Kind != ProviderKindTTS {
 		return nil, nil
 	}
 	if !manifest.Capabilities.Offline || missingRequiredCredential(manifest) {

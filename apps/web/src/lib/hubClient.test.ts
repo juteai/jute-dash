@@ -93,8 +93,7 @@ describe('fallback dashboard', () => {
                 partialTranscripts: true,
                 offline: true,
                 languages: ['en-GB'],
-                inputFormats: ['audio/pcm;rate=16000'],
-                outputFormats: ['text/plain']
+                inputFormats: ['audio/pcm;rate=16000']
               },
               healthStatus: 'available',
               lastActivationAt: '2026-06-15T08:05:00Z',
@@ -148,8 +147,6 @@ describe('fallback dashboard', () => {
               label: 'Amy token=voice-secret',
               locale: 'en-GB',
               modelId: 'model-secret=voice',
-              styles: ['neutral', 'token=style-secret'],
-              outputFormats: ['audio/wav', 'apiKey=format-secret'],
               providerPayload: { apiKey: 'sk-voice-secret' }
             }
           ]
@@ -164,7 +161,6 @@ describe('fallback dashboard', () => {
 
     expect(voices.providerName).toBe('Local TTS token=[redacted]');
     expect(voices.voices[0].label).toBe('Amy token=[redacted]');
-    expect(voices.voices[0].styles).toContain('token=[redacted]');
     const serialized = JSON.stringify(voices);
     expect(serialized).not.toContain('credentialSecretRef');
     expect(serialized).not.toContain('endpoint');

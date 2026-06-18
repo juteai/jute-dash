@@ -99,7 +99,6 @@ type ProviderCapabilities struct {
 	Offline            bool     `json:"offline"`
 	Languages          []string `json:"languages,omitempty"`
 	InputFormats       []string `json:"inputFormats,omitempty"`
-	OutputFormats      []string `json:"outputFormats,omitempty"`
 }
 
 type WakeWordProviderSummary struct {
@@ -132,12 +131,10 @@ type TTSVoicesResponse struct {
 }
 
 type TTSVoice struct {
-	ID            string   `json:"id"`
-	Label         string   `json:"label"`
-	Locale        string   `json:"locale"`
-	ModelID       string   `json:"modelId,omitempty"`
-	Styles        []string `json:"styles,omitempty"`
-	OutputFormats []string `json:"outputFormats,omitempty"`
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Locale  string `json:"locale"`
+	ModelID string `json:"modelId,omitempty"`
 }
 
 // StatusResponse is the HTTP status payload for voice settings.

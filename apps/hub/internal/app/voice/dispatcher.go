@@ -140,23 +140,24 @@ func (d *Dispatcher) EmitTTSEvent(eventType, deviceID string, response TTSAction
 		CreatedAt:      d.now().UTC().Format(time.RFC3339Nano),
 		DeviceID:       safeIdentifier(deviceID),
 		ConversationID: safeIdentifier(response.ConversationID),
-		Payload: TTSEventPayload{
-			Action:       response.Action,
-			State:        response.State,
-			ProviderID:   safeIdentifier(response.ProviderID),
-			VoiceID:      safeIdentifier(response.VoiceID),
-			Reason:       sanitizeText(response.Reason),
-			PlaybackKind: safeIdentifier(response.PlaybackKind),
-			ContentType:  safeIdentifier(response.ContentType),
-			SampleRate:   response.SampleRate,
-			SampleWidth:  response.SampleWidth,
-			Channels:     response.Channels,
-			AudioBytes:   response.AudioBytes,
-			DurationMs:   response.DurationMs,
-		},
+		Payload:        sanitizeTTSActionResponse(response),
 	}
 	d.publish(displayactions.Event{Type: eventType, Data: event})
 	return event
+}
+
+func sanitizeTTSActionResponse(response TTSActionResponse) TTSActionResponse {
+	response.ID = safeIdentifier(response.ID)
+	response.Action = safeIdentifier(response.Action)
+	response.State = safeIdentifier(response.State)
+	response.ProviderID = safeIdentifier(response.ProviderID)
+	response.VoiceID = safeIdentifier(response.VoiceID)
+	response.ConversationID = safeIdentifier(response.ConversationID)
+	response.TurnID = safeIdentifier(response.TurnID)
+	response.Reason = sanitizeText(response.Reason)
+	response.PlaybackKind = safeIdentifier(response.PlaybackKind)
+	response.ContentType = safeIdentifier(response.ContentType)
+	return response
 }
 
 func (d *Dispatcher) publish(event displayactions.Event) {

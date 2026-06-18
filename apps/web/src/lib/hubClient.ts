@@ -621,8 +621,7 @@ function safeVoiceProvider(provider: VoiceProvider): VoiceProvider {
           partialTranscripts: Boolean(provider.capabilities.partialTranscripts),
           offline: Boolean(provider.capabilities.offline),
           languages: safeStringArray(provider.capabilities.languages),
-          inputFormats: safeStringArray(provider.capabilities.inputFormats),
-          outputFormats: safeStringArray(provider.capabilities.outputFormats)
+          inputFormats: safeStringArray(provider.capabilities.inputFormats)
         }
       : undefined,
     wakeWord: provider.wakeWord
@@ -662,9 +661,7 @@ function safeTTSVoicesResponse(response: TTSVoicesResponse): TTSVoicesResponse {
       id: voice.id,
       label: redactCredentialText(voice.label) ?? '',
       locale: redactCredentialText(voice.locale) ?? '',
-      modelId: redactCredentialText(voice.modelId),
-      styles: safeStringArray(voice.styles),
-      outputFormats: safeStringArray(voice.outputFormats)
+      modelId: redactCredentialText(voice.modelId)
     }))
   };
 }

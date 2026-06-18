@@ -84,7 +84,6 @@ func (c *Controller) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/voice/cancel", c.handleVoiceCancel)
 	mux.HandleFunc("/api/v1/voice/providers", c.handleVoiceProviders)
 	mux.HandleFunc("/api/v1/tts/voices", c.handleTTSVoices)
-	mux.HandleFunc("/api/v1/tts/preview", c.handleTTSPreview)
 	mux.HandleFunc("/api/v1/tts/speak", c.handleTTSSpeak)
 	mux.HandleFunc("/api/v1/tts/stop", c.handleTTSStop)
 }
@@ -245,10 +244,6 @@ func (c *Controller) handleTTSVoices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httphelper.WriteJSON(w, http.StatusOK, voices)
-}
-
-func (c *Controller) handleTTSPreview(w http.ResponseWriter, r *http.Request) {
-	c.handleTTSAction(w, r, TTSActionPreview)
 }
 
 func (c *Controller) handleTTSSpeak(w http.ResponseWriter, r *http.Request) {

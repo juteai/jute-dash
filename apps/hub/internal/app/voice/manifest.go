@@ -15,7 +15,6 @@ const (
 	ProviderKindWakeWord = "wake-word"
 	ProviderKindSTT      = "stt"
 	ProviderKindTTS      = "tts"
-	ProviderKindSTTTTS   = "stt-tts"
 )
 
 type ProviderManifest struct {
@@ -25,10 +24,7 @@ type ProviderManifest struct {
 	Kind         string               `json:"kind"`
 	Transport    TransportManifest    `json:"transport"`
 	Capabilities ProviderCapabilities `json:"capabilities"`
-	Hardware     map[string]bool      `json:"hardware"`
 	Credentials  []CredentialManifest `json:"credentials"`
-	License      LicenseManifest      `json:"license"`
-	Contribution ContributionManifest `json:"contribution"`
 	WakeWord     WakeWordManifest     `json:"wakeWord,omitempty"`
 	TTS          TTSManifest          `json:"tts,omitempty"`
 }
@@ -45,16 +41,6 @@ type CredentialManifest struct {
 	Source   string `json:"source"`
 	Env      string `json:"env,omitempty"`
 	Required bool   `json:"required"`
-}
-
-type LicenseManifest struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
-}
-
-type ContributionManifest struct {
-	Source      string   `json:"source"`
-	Maintainers []string `json:"maintainers"`
 }
 
 type WakeWordManifest struct {
@@ -80,12 +66,10 @@ type TTSManifest struct {
 }
 
 type TTSVoiceManifest struct {
-	ID            string   `json:"id"`
-	Label         string   `json:"label"`
-	Locale        string   `json:"locale"`
-	ModelID       string   `json:"modelId,omitempty"`
-	Styles        []string `json:"styles,omitempty"`
-	OutputFormats []string `json:"outputFormats,omitempty"`
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Locale  string `json:"locale"`
+	ModelID string `json:"modelId,omitempty"`
 }
 
 func DecodeProviderManifest(raw string) (ProviderManifest, error) {
@@ -113,41 +97,18 @@ func ValidateProviderManifest(manifest ProviderManifest) []string {
 		problems = append(problems, "version is required")
 	}
 	if !validProviderKind(manifest.Kind) {
-		problems = append(problems, "kind must be wake-word, stt, tts, or stt-tts")
+		problems = append(problems, "kind must be wake-word, stt, or tts")
 	}
 	if strings.TrimSpace(manifest.Transport.Type) == "" {
 		problems = append(problems, "transport.type is required")
 	}
 	problems = append(problems, validateTransport(manifest.Transport, manifest.Kind)...)
 	problems = append(problems, validateCredentials(manifest.Credentials)...)
-	problems = append(problems, validateContribution(manifest.Contribution)...)
-	if strings.TrimSpace(manifest.License.Name) == "" {
-		problems = append(problems, "license.name is required")
-	}
-	if strings.TrimSpace(manifest.License.URL) == "" {
-		problems = append(problems, "license.url is required")
-	}
 	if manifest.Kind == ProviderKindWakeWord {
 		problems = append(problems, validateWakeWordManifest(manifest.WakeWord)...)
 	}
-	if manifest.Kind == ProviderKindTTS || manifest.Kind == ProviderKindSTTTTS {
+	if manifest.Kind == ProviderKindTTS {
 		problems = append(problems, validateTTSManifest(manifest.TTS)...)
-	}
-	return problems
-}
-
-func validateContribution(contribution ContributionManifest) []string {
-	var problems []string
-	if strings.TrimSpace(contribution.Source) == "" {
-		problems = append(problems, "contribution.source is required")
-	}
-	if len(contribution.Maintainers) == 0 {
-		problems = append(problems, "contribution.maintainers must include at least one maintainer")
-	}
-	for i, maintainer := range contribution.Maintainers {
-		if strings.TrimSpace(maintainer) == "" {
-			problems = append(problems, fmt.Sprintf("contribution.maintainers[%d] is required", i))
-		}
 	}
 	return problems
 }
@@ -184,7 +145,7 @@ func validateCredentials(credentials []CredentialManifest) []string {
 
 func validProviderKind(kind string) bool {
 	switch kind {
-	case ProviderKindWakeWord, ProviderKindSTT, ProviderKindTTS, ProviderKindSTTTTS:
+	case ProviderKindWakeWord, ProviderKindSTT, ProviderKindTTS:
 		return true
 	default:
 		return false
@@ -217,7 +178,7 @@ func validateTransport(transport TransportManifest, kind string) []string {
 }
 
 func isSTTCapableProviderKind(kind string) bool {
-	return kind == ProviderKindSTT || kind == ProviderKindSTTTTS
+	return kind == ProviderKindSTT
 }
 
 func hasCommandArg(args []string, want string) bool {
@@ -361,14 +322,7 @@ func wakeWordSummary(manifest ProviderManifest) *WakeWordProviderSummary {
 func ttsVoicesFromManifest(manifest ProviderManifest) []TTSVoice {
 	voices := make([]TTSVoice, 0, len(manifest.TTS.Voices))
 	for _, voice := range manifest.TTS.Voices {
-		voices = append(voices, TTSVoice{
-			ID:            voice.ID,
-			Label:         voice.Label,
-			Locale:        voice.Locale,
-			ModelID:       voice.ModelID,
-			Styles:        append([]string(nil), voice.Styles...),
-			OutputFormats: append([]string(nil), voice.OutputFormats...),
-		})
+		voices = append(voices, TTSVoice(voice))
 	}
 	return voices
 }

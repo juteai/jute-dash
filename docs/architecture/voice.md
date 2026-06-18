@@ -273,7 +273,7 @@ Hub APIs:
 Future hub APIs:
 
 - `GET /api/v1/voice/providers/{id}`: returns provider details, capabilities, and setup status.
-- `POST /api/v1/voice/providers/{id}/test`: runs a safe provider health or preview test.
+- `POST /api/v1/voice/providers/{id}/test`: future safe provider health test surface.
 
 Typed display chat currently uses the standard A2A JavaScript SDK through `/api/v1/proxy/agents/{agentId}`. Voice remains hub-owned because the hub must enforce wake-word, privacy, follow-up-window, and routing policy before sending final transcripts to agents.
 

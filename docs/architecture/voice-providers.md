@@ -26,8 +26,7 @@ Supported provider kinds:
 
 - `wake-word`: wake-word detection only;
 - `stt`: speech-to-text;
-- `tts`: text-to-speech;
-- `stt-tts`: both STT and TTS.
+- `tts`: text-to-speech.
 
 Supported transport:
 
@@ -72,29 +71,13 @@ The manifest is the stable contract:
     "partialTranscripts": false,
     "offline": true,
     "languages": ["en", "en-GB", "en-US"],
-    "inputFormats": ["audio/wav;rate=16000", "audio/pcm;rate=16000"],
-    "outputFormats": ["application/json"]
+    "inputFormats": ["audio/wav;rate=16000", "audio/pcm;rate=16000"]
   },
-  "hardware": {
-    "cpu": true,
-    "gpu": false,
-    "coreml": false,
-    "cuda": false,
-    "raspberryPi": true
-  },
-  "credentials": [],
-  "license": {
-    "name": "MIT",
-    "url": "https://example.org/license"
-  },
-  "contribution": {
-    "source": "https://example.org/provider",
-    "maintainers": ["example-org"]
-  }
+  "credentials": []
 }
 ```
 
-Required fields are `id`, `name`, `version`, `kind`, `transport`, `capabilities`, `hardware`, `credentials`, `license`, and `contribution`.
+Required fields are `id`, `name`, `version`, `kind`, `transport`, and `capabilities`.
 
 Wake-word providers use the same manifest envelope and add a `wakeWord` section:
 
@@ -113,19 +96,7 @@ Wake-word providers use the same manifest envelope and add a `wakeWord` section:
     "offline": true,
     "languages": ["en", "en-GB"]
   },
-  "hardware": {
-    "cpu": true,
-    "raspberryPi": true
-  },
   "credentials": [],
-  "license": {
-    "name": "Apache-2.0",
-    "url": "https://example.org/license"
-  },
-  "contribution": {
-    "source": "https://example.org/provider",
-    "maintainers": ["example-org"]
-  },
   "wakeWord": {
     "defaultModelId": "hey-jute",
     "phrase": "Hey Jute",
@@ -145,7 +116,6 @@ Wake-word providers use the same manifest envelope and add a `wakeWord` section:
 ```
 
 Wake model paths must reference files inside the provider pack. Absolute paths, parent-directory traversal, and remote model URLs are rejected by manifest validation.
-Manifest validation also rejects provider packs without a contribution source and at least one named maintainer.
 
 Secrets never appear in manifests. Credential entries are references only:
 
@@ -271,7 +241,7 @@ Minimum output:
 
 The display remains useful when TTS is disabled or fails. The assistant response is always rendered visually.
 
-TTS provider manifests declare a `tts` section with `defaultVoiceId`, `defaultModelId`, and a list of voice metadata records. The hub exposes voice IDs, labels, locales, model IDs, styles, output formats, provider health, and setup status through `GET /api/v1/tts/voices`. The endpoint uses the default display profile unless a safe `deviceProfileId` query value is supplied. It does not expose raw credential references or provider manifests through this response.
+TTS provider manifests declare a `tts` section with `defaultVoiceId`, `defaultModelId`, and a list of voice metadata records. The hub exposes voice IDs, labels, locales, model IDs, provider health, and setup status through `GET /api/v1/tts/voices`. The endpoint uses the default display profile unless a safe `deviceProfileId` query value is supplied. It does not expose raw credential references or provider manifests through this response.
 
 ## Provider Selection
 
@@ -309,7 +279,7 @@ Status values:
 - `degraded`: provider works but reports limited models, high latency, or partial capability.
 - `disabled`: provider exists but is not enabled for the device profile.
 
-Health checks must not send household transcripts, live microphone audio, or secrets. Provider test calls use synthetic audio or user-confirmed preview text.
+Health checks must not send household transcripts, live microphone audio, or secrets. Provider test calls use synthetic audio or explicit test text.
 
 ## Hub APIs
 
@@ -318,8 +288,6 @@ Implemented foundation provider APIs:
 - `GET /api/v1/voice/providers`: list discovered wake/STT/TTS providers and health states.
 - `GET /api/v1/tts/voices`: list voices for the selected or requested TTS provider, scoped by
   optional `deviceProfileId`.
-- `POST /api/v1/tts/preview`: apply speech policy, synthesize an approved preview through the
-  configured TTS provider when available, and emit safe preview TTS state events.
 - `POST /api/v1/tts/speak`: apply speech policy, synthesize approved assistant text through the
   configured TTS provider when available, and emit safe speak TTS state events.
 - `POST /api/v1/tts/stop`: stop current transient TTS state and emit `tts.stopped`.

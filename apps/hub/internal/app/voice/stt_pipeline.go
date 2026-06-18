@@ -29,46 +29,11 @@ type FinalTranscript struct {
 	Duration        time.Duration `json:"duration,omitempty"`
 }
 
-type FinalTranscriptSink interface {
-	SubmitFinalTranscript(ctx context.Context, transcript FinalTranscript) error
-}
-
-type STTTurnProcessor struct {
-	provider        STTProvider
-	sink            FinalTranscriptSink
-	deviceProfileID string
-	deviceID        string
-}
-
-func NewSTTTurnProcessor(
-	provider STTProvider,
-	sink FinalTranscriptSink,
-	deviceProfileID string,
-	deviceID string,
-) *STTTurnProcessor {
-	return &STTTurnProcessor{
-		provider:        provider,
-		sink:            sink,
-		deviceProfileID: safeIdentifier(deviceProfileID),
-		deviceID:        safeIdentifier(deviceID),
-	}
-}
-
-func (p *STTTurnProcessor) Process(ctx context.Context, utterance CapturedUtterance) (FinalTranscript, error) {
-	if p == nil || p.provider == nil {
-		return FinalTranscript{}, errors.New("STT provider is unavailable")
-	}
-	if p.sink == nil {
-		return FinalTranscript{}, errors.New("final transcript sink is unavailable")
-	}
-	result, err := p.provider.Transcribe(ctx, cloneSTTTurnUtterance(utterance))
-	if err != nil {
-		return FinalTranscript{}, errors.New("STT provider unavailable")
-	}
+func FinalTranscriptFromSTT(result STTResult, deviceProfileID, deviceID string) (FinalTranscript, error) {
 	transcript := FinalTranscript{
 		Text:            sanitizeText(strings.TrimSpace(result.Text)),
-		DeviceProfileID: p.deviceProfileID,
-		DeviceID:        p.deviceID,
+		DeviceProfileID: safeIdentifier(deviceProfileID),
+		DeviceID:        safeIdentifier(deviceID),
 		ProviderID:      safeIdentifier(result.ProviderID),
 		ModelID:         safeIdentifier(result.ModelID),
 		Language:        safeIdentifier(result.Language),
@@ -77,18 +42,5 @@ func (p *STTTurnProcessor) Process(ctx context.Context, utterance CapturedUttera
 	if transcript.Text == "" {
 		return FinalTranscript{}, errors.New("STT transcript is empty")
 	}
-	if err := p.sink.SubmitFinalTranscript(ctx, transcript); err != nil {
-		return FinalTranscript{}, err
-	}
 	return transcript, nil
-}
-
-func cloneSTTTurnUtterance(utterance CapturedUtterance) CapturedUtterance {
-	return CapturedUtterance{
-		Frames:     cloneAudioFrames(utterance.Frames),
-		StartedAt:  utterance.StartedAt,
-		EndedAt:    utterance.EndedAt,
-		SampleRate: utterance.SampleRate,
-		Channels:   utterance.Channels,
-	}
 }

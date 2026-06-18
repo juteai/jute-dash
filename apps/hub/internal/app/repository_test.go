@@ -382,7 +382,6 @@ func TestVoiceProvidersIncludesWakeWordManifestSummary(t *testing.T) {
 			"offline":   true,
 			"languages": []string{"en", "en-GB"},
 		},
-		"hardware": map[string]bool{"cpu": true},
 		"credentials": []map[string]any{{
 			"id":       "apiKey",
 			"label":    "API key",
@@ -390,14 +389,6 @@ func TestVoiceProvidersIncludesWakeWordManifestSummary(t *testing.T) {
 			"env":      "OPENWAKEWORD_SECRET_ENV",
 			"required": false,
 		}},
-		"license": map[string]any{
-			"name": "Apache-2.0",
-			"url":  "https://example.com/license",
-		},
-		"contribution": map[string]any{
-			"source":      "https://example.com/openwakeword",
-			"maintainers": []string{"example"},
-		},
 		"wakeWord": map[string]any{
 			"defaultModelId": "hey-jute",
 			"phrase":         "Hey Jute",
@@ -987,39 +978,26 @@ func insertTTSProviderWithTransport(
 		Kind:      voice.ProviderKindTTS,
 		Transport: transport,
 		Capabilities: voice.ProviderCapabilities{
-			Streaming:     true,
-			Offline:       offline,
-			Languages:     []string{"en", "en-GB"},
-			OutputFormats: []string{"audio/wav"},
+			Streaming: true,
+			Offline:   offline,
+			Languages: []string{"en", "en-GB"},
 		},
-		Hardware:    map[string]bool{"cpu": true},
 		Credentials: credentials,
-		License: voice.LicenseManifest{
-			Name: "MIT",
-			URL:  "https://example.com/license",
-		},
-		Contribution: voice.ContributionManifest{
-			Source:      "https://example.com/tts",
-			Maintainers: []string{"example"},
-		},
 		TTS: voice.TTSManifest{
 			DefaultVoiceID: "amy",
 			DefaultModelID: "local-model",
 			Voices: []voice.TTSVoiceManifest{
 				{
-					ID:            "amy",
-					Label:         "Amy",
-					Locale:        "en-GB",
-					ModelID:       "local-model",
-					Styles:        []string{"neutral"},
-					OutputFormats: []string{"audio/wav"},
+					ID:      "amy",
+					Label:   "Amy",
+					Locale:  "en-GB",
+					ModelID: "local-model",
 				},
 				{
-					ID:            "dan",
-					Label:         "Dan",
-					Locale:        "en-US",
-					ModelID:       "local-model",
-					OutputFormats: []string{"audio/wav"},
+					ID:      "dan",
+					Label:   "Dan",
+					Locale:  "en-US",
+					ModelID: "local-model",
 				},
 			},
 		},
@@ -1086,16 +1064,7 @@ func insertSTTProviderWithTransport(
 			Languages:          []string{"en-GB", "en"},
 			InputFormats:       []string{"audio/pcm;rate=16000;width=2;channels=1"},
 		},
-		Hardware:    map[string]bool{"cpu": true},
 		Credentials: credentials,
-		License: voice.LicenseManifest{
-			Name: "MIT",
-			URL:  "https://example.com/license",
-		},
-		Contribution: voice.ContributionManifest{
-			Source:      "https://example.com/stt",
-			Maintainers: []string{"example"},
-		},
 	}
 	manifestBytes, err := json.Marshal(manifest)
 	if err != nil {
@@ -1145,16 +1114,7 @@ func insertWakeProvider(
 			Languages:    []string{"en-GB", "en"},
 			InputFormats: []string{"audio/pcm;rate=16000;width=2;channels=1"},
 		},
-		Hardware:    map[string]bool{"cpu": true},
 		Credentials: credentials,
-		License: voice.LicenseManifest{
-			Name: "MIT",
-			URL:  "https://example.com/license",
-		},
-		Contribution: voice.ContributionManifest{
-			Source:      "https://example.com/wake",
-			Maintainers: []string{"example"},
-		},
 		WakeWord: voice.WakeWordManifest{
 			DefaultModelID: "hey-jute",
 			Phrase:         "Hey Jute",

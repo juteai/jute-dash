@@ -1582,81 +1582,6 @@ func TestVoiceFinalTranscriptStreamsAssistantTextSafely(t *testing.T) {
 	t.Fatal("event stream did not include conversation.turn_completed data")
 }
 
-func TestSTTTurnProcessorSubmitsThroughServerFinalTranscriptSink(t *testing.T) {
-	cfg := testConfig()
-	cfg.Voice.Enabled = true
-	cfg.Voice.MutedByDefault = false
-	cfg.Voice.PreferredAgentID = "house"
-	client := a2a.NewInMemoryClient()
-	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
-		return a2a.SendMessageResult{
-			ConversationID: req.ConversationID,
-			TaskID:         "task-stt-1",
-			Status:         "completed",
-			Text:           "Done.",
-		}, nil
-	}
-	syncer := filesync.NewInMemorySyncer(cfg)
-	cards := agents.NewCardService()
-	manager := agents.NewAgentManager(syncer, cards, "")
-	store := &fixtureActiveSTTVoiceStore{
-		MemoryRepository: voice.NewMemoryRepositoryFromConfig(cfg.Voice),
-		provider: &fixtureAppSTTProvider{
-			result: voice.STTResult{
-				Text:       "turn on token=secret kitchen lights",
-				ProviderID: "local-stt",
-				ModelID:    "tiny-en",
-				Language:   "en-GB",
-				Duration:   40 * time.Millisecond,
-			},
-		},
-	}
-	server := &Server{
-		cfg:             cfg,
-		agentsManager:   manager,
-		messages:        client,
-		voiceStore:      store,
-		voiceDispatcher: voice.NewDispatcher(),
-		voiceRuntime:    newVoiceConversationRuntime(),
-	}
-	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
-		GetRegistry:    manager.ActiveRegistry,
-		GetAgentConfig: manager.ConfiguredAgent,
-		GetAgentCardCache: func(context.Context, registry.Agent) (agents.AgentCardCache, bool) {
-			return agents.AgentCardCache{
-				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
-				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
-			}, true
-		},
-		GetDashboardContext: func(context.Context) map[string]any {
-			return map[string]any{}
-		},
-		Messages: client,
-	})
-	processor, err := server.newSTTTurnProcessor(context.Background(), "", "kitchen-display")
-	if err != nil {
-		t.Fatalf("newSTTTurnProcessor() error = %v", err)
-	}
-
-	transcript, err := processor.Process(context.Background(), fixtureAppUtterance())
-	if err != nil {
-		t.Fatalf("Process() error = %v", err)
-	}
-
-	if transcript.Text != "turn on token=[redacted] kitchen lights" ||
-		transcript.DeviceID != "kitchen-display" ||
-		transcript.ProviderID != "local-stt" {
-		t.Fatalf("unexpected transcript: %+v", transcript)
-	}
-	if len(client.SentMessages) != 1 {
-		t.Fatalf("expected one A2A send, got %d", len(client.SentMessages))
-	}
-	if client.SentMessages[0].Text != "turn on token=[redacted] kitchen lights" ||
-		client.SentMessages[0].ConversationID == "" {
-		t.Fatalf("unexpected A2A request: %+v", client.SentMessages[0])
-	}
-}
-
 func TestLocalVoiceServiceBuilderRoutesCapturedUtteranceThroughSTT(t *testing.T) {
 	cfg := testConfig()
 	cfg.Voice.Enabled = true
@@ -3467,24 +3392,6 @@ func (p *fixtureAppSTTProvider) Transcribe(
 		return voice.STTResult{}, p.err
 	}
 	return p.result, nil
-}
-
-func fixtureAppUtterance() voice.CapturedUtterance {
-	start := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
-	return voice.CapturedUtterance{
-		Frames: []voice.AudioFrame{{
-			PCM:         []byte{1, 2, 3, 4},
-			SampleRate:  16000,
-			SampleWidth: 2,
-			Channels:    1,
-			Timestamp:   start,
-			Duration:    40 * time.Millisecond,
-		}},
-		StartedAt:  start,
-		EndedAt:    start.Add(40 * time.Millisecond),
-		SampleRate: 16000,
-		Channels:   1,
-	}
 }
 
 type fixtureAppCapture struct {

@@ -14,8 +14,7 @@ const (
 	TTSPolicyAskBeforeSensitive  = "ask_before_sensitive"
 	TTSPolicySpeakAll            = "speak_all"
 
-	TTSActionPreview = "preview"
-	TTSActionSpeak   = "speak"
+	TTSActionSpeak = "speak"
 
 	TTSStateIdle         = "idle"
 	TTSStateSynthesizing = "synthesizing"
@@ -113,21 +112,6 @@ type TTSActionResponse struct {
 	Channels       int    `json:"channels,omitempty"`
 	AudioBytes     int    `json:"audioBytes,omitempty"`
 	DurationMs     int64  `json:"durationMs,omitempty"`
-}
-
-type TTSEventPayload struct {
-	Action       string `json:"action"`
-	State        string `json:"state"`
-	ProviderID   string `json:"providerId,omitempty"`
-	VoiceID      string `json:"voiceId,omitempty"`
-	Reason       string `json:"reason,omitempty"`
-	PlaybackKind string `json:"playbackKind,omitempty"`
-	ContentType  string `json:"contentType,omitempty"`
-	SampleRate   int    `json:"sampleRate,omitempty"`
-	SampleWidth  int    `json:"sampleWidth,omitempty"`
-	Channels     int    `json:"channels,omitempty"`
-	AudioBytes   int    `json:"audioBytes,omitempty"`
-	DurationMs   int64  `json:"durationMs,omitempty"`
 }
 
 type TTSRuntime struct {

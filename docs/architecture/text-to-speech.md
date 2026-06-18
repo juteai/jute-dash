@@ -132,11 +132,10 @@ Implemented foundation APIs:
 
 - `GET /api/v1/tts/voices`: returns voices for the selected provider or a requested `providerId`,
   scoped to the default profile or requested `deviceProfileId`.
-- `POST /api/v1/tts/preview`: synthesizes a short user-confirmed preview phrase.
 - `POST /api/v1/tts/speak`: queues speech for approved assistant text or explicit UI action.
 - `POST /api/v1/tts/stop`: stops current playback.
 
-The preview/speak HTTP implementation applies hub speech policy, emits safe TTS state events, and returns a control response. When a selected command provider is available, the server calls the provider synthesis path and returns safe playback metadata such as content type, sample format, duration, and audio byte count without putting raw audio bytes on the JSON or SSE surface. Without an attached provider, the same API remains a safe control/event path for UI integration tests.
+The speak HTTP implementation applies hub speech policy, emits safe TTS state events, and returns a control response. When a selected command provider is available, the server calls the provider synthesis path and returns safe playback metadata such as content type, sample format, duration, and audio byte count without putting raw audio bytes on the JSON or SSE surface. Without an attached provider, the same API remains a safe control/event path for UI integration tests.
 
 `POST /api/v1/tts/stop` records `tts.stopped` as a terminal state for the active action and cancels
 any in-flight provider synthesis context, including barge-in stops. If the provider returns after
@@ -165,7 +164,6 @@ The conversation UI must make spoken output controllable:
 - support barge-in so user speech can stop playback and begin capture;
 - show a visual response even when TTS fails;
 - show selected voice and provider health in settings;
-- offer preview before saving a voice;
 - show clear labels for cloud providers.
 
 Ambient mode may show only speaking/listening status. It should not reveal full sensitive text by default.

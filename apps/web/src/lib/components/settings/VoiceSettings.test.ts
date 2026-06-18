@@ -97,8 +97,7 @@ async function loadVoiceSettings() {
               partialTranscripts: false,
               offline: false,
               languages: ['en-GB'],
-              inputFormats: ['audio/pcm'],
-              outputFormats: ['text/plain']
+              inputFormats: ['audio/pcm']
             },
             healthStatus: 'available',
             updatedAt: '2026-06-17T08:00:00Z'
@@ -114,8 +113,7 @@ async function loadVoiceSettings() {
               partialTranscripts: false,
               offline: true,
               languages: ['en-GB'],
-              inputFormats: ['text/plain'],
-              outputFormats: ['audio/wav']
+              inputFormats: ['text/plain']
             },
             healthStatus: 'available',
             updatedAt: '2026-06-17T08:00:00Z'

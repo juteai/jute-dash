@@ -14,12 +14,8 @@
   $: wakeProviders = providers.filter(
     (provider) => provider.kind === 'wake-word'
   );
-  $: sttProviders = providers.filter((provider) =>
-    ['stt', 'stt-tts'].includes(provider.kind)
-  );
-  $: ttsProviders = providers.filter((provider) =>
-    ['tts', 'stt-tts'].includes(provider.kind)
-  );
+  $: sttProviders = providers.filter((provider) => provider.kind === 'stt');
+  $: ttsProviders = providers.filter((provider) => provider.kind === 'tts');
   $: selectedWakeProvider = findProvider(providers, draft?.wakeWordModelId, [
     'wake-word'
   ]);
