@@ -3,8 +3,9 @@
 ## Status
 
 Provider manifest validation, benchmark tooling, native build failure evidence, a complete
-packaging matrix, and an ESPHome model hash are in place. Model runtime compatibility and the audio
-fixture benchmark against openWakeWord are still pending.
+packaging matrix, and an ESPHome model hash are in place. The spike rejects pmdroid/microWakeWord as
+a v1 production provider because native build evidence blocks model runtime compatibility and
+fixture benchmarking.
 
 ## Upstream Snapshot
 
@@ -26,13 +27,16 @@ Verified on 2026-06-17 against
 - OHF's `micro-wake-word` project remains relevant as the training framework lineage, not as a
   drop-in Jute runtime provider.
 
-This snapshot supports the current decision to defer production adoption and keep
+This snapshot supports the current decision to reject production adoption for v1 and keep
 `wyoming-openwakeword` as the wake-word baseline until pmdroid/microWakeWord has reproducible build,
 model-compatibility, and fixture benchmark evidence.
 
 ## Decision
 
-Defer `pmdroid/microwakeword` as a production provider for v1. Keep `wyoming-openwakeword` as the first wake-word baseline, and treat microWakeWord as an experimental provider-pack candidate until Jute has reproducible builds, model compatibility proof, and benchmark results against the Wyoming/openWakeWord path.
+Reject `pmdroid/microwakeword` as a production provider for v1. Keep `wyoming-openwakeword` as the
+first wake-word baseline, and leave microWakeWord as a future experimental provider-pack candidate
+only if Jute later has reproducible builds, model compatibility proof, and benchmark results against
+the Wyoming/openWakeWord path.
 
 Do not add `github.com/pmdroid/microwakeword` or TensorFlow Lite dependencies to production code as part of this spike.
 
@@ -699,8 +703,8 @@ evidence is required:
   `go run ./apps/hub/cmd/jute-voice-benchmark -report microwakeword-report.json -baseline-report openwakeword-report.json -acceptance-preset`
   exits zero and produces the comparison Markdown used as Linear evidence;
 - no `github.com/pmdroid/microwakeword`, TensorFlow, or TensorFlow Lite dependency appears in
-  production `go.mod`/`go.sum` unless the final decision explicitly changes from `defer` to
-  `adopt as optional provider`.
+  production `go.mod`/`go.sum` unless a future spike changes the decision to
+  `adopt-optional-provider`.
 
 Compose the generated artifact files into one closure bundle before posting final Linear evidence:
 
