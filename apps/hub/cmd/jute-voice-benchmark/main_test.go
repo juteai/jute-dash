@@ -1767,8 +1767,9 @@ func TestProviderClosureBundleRejectsGeneratedArtifactsWithStaleProblemsOrFlags(
 }
 
 func TestProviderClosureBundleRejectsCrossIssueGeneratedEvidence(t *testing.T) {
-	buildProblems := validateClosureBundleBuilds("JUT-11", []providerBuildEvidence{
-		{
+	buildProblems := validateClosureBundleBuilds(
+		"JUT-11",
+		[]providerBuildEvidence{{
 			GeneratedAt:     "2026-06-17T09:00:00Z",
 			Issue:           "JUT-13",
 			ProviderID:      "go-whisper",
@@ -1778,8 +1779,9 @@ func TestProviderClosureBundleRejectsCrossIssueGeneratedEvidence(t *testing.T) {
 			Status:          "succeeded",
 			Runtime:         "darwin/arm64 go1.25.0",
 			ClosureEvidence: true,
-		},
-	})
+		}},
+		false,
+	)
 	_, packagingProblems := validateClosureBundlePackaging("JUT-13", providerPackagingEvidence{
 		GeneratedAt:  "2026-06-17T09:00:00Z",
 		Issue:        "JUT-11",
@@ -2031,6 +2033,102 @@ func TestVoiceBenchmarkCommandAcceptsJUT11ClosureBundleWhenBenchmarkUsesOneCompa
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("expected complete JUT-11 output to contain %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
+func TestVoiceBenchmarkCommandAcceptsJUT11RejectClosureBundleWithFailedBuildEvidence(t *testing.T) {
+	dir := t.TempDir()
+	bundlePath := filepath.Join(dir, "microwakeword-reject.json")
+	bundle := `{
+		"issue": "JUT-11",
+		"decision": {
+			"status": "reject",
+			"rationale": "Native pmdroid microWakeWord build evidence failed on the tested target, so production adoption is rejected for v1."
+		},
+		"providerManifest": {
+			"id": "org.pmdroid.microwakeword.local",
+			"name": "microWakeWord Local",
+			"version": "experimental",
+			"kind": "wake-word",
+			"transport": {"type": "builtin", "endpoint": "local-voice-service"},
+			"capabilities": {"offline": true, "languages": ["en"]},
+			"hardware": {"cpu": true, "raspberryPi": false},
+			"credentials": [],
+			"license": {"name": "MIT", "url": "local-license-reference"},
+			"contribution": {"source": "local-source-reference", "maintainers": ["pmdroid"]},
+			"wakeWord": {
+				"defaultModelId": "okay-nabu",
+				"phrase": "Okay Nabu",
+				"languages": ["en"],
+				"sensitivity": 0.55,
+				"models": [
+					{"id": "okay-nabu", "path": "assets/okay_nabu.tflite", "phrase": "Okay Nabu", "languages": ["en"], "sensitivity": 0.55}
+				]
+			}
+		},
+		"fixtureManifest": {
+			"issue": "JUT-11",
+			"kind": "wake-word",
+			"fixtures": [
+				{"id": "positive-wake", "path": "wake/positive-wake.wav", "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "source": "synthetic-test", "recordedAt": "2026-06-17T09:00:00Z", "consent": true, "expectWake": true, "language": "en"},
+				{"id": "near-miss", "path": "wake/near-miss.wav", "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "source": "synthetic-test", "recordedAt": "2026-06-17T09:00:00Z", "consent": true, "expectWake": false, "language": "en"},
+				{"id": "ambient-room", "path": "wake/ambient-room.wav", "sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "source": "synthetic-test", "recordedAt": "2026-06-17T09:00:00Z", "consent": true, "expectWake": false, "language": "en"},
+				{"id": "conversation-long", "path": "wake/conversation-long.wav", "sha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999", "source": "synthetic-test", "recordedAt": "2026-06-17T09:00:00Z", "consent": true, "expectWake": false, "language": "en"}
+			]
+		},
+		"buildEvidence": [{
+			"generatedAt": "2026-06-17T09:00:00Z",
+			"issue": "JUT-11",
+			"providerId": "pmdroid-microwakeword",
+			"providerKind": "wake-word",
+			"target": "native-consumer",
+			"commandId": "go-test-package",
+			"status": "failed",
+			"exitCode": 1,
+			"errorCode": "missing-header",
+			"missingDependencies": ["tensorflow-lite-microfrontend-header"],
+			"runtime": "linux/arm64 go1.25.0",
+			"closureEvidence": false,
+			"problems": ["provider build did not succeed"]
+		}],
+		"packagingEvidence": {
+			"generatedAt": "2026-06-17T09:01:00Z",
+			"issue": "JUT-11",
+			"providerId": "pmdroid-microwakeword",
+			"providerKind": "wake-word",
+			"targets": [
+				{"target": "linux-native", "status": "failed"}
+			],
+			"runtime": "linux/arm64 go1.25.0",
+			"notes": "Linux native build failed before model load",
+			"packagingEvidenceComplete": true
+		}
+	}`
+	if err := os.WriteFile(bundlePath, []byte(bundle), 0o600); err != nil {
+		t.Fatalf("write bundle: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{"-closure-bundle", bundlePath}, strings.NewReader(""), &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf(
+			"expected rejected JUT-11 closure bundle, got %d stderr %s stdout %s",
+			code,
+			stderr.String(),
+			stdout.String(),
+		)
+	}
+	for _, want := range []string{
+		"Decision: `reject`",
+		"Benchmark accepted: `false`",
+		"Baseline accepted: `false`",
+		"Comparison accepted: `false`",
+		"Closure bundle complete: `true`",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("expected rejected JUT-11 output to contain %q:\n%s", want, stdout.String())
 		}
 	}
 }

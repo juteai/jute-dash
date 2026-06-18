@@ -263,24 +263,27 @@ For JUT-11, the closure bundle requires:
 - every generated build, packaging, model, benchmark, and baseline artifact must declare
   `issue: "JUT-11"`; evidence generated for another provider spike cannot satisfy this closure
   bundle;
-- at least one successful pmdroid/microWakeWord build evidence row with a concrete
-  OS/arch/toolchain runtime and RFC3339 `generatedAt`;
+- at least one pmdroid/microWakeWord build evidence row with a concrete OS/arch/toolchain runtime
+  and RFC3339 `generatedAt`; `defer` and `adopt-optional-provider` require successful build
+  evidence, while `reject` may use generated failed, blocked, or interrupted build evidence;
 - at least one evaluated packaging target, with notes explaining every target that is `failed`,
   `blocked`, or `unsupported`, plus a concrete OS/arch/toolchain runtime and RFC3339 `generatedAt`;
   `hardware.raspberryPi` may only be true when the `raspberry-pi-arm64` packaging target succeeded,
   and a succeeded target must be reflected in the provider manifest; a decision of
   `adopt-optional-provider` requires at least one packaging target to have succeeded;
-- compatible and loaded model evidence for at least one ESPHome model and one OHF-trained or
-  OHF-compatible model, each with a concrete OS/arch/toolchain runtime, RFC3339 `generatedAt`, and
-  a matching `wakeWord.models[].id` entry in the provider manifest;
-- one strict pmdroid/microWakeWord benchmark report that passes the JUT-11 acceptance preset and
-  uses the same `modelId`/`modelHash` as one compatible, loaded model evidence row, with every
-  closure fixture manifest row measured, no undeclared result fixture IDs, and matching
-  expected wake/no-wake flags, plus concrete OS/arch/Go runtime that matches the model evidence
-  runtime and RFC3339 `generatedAt`;
-- one strict openWakeWord/Wyoming baseline report over every declared fixture ID and expected
-  wake/no-wake flag, plus concrete OS/arch/Go runtime and RFC3339 `generatedAt`;
-- a passing pmdroid-vs-openWakeWord comparison.
+- for `defer` or `adopt-optional-provider`, compatible and loaded model evidence for at least one
+  ESPHome model and one OHF-trained or OHF-compatible model, each with a concrete
+  OS/arch/toolchain runtime, RFC3339 `generatedAt`, and a matching `wakeWord.models[].id` entry in
+  the provider manifest;
+- for `defer` or `adopt-optional-provider`, one strict pmdroid/microWakeWord benchmark report that
+  passes the JUT-11 acceptance preset and uses the same `modelId`/`modelHash` as one compatible,
+  loaded model evidence row, with every closure fixture manifest row measured, no undeclared result
+  fixture IDs, and matching expected wake/no-wake flags, plus concrete OS/arch/Go runtime that
+  matches the model evidence runtime and RFC3339 `generatedAt`;
+- for `defer` or `adopt-optional-provider`, one strict openWakeWord/Wyoming baseline report over
+  every declared fixture ID and expected wake/no-wake flag, plus concrete OS/arch/Go runtime and
+  RFC3339 `generatedAt`;
+- for `defer` or `adopt-optional-provider`, a passing pmdroid-vs-openWakeWord comparison.
 
 The closure bundle summary is privacy-safe: it reports counts, accepted gates, and validation
 problems without raw audio paths or provider debug notes.

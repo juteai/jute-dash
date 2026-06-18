@@ -987,7 +987,8 @@ func validateProviderClosureBundle(file providerClosureBundleFile, bundle *provi
 		bundle.FixtureManifestOK = true
 	}
 	problems = appendPrefixedProblems(problems, "fixtures", fixtureProblems)
-	buildProblems := validateClosureBundleBuilds(issue, file.BuildEvidence)
+	rejectJUT11 := issue == "JUT-11" && decision.Status == "reject"
+	buildProblems := validateClosureBundleBuilds(issue, file.BuildEvidence, rejectJUT11)
 	problems = appendPrefixedProblems(problems, "build", buildProblems)
 	if file.PackagingEvidence == nil {
 		problems = append(problems, "packagingEvidence is required")
@@ -1005,6 +1006,9 @@ func validateProviderClosureBundle(file providerClosureBundleFile, bundle *provi
 			decisionPackagingProblems := validateClosureBundleDecisionAgainstPackaging(issue, decision, packaging)
 			problems = appendPrefixedProblems(problems, "decision", decisionPackagingProblems)
 		}
+	}
+	if rejectJUT11 {
+		return uniqueEvidenceProblems(problems)
 	}
 	validModels, modelProblems := validateClosureBundleModels(issue, file.ModelEvidence)
 	problems = appendPrefixedProblems(problems, "model", modelProblems)
@@ -1298,18 +1302,13 @@ func isConcreteBenchmarkEnvironmentRuntime(environment voice.BenchmarkEnvironmen
 	return isConcreteEvidenceRuntime(runtime)
 }
 
-func validateClosureBundleBuilds(issue string, builds []providerBuildEvidence) []string {
+func validateClosureBundleBuilds(issue string, builds []providerBuildEvidence, allowFailed bool) []string {
 	if len(builds) == 0 {
 		return []string{"buildEvidence is required"}
 	}
 	var problems []string
 	validBuilds := 0
 	for index, build := range builds {
-		artifactProblems := validateProviderBuildEvidenceArtifact(build)
-		if len(artifactProblems) > 0 {
-			problems = appendPrefixedProblems(problems, fmt.Sprintf("buildEvidence[%d]", index), artifactProblems)
-			continue
-		}
 		build = sanitizeProviderBuildEvidence(build)
 		if build.Issue != issue {
 			problems = appendPrefixedProblems(
@@ -1319,7 +1318,21 @@ func validateClosureBundleBuilds(issue string, builds []providerBuildEvidence) [
 			)
 			continue
 		}
+		allowThisFailure := allowFailed && issue == "JUT-11" && failedBuildStatus(build.Status)
+		var artifactProblems []string
+		if allowThisFailure {
+			artifactProblems = validateProviderFailedBuildEvidenceArtifact(build)
+		} else {
+			artifactProblems = validateProviderBuildEvidenceArtifact(build)
+		}
+		if len(artifactProblems) > 0 {
+			problems = appendPrefixedProblems(problems, fmt.Sprintf("buildEvidence[%d]", index), artifactProblems)
+			continue
+		}
 		buildProblems := validateProviderBuildEvidence(build)
+		if allowThisFailure {
+			buildProblems = withoutEvidenceProblem(buildProblems, "provider build did not succeed")
+		}
 		if len(buildProblems) > 0 {
 			problems = appendPrefixedProblems(problems, fmt.Sprintf("buildEvidence[%d]", index), buildProblems)
 			continue
@@ -1338,6 +1351,15 @@ func validateClosureBundleBuilds(issue string, builds []providerBuildEvidence) [
 		}
 	}
 	return uniqueEvidenceProblems(problems)
+}
+
+func failedBuildStatus(status string) bool {
+	switch status {
+	case "failed", "blocked", "interrupted":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateClosureBundlePackaging(
@@ -1420,6 +1442,21 @@ func validateProviderBuildEvidenceArtifact(evidence providerBuildEvidence) []str
 	return problems
 }
 
+func validateProviderFailedBuildEvidenceArtifact(evidence providerBuildEvidence) []string {
+	expected := validateProviderBuildEvidence(evidence)
+	if len(expected) == 0 || len(withoutEvidenceProblem(expected, "provider build did not succeed")) > 0 {
+		return validateProviderBuildEvidenceArtifact(evidence)
+	}
+	var problems []string
+	if !sameEvidenceProblems(evidence.Problems, expected) {
+		problems = append(problems, "generated failed build evidence artifact must carry matching validation problems")
+	}
+	if evidence.ClosureEvidence {
+		problems = append(problems, "generated failed build evidence artifact must have closureEvidence false")
+	}
+	return problems
+}
+
 func validateProviderPackagingEvidenceArtifact(evidence providerPackagingEvidence) []string {
 	var problems []string
 	if len(evidence.Problems) > 0 {
@@ -1440,6 +1477,33 @@ func validateProviderModelEvidenceArtifact(evidence providerModelEvidence) []str
 		problems = append(problems, "generated model evidence artifact must have closureEvidence true")
 	}
 	return problems
+}
+
+func withoutEvidenceProblem(problems []string, skip string) []string {
+	filtered := make([]string, 0, len(problems))
+	for _, problem := range problems {
+		if problem != skip {
+			filtered = append(filtered, problem)
+		}
+	}
+	return filtered
+}
+
+func sameEvidenceProblems(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	seen := make(map[string]int, len(left))
+	for _, problem := range left {
+		seen[problem]++
+	}
+	for _, problem := range right {
+		seen[problem]--
+		if seen[problem] < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func validateClosureBundleModelsAgainstProviderManifest(
@@ -1648,8 +1712,7 @@ func sanitizeProviderBuildEvidence(e providerBuildEvidence) providerBuildEvidenc
 	e.MissingDependencies = sanitizeEvidenceStringList(e.MissingDependencies)
 	e.Runtime = safeEvidenceNote(e.Runtime)
 	e.Notes = safeEvidenceNote(e.Notes)
-	e.Problems = nil
-	e.ClosureEvidence = false
+	e.Problems = sanitizeEvidenceProblemList(e.Problems)
 	return e
 }
 
@@ -2073,6 +2136,20 @@ func sanitizeEvidenceStringList(values []string) []string {
 	seen := map[string]bool{}
 	for _, value := range values {
 		item := safeEvidenceToken(value)
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		out = append(out, item)
+	}
+	return out
+}
+
+func sanitizeEvidenceProblemList(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		item := safeEvidenceNote(value)
 		if item == "" || seen[item] {
 			continue
 		}
