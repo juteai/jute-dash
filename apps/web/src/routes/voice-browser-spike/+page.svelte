@@ -414,7 +414,7 @@
         ),
         {
           label: 'TTS cold start',
-          value: `${Math.round(performance.now() - startedAt)} ms`
+          value: `${Math.round(performance.now() - startedAt)} ms, ${voices.length} voices`
         },
         {
           label: 'TTS voices',

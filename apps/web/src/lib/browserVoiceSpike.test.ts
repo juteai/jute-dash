@@ -1021,6 +1021,40 @@ describe('browserVoiceSnapshot', () => {
     );
   });
 
+  it('keeps browser TTS voice count in copied evidence', () => {
+    const report = browserVoiceReport({
+      snapshot: {
+        userAgent:
+          'Mozilla/5.0 AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',
+        secureContext: true,
+        online: true,
+        capabilities: []
+      },
+      measurements: [
+        { label: 'Microphone permission', value: '90 ms' },
+        { label: 'Browser STT cold start', value: 'unavailable' },
+        { label: 'TTS cold start', value: '25 ms, 12 voices' },
+        { label: 'Hardware', value: 'MacIntel, 10 logical cores' },
+        { label: 'Model download size', value: '0 MB' },
+        { label: 'CPU', value: '10 logical cores' },
+        { label: 'Offline behavior', value: 'browser STT unavailable offline' }
+      ],
+      platform: 'MacIntel',
+      standalone: false,
+      transcriptCaptured: true,
+      submittedThroughHub: true,
+      hubReceipt: hubReceiptAt()
+    });
+    const matrix = browserVoiceRunMatrix([report], '2026-06-15T16:19:59.000Z');
+
+    expect(matrix.rows[0].evidence.tts).toBe(
+      'TTS cold start: 25 ms, 12 voices'
+    );
+    expect(matrix.acceptance.problems).not.toContain(
+      'desktop-chromium row is missing speechSynthesis evidence'
+    );
+  });
+
   it('accepts unavailable browser SpeechRecognition as STT evidence', () => {
     const report = browserVoiceReport({
       snapshot: {
