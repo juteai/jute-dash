@@ -47,14 +47,6 @@ type VoiceServiceConfig struct {
 	MaxUtterance    time.Duration
 }
 
-type VoiceServiceSnapshot struct {
-	DeviceID      string `json:"deviceId"`
-	State         string `json:"state"`
-	ServiceStatus string `json:"serviceStatus"`
-	Muted         bool   `json:"muted"`
-	LastError     string `json:"lastError,omitempty"`
-}
-
 type LocalVoiceService struct {
 	capture AudioCapture
 	vad     VoiceActivityDetector
@@ -185,18 +177,6 @@ func (s *LocalVoiceService) Cancel() {
 	}
 	if !acknowledged {
 		s.emitState(State(enabled, muted))
-	}
-}
-
-func (s *LocalVoiceService) Snapshot() VoiceServiceSnapshot {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return VoiceServiceSnapshot{
-		DeviceID:      s.deviceIDLocked(),
-		State:         s.state,
-		ServiceStatus: s.serviceStatusLocked(),
-		Muted:         s.cfg.Muted,
-		LastError:     s.lastErr,
 	}
 }
 

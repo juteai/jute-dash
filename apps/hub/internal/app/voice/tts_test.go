@@ -23,59 +23,6 @@ func TestSpeechPolicyAllowsSpeakAll(t *testing.T) {
 	}
 }
 
-func TestTTSCachePolicy(t *testing.T) {
-	req := TTSRequest{Text: "hello", Cache: true}
-	settings := Settings{TTSModelID: "model", TTSLocale: "en-GB"}
-
-	eligible, key := cachePolicy(req, settings, "local-tts", "amy")
-	if !eligible || key == "" {
-		t.Fatalf("expected local non-sensitive speech to be cache eligible, got eligible=%v key=%q", eligible, key)
-	}
-
-	settings.CloudOptIn = true
-	eligible, key = cachePolicy(req, settings, "cloud-tts", "amy")
-	if eligible || key != "" {
-		t.Fatalf("expected cloud opt-in speech to skip cache, got eligible=%v key=%q", eligible, key)
-	}
-
-	settings.CloudOptIn = false
-	req.Text = "token=abc123"
-	eligible, key = cachePolicy(req, settings, "local-tts", "amy")
-	if eligible || key != "" {
-		t.Fatalf("expected sensitive speech to skip cache, got eligible=%v key=%q", eligible, key)
-	}
-}
-
-func TestTTSCachePolicyUsesEffectiveRequestLocale(t *testing.T) {
-	settings := Settings{TTSModelID: "model", TTSLocale: "en-GB"}
-
-	eligible, defaultLocaleKey := cachePolicy(
-		TTSRequest{Text: "hello", Cache: true},
-		settings,
-		"local-tts",
-		"amy",
-	)
-	if !eligible || defaultLocaleKey == "" {
-		t.Fatalf("expected default locale cache key, got eligible=%v key=%q", eligible, defaultLocaleKey)
-	}
-	eligible, requestLocaleKey := cachePolicy(
-		TTSRequest{Text: "hello", Cache: true, Locale: "cy-GB"},
-		settings,
-		"local-tts",
-		"amy",
-	)
-	if !eligible || requestLocaleKey == "" {
-		t.Fatalf("expected request locale cache key, got eligible=%v key=%q", eligible, requestLocaleKey)
-	}
-	if defaultLocaleKey == requestLocaleKey {
-		t.Fatalf("expected request locale to change cache key, both were %q", defaultLocaleKey)
-	}
-	if strings.Contains(requestLocaleKey, "hello") ||
-		strings.Contains(requestLocaleKey, "cy-GB") {
-		t.Fatalf("cache key exposed raw text or locale: %q", requestLocaleKey)
-	}
-}
-
 func TestTTSRuntimeBargeInStopsCurrentAction(t *testing.T) {
 	runtime := NewTTSRuntime()
 	started := runtime.Begin(
@@ -123,12 +70,12 @@ func TestTTSRuntimeResponseRedactsCredentialLikeProviderIdentifiers(t *testing.T
 	}
 }
 
-func TestTTSRuntimeVisualOnlyClearsCacheAndCancel(t *testing.T) {
+func TestTTSRuntimeVisualOnlyDoesNotCancelProvider(t *testing.T) {
 	runtime := NewTTSRuntime()
 	cancelled := false
 	started := runtime.Begin(
 		TTSActionSpeak,
-		TTSRequest{Text: "the door code is 1234", Cache: true},
+		TTSRequest{Text: "the door code is 1234"},
 		Settings{TTSProviderID: "local-tts", TTSVoiceID: "amy"},
 		func() { cancelled = true },
 	)
@@ -138,9 +85,7 @@ func TestTTSRuntimeVisualOnlyClearsCacheAndCancel(t *testing.T) {
 	if visualOnly.ID != started.ID ||
 		visualOnly.State != TTSStateVisualOnly ||
 		!visualOnly.VisualOnly ||
-		visualOnly.Reason != "sensitive_output_visual_only" ||
-		visualOnly.CacheEligible ||
-		visualOnly.CacheKey != "" {
+		visualOnly.Reason != "sensitive_output_visual_only" {
 		t.Fatalf("unexpected visual-only state: %+v", visualOnly)
 	}
 	if cancelled {

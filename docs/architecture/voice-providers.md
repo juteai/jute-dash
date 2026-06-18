@@ -19,9 +19,8 @@ provider packs. Browser APIs are not provider packs for v1.
 
 Do not use Go's `plugin` package for v1. It is too tied to toolchain, operating system, architecture, and build constraints for Jute's multi-platform goals.
 
-Instead, voice providers are discovered by manifest and called by the hub runtime. The default v1
-transport is an explicitly enabled local command or a builtin adapter; network transports are
-advanced metadata only until a separate architecture decision makes them product runtime paths.
+Instead, voice providers are discovered by manifest and called by the hub runtime. The v1 transport
+is an explicitly enabled local command owned by the hub.
 
 Supported provider kinds:
 
@@ -30,15 +29,12 @@ Supported provider kinds:
 - `tts`: text-to-speech;
 - `stt-tts`: both STT and TTS.
 
-Supported transports:
+Supported transport:
 
 - `command`: trusted local wrapper for installed tools and model CLIs; disabled unless explicitly enabled.
-- `builtin`: adapters shipped with Jute, implemented through the same contract.
-- `wyoming` and `http-json`: accepted in manifests for future/advanced provider work, but not the default hub runtime.
 
 ## Ecosystem References
 
-- [Wyoming Protocol](https://www.home-assistant.io/integrations/wyoming): local protocol boundary used by Home Assistant for speech-to-text, text-to-speech, and wake-word systems.
 - [sherpa-onnx](https://k2-fsa.github.io/sherpa/onnx/): strong local/offline candidate because it exposes ASR, VAD, TTS, multiple language bindings, and Raspberry Pi-oriented examples.
 - [OpenAI speech-to-text](https://developers.openai.com/api/docs/guides/speech-to-text): optional cloud STT provider for higher quality transcription.
 - [OpenAI text-to-speech](https://developers.openai.com/api/docs/guides/text-to-speech): optional cloud TTS provider with streaming and multiple output formats.
@@ -168,10 +164,7 @@ Secrets never appear in manifests. Credential entries are references only:
 ```
 
 Manifest validation rejects credential declarations that omit an ID, label, supported source, or
-environment-variable reference. Credential IDs must be unique within a provider pack. Endpoints also
-fail closed when userinfo, credential-looking query keys such as `token`, `key`, or `api_key`, or
-obvious raw credential values appear in the URL. Cloud and sidecar credentials must be supplied
-through the declared secret reference path, not encoded into provider URLs.
+environment-variable reference. Credential IDs must be unique within a provider pack.
 
 ## Transport Rules
 
@@ -190,10 +183,6 @@ Rules:
   the voice service can pass the captured audio file explicitly;
 - STT-capable command manifests must also include a `{modelId}` argument placeholder;
 - stdin/stdout formats are declared in the manifest.
-
-### Builtin
-
-Use `builtin` for providers shipped with Jute. Built-ins still expose a manifest-equivalent description so the settings UI and tests do not need special cases.
 
 ## Wake-Word Contract
 
@@ -278,7 +267,6 @@ Minimum output:
 - audio format;
 - duration when available;
 - playable audio, stream URL, or local playback request;
-- cache eligibility;
 - error code when synthesis fails.
 
 The display remains useful when TTS is disabled or fails. The assistant response is always rendered visually.

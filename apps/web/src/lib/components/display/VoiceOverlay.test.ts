@@ -12,7 +12,7 @@ const readyVoice: VoiceStatus = {
   wakeWordModelId: 'hey-jute',
   wakeWordPhrase: 'Hey Jute',
   wakeSensitivity: 0.5,
-  sttProviderId: 'wyoming-local',
+  sttProviderId: 'local-stt',
   ttsProviderId: 'piper-local',
   sttModelId: '',
   ttsModelId: '',
@@ -117,7 +117,7 @@ describe('VoiceOverlay', () => {
         voice: {
           ...readyVoice,
           deviceProfileId: 'kitchen-display https://voice.example.test',
-          sttProviderId: 'wyoming-local token=secret'
+          sttProviderId: 'local-stt token=secret'
         },
         voiceOrbState: 'listening'
       }

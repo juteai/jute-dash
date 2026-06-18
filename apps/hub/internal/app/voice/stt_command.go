@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -30,42 +28,20 @@ func (p CommandSTTProvider) Transcribe(ctx context.Context, utterance CapturedUt
 	if !filepath.IsAbs(p.Command) {
 		return STTResult{}, errors.New("command STT provider command must be absolute")
 	}
-	wav, err := EncodeWAV(utterance)
-	if err != nil {
-		return STTResult{}, err
-	}
-	temp, err := os.CreateTemp("", "jute-stt-command-*.wav")
-	if err != nil {
-		return STTResult{}, err
-	}
-	tempPath := temp.Name()
-	defer os.Remove(tempPath)
-	if _, err := temp.Write(wav); err != nil {
-		_ = temp.Close()
-		return STTResult{}, err
-	}
-	if err := temp.Close(); err != nil {
-		return STTResult{}, err
-	}
 	timeout := p.Timeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	commandCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	cmd := exec.CommandContext( //nolint:gosec // command providers require explicit settings opt-in and absolute manifest commands.
-		commandCtx,
+	output, err := runAudioCommand(
+		ctx,
+		utterance,
+		"jute-stt-command",
 		p.Command,
-		commandArgs(
-			p.Args,
-			tempPath,
-			p.ModelID,
-			p.Language,
-		)...)
-	output, err := cmd.Output()
-	if commandCtx.Err() != nil {
-		return STTResult{}, errCommandSTTProviderUnavailable
-	}
+		p.Args,
+		p.ModelID,
+		p.Language,
+		timeout,
+	)
 	if err != nil {
 		return STTResult{}, errCommandSTTProviderUnavailable
 	}

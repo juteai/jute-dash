@@ -1,7 +1,6 @@
 package voice
 
 import (
-	"errors"
 	"strings"
 	"time"
 )
@@ -216,106 +215,6 @@ type ProviderPackDB struct {
 
 func (ProviderPackDB) TableName() string {
 	return "voice_provider_packs"
-}
-
-const (
-	SatelliteStatusPaired         = "paired"
-	SatelliteStatusOffline        = "offline"
-	SatelliteStatusMisconfigured  = "misconfigured"
-	SatelliteStatusRevoked        = "revoked"
-	SatelliteStatusAuthFailed     = "auth_failed"
-	SatelliteStatusUpdateRequired = "update_required"
-)
-
-var ErrNotFound = errors.New("not found")
-
-type SatelliteRecord struct {
-	ID                  string `json:"id"`
-	DisplayName         string `json:"displayName"`
-	RoomLabel           string `json:"roomLabel,omitempty"`
-	DeviceProfileID     string `json:"deviceProfileId"`
-	Enabled             bool   `json:"enabled"`
-	Status              string `json:"status"`
-	Version             string `json:"version,omitempty"`
-	CredentialSecretRef string `json:"-"`
-	PairedAt            string `json:"pairedAt"`
-	RevokedAt           string `json:"revokedAt,omitempty"`
-	LastSeenAt          string `json:"lastSeenAt,omitempty"`
-	CreatedAt           string `json:"createdAt"`
-	UpdatedAt           string `json:"updatedAt"`
-}
-
-type SatelliteProjection struct {
-	ID              string `json:"id"`
-	DisplayName     string `json:"displayName"`
-	RoomLabel       string `json:"roomLabel,omitempty"`
-	DeviceProfileID string `json:"deviceProfileId"`
-	Enabled         bool   `json:"enabled"`
-	Status          string `json:"status"`
-	Version         string `json:"version,omitempty"`
-	PairedAt        string `json:"pairedAt"`
-	RevokedAt       string `json:"revokedAt,omitempty"`
-	LastSeenAt      string `json:"lastSeenAt,omitempty"`
-	CreatedAt       string `json:"createdAt"`
-	UpdatedAt       string `json:"updatedAt"`
-}
-
-type SatelliteUpdateRequest struct {
-	DisplayName     *string `json:"displayName,omitempty"`
-	RoomLabel       *string `json:"roomLabel,omitempty"`
-	DeviceProfileID *string `json:"deviceProfileId,omitempty"`
-	Enabled         *bool   `json:"enabled,omitempty"`
-	Revoke          *bool   `json:"revoke,omitempty"`
-}
-
-type PairingSessionCreateRequest struct {
-	ID                  string
-	PairingCode         string
-	DeviceProfileID     string
-	CredentialSecretRef string
-	ExpiresAt           time.Time
-}
-
-type PairingSessionProjection struct {
-	ID              string `json:"id"`
-	DeviceProfileID string `json:"deviceProfileId"`
-	ExpiresAt       string `json:"expiresAt"`
-	ClaimedAt       string `json:"claimedAt,omitempty"`
-	CreatedAt       string `json:"createdAt"`
-}
-
-type SatelliteInstallDB struct {
-	ID                  string `gorm:"primaryKey;column:id"`
-	DisplayName         string `gorm:"column:display_name"`
-	RoomLabel           string `gorm:"column:room_label;default:''"`
-	DeviceProfileID     string `gorm:"column:device_profile_id"`
-	Enabled             int    `gorm:"column:enabled;default:1"`
-	Status              string `gorm:"column:status"`
-	Version             string `gorm:"column:version;default:''"`
-	CredentialSecretRef string `gorm:"column:credential_secret_ref"`
-	PairedAt            string `gorm:"column:paired_at"`
-	RevokedAt           string `gorm:"column:revoked_at;default:''"`
-	LastSeenAt          string `gorm:"column:last_seen_at;default:''"`
-	CreatedAt           string `gorm:"column:created_at"`
-	UpdatedAt           string `gorm:"column:updated_at"`
-}
-
-func (SatelliteInstallDB) TableName() string {
-	return "voice_satellite_installs"
-}
-
-type PairingSessionDB struct {
-	ID                  string `gorm:"primaryKey;column:id"`
-	DeviceProfileID     string `gorm:"column:device_profile_id"`
-	PairingCodeHash     string `gorm:"column:pairing_code_hash"`
-	CredentialSecretRef string `gorm:"column:credential_secret_ref"`
-	ExpiresAt           string `gorm:"column:expires_at"`
-	ClaimedAt           string `gorm:"column:claimed_at;default:''"`
-	CreatedAt           string `gorm:"column:created_at"`
-}
-
-func (PairingSessionDB) TableName() string {
-	return "voice_satellite_pairing_sessions"
 }
 
 // Helpers

@@ -83,7 +83,7 @@ voice:
   wake-word-model-id: openwakeword-hey-jute
   wake-word-phrase: Hey Jute
   wake-sensitivity: 0.7
-  stt-provider-id: wyoming-local
+  stt-provider-id: local-stt
   tts-provider-id: ""
   tts-enabled: true
   tts-locale: en-GB
@@ -153,7 +153,7 @@ tiles: []
 	); got != "dashboard:read,widgets:read,skills:read,skills:context_read,skills:prompt_read" {
 		t.Fatalf("unexpected YAML MCP scopes: %s", got)
 	}
-	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" ||
+	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "local-stt" ||
 		cfg.Voice.WakeWordModelID != "openwakeword-hey-jute" ||
 		cfg.Voice.WakeWordPhrase != "Hey Jute" ||
 		cfg.Voice.WakeSensitivity != 0.7 ||
@@ -293,7 +293,7 @@ func TestJSONConfigLoadsVoiceFields(t *testing.T) {
 		"voice": {
 			"enabled": true,
 			"mutedByDefault": false,
-			"sttProviderId": "wyoming-local",
+			"sttProviderId": "local-stt",
 			"ttsProviderId": "tts-local",
 			"ttsEnabled": true,
 			"ttsLocale": "en-US",
@@ -312,7 +312,7 @@ func TestJSONConfigLoadsVoiceFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
-	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" ||
+	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "local-stt" ||
 		cfg.Voice.TTSProviderID != "tts-local" ||
 		!cfg.Voice.TTSEnabled ||
 		cfg.Voice.TTSLocale != "en-US" ||

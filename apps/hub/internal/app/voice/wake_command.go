@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -45,35 +43,12 @@ func (p CommandWakeProvider) DetectWake(ctx context.Context, utterance CapturedU
 	if !filepath.IsAbs(p.Command) {
 		return WakeDetection{}, errors.New("command wake provider command must be absolute")
 	}
-	wav, err := EncodeWAV(utterance)
-	if err != nil {
-		return WakeDetection{}, err
-	}
-	temp, err := os.CreateTemp("", "jute-wake-command-*.wav")
-	if err != nil {
-		return WakeDetection{}, err
-	}
-	tempPath := temp.Name()
-	defer os.Remove(tempPath)
-	if _, err := temp.Write(wav); err != nil {
-		_ = temp.Close()
-		return WakeDetection{}, err
-	}
-	if err := temp.Close(); err != nil {
-		return WakeDetection{}, err
-	}
-
 	timeout := p.Timeout
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
-	commandCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	args := commandArgs(p.Args, tempPath, p.ModelID, "")
-	//nolint:gosec // command providers require explicit opt-in and absolute manifest commands.
-	cmd := exec.CommandContext(commandCtx, p.Command, args...)
-	output, err := cmd.Output()
-	if commandCtx.Err() != nil || err != nil {
+	output, err := runAudioCommand(ctx, utterance, "jute-wake-command", p.Command, p.Args, p.ModelID, "", timeout)
+	if err != nil {
 		return WakeDetection{}, errCommandWakeProviderUnavailable
 	}
 	return decodeCommandWakeOutput(output, p)

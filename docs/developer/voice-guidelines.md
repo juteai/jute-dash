@@ -12,18 +12,9 @@ Do not call A2A agents directly from voice providers or the display.
 
 Canonical runtime boundary:
 
-- build production wake-word, VAD, STT, TTS, follow-up, and mute/cancel behavior in the local Jute Voice Service and hub APIs;
-- use browser microphone capture only for explicit preview or degraded foreground push-to-talk flows;
-- do not rely on browser `SpeechRecognition` for canonical local-first STT, because support and offline behavior vary;
-- browser `speechSynthesis`, Transformers.js, sherpa-onnx WASM, Porcupine Web, or similar display-side experiments must be labeled non-canonical until measured and approved;
-- browser fallback must report final transcripts to `/api/v1/voice/transcripts/final`, never directly to A2A;
-- browser fallback is unavailable for headless satellites and must not require cloud features unless cloud opt-in is enabled for the household or device profile;
-- browser microphone permission must be requested from an explicit foreground user action and treated
-  as revocable session state. Stop browser capture on cancel, mute, navigation, tab/background
-  suspension, permission loss, or hub disconnect, then re-enter through hub voice state instead of
-  resuming from browser-local durable state.
-- browser fallback evidence must cover the actual target browser and shell, including desktop,
-  kiosk/PWA, and offline behavior, before it is exposed outside a preview or degraded mode.
+- build production wake-word, VAD, STT, TTS, follow-up, and mute/cancel behavior in the Go hub voice runtime and hub APIs;
+- keep the display as a hub client; do not implement browser microphone capture, browser STT, or browser TTS as v1 runtime paths;
+- do not rely on browser `SpeechRecognition` for local-first STT.
 
 ## Provider Interfaces
 
@@ -31,9 +22,7 @@ Wake-word, STT, and TTS integrations are Voice Provider Packs. Do not add new pr
 
 Provider transports:
 
-- `command` for trusted local wrappers, disabled unless explicitly enabled;
-- `builtin` for adapters shipped with Jute.
-- `wyoming` and `http-json` are manifest-compatible advanced transports, not the default hub runtime.
+- `command` for trusted local wrappers, disabled unless explicitly enabled.
 
 STT `command` providers receive a temporary WAV path through `{inputPath}` and never run unless command providers are enabled.
 
@@ -47,8 +36,6 @@ Manifest validation rejects:
 
 - undeclared default wake models;
 - wake model paths that are absolute, remote, or escape the provider pack;
-- unsafe remote Wyoming endpoints;
-- endpoint URLs containing embedded credentials or tokens;
 - credential declarations with missing IDs, missing labels, unsupported sources, missing env references, duplicate IDs, or raw credential-looking values;
 - missing license metadata.
 
@@ -82,8 +69,7 @@ Fallback rules:
 
 - Do not add `htgo-tts` as a built-in or canonical TTS provider.
 - `htgo-tts` may only be reconsidered as a trusted command/external sidecar path after command providers are explicitly enabled and manifest health/privacy rules are satisfied.
-- Browser `speechSynthesis` is display-only preview/degraded speech. It must be triggered only after hub speech policy approves the text.
-- Browser `speechSynthesis` must not be used for headless satellites, background household TTS, or sensitive output that canonical providers would be forbidden to speak.
+- Browser `speechSynthesis` is out of scope for v1.
 - Fallbacks must emit the same recoverable TTS event states and keep the visual assistant response canonical.
 
 Provider status values should be:
@@ -117,7 +103,7 @@ Voice Provider Packs are distinct from widgets and A2A agents. A voice provider 
 ## Wake Word Rules
 
 - Wake word detection runs locally before cloud STT.
-- Default path is a hub-owned command or builtin wake provider.
+- Default path is a hub-owned command wake provider.
 - Command wake providers receive a temporary WAV path through `{inputPath}` and return detection JSON.
 - Map detection to `voice.wake_detected`, then `wake_detected` and `capturing_utterance` state changes.
 - Keep non-detections silent unless debug mode is enabled.
@@ -127,7 +113,7 @@ Voice Provider Packs are distinct from widgets and A2A agents. A voice provider 
 
 ## Local Capture Rules
 
-- Keep microphone capture behind the `AudioCapture` interface so display devices and headless satellites can use different platform drivers without changing hub conversation logic.
+- Keep microphone capture behind the `AudioCapture` interface so hub-owned platform drivers can change without changing conversation logic.
 - Keep VAD behind the `VoiceActivityDetector` interface and run it before STT provider calls.
 - Maintain a time-windowed pre-roll buffer in memory only.
 - Unit and integration tests should use synthetic PCM fixture frames, not real microphones.

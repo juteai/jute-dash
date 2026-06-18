@@ -2,7 +2,7 @@
 
 ## Goal
 
-Jute voice should feel natural on an always-on home display without weakening the local-first architecture. The first implementation target is a dashboard or kiosk device with a microphone and visible conversation UI. The same design must also support later headless voice satellites on Raspberry Pi-style hardware.
+Jute voice should feel natural on an always-on home display without weakening the local-first architecture. The first implementation target is a hub-owned runtime on the dashboard or kiosk device with a microphone and visible conversation UI.
 
 The chosen posture is **local-first hybrid**:
 
@@ -12,51 +12,13 @@ The chosen posture is **local-first hybrid**:
 - the Go hub remains the conversation authority;
 - A2A agents receive transcripts and redacted context, not raw microphone audio.
 
-Canonical voice runtime is the local Jute Voice Service beside the hub. Browser-side voice in the
-Svelte display is allowed only as an explicit degraded or preview mode. It may request microphone
-permission for a foreground push-to-talk experiment, show browser `speechSynthesis` previews, or run
-measured WebAssembly/WebGPU STT experiments such as Transformers.js or sherpa-onnx WASM, but it must
-not become the durable wake-word, follow-up, provider-selection, A2A routing, or conversation
-authority. Browser `SpeechRecognition` is not a canonical provider because support is uneven and some
-browser implementations use server-side recognition, which can break offline and local-first
-expectations.
-
-Browser fallback policy:
-
-- browser capture is opt-in per device session, foreground-only, and unavailable for headless
-  satellites;
-- browser microphone permission is transient runtime state, not durable voice enablement. The
-  display must request it only from a visible user action, stop capture on cancel, mute, navigation,
-  tab/background suspension, or permission revocation, and recover through hub state rather than
-  assuming a remembered browser grant;
-- browser wake word is unavailable in v1 except as a non-canonical spike because always-on PWA and
-  kiosk microphone behavior varies by browser and operating system;
-- browser STT/TTS can be used only when clearly labeled as preview or degraded mode and must report
-  final transcripts back to the hub instead of calling A2A agents;
-- cloud-backed browser features require the same household or device-profile cloud opt-in as hub
-  providers;
-- when offline, the display may use only already-installed local browser assets and must otherwise
-  degrade to visual controls and hub events.
-
-Browser runtime evidence:
-
-- MDN currently marks `SpeechRecognition` as limited availability and notes that Chrome may use a
-  server-backed recognizer, so browser STT cannot satisfy the canonical local-first/offline contract
-  without per-browser proof;
-- Transformers.js supports browser ASR and TTS tasks, but model download size, cold start, memory,
-  WebGPU/WASM behavior, and kiosk/PWA compatibility must be measured before any display fallback is
-  promoted beyond preview;
-- sherpa-onnx documents a WebAssembly ASR path, but Jute still needs packaging, model delivery, and
-  device-performance evidence before treating it as a supported display fallback;
-- browser wake-word SDKs such as Porcupine Web are non-canonical because they introduce vendor
-  access-key/licensing concerns and still do not solve headless satellite or browser background
-  lifecycle constraints.
+Canonical voice runtime is inside the Go hub. Browser-side capture, browser STT, and browser TTS are
+out of scope for v1; the Svelte display consumes hub APIs and events only.
 
 ## Ecosystem References
 
 - [openWakeWord](https://github.com/dscripka/openWakeWord): first local wake-word baseline.
-- [Home Assistant wake-word architecture](https://www.home-assistant.io/voice_control/about_wake_word/): useful model for server-side wake detection and voice satellites.
-- [Wyoming Protocol](https://www.home-assistant.io/integrations/wyoming): integration-compatible local voice service boundary for wake word, STT, and TTS systems.
+- [Home Assistant wake-word architecture](https://www.home-assistant.io/voice_control/about_wake_word/): useful prior art for local wake detection.
 - [sherpa-onnx](https://k2-fsa.github.io/sherpa/onnx/): local/offline speech toolkit with ASR, VAD, and TTS paths.
 - [OpenAI speech-to-text](https://developers.openai.com/api/docs/guides/speech-to-text): optional cloud STT provider for higher transcription quality.
 - [OpenAI text-to-speech](https://developers.openai.com/api/docs/guides/text-to-speech): optional cloud TTS provider.
@@ -94,7 +56,7 @@ flowchart LR
 
 ## Jute Voice Service
 
-The Jute Voice Service is a local process or module that runs beside the Go hub on display devices. Later it can run on headless satellite devices and connect back to the hub.
+The Jute Voice Service is a hub module. The hub owns wake word, STT, TTS, settings, state, and events.
 
 Responsibilities:
 
@@ -235,8 +197,8 @@ Error flow:
 
 STT and TTS integrations use [Voice Provider Packs](voice-providers.md). Provider packs are selectable, manifest-driven integrations owned by the hub runtime. They are not Go in-process dynamic plugins and they do not require extra long-running server daemons for the default path.
 
-Wake-word providers default to hub-owned `command` or `builtin` adapters. The hub captures audio,
-writes a temporary WAV when needed, invokes the selected local provider command, emits
+Wake-word providers default to hub-owned `command` adapters. The hub captures audio, writes a
+temporary WAV when needed, invokes the selected local provider command, emits
 `voice.wake_detected` on detection, and then continues to STT. microWakeWord remains deferred until
 its native dependency chain is worth carrying.
 
@@ -259,7 +221,7 @@ turn.
 TTS providers:
 
 - optional in v1;
-- default path: hub-owned command or builtin local TTS adapters;
+- default path: hub-owned command local TTS adapters;
 - embedded/local candidate: sherpa-onnx TTS through a provider pack;
 - Piper/OHF Piper should be a command-provider integration unless a future licensing decision changes this;
 - optional cloud providers such as OpenAI text-to-speech require explicit opt-in;
@@ -285,7 +247,7 @@ Implemented v1 foundation APIs:
 
 Implemented local voice-service foundation:
 
-- pluggable PCM capture interface for display devices and future headless satellites;
+- pluggable PCM capture interface for hub-owned microphone drivers;
 - pluggable VAD interface with fixture-audio tests;
 - configurable pre-roll and silence windows;
 - in-memory captured utterance handoff for the selected STT provider path;

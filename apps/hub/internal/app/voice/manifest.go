@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -35,10 +34,9 @@ type ProviderManifest struct {
 }
 
 type TransportManifest struct {
-	Type     string   `json:"type"`
-	Endpoint string   `json:"endpoint,omitempty"`
-	Command  string   `json:"command,omitempty"`
-	Args     []string `json:"args,omitempty"`
+	Type    string   `json:"type"`
+	Command string   `json:"command,omitempty"`
+	Args    []string `json:"args,omitempty"`
 }
 
 type CredentialManifest struct {
@@ -120,7 +118,7 @@ func ValidateProviderManifest(manifest ProviderManifest) []string {
 	if strings.TrimSpace(manifest.Transport.Type) == "" {
 		problems = append(problems, "transport.type is required")
 	}
-	problems = append(problems, validateTransport(manifest.Transport, manifest.Capabilities.Offline, manifest.Kind)...)
+	problems = append(problems, validateTransport(manifest.Transport, manifest.Kind)...)
 	problems = append(problems, validateCredentials(manifest.Credentials)...)
 	problems = append(problems, validateContribution(manifest.Contribution)...)
 	if strings.TrimSpace(manifest.License.Name) == "" {
@@ -193,48 +191,27 @@ func validProviderKind(kind string) bool {
 	}
 }
 
-func validateTransport(transport TransportManifest, offline bool, kind string) []string {
+func validateTransport(transport TransportManifest, kind string) []string {
 	var problems []string
-	switch transport.Type {
-	case "builtin":
-		return nil
-	case "wyoming":
-		if strings.TrimSpace(transport.Endpoint) == "" {
-			return []string{"transport.endpoint is required for wyoming providers"}
+	if transport.Type != "command" {
+		return []string{"transport.type must be command"}
+	}
+	if strings.TrimSpace(transport.Command) == "" {
+		problems = append(problems, "transport.command is required for command providers")
+	}
+	if !filepath.IsAbs(transport.Command) {
+		problems = append(problems, "transport.command must be absolute for command providers")
+	}
+	if isSTTCapableProviderKind(kind) {
+		if !hasCommandArg(transport.Args, "{modelId}") {
+			problems = append(problems, "transport.args must include {modelId} for STT-capable command providers")
 		}
-		if !safeLocalEndpoint(transport.Endpoint, true) {
-			problems = append(problems, "transport.endpoint must be loopback or LAN-scoped for wyoming providers")
+		if !hasCommandArg(transport.Args, "{inputPath}") {
+			problems = append(problems, "transport.args must include {inputPath} for STT-capable command providers")
 		}
-	case "http-json":
-		if strings.TrimSpace(transport.Endpoint) == "" {
-			return []string{"transport.endpoint is required for http-json providers"}
-		}
-		if !safeHTTPEndpoint(transport.Endpoint, offline) {
-			problems = append(
-				problems,
-				"transport.endpoint must be local/LAN HTTP or HTTPS for remote http-json providers",
-			)
-		}
-	case "command":
-		if strings.TrimSpace(transport.Command) == "" {
-			problems = append(problems, "transport.command is required for command providers")
-		}
-		if !filepath.IsAbs(transport.Command) {
-			problems = append(problems, "transport.command must be absolute for command providers")
-		}
-		if isSTTCapableProviderKind(kind) {
-			if !hasCommandArg(transport.Args, "{modelId}") {
-				problems = append(problems, "transport.args must include {modelId} for STT-capable command providers")
-			}
-			if !hasCommandArg(transport.Args, "{inputPath}") {
-				problems = append(problems, "transport.args must include {inputPath} for STT-capable command providers")
-			}
-		}
-		if kind == ProviderKindWakeWord && !hasCommandArg(transport.Args, "{inputPath}") {
-			problems = append(problems, "transport.args must include {inputPath} for wake-word command providers")
-		}
-	default:
-		problems = append(problems, "transport.type must be wyoming, http-json, command, or builtin")
+	}
+	if kind == ProviderKindWakeWord && !hasCommandArg(transport.Args, "{inputPath}") {
+		problems = append(problems, "transport.args must include {inputPath} for wake-word command providers")
 	}
 	return problems
 }
@@ -330,83 +307,6 @@ func unsafeModelPath(path string) bool {
 	}
 	clean := filepath.Clean(path)
 	return clean == "." || clean == ".." || strings.HasPrefix(clean, "../")
-}
-
-func safeLocalEndpoint(raw string, allowLAN bool) bool {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return false
-	}
-	if endpointContainsCredentialMaterial(u) {
-		return false
-	}
-	host := u.Hostname()
-	if host == "" {
-		return false
-	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return host == "localhost"
-	}
-	if ip.IsLoopback() {
-		return true
-	}
-	return allowLAN && (ip.IsPrivate() || ip.IsLinkLocalUnicast())
-}
-
-func safeHTTPEndpoint(raw string, offline bool) bool {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return false
-	}
-	if endpointContainsCredentialMaterial(u) {
-		return false
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return false
-	}
-	if safeLocalEndpoint(raw, true) {
-		return true
-	}
-	return !offline && u.Scheme == "https"
-}
-
-func endpointContainsCredentialMaterial(u *url.URL) bool {
-	if u.User != nil {
-		return true
-	}
-	for key, values := range u.Query() {
-		if credentialQueryKey(key) {
-			return true
-		}
-		for _, value := range values {
-			if containsRawCredentialValue(value) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func credentialQueryKey(key string) bool {
-	key = strings.ToLower(strings.TrimSpace(key))
-	for _, fragment := range []string{
-		"token",
-		"secret",
-		"password",
-		"credential",
-		"authorization",
-		"auth",
-		"apikey",
-		"api_key",
-		"api-key",
-		"key",
-	} {
-		if strings.Contains(key, fragment) {
-			return true
-		}
-	}
-	return false
 }
 
 func containsRawCredentialValue(value string) bool {

@@ -577,7 +577,7 @@ func TestVoiceMuteEndpointsUpdateState(t *testing.T) {
 	cfg := testConfig()
 	cfg.Voice.Enabled = true
 	cfg.Voice.MutedByDefault = true
-	cfg.Voice.STTProviderID = "wyoming-local"
+	cfg.Voice.STTProviderID = "local-stt"
 	handler := New(cfg, "test")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/unmute", nil)
@@ -856,7 +856,7 @@ func TestTTSSpeakSensitiveOutputDefaultsToVisualOnly(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/tts/speak",
-		bytes.NewBufferString(`{"text":"the door code is 1234","conversationId":"conversation-1","cache":true}`),
+		bytes.NewBufferString(`{"text":"the door code is 1234","conversationId":"conversation-1"}`),
 	)
 	rec := httptest.NewRecorder()
 
@@ -871,9 +871,7 @@ func TestTTSSpeakSensitiveOutputDefaultsToVisualOnly(t *testing.T) {
 	}
 	if !body.VisualOnly ||
 		body.State != "visual_only" ||
-		body.Reason != "sensitive_output_visual_only" ||
-		body.CacheEligible ||
-		body.CacheKey != "" {
+		body.Reason != "sensitive_output_visual_only" {
 		t.Fatalf("unexpected sensitive TTS response: %+v", body)
 	}
 }
@@ -991,7 +989,7 @@ func TestTTSSpeakAndStopEndpointsEmitSafeEvents(t *testing.T) {
 		http.MethodPost,
 		ts.URL+"/api/v1/tts/speak",
 		bytes.NewBufferString(
-			`{"text":"hello kitchen","conversationId":"conversation-1","turnId":"turn-1","cache":true}`,
+			`{"text":"hello kitchen","conversationId":"conversation-1","turnId":"turn-1"}`,
 		),
 	)
 	if err != nil {

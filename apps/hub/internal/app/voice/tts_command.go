@@ -42,11 +42,9 @@ func (p CommandTTSProvider) Synthesize(ctx context.Context, req TTSRequest) (TTS
 		firstNonEmpty(req.VoiceID, p.VoiceID, p.ModelID),
 		firstNonEmpty(req.Locale, p.Locale),
 	)
-	for i := range args {
-		args[i] = strings.ReplaceAll(args[i], "{text}", req.Text)
-	}
 	//nolint:gosec // command providers require explicit opt-in and absolute manifest commands.
 	cmd := exec.CommandContext(commandCtx, p.Command, args...)
+	cmd.Stdin = strings.NewReader(req.Text)
 	output, err := cmd.Output()
 	if commandCtx.Err() != nil || err != nil {
 		return TTSAudioResult{}, errCommandTTSProviderUnavailable
@@ -85,15 +83,4 @@ func decodeCommandTTSOutput(output []byte, p CommandTTSProvider, req TTSRequest)
 		Duration:     durationFromMillis(out.DurationMS, 0),
 		PlaybackKind: safeIdentifier(firstNonEmpty(out.PlaybackKind, "audio")),
 	}, nil
-}
-
-func commandArgs(args []string, inputPath string, modelID string, language string) []string {
-	out := make([]string, 0, len(args))
-	for _, arg := range args {
-		arg = strings.ReplaceAll(arg, "{inputPath}", inputPath)
-		arg = strings.ReplaceAll(arg, "{modelId}", modelID)
-		arg = strings.ReplaceAll(arg, "{language}", language)
-		out = append(out, arg)
-	}
-	return out
 }

@@ -108,7 +108,6 @@ func TestDispatcherEmitsSafeTTSEvents(t *testing.T) {
 		ProviderID:     "provider token=secret",
 		VoiceID:        "voice-1",
 		ConversationID: "conversation-1",
-		CacheEligible:  false,
 		Reason:         "apiKey=secret-value",
 	})
 

@@ -270,10 +270,6 @@ func TestLocalVoiceServiceMuteStopsActiveCaptureWithoutUtterance(t *testing.T) {
 	if len(got) != 0 {
 		t.Fatalf("expected mute to discard active utterance, got %d", len(got))
 	}
-	snapshot := service.Snapshot()
-	if !snapshot.Muted || snapshot.State != "muted" || snapshot.ServiceStatus != "muted" {
-		t.Fatalf("unexpected muted snapshot: %+v", snapshot)
-	}
 	states := voiceStates(emitter.events)
 	want := []string{"wake_listening", "capturing_utterance", "muted"}
 	if !reflect.DeepEqual(states, want) {
@@ -296,9 +292,9 @@ func TestLocalVoiceServiceCaptureErrorUsesSafeStateWithoutAudio(t *testing.T) {
 	}
 	waitServiceDone(t, service)
 
-	snapshot := service.Snapshot()
-	if snapshot.State != ServiceStateError || snapshot.LastError != "audio capture failed" {
-		t.Fatalf("unexpected snapshot: %+v", snapshot)
+	payload := lastVoiceState(emitter.events)
+	if payload.State != ServiceStateError || payload.ServiceStatus != "degraded" {
+		t.Fatalf("unexpected error payload: %+v", payload)
 	}
 	states := voiceStates(emitter.events)
 	want := []string{"wake_listening", "error"}
@@ -334,6 +330,15 @@ func voiceStates(events []VoiceEvent) []string {
 		}
 	}
 	return states
+}
+
+func lastVoiceState(events []VoiceEvent) VoiceStatePayload {
+	for i := len(events) - 1; i >= 0; i-- {
+		if payload, ok := events[i].Payload.(VoiceStatePayload); ok {
+			return payload
+		}
+	}
+	return VoiceStatePayload{}
 }
 
 func waitForState(t *testing.T, emitter *recordingWakeEmitter, state string) {

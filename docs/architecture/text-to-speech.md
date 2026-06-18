@@ -11,10 +11,9 @@ TTS uses the same [Voice Provider Packs](voice-providers.md) model as speech-to-
 Default architecture path:
 
 1. **Hub-owned command provider** for local installed TTS engines.
-2. **sherpa-onnx provider pack** for embedded/local TTS where Jute can call a command or builtin adapter.
+2. **sherpa-onnx provider pack** for embedded/local TTS where Jute can call a command adapter.
 3. **Piper/OHF Piper provider pack** as a command wrapper. Jute should not bundle GPL TTS engines without a future licensing decision.
-4. **Browser `speechSynthesis` fallback** for display-only preview or degraded mode. It is not the headless or canonical voice path.
-5. **OpenAI text-to-speech provider pack** as optional cloud-quality TTS, using user-provided credentials and explicit cloud opt-in.
+4. **OpenAI text-to-speech provider pack** as optional cloud-quality TTS, using user-provided credentials and explicit cloud opt-in.
 
 The first implementation should prioritize playback, cancellation, and provider health over advanced voice styling.
 
@@ -27,12 +26,8 @@ command-provider policy is enabled for a household or device profile. It must no
 Provider Pack manifests, hub speech policy, sensitive-output handling, provider health reporting, or
 the visual-first failure model.
 
-Browser `speechSynthesis` is **supported only as a non-canonical display fallback**. It can be used
-for settings voice preview or explicitly degraded display-only speech after the hub has approved the
-text for speech. It is not available for headless satellites, cannot be the default household TTS
-provider, and cannot speak sensitive content unless the same hub speech policy would allow a
-canonical provider to speak it. Voice availability is browser/OS dependent, so settings must present
-it as opportunistic rather than guaranteed.
+Browser `speechSynthesis` is not part of the v1 voice runtime. The display remains a hub client and
+does not synthesize speech locally.
 
 ## Component Flow
 
@@ -110,7 +105,6 @@ TTS provider manifests declare:
 - offline status;
 - network requirements;
 - expected latency class;
-- cache eligibility.
 
 For low-latency local playback, prefer PCM or WAV. For network transfer, Opus or MP3 may be acceptable when supported.
 
@@ -176,28 +170,6 @@ The conversation UI must make spoken output controllable:
 
 Ambient mode may show only speaking/listening status. It should not reveal full sensitive text by default.
 
-## Caching
-
-TTS caching is optional and disabled for sensitive text.
-
-Cache keys include:
-
-- provider ID;
-- model ID;
-- voice ID;
-- effective locale from the request or device profile fallback;
-- normalized text hash;
-- style or instruction hash;
-- speed;
-- output format.
-
-Foundation cache rules:
-
-- do not cache sensitive responses by default;
-- do not cache cloud TTS output unless the user enables it;
-- expose cache eligibility without writing cache files yet;
-- never use raw text as a cache filename.
-
 ## Failure Behavior
 
 TTS failure must not fail the conversation.
@@ -224,7 +196,6 @@ Persist TTS settings per device profile:
 - volume;
 - streaming preference;
 - output target;
-- cache policy;
 - sensitive-output speech policy;
 - cloud opt-in.
 
@@ -236,5 +207,3 @@ YAML or JSON config may bootstrap these values, but runtime edits are saved thro
 - Cloud TTS is opt-in and clearly labeled.
 - Provider packs never receive raw credentials from manifests.
 - TTS logs exclude raw synthesized text by default.
-- Audio cache entries are treated as private household data.
-- Browser `speechSynthesis` is only a display fallback and must not become the headless voice path.

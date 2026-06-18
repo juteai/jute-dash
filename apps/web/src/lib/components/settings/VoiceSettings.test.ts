@@ -91,7 +91,7 @@ async function loadVoiceSettings() {
             name: 'Cloud STT',
             version: '1.0.0',
             kind: 'stt',
-            transportType: 'http-json',
+            transportType: 'command',
             capabilities: {
               streaming: false,
               partialTranscripts: false,

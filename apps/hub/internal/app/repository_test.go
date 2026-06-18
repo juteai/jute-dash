@@ -158,7 +158,7 @@ func TestVoiceSettingsSeededFromBootstrap(t *testing.T) {
 	bootstrap := DefaultConfig()
 	bootstrap.Voice.Enabled = true
 	bootstrap.Voice.MutedByDefault = false
-	bootstrap.Voice.STTProviderID = "wyoming-local"
+	bootstrap.Voice.STTProviderID = "local-stt"
 	bootstrap.Voice.PreferredAgentID = "house"
 	bootstrap.Voice.FollowupWindowSeconds = 10
 	bootstrap.Voice.WakeWordModelID = "hey-jute"
@@ -178,7 +178,7 @@ func TestVoiceSettingsSeededFromBootstrap(t *testing.T) {
 	}
 	cfg := result.Config.(config.Config)
 	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault ||
-		cfg.Voice.STTProviderID != "wyoming-local" {
+		cfg.Voice.STTProviderID != "local-stt" {
 		t.Fatalf("unexpected config voice settings: %+v", cfg.Voice)
 	}
 
@@ -186,7 +186,7 @@ func TestVoiceSettingsSeededFromBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("VoiceSettings() error = %v", err)
 	}
-	if !settings.Enabled || settings.Muted || settings.STTProviderID != "wyoming-local" ||
+	if !settings.Enabled || settings.Muted || settings.STTProviderID != "local-stt" ||
 		settings.PreferredAgentID != "house" ||
 		settings.FollowupWindowSeconds != 10 ||
 		settings.WakeWordModelID != "hey-jute" ||
@@ -210,7 +210,7 @@ func TestVoiceMuteAndCancelUpdateState(t *testing.T) {
 	bootstrap := DefaultConfig()
 	bootstrap.Voice.Enabled = true
 	bootstrap.Voice.MutedByDefault = false
-	bootstrap.Voice.STTProviderID = "wyoming-local"
+	bootstrap.Voice.STTProviderID = "local-stt"
 	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
@@ -235,7 +235,7 @@ func TestVoiceMuteAndCancelUpdateState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CancelVoice() error = %v", err)
 	}
-	if cancelled.Muted || cancelled.STTProviderID != "wyoming-local" {
+	if cancelled.Muted || cancelled.STTProviderID != "local-stt" {
 		t.Fatalf("cancel should preserve durable voice settings: %+v", cancelled)
 	}
 }
@@ -373,8 +373,9 @@ func TestVoiceProvidersIncludesWakeWordManifestSummary(t *testing.T) {
 		"version": "1.0.0",
 		"kind":    voice.ProviderKindWakeWord,
 		"transport": map[string]any{
-			"type":     "wyoming",
-			"endpoint": "tcp://127.0.0.1:10400",
+			"type":    "command",
+			"command": "/usr/local/bin/jute-wake",
+			"args":    []string{"detect", "{inputPath}", "--model", "{modelId}"},
 		},
 		"capabilities": map[string]any{
 			"offline":   true,
@@ -419,7 +420,7 @@ func TestVoiceProvidersIncludesWakeWordManifestSummary(t *testing.T) {
 		Name:             "Example openWakeWord",
 		Version:          "1.0.0",
 		Kind:             voice.ProviderKindWakeWord,
-		TransportType:    "wyoming",
+		TransportType:    "command",
 		ManifestJSON:     string(manifestBytes),
 		HealthStatus:     "available",
 		LastActivationAt: "2026-06-13T12:00:00Z",
@@ -458,70 +459,6 @@ func TestVoiceProvidersIncludesWakeWordManifestSummary(t *testing.T) {
 		strings.Contains(string(raw), "apiKey") ||
 		strings.Contains(string(raw), "provider-secret") {
 		t.Fatalf("provider response leaked credential metadata: %s", string(raw))
-	}
-}
-
-func TestVoiceProvidersDisableCloudSTTWithoutOptIn(t *testing.T) {
-	st := openTestStore(t)
-	defer st.Close()
-	bootstrap := DefaultConfig()
-	bootstrap.Voice.CloudOptIn = false
-	if _, err := st.Initialize(context.Background(), bootstrap, false); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	manifest := map[string]any{
-		"id":      "org.example.cloud-stt",
-		"name":    "Example Cloud STT",
-		"version": "1.0.0",
-		"kind":    voice.ProviderKindSTT,
-		"transport": map[string]any{
-			"type":     "http-json",
-			"endpoint": "https://stt.example.com/transcribe",
-		},
-		"capabilities": map[string]any{
-			"offline":      false,
-			"languages":    []string{"en"},
-			"inputFormats": []string{"audio/pcm;rate=16000"},
-		},
-		"hardware":    map[string]bool{"cpu": true},
-		"credentials": []map[string]any{},
-		"license": map[string]any{
-			"name": "Commercial",
-			"url":  "https://example.com/license",
-		},
-		"contribution": map[string]any{
-			"source":      "https://example.com/cloud-stt",
-			"maintainers": []string{"example"},
-		},
-	}
-	manifestBytes, err := json.Marshal(manifest)
-	if err != nil {
-		t.Fatalf("marshal manifest: %v", err)
-	}
-	provider := voice.ProviderPackDB{
-		ID:            "org.example.cloud-stt",
-		Name:          "Example Cloud STT",
-		Version:       "1.0.0",
-		Kind:          voice.ProviderKindSTT,
-		TransportType: "http-json",
-		ManifestJSON:  string(manifestBytes),
-		HealthStatus:  "available",
-		LastError:     "token=provider-secret",
-		UpdatedAt:     "2026-06-13T12:00:00Z",
-	}
-	if err := st.DB().Create(&provider).Error; err != nil {
-		t.Fatalf("insert provider: %v", err)
-	}
-
-	providers, err := st.VoiceRepo.VoiceProviders(context.Background())
-	if err != nil {
-		t.Fatalf("VoiceProviders() error = %v", err)
-	}
-	if len(providers) != 1 {
-		t.Fatalf("expected one provider, got %+v", providers)
-	}
-	if providers[0].HealthStatus != "disabled" || providers[0].LastError != "" {
-		t.Fatalf("expected cloud provider to be disabled without error leak, got %+v", providers[0])
 	}
 }
 
@@ -1024,7 +961,7 @@ func insertTTSProvider(
 	transport := voice.TransportManifest{
 		Type:    "command",
 		Command: "/usr/local/bin/jute-tts",
-		Args:    []string{"--voice", "{modelId}", "--locale", "{language}", "--text", "{text}"},
+		Args:    []string{"--voice", "{modelId}", "--locale", "{language}"},
 	}
 	insertTTSProviderWithTransport(t, st, providerID, health, offline, credentials, transport)
 }

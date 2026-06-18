@@ -174,8 +174,6 @@ func (s *Store) Migrate(ctx context.Context) error {
 		&dashboard.WidgetPermissionDB{},
 		&voice.ProviderPackDB{},
 		&voice.SettingsDB{},
-		&voice.SatelliteInstallDB{},
-		&voice.PairingSessionDB{},
 		&homestate.AdapterConnectionDB{},
 		&homestate.SettingAuditLogDB{},
 		&appMetaDB{},

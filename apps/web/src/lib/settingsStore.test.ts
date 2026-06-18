@@ -96,7 +96,7 @@ describe('settingsStore', () => {
               name: 'Local STT',
               version: '1.0.0',
               kind: 'stt',
-              transportType: 'wyoming',
+              transportType: 'command',
               capabilities: {
                 streaming: true,
                 partialTranscripts: true,
@@ -431,7 +431,7 @@ describe('settingsStore', () => {
               name: 'Cloud TTS',
               version: '1.0.0',
               kind: 'tts',
-              transportType: 'http-json',
+              transportType: 'command',
               capabilities: {
                 streaming: false,
                 partialTranscripts: false,

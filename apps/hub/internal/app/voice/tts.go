@@ -1,8 +1,6 @@
 package voice
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -36,7 +34,6 @@ type TTSRequest struct {
 	TurnID         string `json:"turnId,omitempty"`
 	Locale         string `json:"locale,omitempty"`
 	Sensitive      bool   `json:"sensitive,omitempty"`
-	Cache          bool   `json:"cache,omitempty"`
 }
 
 type TTSStopRequest struct {
@@ -107,8 +104,6 @@ type TTSActionResponse struct {
 	VoiceID        string `json:"voiceId,omitempty"`
 	ConversationID string `json:"conversationId,omitempty"`
 	TurnID         string `json:"turnId,omitempty"`
-	CacheEligible  bool   `json:"cacheEligible"`
-	CacheKey       string `json:"cacheKey,omitempty"`
 	VisualOnly     bool   `json:"visualOnly"`
 	Reason         string `json:"reason,omitempty"`
 	PlaybackKind   string `json:"playbackKind,omitempty"`
@@ -121,20 +116,18 @@ type TTSActionResponse struct {
 }
 
 type TTSEventPayload struct {
-	Action        string `json:"action"`
-	State         string `json:"state"`
-	ProviderID    string `json:"providerId,omitempty"`
-	VoiceID       string `json:"voiceId,omitempty"`
-	CacheEligible bool   `json:"cacheEligible,omitempty"`
-	CacheKey      string `json:"cacheKey,omitempty"`
-	Reason        string `json:"reason,omitempty"`
-	PlaybackKind  string `json:"playbackKind,omitempty"`
-	ContentType   string `json:"contentType,omitempty"`
-	SampleRate    int    `json:"sampleRate,omitempty"`
-	SampleWidth   int    `json:"sampleWidth,omitempty"`
-	Channels      int    `json:"channels,omitempty"`
-	AudioBytes    int    `json:"audioBytes,omitempty"`
-	DurationMs    int64  `json:"durationMs,omitempty"`
+	Action       string `json:"action"`
+	State        string `json:"state"`
+	ProviderID   string `json:"providerId,omitempty"`
+	VoiceID      string `json:"voiceId,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+	PlaybackKind string `json:"playbackKind,omitempty"`
+	ContentType  string `json:"contentType,omitempty"`
+	SampleRate   int    `json:"sampleRate,omitempty"`
+	SampleWidth  int    `json:"sampleWidth,omitempty"`
+	Channels     int    `json:"channels,omitempty"`
+	AudioBytes   int    `json:"audioBytes,omitempty"`
+	DurationMs   int64  `json:"durationMs,omitempty"`
 }
 
 type TTSRuntime struct {
@@ -171,7 +164,6 @@ func (r *TTSRuntime) Begin(action string, req TTSRequest, settings Settings, can
 		ConversationID: safeIdentifier(req.ConversationID),
 		TurnID:         safeIdentifier(req.TurnID),
 	}
-	response.CacheEligible, response.CacheKey = cachePolicy(req, settings, providerID, voiceID)
 	r.current = response
 	return response
 }
@@ -229,8 +221,6 @@ func (r *TTSRuntime) VisualOnly(id, reason string) TTSActionResponse {
 		r.current.State = TTSStateVisualOnly
 		r.current.VisualOnly = true
 		r.current.Reason = sanitizeText(reason)
-		r.current.CacheEligible = false
-		r.current.CacheKey = ""
 		return r.current
 	}
 	return TTSActionResponse{
@@ -314,28 +304,6 @@ func speechPolicyAllows(req TTSRequest, settings Settings) (bool, string) {
 	default:
 		return false, "sensitive_output_visual_only"
 	}
-}
-
-func cachePolicy(req TTSRequest, settings Settings, providerID, voiceID string) (bool, string) {
-	if !req.Cache || sensitiveOutput(req) || settings.CloudOptIn {
-		return false, ""
-	}
-	text := strings.TrimSpace(req.Text)
-	if text == "" || providerID == "" || voiceID == "" {
-		return false, ""
-	}
-	locale := strings.TrimSpace(req.Locale)
-	if locale == "" {
-		locale = settings.TTSLocale
-	}
-	hash := sha256.Sum256([]byte(strings.Join([]string{
-		providerID,
-		settings.TTSModelID,
-		voiceID,
-		locale,
-		text,
-	}, "\x00")))
-	return true, "tts-" + hex.EncodeToString(hash[:])
 }
 
 func normalizeStopReason(reason string) string {

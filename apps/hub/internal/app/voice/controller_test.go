@@ -37,7 +37,7 @@ func TestTTSSpeakUsesProviderAndReturnsSafePlaybackMetadata(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/tts/speak",
-		strings.NewReader(`{"text":"The kitchen lights are on.","cache":true}`),
+		strings.NewReader(`{"text":"The kitchen lights are on."}`),
 	)
 	rr := httptest.NewRecorder()
 
@@ -190,7 +190,7 @@ func TestTTSSpeakSensitiveOutputStopsAsVisualOnlyWithoutProviderSynthesis(t *tes
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/tts/speak",
-		strings.NewReader(`{"text":"the door code is 1234","cache":true,"conversationId":"conversation-1"}`),
+		strings.NewReader(`{"text":"the door code is 1234","conversationId":"conversation-1"}`),
 	)
 	rr := httptest.NewRecorder()
 
@@ -205,9 +205,7 @@ func TestTTSSpeakSensitiveOutputStopsAsVisualOnlyWithoutProviderSynthesis(t *tes
 	}
 	if body.State != TTSStateVisualOnly ||
 		!body.VisualOnly ||
-		body.Reason != "sensitive_output_visual_only" ||
-		body.CacheEligible ||
-		body.CacheKey != "" {
+		body.Reason != "sensitive_output_visual_only" {
 		t.Fatalf("unexpected sensitive TTS response: %+v", body)
 	}
 	if provider.request.Text != "" {
