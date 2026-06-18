@@ -302,6 +302,36 @@ LD_LIBRARY_PATH=/opt/jute/microwakeword/lib go test ./...
 
 Prefer a containerized build stage that produces a small runtime image. Do not install TensorFlow build trees on the target appliance.
 
+#### Linux Container Consumer Build Attempt
+
+Checked on 2026-06-18 in a disposable `golang:1.25` Linux container, without adding
+`github.com/pmdroid/microwakeword` to Jute production dependencies:
+
+```sh
+docker run --rm golang:1.25 sh -lc '
+  GO=/usr/local/go/bin/go
+  mkdir -p /tmp/jute-microwakeword-linux-build
+  cd /tmp/jute-microwakeword-linux-build
+  $GO mod init jute-microwakeword-linux-build
+  $GO get github.com/pmdroid/microwakeword@v0.0.1
+  $GO test github.com/pmdroid/microwakeword
+'
+```
+
+The module fetch succeeded. The package build failed before tests could run because the TensorFlow
+Lite audio microfrontend header was not installed:
+
+```text
+pkg/microfrontend/microfrontend.go:7:11: fatal error:
+tensorflow/lite/experimental/microfrontend/lib/frontend.h: No such file or directory
+```
+
+The public build evidence generated inside the same container records runtime `linux/arm64
+go1-25-11`, target `linux-native-container`, status `failed`, and missing dependency
+`tensorflow-lite-microfrontend-header`. This is stronger Linux packaging evidence than the earlier
+blocked placeholder, but it still does not satisfy JUT-11 closure because no model loaded, no wake
+detection ran, and no openWakeWord baseline comparison was produced.
+
 ### Raspberry Pi
 
 Raspberry Pi support is unproven for Jute. It needs a native ARM64 build or cross-compiled provider artifact, plus a real latency and CPU benchmark on representative hardware.
@@ -533,7 +563,7 @@ evidence is required:
   `sha256:<64 hex>` model hash and matching expected wake/no-wake outcomes;
 - a distinct Wyoming/openWakeWord baseline report over the same fixture IDs;
 - `go run ./apps/hub/cmd/jute-voice-benchmark -report microwakeword-report.json
-  -baseline-report openwakeword-report.json -acceptance-preset` exits zero and produces the
+-baseline-report openwakeword-report.json -acceptance-preset` exits zero and produces the
   comparison Markdown used as Linear evidence;
 - no `github.com/pmdroid/microwakeword`, TensorFlow, or TensorFlow Lite dependency appears in
   production `go.mod`/`go.sum` unless the final decision explicitly changes from `defer` to
