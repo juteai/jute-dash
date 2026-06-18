@@ -146,7 +146,11 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 		"provider build target, e.g. native-cli, native-consumer, docker, raspberry-pi",
 	)
 	buildCommandID := flags.String("build-command-id", "", "safe command identifier for provider build evidence")
-	buildStatus := flags.String("build-status", "", "provider build status: succeeded, failed, blocked, or not-run")
+	buildStatus := flags.String(
+		"build-status",
+		"",
+		"provider build status: succeeded, failed, blocked, interrupted, or not-run",
+	)
 	buildExitCode := flags.Int("build-exit-code", 0, "provider build command exit code")
 	buildErrorCode := flags.String("build-error-code", "", "safe provider build error code")
 	buildMissing := flags.String(
@@ -1695,10 +1699,10 @@ func validateProviderBuildEvidence(evidence providerBuildEvidence) []string {
 	}
 	switch evidence.Status {
 	case "succeeded":
-	case "failed", "blocked", "not-run":
+	case "failed", "blocked", "interrupted", "not-run":
 		problems = append(problems, "provider build did not succeed")
 	default:
-		problems = append(problems, "build status must be succeeded, failed, blocked, or not-run")
+		problems = append(problems, "build status must be succeeded, failed, blocked, interrupted, or not-run")
 	}
 	if evidence.Status == "failed" && evidence.ErrorCode == "" && len(evidence.MissingDependencies) == 0 {
 		problems = append(problems, "failed provider build requires errorCode or missingDependencies")

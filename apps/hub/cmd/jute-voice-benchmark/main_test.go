@@ -255,6 +255,37 @@ func TestVoiceBenchmarkCommandEmitsProviderBuildEvidencePublicJSON(t *testing.T)
 	}
 }
 
+func TestVoiceBenchmarkCommandEmitsInterruptedProviderBuildEvidence(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{
+		"-build-evidence",
+		"-issue", "JUT-11",
+		"-kind", "wake-word",
+		"-provider-id", "pmdroid-microwakeword",
+		"-build-target", "linux-amd64-emulated",
+		"-build-command-id", "docker-upstream-make-amd64",
+		"-build-status", "interrupted",
+		"-environment-notes", "emulated build exceeded the local evidence time box",
+	}, strings.NewReader(""), &stdout, &stderr)
+
+	if code != 1 {
+		t.Fatalf("expected interrupted build evidence to exit non-zero, got %d", code)
+	}
+	for _, want := range []string{
+		"Status: `interrupted`",
+		"Closure evidence: `false`",
+		"provider build did not succeed",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("expected interrupted evidence to contain %q:\n%s", want, stdout.String())
+		}
+	}
+	if !strings.Contains(stderr.String(), "provider build evidence has 1 validation problem") {
+		t.Fatalf("expected interrupted evidence stderr, got %q", stderr.String())
+	}
+}
+
 func TestVoiceBenchmarkCommandEmitsProviderPackagingEvidence(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
