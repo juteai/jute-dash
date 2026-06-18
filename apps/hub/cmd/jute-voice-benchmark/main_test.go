@@ -472,6 +472,33 @@ func TestVoiceBenchmarkCommandEmitsProviderModelEvidencePublicJSON(t *testing.T)
 	}
 }
 
+func TestVoiceBenchmarkCommandRejectsUnknownJUT11ModelSource(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{
+		"-model-evidence",
+		"-issue", "JUT-11",
+		"-kind", "wake-word",
+		"-provider-id", "pmdroid-microwakeword",
+		"-model-id", "okay-nabu",
+		"-model-hash", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"-model-source", "random-model-zoo",
+		"-model-format", "tflite",
+		"-model-compatibility", "compatible",
+		"-model-runtime-status", "loaded",
+	}, strings.NewReader(""), &stdout, &stderr)
+
+	if code != 1 {
+		t.Fatalf("expected unknown JUT-11 model source to fail, got %d", code)
+	}
+	if !strings.Contains(stdout.String(), "JUT-11 model evidence modelSource must be esphome or ohf") {
+		t.Fatalf("expected model source validation problem:\n%s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "provider model evidence has 1 validation problem") {
+		t.Fatalf("expected model evidence stderr, got %q", stderr.String())
+	}
+}
+
 func TestVoiceBenchmarkCommandAcceptsCompleteJUT13ClosureBundle(t *testing.T) {
 	dir := t.TempDir()
 	bundlePath := filepath.Join(dir, "go-whisper-closure.json")

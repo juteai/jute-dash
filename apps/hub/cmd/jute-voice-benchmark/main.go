@@ -1876,6 +1876,11 @@ func validateProviderModelEvidence(evidence providerModelEvidence) []string {
 		if evidence.ModelFormat != "tflite" {
 			problems = append(problems, "JUT-11 model evidence modelFormat must be tflite")
 		}
+		switch strings.ToLower(evidence.ModelSource) {
+		case "esphome", "ohf":
+		default:
+			problems = append(problems, "JUT-11 model evidence modelSource must be esphome or ohf")
+		}
 	case "JUT-13":
 		if !strings.Contains(strings.ToLower(evidence.ProviderID), "go-whisper") {
 			problems = append(problems, "JUT-13 model evidence provider must identify go-whisper")
