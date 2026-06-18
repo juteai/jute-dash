@@ -431,6 +431,16 @@ next blocker from resource limits to C toolchain compatibility: pinning Bazel an
 enough; the provider pack must also pin or patch a TensorFlow/XNNPACK/GCC combination that builds
 on ARM64.
 
+An attempted `linux/amd64` Docker run under local emulation did not produce provider evidence. The
+emulated Go toolchain crashed while compiling the local evidence helper:
+
+```text
+math: /usr/local/go/pkg/tool/linux_amd64/asm: signal: segmentation fault
+```
+
+Treat AMD64 status as unmeasured until it runs on native AMD64 hardware or a more reliable CI runner;
+do not infer that the ARM64 XNNPACK/GCC failure applies to AMD64.
+
 ### Raspberry Pi
 
 Raspberry Pi support is unproven for Jute. It needs a native ARM64 build or cross-compiled provider artifact, plus a real latency and CPU benchmark on representative hardware.
