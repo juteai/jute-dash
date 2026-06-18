@@ -111,7 +111,7 @@ Use this shape only after command providers are enabled for the target household
   "transport": {
     "type": "command",
     "command": "/usr/local/bin/gowhisper",
-    "args": ["transcribe", "--format", "json", "--model", "{modelId}", "--language", "{language}", "{inputPath}"]
+    "args": ["transcribe", "{modelId}", "{inputPath}", "--format", "json", "--language", "{language}"]
   },
   "capabilities": {
     "streaming": false,
@@ -142,7 +142,7 @@ Use this shape only after command providers are enabled for the target household
 }
 ```
 
-The fixture validator requires the command path to be absolute and the arguments to remain an explicit argv array with a `{inputPath}` placeholder for the temporary WAV path. The adapter also substitutes `{modelId}` and `{language}` from the selected device-profile settings. It must avoid shell interpolation, write temporary audio files under a Jute-controlled runtime directory, and remove those files after transcription.
+The fixture validator requires the command path to be absolute and the arguments to remain an explicit argv array with a `{inputPath}` placeholder for the temporary WAV path. The adapter also substitutes `{modelId}` and `{language}` from the selected device-profile settings. The argv order matches `gowhisper transcribe <model> <file> [flags]`, verified against the `ghcr.io/mutablelogic/go-whisper:latest` container on 2026-06-18. Command output still needs to be Jute-shaped transcript JSON, so use a thin wrapper if the native CLI output does not match the provider contract. The adapter must avoid shell interpolation, write temporary audio files under a Jute-controlled runtime directory, and remove those files after transcription.
 
 ## Benchmark Plan
 

@@ -446,13 +446,12 @@ func TestSpikeProviderManifestFixturesValidate(t *testing.T) {
 			wantCommand:     "/usr/local/bin/gowhisper",
 			wantArgs: []string{
 				"transcribe",
+				"{modelId}",
+				"{inputPath}",
 				"--format",
 				"json",
-				"--model",
-				"{modelId}",
 				"--language",
 				"{language}",
-				"{inputPath}",
 			},
 		},
 		{
