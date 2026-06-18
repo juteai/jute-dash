@@ -1225,6 +1225,23 @@ func TestProviderClosureBundleRejectsManifestFixturesMissingFromBenchmark(t *tes
 	}
 }
 
+func TestProviderClosureBundleRejectsDuplicateFixtureHashes(t *testing.T) {
+	const hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+	manifest := voice.BenchmarkFixtureSetManifest{
+		Fixtures: []voice.BenchmarkFixtureManifest{
+			{ID: "positive-wake", SHA256: hash, Source: "fixture-set-a"},
+			{ID: "near-miss", SHA256: hash, Source: "fixture-set-a"},
+		},
+	}
+
+	problems := validateClosureFixtureManifestProvenance(manifest)
+
+	if len(problems) != 1 ||
+		problems[0] != "fixture manifest fixtures positive-wake and near-miss must not share sha256" {
+		t.Fatalf("expected duplicate hash problem, got %v", problems)
+	}
+}
+
 func TestProviderClosureBundleRejectsBenchmarkFixtureExpectationMismatch(t *testing.T) {
 	transcriptReport := voice.BenchmarkReport{
 		Kind: "stt",

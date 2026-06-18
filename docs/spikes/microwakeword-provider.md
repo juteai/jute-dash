@@ -255,7 +255,7 @@ For JUT-11, the closure bundle requires:
   has no credential requirements;
 - a fixture manifest artifact that decodes with the strict benchmark fixture parser, declares all
   required wake fixtures with expected wake/no-wake flags, source, RFC3339 `recordedAt`, consent,
-  concrete source, and real `sha256:<64 hex>` fixture hashes;
+  concrete source, and unique real `sha256:<64 hex>` fixture hashes;
 - generated build, packaging, and model evidence artifacts must not carry `problems`, and their
   completion flags must remain true (`closureEvidence` for build/model rows and
   `packagingEvidenceComplete` for packaging);

@@ -1193,16 +1193,29 @@ func validateClosureBundleFixtureManifest(
 
 func validateClosureFixtureManifestProvenance(manifest voice.BenchmarkFixtureSetManifest) []string {
 	var problems []string
+	fixtureBySHA := map[string]string{}
 	for _, fixture := range manifest.Fixtures {
 		fixtureID := strings.TrimSpace(fixture.ID)
 		if fixtureID == "" {
 			fixtureID = "unknown"
 		}
-		if !isSafeSHA256(strings.TrimSpace(fixture.SHA256)) {
+		sha := strings.ToLower(strings.TrimSpace(fixture.SHA256))
+		if !isSafeSHA256(sha) {
 			problems = append(
 				problems,
 				fmt.Sprintf("fixture manifest fixture %s must declare sha256:<64 hex characters>", fixtureID),
 			)
+		} else if previousFixtureID := fixtureBySHA[sha]; previousFixtureID != "" {
+			problems = append(
+				problems,
+				fmt.Sprintf(
+					"fixture manifest fixtures %s and %s must not share sha256",
+					previousFixtureID,
+					fixtureID,
+				),
+			)
+		} else {
+			fixtureBySHA[sha] = fixtureID
 		}
 		source := strings.ToLower(strings.TrimSpace(fixture.Source))
 		if source == "" || strings.Contains(source, "replace-with") || strings.Contains(source, "placeholder") {
