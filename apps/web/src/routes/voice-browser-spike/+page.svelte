@@ -156,6 +156,17 @@
           : 'browser does not expose memory metrics'
       }
     ];
+    if (!window.speechSynthesis) {
+      measurements = [
+        ...measurements,
+        {
+          label: 'TTS cold start',
+          value: 'speechSynthesis unavailable in this browser context',
+          detail:
+            'browser runtime limitation recorded because preview cannot start'
+        }
+      ];
+    }
     matrixNotes = `${navigator.platform || 'unknown platform'} | ${
       window.matchMedia('(display-mode: standalone)').matches
         ? 'standalone/PWA'

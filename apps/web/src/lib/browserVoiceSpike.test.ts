@@ -983,6 +983,44 @@ describe('browserVoiceSnapshot', () => {
     );
   });
 
+  it('accepts named speechSynthesis runtime limitation as TTS evidence', () => {
+    const report = browserVoiceReport({
+      snapshot: {
+        userAgent:
+          'Mozilla/5.0 AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',
+        secureContext: true,
+        online: true,
+        capabilities: []
+      },
+      measurements: [
+        { label: 'Microphone permission', value: '90 ms' },
+        { label: 'Browser STT cold start', value: 'unsupported' },
+        {
+          label: 'TTS cold start',
+          value: 'speechSynthesis unavailable in this browser context'
+        },
+        { label: 'Hardware', value: 'MacBook Pro M3, 18 GB RAM' },
+        { label: 'Model download size', value: '0 MB' },
+        { label: 'CPU', value: '8 percent average' },
+        { label: 'Offline behavior', value: 'browser STT unavailable offline' }
+      ],
+      platform: 'MacIntel',
+      standalone: false,
+      transcriptCaptured: true,
+      submittedThroughHub: true,
+      hubReceipt: hubReceiptAt()
+    });
+    const matrix = browserVoiceRunMatrix([report], '2026-06-15T16:19:59.000Z');
+
+    expect(matrix.rows[0].ttsMeasured).toBe(true);
+    expect(matrix.rows[0].gaps).not.toContain(
+      'speechSynthesis cold start not measured'
+    );
+    expect(matrix.acceptance.problems).not.toContain(
+      'desktop-chromium row is missing speechSynthesis evidence'
+    );
+  });
+
   it('does not accept placeholder browser or platform identity evidence', () => {
     const report = browserVoiceReport({
       snapshot: {
