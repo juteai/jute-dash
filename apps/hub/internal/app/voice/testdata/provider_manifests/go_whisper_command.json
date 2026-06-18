@@ -6,7 +6,7 @@
   "transport": {
     "type": "command",
     "command": "/usr/local/bin/gowhisper",
-    "args": ["transcribe", "--format", "json", "--model", "{modelId}", "{inputPath}"]
+    "args": ["transcribe", "--format", "json", "--model", "{modelId}", "--language", "{language}", "{inputPath}"]
   },
   "capabilities": {
     "streaming": false,

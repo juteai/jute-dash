@@ -60,6 +60,7 @@ func (p CommandSTTProvider) Transcribe(ctx context.Context, utterance CapturedUt
 			p.Args,
 			tempPath,
 			p.ModelID,
+			p.Language,
 		)...)
 	output, err := cmd.Output()
 	if commandCtx.Err() != nil {
@@ -71,11 +72,12 @@ func (p CommandSTTProvider) Transcribe(ctx context.Context, utterance CapturedUt
 	return decodeCommandSTTOutput(output, p, utterance.EndedAt.Sub(utterance.StartedAt))
 }
 
-func commandSTTArgs(args []string, inputPath string, modelID string) []string {
+func commandSTTArgs(args []string, inputPath string, modelID string, language string) []string {
 	out := make([]string, 0, len(args))
 	for _, arg := range args {
 		arg = strings.ReplaceAll(arg, "{inputPath}", inputPath)
 		arg = strings.ReplaceAll(arg, "{modelId}", modelID)
+		arg = strings.ReplaceAll(arg, "{language}", language)
 		out = append(out, arg)
 	}
 	return out

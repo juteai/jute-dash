@@ -444,7 +444,16 @@ func TestSpikeProviderManifestFixturesValidate(t *testing.T) {
 			wantOffline:     true,
 			wantRaspberryPi: false,
 			wantCommand:     "/usr/local/bin/gowhisper",
-			wantArgs:        []string{"transcribe", "--format", "json", "--model", "{modelId}", "{inputPath}"},
+			wantArgs: []string{
+				"transcribe",
+				"--format",
+				"json",
+				"--model",
+				"{modelId}",
+				"--language",
+				"{language}",
+				"{inputPath}",
+			},
 		},
 		{
 			name:             "microwakeword experimental",

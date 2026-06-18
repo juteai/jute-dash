@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestCommandSTTProviderRunsAbsoluteCommandWithInputPathAndModel(t *testing.T) {
+func TestCommandSTTProviderRunsAbsoluteCommandWithInputPathModelAndLanguage(t *testing.T) {
 	fixture, err := NewBenchmarkToneFixture("short-command", "fixture", BenchmarkAudioSpec{
 		Duration: 20 * time.Millisecond,
 	})
@@ -22,6 +22,7 @@ func TestCommandSTTProviderRunsAbsoluteCommandWithInputPathAndModel(t *testing.T
 			"--",
 			"{inputPath}",
 			"{modelId}",
+			"{language}",
 		},
 		ModelID:  "tiny-en",
 		Language: "en-GB",
@@ -39,12 +40,15 @@ func TestCommandSTTProviderRunsAbsoluteCommandWithInputPathAndModel(t *testing.T
 }
 
 func TestCommandSTTProviderHelper(t *testing.T) {
-	inputPath, modelID := helperArgs()
+	inputPath, modelID, language := helperArgs()
 	if inputPath == "" {
 		return
 	}
 	if modelID != "tiny-en" {
 		t.Fatalf("unexpected model id: %q", modelID)
+	}
+	if language != "en-GB" {
+		t.Fatalf("unexpected language: %q", language)
 	}
 	raw, err := os.ReadFile(inputPath)
 	if err != nil {
@@ -63,11 +67,11 @@ func TestCommandSTTProviderHelper(t *testing.T) {
 	os.Exit(0)
 }
 
-func helperArgs() (string, string) {
+func helperArgs() (string, string, string) {
 	for i, arg := range os.Args {
-		if arg == "--" && i+2 < len(os.Args) {
-			return os.Args[i+1], os.Args[i+2]
+		if arg == "--" && i+3 < len(os.Args) {
+			return os.Args[i+1], os.Args[i+2], os.Args[i+3]
 		}
 	}
-	return "", ""
+	return "", "", ""
 }
