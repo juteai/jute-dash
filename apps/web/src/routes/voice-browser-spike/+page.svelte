@@ -338,6 +338,7 @@
       status = 'SpeechRecognition is unavailable in this browser.';
       return;
     }
+    const startedAt = performance.now();
     recognition?.abort?.();
     recognition = new Recognition();
     recognition.lang = 'en-GB';
@@ -357,6 +358,16 @@
       interimTranscript = interim.trim();
       if (finalText.trim()) {
         transcript = finalText.trim();
+        measurements = [
+          ...measurements.filter(
+            (item) => item.label !== 'Browser STT cold start'
+          ),
+          {
+            label: 'Browser STT cold start',
+            value: `${Math.round(performance.now() - startedAt)} ms`,
+            detail: 'elapsed time from recognition start to first final result'
+          }
+        ];
       }
     };
     recognition.onerror = (event) => {
