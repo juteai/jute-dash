@@ -431,6 +431,25 @@ next blocker from resource limits to C toolchain compatibility: pinning Bazel an
 enough; the provider pack must also pin or patch a TensorFlow/XNNPACK/GCC combination that builds
 on ARM64.
 
+Re-running the same low-jobs upstream Makefile path in `golang:1.25-bookworm` changed the compiler
+from GCC 14 to GCC 12 and avoided the XNNPACK pointer-type failure. The TensorFlow Lite C build
+advanced to 1,320 of 1,462 actions, then failed when `gcc` killed `cc1plus` while compiling
+`tensorflow/lite/kernels/cast.cc`:
+
+```text
+gcc: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+Target //tensorflow/lite/c:tensorflowlite_c failed to build
+make: *** [Makefile:67: build] Error 1
+```
+
+The public build evidence generated inside `golang:1.25-bookworm` records runtime `linux/arm64
+go1-25-11`, target `linux-arm64-bookworm-go125-upstream-make-bazelisk-python312-jobs1`, status
+`failed`, exit code `2`, and error code `resource-exhausted-cc1plus-killed`. This narrows the
+Linux recipe again: GCC 12 avoids the observed ARM64 FP16 compiler incompatibility, but the
+provider-pack build still needs a runner with enough memory or a leaner TensorFlow Lite C build
+configuration before pmdroid can load a model.
+
 An attempted `linux/amd64` Docker run under local emulation did not produce provider evidence. The
 emulated Go toolchain crashed while compiling the local evidence helper:
 
