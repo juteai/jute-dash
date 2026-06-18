@@ -4,9 +4,9 @@
 
 Jute ships as several artifacts built from the same hub and display foundation:
 
-- **Hub binary:** Go binary for API, persistence, and local services.
+- **Standalone hub binary:** Go binary with embedded display assets for single-device and headless installs.
 - **Docker image:** multi-arch image for home servers, NAS devices, and development.
-- **PWA/kiosk web app:** browser install target deployed separately from the hub.
+- **PWA/kiosk web app:** browser install target served by the hub.
 - **Raspberry Pi/systemd package:** install script and service unit for wall display and headless nodes.
 - **Desktop wrapper:** later Tauri wrapper around the display UI for macOS, Windows, and Linux.
 
@@ -15,7 +15,10 @@ The standalone hub binary is the primary v1 distribution target.
 ## Build Strategy
 
 - Build SvelteKit as static client assets.
-- Serve the display app separately from the hub.
+- Embed built assets into the Go hub using `embed`.
+- Serve the embedded display from the hub in single-device mode.
+- Allow `JUTE_DISPLAY_DIR` override during development to serve local web assets.
+- Keep the hub usable with `--headless` or equivalent runtime setting.
 
 ## CI/CD
 
@@ -58,10 +61,9 @@ make run
 
 The local stack serves the development display at `https://localhost:5173` for browser APIs that require a secure context. Spotify OAuth uses the hub callback `http://127.0.0.1:8787/api/v1/integrations/spotify/callback` because Spotify requires explicit loopback IP redirect URIs for local HTTP callbacks and rejects `localhost`. Plain HTTP remains available through `make run-http` from `examples/config/local` for non-OAuth UI testing.
 
-### Hub Binary
+### Single Binary
 
-Run one binary that serves the hub API. The display remains a separate client
-deployment and is not embedded in the hub binary:
+Run one binary that serves the hub API and display:
 
 ```sh
 juted --config /etc/jute/config.yaml
@@ -71,7 +73,7 @@ Once SQLite persistence exists, `--config` bootstraps an empty runtime store. Ru
 
 ### Docker
 
-Run the hub API container with config and data mounted:
+Run the hub and display in a single container with config and data mounted:
 
 ```sh
 docker run --rm \

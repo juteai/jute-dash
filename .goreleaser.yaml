@@ -4,6 +4,9 @@ before:
   hooks:
     - npm --prefix apps/web ci
     - npm --prefix apps/web run build
+    - rm -rf apps/hub/internal/displayassets/dist
+    - mkdir -p apps/hub/internal/displayassets/dist
+    - cp -R apps/web/build/. apps/hub/internal/displayassets/dist/
 
 builds:
   - id: juted-linux-amd64

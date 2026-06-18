@@ -51,11 +51,6 @@ formatters:
       # Default: 100
       max-len: 120
 
-  exclusions:
-    paths:
-      - ^apps/hub/mocks/
-      - ^apps/hub/internal/app/agents/agent_syncer_mock_test\.go$
-
 linters:
   enable:
     - asasalint # checks for pass []any as any in variadic func(...any)

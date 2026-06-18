@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"jute-dash/apps/hub/internal/app/agents"
@@ -70,6 +71,78 @@ func waitForConfig(
 	}
 	t.Fatalf("config did not reach expected state: %+v", reloaded)
 	return config.Config{}
+}
+
+func TestDisplayAssetsServeRootAndFallbackRoutes(t *testing.T) {
+	handler, err := NewServerWithDisplay(
+		testConfig(),
+		"test",
+		SetupStatus{Complete: true},
+		nil,
+		nil,
+		nil,
+		"",
+		nil,
+		DisplayOptions{
+			FS: fstest.MapFS{
+				"dist/index.html": {
+					Data: []byte("<!doctype html><title>Jute Dash</title>"),
+				},
+				"dist/assets/app.js": {
+					Data: []byte("console.log('jute')"),
+				},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("create server: %v", err)
+	}
+
+	for _, path := range []string{"/", "/settings", "/assets/app.js"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s expected status 200, got %d: %s", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestDisplayAssetsDoNotCaptureAPIRoutes(t *testing.T) {
+	handler, err := NewServerWithDisplay(
+		testConfig(),
+		"test",
+		SetupStatus{Complete: true},
+		nil,
+		nil,
+		nil,
+		"",
+		nil,
+		DisplayOptions{
+			FS: fstest.MapFS{
+				"dist/index.html": {
+					Data: []byte("<!doctype html><title>Jute Dash</title>"),
+				},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("create server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/not-found", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected API miss to stay 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "Jute Dash") {
+		t.Fatal("API miss was served the display fallback")
+	}
 }
 
 func TestAgentProxyCORSPreflightAllowsA2AVersionHeader(t *testing.T) {

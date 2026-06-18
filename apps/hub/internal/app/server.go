@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -176,6 +177,7 @@ func NewServer(
 		voiceStore,
 		configPath,
 		display,
+		DisplayOptions{Headless: true},
 	)
 }
 
@@ -190,13 +192,68 @@ func NewServerWithSecrets(
 	display *displayactions.Dispatcher,
 	secrets secretStore,
 ) *Server {
+	server, err := NewServerWithSecretsAndDisplay(
+		cfg,
+		version,
+		setup,
+		layoutStore,
+		settingsStore,
+		voiceStore,
+		configPath,
+		display,
+		secrets,
+		DisplayOptions{Headless: true},
+	)
+	if err != nil {
+		panic(err)
+	}
+	return server
+}
+
+func NewServerWithDisplay(
+	cfg config.Config,
+	version string,
+	setup homestate.SetupStatus,
+	layoutStore dashboard.LayoutStore,
+	settingsStore homestate.SettingsStore,
+	voiceStore voice.Store,
+	configPath string,
+	display *displayactions.Dispatcher,
+	displayOptions DisplayOptions,
+) (*Server, error) {
+	return NewServerWithSecretsAndDisplay(
+		cfg,
+		version,
+		setup,
+		layoutStore,
+		settingsStore,
+		voiceStore,
+		configPath,
+		display,
+		nil,
+		displayOptions,
+	)
+}
+
+func NewServerWithSecretsAndDisplay(
+	cfg config.Config,
+	version string,
+	setup homestate.SetupStatus,
+	layoutStore dashboard.LayoutStore,
+	settingsStore homestate.SettingsStore,
+	voiceStore voice.Store,
+	configPath string,
+	display *displayactions.Dispatcher,
+	secrets secretStore,
+	displayOptions DisplayOptions,
+) (*Server, error) {
 	layout := dashboard.DefaultWidgetLayout()
 	if layoutStore != nil {
 		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
 			layout = loaded
 		}
 	}
-	return newServerWithStore(
+	return newServerWithError(
 		cfg,
 		version,
 		nil,
@@ -208,6 +265,7 @@ func NewServerWithSecrets(
 		configPath,
 		display,
 		secrets,
+		displayOptions,
 	)
 }
 
@@ -222,8 +280,13 @@ func newServer(
 	voiceStore voice.Store,
 	configPath string,
 	display *displayactions.Dispatcher,
+	displayOptions ...DisplayOptions,
 ) *Server {
-	return newServerWithStore(
+	opts := DisplayOptions{Headless: true}
+	if len(displayOptions) > 0 {
+		opts = displayOptions[0]
+	}
+	server, err := newServerWithError(
 		cfg,
 		version,
 		messageSender,
@@ -235,10 +298,15 @@ func newServer(
 		configPath,
 		display,
 		nil,
+		opts,
 	)
+	if err != nil {
+		panic(err)
+	}
+	return server
 }
 
-func newServerWithStore(
+func newServerWithError(
 	cfg config.Config,
 	version string,
 	messageSender a2aclient.MessageSender,
@@ -250,7 +318,8 @@ func newServerWithStore(
 	configPath string,
 	display *displayactions.Dispatcher,
 	secretStore secretStore,
-) *Server {
+	displayOptions DisplayOptions,
+) (*Server, error) {
 	if messageSender == nil {
 		messageSender = a2aclient.NewJSONRPCClient()
 	}
@@ -461,9 +530,17 @@ func newServerWithStore(
 	broker := events.NewBroker(server.display, server.voiceDispatcher)
 	mux.Handle("/api/v1/events", broker)
 
+	displayHandler, err := displayOptions.handler()
+	if err != nil && !errors.Is(err, errDisplayDisabled) {
+		return nil, err
+	}
+	if displayHandler != nil {
+		mux.Handle("/", displayHandler)
+	}
+
 	handler := withCommonHeaders(withCORS(mux))
 	server.handler = RequestLogger(slog.Default() /*nolint:sloglint // use default global logger */)(handler)
-	return server
+	return server, nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
