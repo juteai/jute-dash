@@ -1276,6 +1276,42 @@ func TestProviderClosureBundleRejectsBenchmarkFixtureExpectationMismatch(t *test
 	}
 }
 
+func TestProviderClosureBundleRejectsBenchmarkFixtureMissingManifestExpectation(t *testing.T) {
+	expectedWake := true
+	wakeReport := voice.BenchmarkReport{
+		Kind:        "wake-word",
+		WakeResults: []voice.WakeBenchmarkResult{{FixtureID: "positive-wake"}},
+	}
+	wakeManifest := voice.BenchmarkFixtureSetManifest{
+		Fixtures: []voice.BenchmarkFixtureManifest{{
+			ID:         "positive-wake",
+			ExpectWake: &expectedWake,
+		}},
+	}
+	transcriptReport := voice.BenchmarkReport{
+		Kind:       "stt",
+		STTResults: []voice.STTBenchmarkResult{{FixtureID: "short-command"}},
+	}
+	transcriptManifest := voice.BenchmarkFixtureSetManifest{
+		Fixtures: []voice.BenchmarkFixtureManifest{{
+			ID:                 "short-command",
+			ExpectedTranscript: "turn on the lights",
+		}},
+	}
+
+	wakeProblems := validateClosureBundleReportFixtures(wakeReport, wakeManifest)
+	transcriptProblems := validateClosureBundleReportFixtures(transcriptReport, transcriptManifest)
+
+	if len(wakeProblems) != 1 ||
+		wakeProblems[0] != "benchmark fixture positive-wake expectedWake does not match fixtureManifest" {
+		t.Fatalf("expected missing wake expectation problem, got %v", wakeProblems)
+	}
+	if len(transcriptProblems) != 1 ||
+		transcriptProblems[0] != "benchmark fixture short-command expectedTranscript does not match fixtureManifest" {
+		t.Fatalf("expected missing transcript expectation problem, got %v", transcriptProblems)
+	}
+}
+
 func TestProviderClosureBundleRejectsCloudOrCredentialManifest(t *testing.T) {
 	raw := json.RawMessage(`{
 		"id": "org.mutablelogic.go-whisper.cloud",

@@ -1070,7 +1070,8 @@ func validateClosureBundleReportFixtures(
 				)
 				continue
 			}
-			if fixture.ExpectWake != nil && result.ExpectedWake != nil && *fixture.ExpectWake != *result.ExpectedWake {
+			if fixture.ExpectWake != nil &&
+				(result.ExpectedWake == nil || *fixture.ExpectWake != *result.ExpectedWake) {
 				problems = append(
 					problems,
 					fmt.Sprintf("benchmark fixture %s expectedWake does not match fixtureManifest", fixtureID),
@@ -1090,7 +1091,6 @@ func validateClosureBundleReportFixtures(
 				continue
 			}
 			if strings.TrimSpace(fixture.ExpectedTranscript) != "" &&
-				strings.TrimSpace(result.ExpectedTranscript) != "" &&
 				strings.TrimSpace(fixture.ExpectedTranscript) != strings.TrimSpace(result.ExpectedTranscript) {
 				problems = append(
 					problems,
