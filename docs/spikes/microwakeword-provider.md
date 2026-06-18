@@ -405,6 +405,32 @@ go1-25-11`, target `linux-native-upstream-make-bazelisk-python312`, status `fail
 Bazelisk or pinned Bazel plus a Python 3.12 hermetic setting, and still needs a successful
 TensorFlow Lite C build before pmdroid can load a model.
 
+Retrying through a wrapper that inserts `--jobs=1 --local_ram_resources=2048` after the Bazel
+`build` subcommand avoided the Bazel server socket failure and compiled much further:
+
+```sh
+make INSTALL_PREFIX=/tmp/jute-microwakeword-linux-lowjobs-wrap/install \
+  BAZEL=/tmp/bin/bazelwrap
+```
+
+The microfrontend target still built successfully, but TensorFlow Lite C failed compiling an XNNPACK
+ARM64 FP16 pooling kernel with GCC 14:
+
+```text
+external/XNNPACK/src/f16-pavgpool/f16-pavgpool-9x-minmax-neonfp16arith-c8.c:31:71:
+error: passing argument 1 of 'vld1q_dup_u16' from incompatible pointer type
+expected 'const uint16_t *' but argument is of type 'const xnn_float16 *'
+Target //tensorflow/lite/c:tensorflowlite_c failed to build
+make: *** [Makefile:67: build] Error 1
+```
+
+The public build evidence generated inside the same container records runtime `linux/arm64
+go1-25-11`, target `linux-native-upstream-make-bazelisk-python312-jobs1`, status `failed`, exit
+code `1`, and error code `xnnpack-neonfp16arith-gcc14-pointer-type`. This moves the Linux recipe's
+next blocker from resource limits to C toolchain compatibility: pinning Bazel and Python is not
+enough; the provider pack must also pin or patch a TensorFlow/XNNPACK/GCC combination that builds
+on ARM64.
+
 ### Raspberry Pi
 
 Raspberry Pi support is unproven for Jute. It needs a native ARM64 build or cross-compiled provider artifact, plus a real latency and CPU benchmark on representative hardware.
