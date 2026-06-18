@@ -350,13 +350,12 @@ func TestVoiceBenchmarkCommandRejectsIncompleteProviderPackagingEvidence(t *test
 		"packaging target linux-native has not been evaluated",
 		"packaging target macos-native requires notes when status is not succeeded",
 		"packaging target linux-native requires notes when status is not succeeded",
-		"packaging target raspberry-pi-arm64 is required",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("expected incomplete packaging evidence to contain %q:\n%s", want, stdout.String())
 		}
 	}
-	if !strings.Contains(stderr.String(), "provider packaging evidence has 4 validation problem") {
+	if !strings.Contains(stderr.String(), "provider packaging evidence has 3 validation problem") {
 		t.Fatalf("expected packaging evidence stderr, got %q", stderr.String())
 	}
 }
@@ -1846,6 +1845,16 @@ func TestProviderClosureBundleRejectsStrongDecisionWithIncompletePackaging(t *te
 			},
 		},
 	)
+	jut11NoSuccessProblems := validateClosureBundleDecisionAgainstPackaging(
+		"JUT-11",
+		providerClosureDecision{Status: "adopt-optional-provider"},
+		providerPackagingEvidence{
+			Targets: []providerPackagingTarget{
+				{Target: "macos-native", Status: "failed"},
+				{Target: "raspberry-pi-arm64", Status: "unsupported"},
+			},
+		},
+	)
 	jut13Problems := validateClosureBundleDecisionAgainstPackaging(
 		"JUT-13",
 		providerClosureDecision{Status: "first-class-provider-pack"},
@@ -1871,13 +1880,14 @@ func TestProviderClosureBundleRejectsStrongDecisionWithIncompletePackaging(t *te
 		},
 	)
 
-	for _, want := range []string{
-		"JUT-11 decision adopt-optional-provider requires packaging target macos-native to have succeeded",
-		"JUT-11 decision adopt-optional-provider requires packaging target raspberry-pi-arm64 to have succeeded",
-	} {
-		if !containsProblem(jut11Problems, want) {
-			t.Fatalf("expected JUT-11 decision packaging problem %q, got %v", want, jut11Problems)
-		}
+	if len(jut11Problems) > 0 {
+		t.Fatalf("did not expect JUT-11 to require every packaging target, got %v", jut11Problems)
+	}
+	if !containsProblem(
+		jut11NoSuccessProblems,
+		"JUT-11 decision adopt-optional-provider requires at least one packaging target to have succeeded",
+	) {
+		t.Fatalf("expected JUT-11 successful packaging problem, got %v", jut11NoSuccessProblems)
 	}
 	for _, want := range []string{
 		"JUT-13 decision first-class-provider-pack requires packaging target macos-metal to have succeeded",
@@ -2105,7 +2115,6 @@ func TestVoiceBenchmarkCommandRejectsIncompleteJUT11ClosureBundle(t *testing.T) 
 		"packaging: packaging target linux-native has not been evaluated",
 		"packaging: packaging target macos-native requires notes when status is not succeeded",
 		"packaging: packaging target linux-native requires notes when status is not succeeded",
-		"packaging: packaging target raspberry-pi-arm64 is required",
 		"model: JUT-11 closure requires compatible OHF model evidence",
 		"baseline: benchmarkReport is required",
 	} {

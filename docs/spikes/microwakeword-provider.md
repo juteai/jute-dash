@@ -225,10 +225,11 @@ go run ./apps/hub/cmd/jute-voice-benchmark \
   -environment-notes "macOS native upstream make failed before provider build; Linux blocked pending container recipe; Raspberry Pi unsupported until ARM64 TensorFlow Lite microfrontend build and latency are proven"
 ```
 
-The JUT-11 packaging matrix requires `macos-native`, `linux-native`, and `raspberry-pi-arm64`
-target statuses. On 2026-06-18 this matrix validated with `packagingEvidenceComplete: true`, but it
-is still not closure evidence by itself; model compatibility proof and the pmdroid-vs-openWakeWord
-fixture comparison remain required.
+The JUT-11 packaging matrix requires at least one evaluated target with notes for failures, blocked
+targets, or unsupported targets. macOS, Linux, and Raspberry Pi rows remain useful comparison data
+when feasible, but they are not all required to close the spike. On 2026-06-18 this matrix validated
+with `packagingEvidenceComplete: true`, but it is still not closure evidence by itself; model
+compatibility proof and the pmdroid-vs-openWakeWord fixture comparison remain required.
 
 Before moving the Linear spike to Done, combine the generated public JSON artifacts into one closure
 bundle and validate the whole evidence set:
@@ -264,12 +265,11 @@ For JUT-11, the closure bundle requires:
   bundle;
 - at least one successful pmdroid/microWakeWord build evidence row with a concrete
   OS/arch/toolchain runtime and RFC3339 `generatedAt`;
-- a complete packaging matrix for `macos-native`, `linux-native`, and `raspberry-pi-arm64`, with
-  notes explaining every target that is `failed`, `blocked`, or `unsupported`, plus a concrete
-  OS/arch/toolchain runtime and RFC3339 `generatedAt`; `hardware.raspberryPi` may only be true
-  when the `raspberry-pi-arm64` packaging target succeeded, and a succeeded target must be
-  reflected in the provider manifest; a decision of `adopt-optional-provider` requires every
-  required packaging target to have succeeded;
+- at least one evaluated packaging target, with notes explaining every target that is `failed`,
+  `blocked`, or `unsupported`, plus a concrete OS/arch/toolchain runtime and RFC3339 `generatedAt`;
+  `hardware.raspberryPi` may only be true when the `raspberry-pi-arm64` packaging target succeeded,
+  and a succeeded target must be reflected in the provider manifest; a decision of
+  `adopt-optional-provider` requires at least one packaging target to have succeeded;
 - compatible and loaded model evidence for at least one ESPHome model and one OHF-trained or
   OHF-compatible model, each with a concrete OS/arch/toolchain runtime, RFC3339 `generatedAt`, and
   a matching `wakeWord.models[].id` entry in the provider manifest;

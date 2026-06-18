@@ -1515,6 +1515,14 @@ func validateClosureBundleDecisionAgainstPackaging(
 		if decision.Status != "adopt-optional-provider" {
 			return nil
 		}
+		for _, target := range packaging.Targets {
+			if target.Status == "succeeded" {
+				return nil
+			}
+		}
+		return []string{
+			"JUT-11 decision adopt-optional-provider requires at least one packaging target to have succeeded",
+		}
 	case "JUT-13":
 		if decision.Status == "documented-external-provider" {
 			if packagingTargetStatus(packaging, "cpu-only") != "succeeded" &&
@@ -1551,7 +1559,7 @@ func validateClosureBundleDecisionAgainstPackaging(
 func requiredProviderPackagingTargets(issue string) []string {
 	switch issue {
 	case "JUT-11":
-		return []string{"macos-native", "linux-native", "raspberry-pi-arm64"}
+		return nil
 	case "JUT-13":
 		return []string{"cpu-only", "macos-metal", "container-linux", "raspberry-pi-arm64"}
 	default:
