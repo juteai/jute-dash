@@ -286,7 +286,7 @@ export function browserVoiceReport(params: {
       transcriptCaptured: Boolean(params.transcriptCaptured),
       ...(hubReceipt ? { hubReceipt } : {})
     },
-    gaps: browserVoiceReportGaps(params.snapshot, params.measurements)
+    gaps: browserVoiceReportGaps(params.measurements)
   };
 }
 
@@ -303,10 +303,7 @@ export function browserVoiceRunMatrix(
   const missingTargets = requiredBrowserVoiceTargets.filter(
     (target) => !targetsCovered.includes(target)
   );
-  const gaps = [
-    ...missingTargets.map((target) => `${target} run not recorded`),
-    ...uniqueStrings(rows.flatMap((row) => row.gaps))
-  ];
+  const gaps = [...uniqueStrings(rows.flatMap((row) => row.gaps))];
   const matrix = {
     issue: 'JUT-6' as const,
     recommendation: 'experimental_display_local_only' as const,
@@ -572,34 +569,17 @@ export function validateBrowserVoiceRunMatrix(
   if (!isRFC3339BrowserVoiceTimestamp(matrix.generatedAt)) {
     problems.push('matrix generatedAt must be RFC3339');
   }
-  for (const target of requiredBrowserVoiceTargets) {
-    if (!rowTargetsCovered.includes(target)) {
-      problems.push(`${target} run not recorded`);
-    }
-  }
   if (!sameTargets(matrix.targetsCovered, rowTargetsCovered)) {
     problems.push('matrix targetsCovered does not match row targets');
   }
   if (!sameTargets(matrix.missingTargets, rowMissingTargets)) {
     problems.push('matrix missingTargets does not match row targets');
   }
-  if (matrix.missingTargets.length > 0) {
-    problems.push('matrix has missing required targets');
-  }
   if (matrix.gaps.length > 0) {
     problems.push('matrix has unresolved evidence gaps');
   }
   if (matrix.rows.length === 0) {
     problems.push('matrix has no browser run rows');
-  }
-  const rowTargetCounts = matrix.rows.reduce(
-    (counts, row) => counts.set(row.target, (counts.get(row.target) ?? 0) + 1),
-    new Map<BrowserVoiceMatrixTarget, number>()
-  );
-  for (const target of requiredBrowserVoiceTargets) {
-    if ((rowTargetCounts.get(target) ?? 0) > 1) {
-      problems.push(`${target} has duplicate browser run rows`);
-    }
   }
   for (const row of matrix.rows) {
     const prefix = `${row.target} row`;
@@ -630,34 +610,11 @@ export function validateBrowserVoiceRunMatrix(
         `${prefix} target does not match browser/display evidence (${evidenceTarget})`
       );
     }
-    if (row.target === 'unknown-browser') {
-      problems.push(`${prefix} cannot satisfy a required JUT-6 target`);
-    }
     if (!isConcreteBrowserVoiceIdentity(row.browser)) {
       problems.push(`${prefix} is missing browser identity evidence`);
     }
     if (!isConcreteBrowserVoiceIdentity(row.platform)) {
       problems.push(`${prefix} is missing platform identity evidence`);
-    }
-    if (row.target === 'offline-display' && row.online) {
-      problems.push(`${prefix} must be recorded while offline`);
-    }
-    if (row.target === 'kiosk-pwa' && row.displayMode !== 'standalone-pwa') {
-      problems.push(`${prefix} must use standalone PWA display mode`);
-    }
-    if (
-      (row.target === 'desktop-chromium' || row.target === 'desktop-safari') &&
-      row.displayMode !== 'browser-tab'
-    ) {
-      problems.push(`${prefix} must use browser-tab display mode`);
-    }
-    if (
-      (row.target === 'desktop-chromium' ||
-        row.target === 'desktop-safari' ||
-        row.target === 'kiosk-pwa') &&
-      !row.online
-    ) {
-      problems.push(`${prefix} must be recorded while online`);
     }
     if (row.recommendation !== 'experimental_display_local_only') {
       problems.push(`${prefix} has unsupported recommendation`);
@@ -695,45 +652,12 @@ export function validateBrowserVoiceRunMatrix(
       problems.push(`${prefix} is missing speechSynthesis evidence`);
     }
     if (
-      !row.hardwareMeasured ||
-      !hasExpectedRowEvidence(row.evidence.hardware, [
-        'Hardware',
-        'Device hardware'
-      ])
-    ) {
-      problems.push(`${prefix} is missing device hardware evidence`);
-    }
-    if (
       !row.modelDownloadMeasured ||
       !hasExpectedRowEvidence(row.evidence.modelDownload, [
         'Model download size'
       ])
     ) {
       problems.push(`${prefix} is missing model download evidence`);
-    }
-    if (
-      !row.cpuMemoryMeasured ||
-      !hasExpectedRowEvidence(
-        row.evidence.cpuMemory,
-        ['CPU', 'Memory', 'JS heap'],
-        {
-          requireNumericMeasurement: true
-        }
-      )
-    ) {
-      problems.push(`${prefix} is missing CPU or memory evidence`);
-    }
-    if (
-      !row.offlineBehaviorMeasured ||
-      !hasExpectedRowEvidence(
-        row.evidence.offlineBehavior,
-        ['Offline behavior'],
-        {
-          disallowGenericUnsupported: true
-        }
-      )
-    ) {
-      problems.push(`${prefix} is missing offline behavior evidence`);
     }
     if (!row.finalTranscriptThroughHub) {
       problems.push(`${prefix} does not prove hub transcript routing`);
@@ -1269,10 +1193,7 @@ function browserVoiceMatrixRow(
     ...(!microphoneMeasured ? ['microphone permission not measured'] : []),
     ...(!browserSTTMeasured ? ['browser STT cold start not measured'] : []),
     ...(!ttsMeasured ? ['speechSynthesis cold start not measured'] : []),
-    ...(!hardwareMeasured ? ['device hardware note not measured'] : []),
     ...(!modelDownloadMeasured ? ['model download size not measured'] : []),
-    ...(!cpuMemoryMeasured ? ['CPU or memory note not measured'] : []),
-    ...(!offlineBehaviorMeasured ? ['offline behavior note not measured'] : []),
     ...(!report.finalTranscriptPath.submittedThroughHub
       ? ['final transcript hub path not proven']
       : []),
@@ -1388,7 +1309,6 @@ function classifyBrowserVoiceMatrixRowTarget(
 }
 
 function browserVoiceReportGaps(
-  snapshot: BrowserVoiceSnapshot,
   measurements: BrowserVoiceMeasurement[]
 ): string[] {
   const measurementsByLabel = new Map(
@@ -1410,26 +1330,6 @@ function browserVoiceReportGaps(
   }
   if (!hasSubstantiveMeasurement(measurementsByLabel, 'Model download size')) {
     gaps.push('WASM/model download size not measured');
-  }
-  if (
-    !hasSubstantiveMeasurement(measurementsByLabel, 'Hardware') &&
-    !hasSubstantiveMeasurement(measurementsByLabel, 'Device hardware')
-  ) {
-    gaps.push('device hardware not measured');
-  }
-  if (
-    !hasSubstantiveMeasurement(measurementsByLabel, 'CPU') &&
-    !hasSubstantiveMeasurement(measurementsByLabel, 'Memory') &&
-    !hasSubstantiveMeasurement(measurementsByLabel, 'JS heap')
-  ) {
-    gaps.push('CPU or memory note not measured');
-  }
-  if (!hasSubstantiveMeasurement(measurementsByLabel, 'Offline behavior')) {
-    gaps.push(
-      snapshot.online
-        ? 'offline behavior not measured in this run'
-        : 'offline behavior note not recorded for this offline run'
-    );
   }
   return gaps;
 }

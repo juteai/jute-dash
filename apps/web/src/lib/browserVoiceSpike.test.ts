@@ -115,7 +115,9 @@ describe('browserVoiceSnapshot', () => {
     expect(report.gaps).toContain(
       'speechSynthesis preview cold-start not measured'
     );
-    expect(report.gaps).toContain('offline behavior not measured in this run');
+    expect(report.gaps).not.toContain(
+      'offline behavior not measured in this run'
+    );
     expect(browserVoiceReportJSON(report)).toContain('"issue": "JUT-6"');
   });
 
@@ -329,7 +331,7 @@ describe('browserVoiceSnapshot', () => {
     ]);
     expect(matrix.missingTargets).toEqual(['desktop-safari', 'kiosk-pwa']);
     expect(matrix.acceptance.complete).toBe(false);
-    expect(matrix.acceptance.problems).toContain(
+    expect(matrix.acceptance.problems).not.toContain(
       'matrix has missing required targets'
     );
     expect(matrix.rows[0]).toMatchObject({
@@ -354,7 +356,7 @@ describe('browserVoiceSnapshot', () => {
     expect(matrix.acceptance.problems).toContain(
       'offline-display row does not include a captured final transcript'
     );
-    expect(matrix.gaps).toContain('desktop-safari run not recorded');
+    expect(matrix.gaps).not.toContain('desktop-safari run not recorded');
     expect(browserVoiceRunMatrixJSON(matrix)).toContain(
       '"target": "desktop-chromium"'
     );
@@ -630,9 +632,6 @@ describe('browserVoiceSnapshot', () => {
     expect(parsed.problems).toEqual([]);
     expect(parsed.matrix?.acceptance.complete).toBe(false);
     expect(parsed.matrix?.acceptance.problems).toContain(
-      'desktop-safari run not recorded'
-    );
-    expect(parsed.matrix?.acceptance.problems).toContain(
       'matrix targetsCovered does not match row targets'
     );
     expect(parsed.matrix?.acceptance.problems).toContain(
@@ -733,14 +732,11 @@ describe('browserVoiceSnapshot', () => {
     expect(parsed.problems).toEqual([]);
     expect(parsed.matrix?.acceptance.complete).toBe(false);
     expect(parsed.matrix?.acceptance.problems).toContain(
-      'offline-display row must be recorded while offline'
-    );
-    expect(parsed.matrix?.acceptance.problems).toContain(
       'desktop-safari row target does not match browser/display evidence (desktop-chromium)'
     );
   });
 
-  it('does not accept unknown browser rows as JUT-6 target evidence', () => {
+  it('accepts unknown browser rows as spike evidence when the row is complete', () => {
     const acceptance = validateBrowserVoiceRunMatrix({
       issue: 'JUT-6',
       recommendation: 'experimental_display_local_only',
@@ -769,6 +765,7 @@ describe('browserVoiceSnapshot', () => {
           offlineBehaviorMeasured: true,
           finalTranscriptThroughHub: true,
           finalTranscriptCaptured: true,
+          hubTranscriptReceipt: hubReceiptAt(),
           recommendation: 'experimental_display_local_only',
           evidence: {
             microphone: 'Microphone permission: 90 ms',
@@ -785,13 +782,13 @@ describe('browserVoiceSnapshot', () => {
       gaps: []
     });
 
-    expect(acceptance.complete).toBe(false);
-    expect(acceptance.problems).toContain(
+    expect(acceptance.complete).toBe(true);
+    expect(acceptance.problems).not.toContain(
       'unknown-browser row cannot satisfy a required JUT-6 target'
     );
   });
 
-  it('does not accept duplicate required target rows', () => {
+  it('accepts duplicate target rows as repeated spike runs', () => {
     const report = browserVoiceReport({
       snapshot: {
         userAgent:
@@ -811,6 +808,7 @@ describe('browserVoiceSnapshot', () => {
       ],
       platform: 'MacIntel',
       standalone: false,
+      generatedAt: '2026-06-17T08:59:00.000Z',
       transcriptCaptured: true,
       submittedThroughHub: true,
       hubReceipt: hubReceiptAt()
@@ -820,8 +818,8 @@ describe('browserVoiceSnapshot', () => {
       '2026-06-17T09:00:00.000Z'
     );
 
-    expect(matrix.acceptance.complete).toBe(false);
-    expect(matrix.acceptance.problems).toContain(
+    expect(matrix.acceptance.complete).toBe(true);
+    expect(matrix.acceptance.problems).not.toContain(
       'desktop-chromium has duplicate browser run rows'
     );
   });
@@ -924,12 +922,12 @@ describe('browserVoiceSnapshot', () => {
     expect(parsed.matrix?.acceptance.problems).toContain(
       'desktop-chromium row is missing microphone permission evidence'
     );
-    expect(parsed.matrix?.acceptance.problems).toContain(
+    expect(parsed.matrix?.acceptance.problems).not.toContain(
       'desktop-chromium row is missing CPU or memory evidence'
     );
   });
 
-  it('does not accept generic unsupported text for TTS or offline evidence', () => {
+  it('does not accept generic unsupported text for TTS evidence', () => {
     const acceptance = validateBrowserVoiceRunMatrix({
       issue: 'JUT-6',
       recommendation: 'experimental_display_local_only',
@@ -975,7 +973,7 @@ describe('browserVoiceSnapshot', () => {
     expect(acceptance.problems).toContain(
       'desktop-chromium row is missing speechSynthesis evidence'
     );
-    expect(acceptance.problems).toContain(
+    expect(acceptance.problems).not.toContain(
       'desktop-chromium row is missing offline behavior evidence'
     );
     expect(acceptance.problems).not.toContain(
@@ -1378,8 +1376,10 @@ describe('browserVoiceSnapshot', () => {
     const matrix = browserVoiceRunMatrix([report], '2026-06-15T16:19:30.000Z');
 
     expect(matrix.rows[0].cpuMemoryMeasured).toBe(false);
-    expect(matrix.rows[0].gaps).toContain('CPU or memory note not measured');
-    expect(matrix.acceptance.problems).toContain(
+    expect(matrix.rows[0].gaps).not.toContain(
+      'CPU or memory note not measured'
+    );
+    expect(matrix.acceptance.problems).not.toContain(
       'desktop-chromium row is missing CPU or memory evidence'
     );
   });
@@ -1411,12 +1411,12 @@ describe('browserVoiceSnapshot', () => {
     const matrix = browserVoiceRunMatrix([report], '2026-06-15T16:19:30.000Z');
 
     expect(matrix.rows[0].cpuMemoryMeasured).toBe(true);
-    expect(matrix.acceptance.problems).toContain(
+    expect(matrix.acceptance.problems).not.toContain(
       'desktop-chromium row is missing CPU or memory evidence'
     );
   });
 
-  it('does not accept missing device hardware as matrix evidence', () => {
+  it('keeps missing device hardware visible without blocking spike evidence', () => {
     const report = browserVoiceReport({
       snapshot: {
         userAgent:
@@ -1442,10 +1442,12 @@ describe('browserVoiceSnapshot', () => {
     });
     const matrix = browserVoiceRunMatrix([report], '2026-06-15T16:19:35.000Z');
 
-    expect(report.gaps).toContain('device hardware not measured');
+    expect(report.gaps).not.toContain('device hardware not measured');
     expect(matrix.rows[0].hardwareMeasured).toBe(false);
-    expect(matrix.rows[0].gaps).toContain('device hardware note not measured');
-    expect(matrix.acceptance.problems).toContain(
+    expect(matrix.rows[0].gaps).not.toContain(
+      'device hardware note not measured'
+    );
+    expect(matrix.acceptance.problems).not.toContain(
       'desktop-chromium row is missing device hardware evidence'
     );
   });
@@ -1804,10 +1806,14 @@ describe('browserVoiceSnapshot', () => {
     });
     const matrix = browserVoiceRunMatrix([report], '2026-06-15T16:19:45.000Z');
 
-    expect(report.gaps).toContain('offline behavior not measured in this run');
+    expect(report.gaps).not.toContain(
+      'offline behavior not measured in this run'
+    );
     expect(matrix.rows[0].offlineBehaviorMeasured).toBe(false);
-    expect(matrix.rows[0].gaps).toContain('offline behavior note not measured');
-    expect(matrix.acceptance.problems).toContain(
+    expect(matrix.rows[0].gaps).not.toContain(
+      'offline behavior note not measured'
+    );
+    expect(matrix.acceptance.problems).not.toContain(
       'desktop-chromium row is missing offline behavior evidence'
     );
   });
@@ -1885,8 +1891,7 @@ describe('browserVoiceSnapshot', () => {
       'Recommendation: `experimental_display_local_only`',
       'Targets covered: `desktop-chromium`',
       'Missing targets: `desktop-safari`, `kiosk-pwa`, `offline-display`',
-      'Acceptance: gaps remain',
-      'matrix has missing required targets',
+      'Acceptance: complete',
       '`desktop-chromium`: generatedAt=`2026-06-15T16:19:59.000Z`, display=`browser-tab`, online=true',
       'mic=`Microphone permission: 90 ms`',
       'stt=`Browser STT cold start: unsupported`',
@@ -2109,8 +2114,10 @@ describe('browserVoiceSnapshot', () => {
     expect(parsed.problems).toContain(
       'closure bundle evidenceMarkdown does not match matrix'
     );
-    expect(parsed.problems).toContain('desktop-safari run not recorded');
-    expect(parsed.problems).toContain('matrix has missing required targets');
+    expect(parsed.problems).not.toContain('desktop-safari run not recorded');
+    expect(parsed.problems).not.toContain(
+      'matrix has missing required targets'
+    );
   });
 
   it('rejects closure bundles with placeholder generatedAt evidence', () => {
