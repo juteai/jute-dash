@@ -111,7 +111,7 @@ Use this shape only after command providers are enabled for the target household
   "transport": {
     "type": "command",
     "command": "/usr/local/bin/gowhisper",
-    "args": ["transcribe", "--format", "json", "--model", "{modelId}", "{inputPath}"]
+    "args": ["transcribe", "--format", "json", "--model", "{modelId}", "--language", "{language}", "{inputPath}"]
   },
   "capabilities": {
     "streaming": false,
@@ -142,7 +142,7 @@ Use this shape only after command providers are enabled for the target household
 }
 ```
 
-The fixture validator requires the command path to be absolute and the arguments to remain an explicit argv array with a `{inputPath}` placeholder for the temporary WAV path. The adapter must avoid shell interpolation, write temporary audio files under a Jute-controlled runtime directory, and remove those files after transcription.
+The fixture validator requires the command path to be absolute and the arguments to remain an explicit argv array with a `{inputPath}` placeholder for the temporary WAV path. The adapter also substitutes `{modelId}` and `{language}` from the selected device-profile settings. It must avoid shell interpolation, write temporary audio files under a Jute-controlled runtime directory, and remove those files after transcription.
 
 ## Benchmark Plan
 
@@ -268,7 +268,7 @@ go run ./apps/hub/cmd/jute-voice-benchmark \
   -fixture-manifest stt-fixtures.json \
   -fixture-dir . \
   -stt-command /absolute/path/to/go-whisper-command \
-  -stt-command-args-json '["transcribe", "--model", "tiny.en", "--input", "{inputPath}", "--json"]' \
+  -stt-command-args-json '["transcribe", "--model", "tiny.en", "--language", "en-GB", "--input", "{inputPath}", "--json"]' \
   -provider-id go-whisper-command \
   -model-id tiny.en \
   -model-hash sha256:replace-with-model-hash \
@@ -353,11 +353,11 @@ Because this path may involve native whisper.cpp and ffmpeg dependencies, distri
 
 ### Native CLI Build Attempt
 
-Checked on 2026-06-17 from the Jute worktree without modifying hub dependencies:
+Checked on 2026-06-18 from the Jute worktree without modifying hub dependencies:
 
 ```sh
-env GOBIN=/private/tmp/jute-go-whisper-bin \
-  GOMODCACHE=/private/tmp/jute-go-whisper-modcache \
+env GOBIN=/tmp/jute-go-whisper-bin \
+  GOMODCACHE=/tmp/jute-go-whisper-modcache \
   GOCACHE=/tmp/jute-dash-go-build-cache \
   go install github.com/mutablelogic/go-whisper/cmd/gowhisper@v0.0.39
 ```
