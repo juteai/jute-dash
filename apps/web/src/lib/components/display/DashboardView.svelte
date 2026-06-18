@@ -1,24 +1,40 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import {
+    ArrowLeft,
+    ArrowRight,
+    Copy,
     MessageCircle,
     Mic,
     MicOff,
     Pencil,
+    Plus,
     RotateCcw,
     Settings,
+    Trash2,
     X
   } from 'lucide-svelte';
   import DashboardGrid from '$lib/components/display/DashboardGrid.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
+  import {
+    activeDashboardScreen,
+    canAddCatalogWidget,
+    ensureLayoutScreens,
+    ensureLayoutVariants,
+    layoutForScreen,
+    selectLayoutVariant
+  } from '$lib/layout-editor';
   import { layoutStore } from '$lib/layoutStore';
   import type {
     Agent,
     AgentAvailability,
     ChatMessage,
     DashboardData,
+    UserFacingIssue,
     VoiceStatus,
-    WidgetCatalogItem
+    WidgetCatalogItem,
+    WidgetInstance
   } from '$lib/types';
 
   export let data: DashboardData;
@@ -35,14 +51,40 @@
   export let onOpenChat: () => void = () => {};
   export let onManageAgents: () => void = () => {};
   export let onToggleVoiceMute: () => Promise<void> | void = () => {};
-  export let onEnterEdit: () => void = () => {};
+  export let onEnterEdit: (activeVariantId: string) => void = () => {};
   export let onSaveEdit: () => void = () => {};
   export let onCancelEdit: () => void = () => {};
   export let onResetLayout: () => void = () => {};
+  export let onScreenChange: (
+    layout: DashboardData['layout']
+  ) => void = () => {};
+  export let onIssueAction: (
+    issue: UserFacingIssue,
+    widget: WidgetInstance
+  ) => void = () => {};
 
   let showCatalog = false;
+  let viewportWidth = 1280;
+  let viewportHeight = 800;
+  let pointerStart:
+    | {
+        id: number;
+        x: number;
+        y: number;
+        locked: 'horizontal' | 'vertical' | '';
+      }
+    | undefined;
 
-  $: headlessWidgets = data.layout.widgets.filter(
+  $: layoutWithScreens = ensureLayoutScreens(data.layout);
+  $: activeScreen = activeDashboardScreen(layoutWithScreens);
+  $: activeScreenLayout = layoutForScreen(layoutWithScreens, activeScreen.id);
+  $: gridData = { ...data, layout: activeScreenLayout };
+  $: screens = layoutWithScreens.screens ?? [];
+  $: activeScreenIndex = Math.max(
+    0,
+    screens.findIndex((screen) => screen.id === activeScreen.id)
+  );
+  $: headlessWidgets = activeScreen.widgets.filter(
     (widget) => widget.visible && widget.mode === 'headless'
   );
 
@@ -53,14 +95,34 @@
       ? 'Voice muted'
       : 'Wake listening'
     : 'Voice not configured';
+  $: layoutWithVariants = ensureLayoutVariants(activeScreenLayout);
+  $: activeVariant = selectLayoutVariant(
+    layoutWithVariants,
+    viewportWidth,
+    viewportHeight,
+    $layoutStore.activeVariantId
+  );
+  $: if (
+    editMode &&
+    activeVariant &&
+    $layoutStore.activeVariantId !== activeVariant.id
+  ) {
+    layoutStore.setActiveVariant(activeVariant.id);
+  }
+
+  onMount(() => {
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
+  });
+
+  function updateViewport() {
+    viewportWidth = window.innerWidth;
+    viewportHeight = window.innerHeight;
+  }
 
   function canAddWidget(item: WidgetCatalogItem) {
-    return (
-      item.allowMultiple ||
-      !data.layout.widgets.some(
-        (widget) => widget.kind === item.kind && widget.visible
-      )
-    );
+    return canAddCatalogWidget(layoutWithScreens, item);
   }
 
   function addWidget(kind: string, mode: 'ui' | 'headless' = 'ui') {
@@ -70,9 +132,88 @@
     }
     showCatalog = false;
   }
+
+  function changeScreen(screenId: string) {
+    if (!screenId || screenId === activeScreen.id) return;
+    void layoutStore.setActiveScreen(screenId, fetch, (saved) => {
+      data = { ...data, layout: saved };
+      onScreenChange(saved);
+    });
+  }
+
+  function changeScreenBy(delta: -1 | 1) {
+    if (editMode || screens.length <= 1) return;
+    const next = screens[activeScreenIndex + delta];
+    if (next) changeScreen(next.id);
+  }
+
+  function isSwipeIgnored(target: EventTarget | null) {
+    const el = target as HTMLElement | null;
+    return Boolean(
+      el?.closest(
+        'button, a, input, textarea, select, [role="button"], [data-no-dashboard-swipe], .widget-frame-handle'
+      )
+    );
+  }
+
+  function startSwipe(event: PointerEvent) {
+    if (editMode || screens.length <= 1 || isSwipeIgnored(event.target)) {
+      return;
+    }
+    pointerStart = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      locked: ''
+    };
+  }
+
+  function moveSwipe(event: PointerEvent) {
+    if (!pointerStart || pointerStart.id !== event.pointerId) return;
+    const dx = event.clientX - pointerStart.x;
+    const dy = event.clientY - pointerStart.y;
+    if (!pointerStart.locked && Math.hypot(dx, dy) > 12) {
+      pointerStart.locked =
+        Math.abs(dx) > Math.abs(dy) * 1.4 ? 'horizontal' : 'vertical';
+    }
+    if (pointerStart.locked === 'horizontal') {
+      event.preventDefault();
+    }
+  }
+
+  function endSwipe(event: PointerEvent) {
+    if (!pointerStart || pointerStart.id !== event.pointerId) return;
+    const dx = event.clientX - pointerStart.x;
+    if (pointerStart.locked === 'horizontal' && Math.abs(dx) > 72) {
+      changeScreenBy(dx < 0 ? 1 : -1);
+    }
+    pointerStart = undefined;
+  }
+
+  function renameScreen() {
+    const label = window.prompt('Screen name', activeScreen.label);
+    if (label !== null) {
+      layoutStore.renameScreen(activeScreen.id, label);
+    }
+  }
+
+  function removeScreen() {
+    if (screens.length <= 1) return;
+    if (window.confirm(`Delete ${activeScreen.label}?`)) {
+      layoutStore.removeScreen(activeScreen.id);
+    }
+  }
 </script>
 
-<section class="dashboard-view" aria-label="Jute dashboard">
+<section
+  class="dashboard-view"
+  class:dashboard-view--screen-dots={screens.length > 1 && !editMode}
+  aria-label="Jute dashboard"
+  on:pointerdown={startSwipe}
+  on:pointermove={moveSwipe}
+  on:pointerup={endSwipe}
+  on:pointercancel={() => (pointerStart = undefined)}
+>
   <header class="dashboard-header dashboard-header--minimal">
     <div class="dashboard-actions">
       {#if editMode}
@@ -103,7 +244,7 @@
         <IconButton
           label="Edit dashboard"
           variant="outline"
-          on:click={onEnterEdit}
+          on:click={() => onEnterEdit(activeVariant.id)}
         >
           <Pencil size={20} />
         </IconButton>
@@ -132,6 +273,111 @@
           {/if}
         </span>
       </div>
+      {#if activeVariant}
+        <div class="layout-variant-controls" aria-label="Layout size">
+          <select
+            aria-label="Dashboard screen"
+            value={activeScreen.id}
+            on:change={(event) =>
+              layoutStore.setActiveScreen(
+                (event.currentTarget as HTMLSelectElement).value
+              )}
+          >
+            {#each screens as screen (screen.id)}
+              <option value={screen.id}>{screen.label}</option>
+            {/each}
+          </select>
+          <IconButton
+            label="Move screen left"
+            variant="ghost"
+            on:click={() => layoutStore.reorderScreen(activeScreen.id, -1)}
+          >
+            <ArrowLeft size={17} />
+          </IconButton>
+          <IconButton
+            label="Move screen right"
+            variant="ghost"
+            on:click={() => layoutStore.reorderScreen(activeScreen.id, 1)}
+          >
+            <ArrowRight size={17} />
+          </IconButton>
+          <IconButton
+            label="Add screen"
+            variant="ghost"
+            on:click={layoutStore.addScreen}
+          >
+            <Plus size={17} />
+          </IconButton>
+          <IconButton
+            label="Rename screen"
+            variant="ghost"
+            on:click={renameScreen}
+          >
+            <Pencil size={17} />
+          </IconButton>
+          <IconButton
+            label="Duplicate screen"
+            variant="ghost"
+            on:click={() => layoutStore.duplicateScreen(activeScreen.id)}
+          >
+            <Copy size={17} />
+          </IconButton>
+          <IconButton
+            label="Delete screen"
+            variant="ghost"
+            disabled={screens.length <= 1}
+            on:click={removeScreen}
+          >
+            <Trash2 size={17} />
+          </IconButton>
+          <div
+            class="layout-variant-tabs"
+            role="tablist"
+            aria-label="Layout variants"
+          >
+            {#each layoutWithVariants.variants ?? [] as variant (variant.id)}
+              <button
+                type="button"
+                class:layout-variant-tab--active={variant.id ===
+                  activeVariant.id}
+                role="tab"
+                aria-selected={variant.id === activeVariant.id}
+                on:click={() => layoutStore.setActiveVariant(variant.id)}
+              >
+                {variant.label}
+              </button>
+            {/each}
+          </div>
+          <label>
+            <span>Columns</span>
+            <input
+              type="number"
+              min="1"
+              max="24"
+              value={activeVariant.columns}
+              on:change={(event) =>
+                layoutStore.setVariantGridSize(
+                  Number((event.currentTarget as HTMLInputElement).value),
+                  activeVariant.rows
+                )}
+            />
+          </label>
+          <label>
+            <span>Rows</span>
+            <input
+              type="number"
+              min="1"
+              max="24"
+              value={activeVariant.rows}
+              on:change={(event) =>
+                layoutStore.setVariantGridSize(
+                  activeVariant.columns,
+                  Number((event.currentTarget as HTMLInputElement).value)
+                )}
+            />
+          </label>
+        </div>
+      {/if}
       <div class="edit-toolbar-actions">
         <Button
           size="sm"
@@ -235,18 +481,90 @@
   {/if}
 
   <DashboardGrid
-    {data}
+    data={gridData}
     {editMode}
     {messages}
     {stale}
     {selectedAgent}
     {selectedAvailability}
     {focusedWidgetId}
+    activeVariantId={$layoutStore.activeVariantId}
     {onOpenChat}
+    {onIssueAction}
   />
+
+  {#if screens.length > 1 && !editMode}
+    <nav class="screen-dots" aria-label="Dashboard screens">
+      {#each screens as screen, index (screen.id)}
+        <button
+          type="button"
+          class:screen-dot--active={screen.id === activeScreen.id}
+          aria-label={`Show ${screen.label}`}
+          aria-current={screen.id === activeScreen.id ? 'page' : undefined}
+          on:click={() => changeScreen(screen.id)}
+        >
+          <span>{index + 1}</span>
+        </button>
+      {/each}
+    </nav>
+  {/if}
 </section>
 
 <style>
+  .layout-variant-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .layout-variant-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.16));
+    border-radius: 8px;
+    background: var(--surface, rgba(255, 255, 255, 0.04));
+  }
+  .layout-variant-tabs button {
+    min-height: 32px;
+    border: none;
+    border-radius: 6px;
+    padding: 0 9px;
+    background: transparent;
+    color: var(--foreground, inherit);
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .layout-variant-tabs button.layout-variant-tab--active {
+    background: var(--foreground, #fff);
+    color: var(--background, #000);
+  }
+  .layout-variant-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    opacity: 0.88;
+  }
+  .layout-variant-controls input {
+    width: 56px;
+    min-height: 34px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.16));
+    border-radius: 7px;
+    background: var(--surface, rgba(255, 255, 255, 0.04));
+    color: var(--foreground, inherit);
+    padding: 0 8px;
+  }
+  .layout-variant-controls select {
+    min-height: 34px;
+    max-width: 160px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.16));
+    border-radius: 7px;
+    background: var(--surface, rgba(255, 255, 255, 0.04));
+    color: var(--foreground, inherit);
+    padding: 0 8px;
+  }
   .widget-catalog-actions {
     display: flex;
     gap: 8px;
@@ -304,5 +622,40 @@
   }
   .dashboard-header--minimal {
     justify-content: flex-end;
+  }
+  .screen-dots {
+    align-self: center;
+    flex: 0 0 auto;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+    border-radius: 999px;
+    background: var(--surface, rgba(0, 0, 0, 0.36));
+    backdrop-filter: blur(12px);
+  }
+  .screen-dots button {
+    position: relative;
+    width: 12px;
+    height: 12px;
+    padding: 0;
+    border: 1px solid var(--foreground, currentColor);
+    border-radius: 999px;
+    background: transparent;
+    opacity: 0.46;
+    cursor: pointer;
+  }
+  .screen-dots button.screen-dot--active {
+    background: var(--foreground, currentColor);
+    opacity: 1;
+  }
+  .screen-dots span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
   }
 </style>

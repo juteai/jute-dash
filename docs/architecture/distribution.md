@@ -49,16 +49,19 @@ Raspberry Pi support targets 64-bit Raspberry Pi OS first.
 
 ### Local Development
 
-Run hub and display separately for fast iteration:
+Run the local stack for fast iteration:
 
 ```sh
-go run ./cmd/juted -config examples/config/local/config.yaml
-cd apps/web && npm run dev
+cd examples/config/local
+make run
 ```
+
+The local stack serves the development display at `https://localhost:5173` for browser APIs that require a secure context. Spotify OAuth uses the hub callback `http://127.0.0.1:8787/api/v1/integrations/spotify/callback` because Spotify requires explicit loopback IP redirect URIs for local HTTP callbacks and rejects `localhost`. Plain HTTP remains available through `make run-http` from `examples/config/local` for non-OAuth UI testing.
 
 ### Hub Binary
 
-Run one binary that serves the hub API:
+Run one binary that serves the hub API. The display remains a separate client
+deployment and is not embedded in the hub binary:
 
 ```sh
 juted --config /etc/jute/config.yaml
@@ -68,15 +71,33 @@ Once SQLite persistence exists, `--config` bootstraps an empty runtime store. Ru
 
 ### Docker
 
-Run the hub in a container with config and data mounted:
+Run the hub API container with config and data mounted:
 
 ```sh
 docker run --rm \
   -p 8787:8787 \
-  -v "$PWD/config:/config" \
+  -e JUTE_HOME=/data \
+  -e JUTE_CONFIG=/config/config.yaml \
+  -e JUTE_LISTEN=0.0.0.0:8787 \
+  -v "$PWD/config/config.yaml:/config/config.yaml:ro" \
   -v "$PWD/data:/data" \
-  ghcr.io/jute-dev/jute-dash:latest
+  ghcr.io/juteai/jute-dash:latest
 ```
+
+For Compose-based installs, use `examples/compose/docker-compose.yml` as the
+starting point. The Compose example mounts `./config/config.yaml` into
+`/config/config.yaml` and persists runtime SQLite state under `/data`.
+
+Docker runtime defaults:
+
+- `JUTE_HOME=/data`
+- `JUTE_CONFIG=/config/config.yaml`
+- `JUTE_LISTEN=0.0.0.0:8787`
+
+The mounted YAML/JSON file is a bootstrap/import source. On first run, the hub
+creates `/data/jute.db`, applies the bootstrap config, and then treats SQLite as
+runtime truth. Secrets must remain environment variable references, not literal
+values in the mounted config.
 
 ### systemd
 

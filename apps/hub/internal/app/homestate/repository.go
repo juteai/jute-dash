@@ -49,25 +49,9 @@ func (r *Repository) HouseholdSettings(ctx context.Context) (HouseholdSettings, 
 		return HouseholdSettings{}, fmt.Errorf("load household settings: %w", err)
 	}
 
-	var bg map[string]any
-	if err := decodeJSONSetting(hs.DisplayBackgroundJSON, &bg); err != nil {
-		return HouseholdSettings{}, fmt.Errorf("decode display background: %w", err)
-	}
-	var chrome map[string]any
-	if err := decodeJSONSetting(hs.DisplayWidgetChromeJSON, &chrome); err != nil {
-		return HouseholdSettings{}, fmt.Errorf("decode display widget chrome: %w", err)
-	}
-
-	display := DisplaySettings{
-		Theme:        hs.DisplayTheme,
-		ColorMode:    hs.DisplayColorMode,
-		ThemeID:      hs.DisplayThemeID,
-		Density:      hs.DisplayDensity,
-		Motion:       hs.DisplayMotion,
-		Background:   bg,
-		WidgetChrome: chrome,
-		AccentColor:  hs.DisplayAccentColor,
-		IdleMode:     hs.DisplayIdleMode,
+	display, err := displayConfigFromHouseholdDB(hs)
+	if err != nil {
+		return HouseholdSettings{}, err
 	}
 
 	home := HomeConfig{
@@ -168,10 +152,9 @@ func (r *Repository) SaveTiles(ctx context.Context, tiles []TileConfig) ([]TileC
 }
 
 func (r *Repository) SaveHouseholdSettings(ctx context.Context, settings HouseholdSettings) (HouseholdSettings, error) {
-	var display DisplaySettings
-	displayBytes, err := json.Marshal(settings.Display)
-	if err == nil {
-		_ = json.Unmarshal(displayBytes, &display)
+	display, err := normalizeDisplayForSave(settings.Display)
+	if err != nil {
+		return HouseholdSettings{}, err
 	}
 
 	backgroundJSON, err := jsonString(display.Background)
@@ -216,6 +199,113 @@ func (r *Repository) SaveHouseholdSettings(ctx context.Context, settings Househo
 		r.onSave(ctx)
 	}
 	return r.HouseholdSettings(ctx)
+}
+
+func (r *Repository) AdapterConnections(ctx context.Context) ([]AdapterConnection, error) {
+	var rows []AdapterConnectionDB
+	if err := r.db.WithContext(ctx).Order("kind, name, id").Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("load adapter connections: %w", err)
+	}
+	connections := make([]AdapterConnection, 0, len(rows))
+	for _, row := range rows {
+		conn, err := adapterConnectionFromDB(row)
+		if err != nil {
+			return nil, err
+		}
+		connections = append(connections, conn)
+	}
+	return connections, nil
+}
+
+func (r *Repository) AdapterConnection(ctx context.Context, id string) (AdapterConnection, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return AdapterConnection{}, fmt.Errorf("%w: adapter connection id is required", ErrInvalidSettings)
+	}
+	var row AdapterConnectionDB
+	if err := r.db.WithContext(ctx).First(&row, "id = ?", id).Error; err != nil {
+		return AdapterConnection{}, fmt.Errorf("load adapter connection %s: %w", id, err)
+	}
+	return adapterConnectionFromDB(row)
+}
+
+func (r *Repository) SaveAdapterConnection(
+	ctx context.Context,
+	connection AdapterConnection,
+) (AdapterConnection, error) {
+	connection.ID = strings.TrimSpace(connection.ID)
+	connection.Kind = strings.TrimSpace(connection.Kind)
+	connection.Name = strings.TrimSpace(connection.Name)
+	if connection.ID == "" || connection.Kind == "" || connection.Name == "" {
+		return AdapterConnection{}, fmt.Errorf(
+			"%w: adapter connection id, kind, and name are required",
+			ErrInvalidSettings,
+		)
+	}
+	if connection.Settings == nil {
+		connection.Settings = map[string]any{}
+	}
+	if connection.SecretRefs == nil {
+		connection.SecretRefs = map[string]string{}
+	}
+	settingsJSON, err := jsonString(connection.Settings)
+	if err != nil {
+		return AdapterConnection{}, fmt.Errorf("encode adapter connection settings: %w", err)
+	}
+	secretRefsJSON, err := jsonString(connection.SecretRefs)
+	if err != nil {
+		return AdapterConnection{}, fmt.Errorf("encode adapter connection secret refs: %w", err)
+	}
+	now := nowUTC()
+	row := AdapterConnectionDB{
+		ID:            connection.ID,
+		Kind:          connection.Kind,
+		Name:          connection.Name,
+		SettingsJSON:  settingsJSON,
+		SecretRefJSON: secretRefsJSON,
+		Enabled:       boolToInt(connection.Enabled),
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing AdapterConnectionDB
+		if err := tx.First(&existing, "id = ?", connection.ID).Error; err == nil {
+			row.CreatedAt = existing.CreatedAt
+		}
+		return tx.Save(&row).Error
+	})
+	if err != nil {
+		return AdapterConnection{}, fmt.Errorf("save adapter connection: %w", err)
+	}
+	if r.onSave != nil {
+		r.onSave(ctx)
+	}
+	return r.AdapterConnection(ctx, connection.ID)
+}
+
+func adapterConnectionFromDB(row AdapterConnectionDB) (AdapterConnection, error) {
+	settings := map[string]any{}
+	if strings.TrimSpace(row.SettingsJSON) != "" {
+		if err := json.Unmarshal([]byte(row.SettingsJSON), &settings); err != nil {
+			return AdapterConnection{}, fmt.Errorf("decode adapter connection settings for %s: %w", row.ID, err)
+		}
+	}
+	secretRefs := map[string]string{}
+	if strings.TrimSpace(row.SecretRefJSON) != "" {
+		if err := json.Unmarshal([]byte(row.SecretRefJSON), &secretRefs); err != nil {
+			return AdapterConnection{}, fmt.Errorf("decode adapter connection secret refs for %s: %w", row.ID, err)
+		}
+	}
+	return AdapterConnection{
+		ID:         row.ID,
+		Kind:       row.Kind,
+		Name:       row.Name,
+		Settings:   settings,
+		SecretRefs: secretRefs,
+		Enabled:    row.Enabled == 1,
+		CreatedAt:  row.CreatedAt,
+		UpdatedAt:  row.UpdatedAt,
+	}, nil
 }
 
 func (r *Repository) loadRooms(ctx context.Context) ([]RoomConfig, error) {
@@ -356,6 +446,13 @@ func decodeJSONSetting(raw string, target any) error {
 		return nil
 	}
 	return json.Unmarshal([]byte(raw), target)
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func nowUTC() string {

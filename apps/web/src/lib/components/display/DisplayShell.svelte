@@ -5,6 +5,7 @@
   import DashboardView from '$lib/components/display/DashboardView.svelte';
   import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
   import VoiceOverlay from '$lib/components/display/VoiceOverlay.svelte';
+  import AlarmFocusOverlay from '$lib/components/alarms/AlarmFocusOverlay.svelte';
   import OfflineState from '$lib/components/display/OfflineState.svelte';
   import StatusRibbon from '$lib/components/display/StatusRibbon.svelte';
   import { backgroundImageURL } from '$lib/hubClient';
@@ -14,7 +15,18 @@
     isAgentAvailable
   } from '$lib/agents';
   import { displayThemeStyle, resolveColorMode } from '$lib/themes';
-  import type { Agent, DashboardData } from '$lib/types';
+  import {
+    activeDashboardScreen,
+    ensureLayoutScreens,
+    layoutForScreen,
+    selectLayoutVariant
+  } from '$lib/layout-editor';
+  import type {
+    Agent,
+    DashboardData,
+    UserFacingIssue,
+    WidgetInstance
+  } from '$lib/types';
   import { cn } from '$lib/utils';
   import WidgetSettingsSheet from '$lib/components/display/WidgetSettingsSheet.svelte';
   import BackgroundRenderer from '$lib/components/display/BackgroundRenderer.svelte';
@@ -31,6 +43,7 @@
     | 'household'
     | 'rooms'
     | 'tiles'
+    | 'connections'
     | 'agents'
     | 'mcp'
     | 'voice'
@@ -211,6 +224,26 @@
     showAgentManager = true;
   }
 
+  function handleWidgetIssueAction(
+    issue: UserFacingIssue,
+    widget: WidgetInstance
+  ) {
+    if (issue.action?.target === 'retry') {
+      void retryDashboard();
+      return;
+    }
+    if (
+      issue.action?.target === 'settings' &&
+      (issue.code.startsWith('connection.') || widget.connectionRefs)
+    ) {
+      openSettings('connections');
+      return;
+    }
+    if (issue.action?.target === 'settings') {
+      openSettings();
+    }
+  }
+
   function startLongPress(event: PointerEvent) {
     if (!browser || $navigationStore.mode !== 'dashboard') {
       return;
@@ -221,7 +254,7 @@
     }
     clearLongPress();
     longPressTimer = window.setTimeout(() => {
-      layoutStore.enterEdit($hubStream.dashboard.layout);
+      enterEditForCurrentView();
     }, 650);
   }
 
@@ -230,6 +263,23 @@
       window.clearTimeout(longPressTimer);
       longPressTimer = undefined;
     }
+  }
+
+  function currentLayoutVariantId() {
+    if (!browser) {
+      return '';
+    }
+    const screens = ensureLayoutScreens($hubStream.dashboard.layout);
+    const activeScreen = activeDashboardScreen(screens);
+    return selectLayoutVariant(
+      layoutForScreen(screens, activeScreen.id),
+      window.innerWidth,
+      window.innerHeight
+    ).id;
+  }
+
+  function enterEditForCurrentView(activeVariantId = currentLayoutVariantId()) {
+    layoutStore.enterEdit($hubStream.dashboard.layout, activeVariantId);
   }
 
   async function submitMessage(text: string, retryMessageId?: string) {
@@ -351,7 +401,7 @@
       savingLayout={$layoutStore.saving}
       onOpenChat={() => openChat()}
       onToggleVoiceMute={toggleVoiceMute}
-      onEnterEdit={() => layoutStore.enterEdit($hubStream.dashboard.layout)}
+      onEnterEdit={enterEditForCurrentView}
       onSaveEdit={() =>
         layoutStore.saveEdit($hubStream.dashboard.stale, fetch, (saved) => {
           hubStream.updateLayout(saved);
@@ -365,7 +415,9 @@
             hubStream.updateLayout(reset);
           }
         )}
+      onScreenChange={(layout) => hubStream.updateLayout(layout)}
       onManageAgents={() => openSettings('household')}
+      onIssueAction={handleWidgetIssueAction}
     />
 
     {#if configuringWidget}
@@ -447,6 +499,8 @@
         on:cancel={cancelVoiceSession}
       />
     {/if}
+
+    <AlarmFocusOverlay data={$hubStream.dashboard} />
 
     {#if $hubStream.displayNotifications.length > 0}
       <div

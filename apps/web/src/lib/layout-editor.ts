@@ -1,8 +1,11 @@
 import type {
+  DashboardScreen,
+  LayoutVariant,
   WidgetLayout,
   WidgetInstance,
   WidgetCatalogItem,
-  WidgetMode
+  WidgetMode,
+  WidgetPlacement
 } from './types';
 
 // BASE_COLUMNS is the authored base grid resolution. Layouts are stored at this
@@ -21,9 +24,521 @@ export const MAX_ROWS = 12;
 // Row/column sizes themselves are proportional (1fr) and measured from the DOM
 // during drag/resize rather than derived from a fixed pixel height.
 export const GRID_GAP = 12;
+export const LAYOUT_SCHEMA_VERSION = 2;
+export const SCREEN_LAYOUT_SCHEMA_VERSION = 3;
+export const DEFAULT_DASHBOARD_SCREEN = 'home';
+export const DEFAULT_LAYOUT_VARIANT = 'tablet-landscape';
+export const MIN_GRID_COLUMNS = 1;
+export const MAX_GRID_COLUMNS = 24;
+export const MIN_GRID_ROWS = 1;
+export const MAX_GRID_ROWS = 24;
+
+export const DEFAULT_LAYOUT_VARIANTS: Array<Omit<LayoutVariant, 'placements'>> =
+  [
+    {
+      id: 'phone',
+      label: 'Phone',
+      minWidth: 0,
+      orientation: 'any',
+      columns: 1,
+      rows: 8,
+      gap: GRID_GAP
+    },
+    {
+      id: 'tablet-portrait',
+      label: 'Tablet',
+      minWidth: 641,
+      orientation: 'portrait',
+      columns: 6,
+      rows: 10,
+      gap: GRID_GAP
+    },
+    {
+      id: 'tablet-landscape',
+      label: 'Tablet wide',
+      minWidth: 768,
+      orientation: 'landscape',
+      columns: 10,
+      rows: 6,
+      gap: GRID_GAP
+    },
+    {
+      id: 'desktop',
+      label: 'Desktop',
+      minWidth: 1024,
+      orientation: 'any',
+      columns: 12,
+      rows: 8,
+      gap: GRID_GAP
+    },
+    {
+      id: 'wall',
+      label: 'Wall',
+      minWidth: 1600,
+      orientation: 'landscape',
+      columns: 16,
+      rows: 9,
+      gap: GRID_GAP
+    }
+  ];
 
 export function cloneLayout(layout: WidgetLayout): WidgetLayout {
   return JSON.parse(JSON.stringify(layout)) as WidgetLayout;
+}
+
+export function ensureLayoutScreens(layout: WidgetLayout): WidgetLayout {
+  const next = cloneLayout(layout);
+  if (!next.screens || next.screens.length === 0) {
+    next.screens = [
+      {
+        id: DEFAULT_DASHBOARD_SCREEN,
+        label: 'Home',
+        defaultVariant: next.defaultVariant,
+        variants: next.variants,
+        widgets: next.widgets ?? []
+      }
+    ];
+  }
+  next.schemaVersion = Math.max(
+    Number(next.schemaVersion || 0),
+    SCREEN_LAYOUT_SCHEMA_VERSION
+  );
+  next.defaultScreenId =
+    next.defaultScreenId || next.screens[0]?.id || DEFAULT_DASHBOARD_SCREEN;
+  next.activeScreenId = next.activeScreenId || next.defaultScreenId;
+  next.screens = next.screens.map((screen, index) => {
+    const id =
+      (screen.id || '').trim() || `${DEFAULT_DASHBOARD_SCREEN}-${index + 1}`;
+    const label = (screen.label || '').trim() || id;
+    const screenLayout = ensureLayoutVariants({
+      profileId: next.profileId,
+      schemaVersion: LAYOUT_SCHEMA_VERSION,
+      defaultVariant: screen.defaultVariant,
+      variants: screen.variants,
+      widgets: (screen.widgets ?? []).map((widget) => ({
+        ...widget,
+        screenId: id
+      }))
+    });
+    return {
+      id,
+      label,
+      defaultVariant: screenLayout.defaultVariant,
+      variants: screenLayout.variants,
+      widgets: screenLayout.widgets
+    };
+  });
+  if (!next.screens.some((screen) => screen.id === next.defaultScreenId)) {
+    next.defaultScreenId = next.screens[0].id;
+  }
+  if (!next.screens.some((screen) => screen.id === next.activeScreenId)) {
+    next.activeScreenId = next.defaultScreenId;
+  }
+  const active = activeDashboardScreen(next);
+  next.defaultVariant = active.defaultVariant;
+  next.variants = active.variants;
+  next.widgets = next.screens.flatMap((screen) =>
+    screen.widgets.map((widget) => ({ ...widget, screenId: screen.id }))
+  );
+  return next;
+}
+
+export function activeDashboardScreen(layout: WidgetLayout): DashboardScreen {
+  const withScreens =
+    layout.screens && layout.screens.length > 0
+      ? layout
+      : ensureLayoutScreens(layout);
+  return (
+    withScreens.screens?.find(
+      (screen) => screen.id === withScreens.activeScreenId
+    ) ??
+    withScreens.screens?.[0] ?? {
+      id: DEFAULT_DASHBOARD_SCREEN,
+      label: 'Home',
+      defaultVariant: DEFAULT_LAYOUT_VARIANT,
+      variants: [],
+      widgets: []
+    }
+  );
+}
+
+export function layoutForScreen(
+  layout: WidgetLayout,
+  screenId = ''
+): WidgetLayout {
+  const withScreens = ensureLayoutScreens(layout);
+  const screen =
+    withScreens.screens?.find((candidate) => candidate.id === screenId) ??
+    activeDashboardScreen(withScreens);
+  return {
+    profileId: withScreens.profileId,
+    schemaVersion: LAYOUT_SCHEMA_VERSION,
+    screens: withScreens.screens,
+    defaultVariant: screen.defaultVariant,
+    variants: screen.variants,
+    widgets: screen.widgets.map((widget) => ({
+      ...widget,
+      screenId: screen.id
+    }))
+  };
+}
+
+export function replaceScreenLayout(
+  layout: WidgetLayout,
+  screenId: string,
+  screenLayout: WidgetLayout
+): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  next.screens = (next.screens ?? []).map((screen) =>
+    screen.id === screenId
+      ? {
+          ...screen,
+          defaultVariant: screenLayout.defaultVariant,
+          variants: screenLayout.variants,
+          widgets: screenLayout.widgets.map((widget) => ({
+            ...widget,
+            screenId: screen.id
+          }))
+        }
+      : screen
+  );
+  return ensureLayoutScreens(next);
+}
+
+export function setActiveScreen(
+  layout: WidgetLayout,
+  screenId: string
+): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  if (!next.screens?.some((screen) => screen.id === screenId)) {
+    return next;
+  }
+  next.activeScreenId = screenId;
+  return ensureLayoutScreens(next);
+}
+
+export function uniqueScreenId(layout: WidgetLayout, label = 'Screen'): string {
+  const withScreens = ensureLayoutScreens(layout);
+  const base =
+    label
+      .replace(/[^a-z0-9-]/gi, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase() || 'screen';
+  if (!withScreens.screens?.some((screen) => screen.id === base)) return base;
+  let counter = 2;
+  while (
+    withScreens.screens?.some((screen) => screen.id === `${base}-${counter}`)
+  ) {
+    counter += 1;
+  }
+  return `${base}-${counter}`;
+}
+
+export function addDashboardScreen(layout: WidgetLayout): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  const id = uniqueScreenId(next, `Screen ${next.screens!.length + 1}`);
+  next.screens = [
+    ...(next.screens ?? []),
+    {
+      id,
+      label: `Screen ${next.screens!.length + 1}`,
+      widgets: []
+    }
+  ];
+  next.activeScreenId = id;
+  return ensureLayoutScreens(next);
+}
+
+export function renameDashboardScreen(
+  layout: WidgetLayout,
+  screenId: string,
+  label: string
+): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  next.screens = next.screens?.map((screen) =>
+    screen.id === screenId
+      ? { ...screen, label: label.trim() || screen.label }
+      : screen
+  );
+  return ensureLayoutScreens(next);
+}
+
+export function duplicateDashboardScreen(
+  layout: WidgetLayout,
+  screenId: string,
+  catalog: WidgetCatalogItem[] = []
+): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  const source = next.screens?.find((screen) => screen.id === screenId);
+  if (!source) return next;
+  const id = uniqueScreenId(next, `${source.label} Copy`);
+  const singleInstanceKinds = new Set(
+    catalog.filter((item) => !item.allowMultiple).map((item) => item.kind)
+  );
+  const sourceWidgets = source.widgets.filter(
+    (widget) => !singleInstanceKinds.has(widget.kind)
+  );
+  const widgets = sourceWidgets.map((widget) => {
+    const widgetId = uniqueWidgetId(next, widget.kind);
+    return {
+      ...widget,
+      id: widgetId,
+      screenId: id
+    };
+  });
+  next.screens = [
+    ...(next.screens ?? []),
+    {
+      ...source,
+      id,
+      label: `${source.label} Copy`,
+      widgets,
+      variants: source.variants?.map((variant) => ({
+        ...variant,
+        placements: remapPlacementIds(
+          variant.placements,
+          sourceWidgets,
+          widgets
+        )
+      }))
+    }
+  ];
+  next.activeScreenId = id;
+  return ensureLayoutScreens(next);
+}
+
+export function removeDashboardScreen(
+  layout: WidgetLayout,
+  screenId: string
+): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  if ((next.screens?.length ?? 0) <= 1) return next;
+  next.screens = next.screens?.filter((screen) => screen.id !== screenId);
+  if (next.defaultScreenId === screenId) {
+    next.defaultScreenId = next.screens?.[0]?.id;
+  }
+  if (next.activeScreenId === screenId) {
+    next.activeScreenId = next.defaultScreenId;
+  }
+  return ensureLayoutScreens(next);
+}
+
+export function reorderDashboardScreen(
+  layout: WidgetLayout,
+  screenId: string,
+  direction: -1 | 1
+): WidgetLayout {
+  const next = ensureLayoutScreens(layout);
+  const screens = [...(next.screens ?? [])];
+  const index = screens.findIndex((screen) => screen.id === screenId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= screens.length) return next;
+  const [screen] = screens.splice(index, 1);
+  screens.splice(target, 0, screen);
+  next.screens = screens;
+  return ensureLayoutScreens(next);
+}
+
+function remapPlacementIds(
+  placements: Record<string, WidgetPlacement>,
+  fromWidgets: WidgetInstance[],
+  toWidgets: WidgetInstance[]
+): Record<string, WidgetPlacement> {
+  const next: Record<string, WidgetPlacement> = {};
+  for (let i = 0; i < fromWidgets.length; i += 1) {
+    const from = fromWidgets[i];
+    const to = toWidgets[i];
+    if (from && to && placements[from.id]) {
+      next[to.id] = { ...placements[from.id] };
+    }
+  }
+  return next;
+}
+
+export function ensureLayoutVariants(layout: WidgetLayout): WidgetLayout {
+  const next = cloneLayout(layout);
+  next.schemaVersion = Math.max(
+    Number(next.schemaVersion || 0),
+    LAYOUT_SCHEMA_VERSION
+  );
+  next.defaultVariant = next.defaultVariant || DEFAULT_LAYOUT_VARIANT;
+
+  const existing = new Map(
+    (next.variants ?? []).map((variant) => [variant.id, variant])
+  );
+  next.variants = DEFAULT_LAYOUT_VARIANTS.map((preset) => {
+    const variant = existing.get(preset.id);
+    return normalizeVariant(
+      {
+        ...preset,
+        ...variant,
+        placements:
+          variant?.placements ??
+          defaultPlacementsForVariant(next.widgets, preset.columns, preset.id)
+      },
+      next.widgets
+    );
+  });
+
+  for (const variant of existing.values()) {
+    if (!next.variants.some((candidate) => candidate.id === variant.id)) {
+      next.variants.push(normalizeVariant(variant, next.widgets));
+    }
+  }
+
+  if (!next.variants.some((variant) => variant.id === next.defaultVariant)) {
+    next.defaultVariant = next.variants[0]?.id || DEFAULT_LAYOUT_VARIANT;
+  }
+  return next;
+}
+
+function normalizeVariant(
+  variant: LayoutVariant,
+  widgets: WidgetInstance[]
+): LayoutVariant {
+  const columns = clampNumber(
+    variant.columns,
+    MIN_GRID_COLUMNS,
+    MAX_GRID_COLUMNS
+  );
+  const rows = clampNumber(variant.rows, MIN_GRID_ROWS, MAX_GRID_ROWS);
+  const placements: Record<string, WidgetPlacement> = {};
+  for (const widget of widgets) {
+    const placement = variant.placements?.[widget.id] ?? {
+      x: widget.x,
+      y: widget.y,
+      w: widget.w,
+      h: widget.h
+    };
+    placements[widget.id] = clampPlacement(placement, widget, columns, rows);
+  }
+  return {
+    ...variant,
+    id: variant.id.trim(),
+    label: variant.label.trim() || variant.id,
+    minWidth: Math.max(0, Math.floor(variant.minWidth || 0)),
+    orientation: variant.orientation || 'any',
+    columns,
+    rows,
+    gap: variant.gap ?? GRID_GAP,
+    placements
+  };
+}
+
+function defaultPlacementsForVariant(
+  widgets: WidgetInstance[],
+  columns: number,
+  variantId: string
+): Record<string, WidgetPlacement> {
+  if (columns === 1 || variantId === 'phone') {
+    const placements: Record<string, WidgetPlacement> = {};
+    let row = 0;
+    for (const widget of widgets
+      .filter(rendersTile)
+      .sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id))) {
+      placements[widget.id] = { x: 0, y: row, w: 1, h: Math.max(1, widget.h) };
+      row += Math.max(1, widget.h);
+    }
+    return placements;
+  }
+
+  const scale = columns / BASE_COLUMNS;
+  const placements: Record<string, WidgetPlacement> = {};
+  for (const widget of widgets) {
+    placements[widget.id] = {
+      x: Math.min(Math.max(0, Math.round(widget.x * scale)), columns - 1),
+      y: widget.y,
+      w: Math.min(columns, Math.max(1, Math.round(widget.w * scale))),
+      h: widget.h
+    };
+  }
+  return placements;
+}
+
+function clampPlacement(
+  placement: WidgetPlacement,
+  widget: WidgetInstance,
+  columns: number,
+  rows: number
+): WidgetPlacement {
+  const minW = Math.min(Math.max(widget.minW || 1, 1), columns);
+  const minH = Math.min(Math.max(widget.minH || 1, 1), rows);
+  const w = clampNumber(placement.w || widget.w || minW, minW, columns);
+  const h = clampNumber(placement.h || widget.h || minH, minH, rows);
+  return {
+    x: clampNumber(placement.x || 0, 0, columns - w),
+    y: clampNumber(placement.y || 0, 0, rows - h),
+    w,
+    h,
+    hidden: Boolean(placement.hidden)
+  };
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(Math.floor(value || min), min), max);
+}
+
+export function selectLayoutVariant(
+  layout: WidgetLayout,
+  width: number,
+  height: number,
+  preferredId = ''
+): LayoutVariant {
+  const withVariants = ensureLayoutVariants(layout);
+  const preferred = withVariants.variants?.find(
+    (variant) => variant.id === preferredId
+  );
+  if (preferred) {
+    return preferred;
+  }
+
+  const orientation = width >= height ? 'landscape' : 'portrait';
+  const candidates = (withVariants.variants ?? []).filter((variant) => {
+    const minHeight = variant.minHeight ?? 0;
+    return (
+      width >= variant.minWidth &&
+      height >= minHeight &&
+      ((variant.orientation ?? 'any') === 'any' ||
+        variant.orientation === orientation)
+    );
+  });
+
+  return (
+    candidates.sort(
+      (a, b) =>
+        b.minWidth - a.minWidth || (b.minHeight ?? 0) - (a.minHeight ?? 0)
+    )[0] ??
+    withVariants.variants?.find(
+      (variant) => variant.id === withVariants.defaultVariant
+    ) ??
+    withVariants.variants![0]
+  );
+}
+
+export function widgetsForVariant(
+  layout: WidgetLayout,
+  variantId: string
+): WidgetInstance[] {
+  const withVariants = ensureLayoutVariants(layout);
+  const variant =
+    withVariants.variants?.find((candidate) => candidate.id === variantId) ??
+    selectLayoutVariant(withVariants, 1280, 800);
+  return withVariants.widgets
+    .filter((widget) => {
+      const placement = variant.placements[widget.id];
+      return rendersTile(widget) && !placement?.hidden;
+    })
+    .map((widget) => {
+      const placement = variant.placements[widget.id];
+      return {
+        ...widget,
+        ...placement,
+        minW: Math.min(widget.minW, variant.columns),
+        minH: Math.min(widget.minH, variant.rows)
+      };
+    })
+    .sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
 }
 
 export function isHeadless(widget: WidgetInstance): boolean {
@@ -35,13 +550,36 @@ export function rendersTile(widget: WidgetInstance): boolean {
   return widget.visible && !isHeadless(widget);
 }
 
+export function widgetsAcrossScreens(layout: WidgetLayout): WidgetInstance[] {
+  const withScreens = ensureLayoutScreens(layout);
+  return withScreens.screens?.flatMap((screen) => screen.widgets ?? []) ?? [];
+}
+
+export function canAddCatalogWidget(
+  layout: WidgetLayout,
+  item: WidgetCatalogItem
+): boolean {
+  if (item.allowMultiple) {
+    return true;
+  }
+  return !widgetsAcrossScreens(layout).some(
+    (widget) => widget.kind === item.kind
+  );
+}
+
 export function uniqueWidgetId(layout: WidgetLayout, kind: string): string {
   const base = kind.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
-  if (!layout.widgets.some((widget) => widget.id === base)) {
+  const usedIds = new Set([
+    ...layout.widgets.map((widget) => widget.id),
+    ...((layout.screens ?? []).flatMap((screen) =>
+      (screen.widgets ?? []).map((widget) => widget.id)
+    ) ?? [])
+  ]);
+  if (!usedIds.has(base)) {
     return base;
   }
   let counter = 2;
-  while (layout.widgets.some((widget) => widget.id === `${base}-${counter}`)) {
+  while (usedIds.has(`${base}-${counter}`)) {
     counter += 1;
   }
   return `${base}-${counter}`;
@@ -84,6 +622,7 @@ export function clampWidget(widget: WidgetInstance): void {
   widget.size = sizeFromDimensions(widget.w, widget.h);
   widget.mode = widget.mode === 'headless' ? 'headless' : 'ui';
   widget.settings = widget.settings ?? {};
+  widget.connectionRefs = widget.connectionRefs ?? {};
 }
 
 export function packLayout(layout: WidgetLayout, activeId = ''): WidgetLayout {
@@ -157,7 +696,7 @@ export function addWidget(
   item: WidgetCatalogItem,
   mode: WidgetMode = 'ui'
 ): { layout: WidgetLayout; error?: string; widgetId?: string } {
-  const next = cloneLayout(layout);
+  const next = ensureLayoutVariants(layout);
   const targetRow = nextWidgetRow(next);
   let widget = next.widgets.find((candidate) => candidate.kind === item.kind);
   if (widget && !item.allowMultiple) {
@@ -183,16 +722,43 @@ export function addWidget(
       size: item.defaultSize,
       mode,
       settings: {},
+      connectionRefs: {},
       visible: true
     };
     next.widgets = [...next.widgets, widget];
   }
   widget.x = 0;
   widget.y = targetRow;
+  for (const variant of next.variants ?? []) {
+    variant.placements[widget.id] = clampPlacement(
+      {
+        x: 0,
+        y: nextVariantRow(next, variant.id),
+        w: Math.min(item.defaultW, variant.columns),
+        h: Math.min(item.defaultH, variant.rows)
+      },
+      widget,
+      variant.columns,
+      variant.rows
+    );
+  }
   return {
     layout: packLayout(next, widget.id),
     widgetId: widget.id
   };
+}
+
+function nextVariantRow(layout: WidgetLayout, variantId: string): number {
+  const variant = layout.variants?.find(
+    (candidate) => candidate.id === variantId
+  );
+  if (!variant) return 0;
+  return layout.widgets.reduce((row, widget) => {
+    if (!rendersTile(widget)) return row;
+    const placement = variant.placements[widget.id];
+    if (!placement || placement.hidden) return row;
+    return Math.max(row, placement.y + placement.h);
+  }, 0);
 }
 
 export function overlaps(a: WidgetInstance, b: WidgetInstance): boolean {
@@ -234,12 +800,26 @@ export function moveWidget(
   layout: WidgetLayout,
   widgetId: string,
   x: number,
-  y: number
+  y: number,
+  variantId = ''
 ): WidgetLayout {
-  const next = cloneLayout(layout);
+  const next = ensureLayoutVariants(layout);
   const widget = next.widgets.find((item) => item.id === widgetId);
   if (!widget) {
     return layout;
+  }
+  if (variantId) {
+    const variant = next.variants?.find((item) => item.id === variantId);
+    if (!variant) return layout;
+    const current = variant.placements[widgetId] ?? widget;
+    variant.placements[widgetId] = clampPlacement(
+      { ...current, x, y },
+      widget,
+      variant.columns,
+      variant.rows
+    );
+    resolveVariantOverlaps(next, variantId, widgetId);
+    return next;
   }
   widget.x = x;
   widget.y = y;
@@ -252,12 +832,26 @@ export function resizeWidget(
   layout: WidgetLayout,
   widgetId: string,
   w: number,
-  h: number
+  h: number,
+  variantId = ''
 ): WidgetLayout {
-  const next = cloneLayout(layout);
+  const next = ensureLayoutVariants(layout);
   const widget = next.widgets.find((item) => item.id === widgetId);
   if (!widget) {
     return layout;
+  }
+  if (variantId) {
+    const variant = next.variants?.find((item) => item.id === variantId);
+    if (!variant) return layout;
+    const current = variant.placements[widgetId] ?? widget;
+    variant.placements[widgetId] = clampPlacement(
+      { ...current, w, h },
+      widget,
+      variant.columns,
+      variant.rows
+    );
+    resolveVariantOverlaps(next, variantId, widgetId);
+    return next;
   }
   widget.w = w;
   widget.h = h;
@@ -270,12 +864,17 @@ export function removeWidget(
   layout: WidgetLayout,
   widgetId: string
 ): WidgetLayout {
-  const next = cloneLayout(layout);
+  const next = ensureLayoutVariants(layout);
   const widget = next.widgets.find((item) => item.id === widgetId);
   if (!widget) {
     return layout;
   }
   widget.visible = false;
+  for (const variant of next.variants ?? []) {
+    if (variant.placements[widgetId]) {
+      variant.placements[widgetId].hidden = true;
+    }
+  }
   return next;
 }
 
@@ -286,10 +885,14 @@ export function removeWidget(
 export function reorderWidget(
   layout: WidgetLayout,
   widgetId: string,
-  direction: -1 | 1
+  direction: -1 | 1,
+  variantId = ''
 ): WidgetLayout {
-  const next = cloneLayout(layout);
-  const tiles = next.widgets
+  const next = ensureLayoutVariants(layout);
+  const variant = variantId
+    ? next.variants?.find((item) => item.id === variantId)
+    : undefined;
+  const tiles = (variant ? widgetsForVariant(next, variant.id) : next.widgets)
     .filter(rendersTile)
     .sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
   const index = tiles.findIndex((item) => item.id === widgetId);
@@ -303,11 +906,23 @@ export function reorderWidget(
   reordered.splice(swapIndex, 0, moved);
   let row = 0;
   for (const tile of reordered) {
-    tile.x = 0;
-    tile.y = row;
+    if (variant) {
+      const widget = next.widgets.find((item) => item.id === tile.id);
+      if (widget) {
+        variant.placements[tile.id] = clampPlacement(
+          { ...(variant.placements[tile.id] ?? tile), x: 0, y: row },
+          widget,
+          variant.columns,
+          variant.rows
+        );
+      }
+    } else {
+      tile.x = 0;
+      tile.y = row;
+    }
     row += tile.h;
   }
-  return packLayout(next);
+  return variant ? next : packLayout(next);
 }
 
 /** Sets a widget's mode. Switching to ui re-packs it onto the grid. */
@@ -316,7 +931,7 @@ export function setWidgetMode(
   widgetId: string,
   mode: WidgetMode
 ): WidgetLayout {
-  const next = cloneLayout(layout);
+  const next = ensureLayoutVariants(layout);
   const widget = next.widgets.find((item) => item.id === widgetId);
   if (!widget) {
     return layout;
@@ -327,6 +942,25 @@ export function setWidgetMode(
   widget.mode = mode;
   if (mode === 'ui') {
     widget.y = nextWidgetRow(next);
+    for (const variant of next.variants ?? []) {
+      const placement = variant.placements[widgetId] ?? widget;
+      variant.placements[widgetId] = clampPlacement(
+        {
+          ...placement,
+          y: nextVariantRow(next, variant.id),
+          hidden: false
+        },
+        widget,
+        variant.columns,
+        variant.rows
+      );
+    }
+  } else {
+    for (const variant of next.variants ?? []) {
+      if (variant.placements[widgetId]) {
+        variant.placements[widgetId].hidden = true;
+      }
+    }
   }
   return packLayout(next, mode === 'ui' ? widgetId : '');
 }
@@ -335,7 +969,9 @@ export function setWidgetMode(
 export function updateWidget(
   layout: WidgetLayout,
   widgetId: string,
-  patch: Partial<Pick<WidgetInstance, 'title' | 'settings' | 'mode'>>
+  patch: Partial<
+    Pick<WidgetInstance, 'title' | 'settings' | 'connectionRefs' | 'mode'>
+  >
 ): WidgetLayout {
   const next = cloneLayout(layout);
   const widget = next.widgets.find((item) => item.id === widgetId);
@@ -348,10 +984,84 @@ export function updateWidget(
   if (patch.settings !== undefined) {
     widget.settings = patch.settings;
   }
+  if (patch.connectionRefs !== undefined) {
+    widget.connectionRefs = patch.connectionRefs;
+  }
   if (patch.mode !== undefined) {
     widget.mode = patch.mode;
   }
   return next;
+}
+
+export function setVariantGridSize(
+  layout: WidgetLayout,
+  variantId: string,
+  columns: number,
+  rows: number
+): WidgetLayout {
+  const next = ensureLayoutVariants(layout);
+  const variant = next.variants?.find(
+    (candidate) => candidate.id === variantId
+  );
+  if (!variant) return layout;
+  variant.columns = clampNumber(columns, MIN_GRID_COLUMNS, MAX_GRID_COLUMNS);
+  variant.rows = clampNumber(rows, MIN_GRID_ROWS, MAX_GRID_ROWS);
+  for (const widget of next.widgets) {
+    const placement = variant.placements[widget.id] ?? widget;
+    variant.placements[widget.id] = clampPlacement(
+      placement,
+      widget,
+      variant.columns,
+      variant.rows
+    );
+  }
+  return next;
+}
+
+function resolveVariantOverlaps(
+  layout: WidgetLayout,
+  variantId: string,
+  activeId: string
+): void {
+  const variant = layout.variants?.find(
+    (candidate) => candidate.id === variantId
+  );
+  if (!variant) return;
+  const widgets = widgetsForVariant(layout, variantId);
+  const active = widgets.find((widget) => widget.id === activeId);
+  if (!active) return;
+  const pushed = new Set<string>([activeId]);
+  for (const other of widgets) {
+    if (other.id === activeId || pushed.has(other.id)) continue;
+    if (overlaps(active, other)) {
+      pushVariantDown(layout, variant, other, active.y + active.h, pushed);
+    }
+  }
+}
+
+function pushVariantDown(
+  layout: WidgetLayout,
+  variant: LayoutVariant,
+  widget: WidgetInstance,
+  y: number,
+  pushed: Set<string>
+): void {
+  pushed.add(widget.id);
+  const base = layout.widgets.find((item) => item.id === widget.id);
+  if (!base) return;
+  variant.placements[widget.id] = clampPlacement(
+    { ...(variant.placements[widget.id] ?? widget), y },
+    base,
+    variant.columns,
+    variant.rows
+  );
+  const moved = { ...widget, ...variant.placements[widget.id] };
+  for (const other of widgetsForVariant(layout, variant.id)) {
+    if (other.id === widget.id || pushed.has(other.id)) continue;
+    if (overlaps(moved, other)) {
+      pushVariantDown(layout, variant, other, moved.y + moved.h, pushed);
+    }
+  }
 }
 
 /**

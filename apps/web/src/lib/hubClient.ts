@@ -17,12 +17,13 @@ import type {
   VoiceSettingsUpdate,
   VoiceStatus,
   TTSVoicesResponse,
+  AdapterConnection,
+  AdapterConnectionKind,
   WidgetCatalogItem,
   WidgetLayout
 } from '$lib/types';
 
-export const API_BASE =
-  import.meta.env.VITE_JUTE_API_URL ?? 'http://127.0.0.1:8787';
+export const API_BASE = import.meta.env.VITE_JUTE_API_URL ?? '';
 
 async function hubError(response: Response, fallback: string): Promise<Error> {
   const body = await response
@@ -244,6 +245,26 @@ export async function saveWidgetLayout(
     },
     body: JSON.stringify(layout)
   });
+  if (!response.ok) {
+    throw await hubError(response, 'Jute API request failed');
+  }
+  return response.json() as Promise<WidgetLayout>;
+}
+
+export async function saveActiveDashboardScreen(
+  fetcher: typeof fetch,
+  screenId: string
+): Promise<WidgetLayout> {
+  const response = await fetcher(
+    `${API_BASE}/api/v1/widgets/layout/active-screen`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ screenId })
+    }
+  );
   if (!response.ok) {
     throw await hubError(response, 'Jute API request failed');
   }
@@ -505,6 +526,7 @@ export function eventsURL() {
 }
 
 function shortHubUrl(value: string) {
+  if (value === '') return 'this Jute server';
   return value.replace(/^https?:\/\//, '');
 }
 
@@ -681,4 +703,200 @@ async function postVoiceControl(
     throw await hubError(response, 'Jute API request failed');
   }
   return response.json() as Promise<VoiceStatus>;
+}
+
+export async function dispatchWidgetAction(
+  fetcher: typeof fetch,
+  instanceId: string,
+  actionId: string,
+  argumentsPayload: Record<string, unknown> = {},
+  confirmed = false
+): Promise<unknown> {
+  const response = await fetcher(
+    `${API_BASE}/api/v1/widgets/${encodeURIComponent(instanceId)}/actions/${encodeURIComponent(actionId)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        actor: 'display',
+        confirmed,
+        arguments: argumentsPayload
+      })
+    }
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Failed to invoke widget action');
+  }
+  return response.json();
+}
+
+export async function getAdapterConnections(
+  fetcher: typeof fetch
+): Promise<AdapterConnection[]> {
+  const response = await getJSON<{ connections: AdapterConnection[] }>(
+    fetcher,
+    '/api/v1/settings/connections'
+  );
+  return response.connections ?? [];
+}
+
+export async function getAdapterConnectionKinds(
+  fetcher: typeof fetch
+): Promise<AdapterConnectionKind[]> {
+  const response = await getJSON<{ kinds: AdapterConnectionKind[] }>(
+    fetcher,
+    '/api/v1/settings/connection-kinds'
+  );
+  return response.kinds ?? [];
+}
+
+export async function saveAdapterConnection(
+  fetcher: typeof fetch,
+  connection: AdapterConnection
+): Promise<AdapterConnection> {
+  const response = await fetcher(`${API_BASE}/api/v1/settings/connections`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(connection)
+  });
+  if (!response.ok) {
+    throw await hubError(response, 'Jute API request failed');
+  }
+  return response.json() as Promise<AdapterConnection>;
+}
+
+export function spotifyAuthURL(
+  connectionId: string,
+  widgetInstanceId?: string,
+  returnUri?: string
+): string {
+  const params = new URLSearchParams({ connectionId });
+  if (widgetInstanceId) {
+    params.set('widgetInstanceId', widgetInstanceId);
+  }
+  if (returnUri) {
+    params.set('returnUri', returnUri);
+  }
+  return `${API_BASE}/api/v1/integrations/spotify/auth?${params.toString()}`;
+}
+
+export function spotifyOAuthRedirectURI(): string {
+  const callbackPath = '/api/v1/integrations/spotify/callback';
+  if (!API_BASE) {
+    return callbackPath;
+  }
+  try {
+    const parsed = new URL(API_BASE);
+    if (parsed.hostname === 'localhost') {
+      parsed.hostname = '127.0.0.1';
+    }
+    return `${parsed.origin}${callbackPath}`;
+  } catch {
+    return `${API_BASE}${callbackPath}`;
+  }
+}
+
+export async function completeSpotifyAuth(
+  fetcher: typeof fetch,
+  code: string,
+  state: string
+): Promise<{ status: string; connectionId?: string }> {
+  const params = new URLSearchParams({
+    code,
+    state,
+    response: 'json'
+  });
+  const response = await fetcher(
+    `${API_BASE}/api/v1/integrations/spotify/callback?${params.toString()}`,
+    {
+      headers: {
+        Accept: 'application/json'
+      }
+    }
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Spotify account could not be linked');
+  }
+  return response.json() as Promise<{ status: string; connectionId?: string }>;
+}
+
+export async function getSpotifyWebPlaybackToken(
+  fetcher: typeof fetch,
+  connectionId: string
+): Promise<{ accessToken: string; expiresAt?: number; scope?: string }> {
+  const params = new URLSearchParams({ connectionId });
+  const response = await fetcher(
+    `${API_BASE}/api/v1/integrations/spotify/web-playback-token?${params.toString()}`
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Spotify playback token is unavailable');
+  }
+  return response.json() as Promise<{
+    accessToken: string;
+    expiresAt?: number;
+    scope?: string;
+  }>;
+}
+
+export async function getAppleMusicKitToken(
+  fetcher: typeof fetch,
+  connectionId: string
+): Promise<{ developerToken: string; userToken?: string }> {
+  const params = new URLSearchParams({ connectionId });
+  const response = await fetcher(
+    `${API_BASE}/api/v1/integrations/apple-music/music-kit-token?${params.toString()}`
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Apple Music credentials are unavailable');
+  }
+  return response.json() as Promise<{
+    developerToken: string;
+    userToken?: string;
+  }>;
+}
+
+export async function saveAppleMusicUserToken(
+  fetcher: typeof fetch,
+  connectionId: string,
+  userToken: string
+): Promise<AdapterConnection> {
+  const response = await fetcher(
+    `${API_BASE}/api/v1/integrations/apple-music/user-token`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connectionId, userToken })
+    }
+  );
+  if (!response.ok) {
+    throw await hubError(response, 'Apple Music login could not be saved');
+  }
+  return response.json() as Promise<AdapterConnection>;
+}
+
+export function spotifyCallbackParams(search: string): {
+  code: string;
+  state: string;
+} | null {
+  const params = new URLSearchParams(search);
+  const code = params.get('code');
+  const state = params.get('state');
+  if (!code || !state) return null;
+  return { code, state };
+}
+
+export function spotifyCallbackDisplayURL(
+  pathname: string,
+  search: string,
+  hash: string,
+  status: 'linked' | 'error'
+): string {
+  const params = new URLSearchParams(search);
+  params.delete('code');
+  params.delete('state');
+  params.set('spotify', status);
+  const nextQuery = params.toString();
+  return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash}`;
 }

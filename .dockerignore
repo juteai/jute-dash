@@ -1,0 +1,12 @@
+.git
+.github
+.jute
+.svelte-kit
+apps/web/build
+apps/web/coverage
+apps/web/node_modules
+bin
+coverage.out
+data
+dist
+node_modules

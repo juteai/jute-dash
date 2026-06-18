@@ -10,11 +10,13 @@
   import TilesSettings from './TilesSettings.svelte';
   import AgentsSettings from './AgentsSettings.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
+  import ConnectionsSettings from './ConnectionsSettings.svelte';
 
   export let activeSection:
     | 'household'
     | 'rooms'
     | 'tiles'
+    | 'connections'
     | 'agents'
     | 'mcp'
     | 'voice'
@@ -27,6 +29,7 @@
     ['appearance', 'Appearance'],
     ['rooms', 'Rooms'],
     ['tiles', 'Tiles'],
+    ['connections', 'Connections'],
     ['agents', 'Agents'],
     ['mcp', 'MCP'],
     ['voice', 'Voice'],
@@ -78,6 +81,8 @@
         <RoomsSettings />
       {:else if activeSection === 'tiles'}
         <TilesSettings />
+      {:else if activeSection === 'connections'}
+        <ConnectionsSettings />
       {:else if activeSection === 'agents'}
         <AgentsSettings />
       {:else if activeSection === 'mcp'}
@@ -156,7 +161,7 @@
 
 <style>
   :global(.settings-layer) {
-    position: absolute;
+    position: fixed;
     inset: 0;
     z-index: 30;
     display: grid;
@@ -170,7 +175,8 @@
     grid-template-rows: auto auto auto minmax(0, 1fr);
     gap: 12px;
     width: min(100%, 860px);
-    max-height: min(90vh, 760px);
+    height: min(90vh, 760px);
+    max-height: calc(100vh - 32px);
     overflow: hidden;
     border: 1px solid var(--border-strong);
     border-radius: 8px;
@@ -223,6 +229,7 @@
   }
 
   .settings-body {
+    display: grid;
     min-height: 0;
     overflow-y: auto;
     scrollbar-gutter: stable;
@@ -283,6 +290,7 @@
 
     .settings-panel {
       width: 100%;
+      height: calc(100vh - 16px);
       max-height: calc(100vh - 16px);
     }
 

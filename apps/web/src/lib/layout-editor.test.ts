@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   cloneLayout,
+  activeDashboardScreen,
+  addDashboardScreen,
+  canAddCatalogWidget,
+  duplicateDashboardScreen,
+  ensureLayoutVariants,
+  ensureLayoutScreens,
+  layoutForScreen,
+  removeDashboardScreen,
+  renameDashboardScreen,
+  replaceScreenLayout,
+  setActiveScreen,
   uniqueWidgetId,
   nextWidgetRow,
   sizeFromDimensions,
@@ -9,6 +20,8 @@ import {
   addWidget,
   moveWidget,
   resizeWidget,
+  setVariantGridSize,
+  widgetsForVariant,
   removeWidget,
   setWidgetMode,
   reorderWidget,
@@ -50,6 +63,135 @@ describe('layout-editor', () => {
     const cloned = cloneLayout(layout);
     expect(cloned).toEqual(layout);
     expect(cloned).not.toBe(layout);
+  });
+
+  it('adds explicit layout variants to legacy layouts', () => {
+    const layout = createLayout([createWidget({ id: 'weather', w: 6, h: 1 })]);
+    const migrated = ensureLayoutVariants(layout);
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.defaultVariant).toBe('tablet-landscape');
+    expect(migrated.variants?.some((variant) => variant.id === 'desktop')).toBe(
+      true
+    );
+    expect(migrated.variants?.[0].placements.weather).toBeTruthy();
+  });
+
+  it('migrates legacy layouts to a default dashboard screen', () => {
+    const layout = createLayout([createWidget({ id: 'weather', w: 6, h: 1 })]);
+    const migrated = ensureLayoutScreens(layout);
+    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.defaultScreenId).toBe('home');
+    expect(migrated.activeScreenId).toBe('home');
+    expect(migrated.screens?.[0].widgets[0].screenId).toBe('home');
+  });
+
+  it('edits only the selected dashboard screen', () => {
+    let layout = ensureLayoutScreens(
+      createLayout([createWidget({ id: 'weather', kind: 'weather' })])
+    );
+    layout = addDashboardScreen(layout);
+    const active = activeDashboardScreen(layout);
+    expect(active.id).not.toBe('home');
+    const activeLayout = layoutForScreen(layout, active.id);
+    const replaced = replaceScreenLayout(layout, active.id, {
+      ...activeLayout,
+      widgets: [createWidget({ id: 'rss', kind: 'rss', title: 'News' })]
+    });
+    expect(
+      replaced.screens?.find((screen) => screen.id === 'home')?.widgets
+    ).toHaveLength(1);
+    expect(
+      replaced.screens?.find((screen) => screen.id === active.id)?.widgets[0].id
+    ).toBe('rss');
+  });
+
+  it('keeps widget ids unique across screens', () => {
+    const layout = ensureLayoutScreens(
+      createLayout([createWidget({ id: 'weather', kind: 'weather' })])
+    );
+    const withScreen = addDashboardScreen(layout);
+    const activeLayout = layoutForScreen(withScreen, withScreen.activeScreenId);
+    expect(uniqueWidgetId(activeLayout, 'weather')).toBe('weather-2');
+  });
+
+  it('renames, duplicates, removes, and activates screens', () => {
+    let layout = ensureLayoutScreens(createLayout([createWidget()]));
+    layout = renameDashboardScreen(layout, 'home', 'Kitchen');
+    expect(layout.screens?.[0].label).toBe('Kitchen');
+    layout = duplicateDashboardScreen(layout, 'home');
+    expect(layout.screens).toHaveLength(2);
+    expect(layout.activeScreenId).not.toBe('home');
+    layout = setActiveScreen(layout, 'home');
+    expect(activeDashboardScreen(layout).id).toBe('home');
+    layout = removeDashboardScreen(layout, layout.screens![1].id);
+    expect(layout.screens).toHaveLength(1);
+  });
+
+  it('prevents single-instance catalog widgets across dashboard screens', () => {
+    let layout = ensureLayoutScreens(
+      createLayout([createWidget({ id: 'spotify', kind: 'spotify' })])
+    );
+    layout = addDashboardScreen(layout);
+    const catalogItem: WidgetCatalogItem = {
+      kind: 'spotify',
+      name: 'Spotify',
+      description: 'Playback',
+      defaultTitle: 'Spotify',
+      defaultW: 4,
+      defaultH: 2,
+      minW: 2,
+      minH: 1,
+      defaultSize: 'medium',
+      overflow: 'clip',
+      allowMultiple: false
+    };
+    expect(canAddCatalogWidget(layout, catalogItem)).toBe(false);
+    expect(
+      canAddCatalogWidget(layout, {
+        ...catalogItem,
+        kind: 'rss',
+        allowMultiple: true
+      })
+    ).toBe(true);
+  });
+
+  it('does not duplicate single-instance widgets when duplicating a screen', () => {
+    const layout = ensureLayoutScreens(
+      createLayout([
+        createWidget({ id: 'spotify', kind: 'spotify' }),
+        createWidget({ id: 'rss', kind: 'rss' })
+      ])
+    );
+    const duplicated = duplicateDashboardScreen(layout, 'home', [
+      {
+        kind: 'spotify',
+        name: 'Spotify',
+        description: 'Playback',
+        defaultTitle: 'Spotify',
+        defaultW: 4,
+        defaultH: 2,
+        minW: 2,
+        minH: 1,
+        defaultSize: 'medium',
+        overflow: 'clip',
+        allowMultiple: false
+      },
+      {
+        kind: 'rss',
+        name: 'RSS',
+        description: 'Feeds',
+        defaultTitle: 'News',
+        defaultW: 4,
+        defaultH: 2,
+        minW: 2,
+        minH: 1,
+        defaultSize: 'medium',
+        overflow: 'scroll',
+        allowMultiple: true
+      }
+    ]);
+    const copy = duplicated.screens?.find((screen) => screen.id !== 'home');
+    expect(copy?.widgets.map((widget) => widget.kind)).toEqual(['rss']);
   });
 
   it('generates unique widget IDs', () => {
@@ -139,11 +281,35 @@ describe('layout-editor', () => {
     expect(moved.widgets[1].y).toBe(1);
   });
 
+  it('moves widgets inside a selected layout variant', () => {
+    const layout = ensureLayoutVariants(
+      createLayout([createWidget({ id: 'w1', x: 0, y: 0, w: 2, h: 1 })])
+    );
+    const moved = moveWidget(layout, 'w1', 2, 1, 'desktop');
+    const desktopWidget = widgetsForVariant(moved, 'desktop')[0];
+    expect(desktopWidget.x).toBe(2);
+    expect(desktopWidget.y).toBe(1);
+    expect(moved.widgets[0].x).toBe(0);
+  });
+
   it('resizes widgets and updates size attribute', () => {
     const layout = createLayout([createWidget({ id: 'w1', w: 3, h: 1 })]);
     const resized = resizeWidget(layout, 'w1', 6, 2);
     expect(resized.widgets[0].w).toBe(6);
     expect(resized.widgets[0].size).toBe('medium');
+  });
+
+  it('changes a variant grid size and clamps placements', () => {
+    const layout = ensureLayoutVariants(
+      createLayout([createWidget({ id: 'w1', x: 0, y: 0, w: 6, h: 2 })])
+    );
+    const resized = setVariantGridSize(layout, 'desktop', 4, 3);
+    const desktop = resized.variants?.find(
+      (variant) => variant.id === 'desktop'
+    );
+    expect(desktop?.columns).toBe(4);
+    expect(desktop?.rows).toBe(3);
+    expect(desktop?.placements.w1.w).toBe(4);
   });
 
   it('removes widgets by setting visible to false', () => {

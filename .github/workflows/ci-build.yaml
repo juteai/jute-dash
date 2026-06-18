@@ -2,6 +2,11 @@ name: CI Build
 
 on:
   pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   lint-test:
@@ -47,6 +52,30 @@ jobs:
       - name: Web tests
         working-directory: apps/web
         run: npm run test:coverage
+
+      - name: Install Playwright browsers
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Web browser tests
+        working-directory: apps/web
+        run: npm run test:browser
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-test-results
+          path: apps/web/test-results/
+          retention-days: 7
 
       - name: Web build
         working-directory: apps/web

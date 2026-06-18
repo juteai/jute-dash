@@ -1,0 +1,74 @@
+home:
+  name: Jute Home
+server:
+  listen-address: 0.0.0.0:8787
+log:
+  level: info
+  file-path: ""
+  max-size: 10
+  max-backups: 5
+  max-age: 3
+  compress: true
+mcp:
+  enabled: false
+  transport: streamable-http
+  listen-address: 127.0.0.1:8790
+  path: /mcp
+  allow-lan: false
+  auth:
+    mode: none
+    env-token: JUTE_MCP_TOKEN
+a2a:
+  allowed-agent-card-urls: []
+  allow-loopback: true
+display:
+  theme: system
+  color-mode: system
+  theme-id: jute-mono
+  density: comfortable
+  motion: full
+  background:
+    kind: theme
+    value: ""
+    fit: cover
+    position: center
+    overlay: none
+  widget-chrome:
+    default: auto
+  accent-color: neutral
+  idle-mode: ambient
+voice:
+  enabled: false
+  muted-by-default: true
+  wake-word-model-id: ""
+  stt-provider-id: ""
+  tts-provider-id: ""
+  stt-model-id: ""
+  tts-model-id: ""
+  tts-voice-id: ""
+  preferred-agent-id: ""
+  cloud-opt-in: false
+  command-providers-enabled: false
+  sensitive-output-policy: visual_only_sensitive
+  followup-window-seconds: 8
+  microphone-profile: ""
+dashboard:
+  widgets:
+    - id: date-time-widget
+      type: date-time
+      title: Clock
+      x: 0
+      "y": 0
+      w: 4
+      h: 2
+      min-w: 3
+      min-h: 1
+      size: small
+      visible: true
+      mode: ui
+      settings:
+        locale: en-US
+        timezone: UTC
+agents: []
+rooms: []
+tiles: []

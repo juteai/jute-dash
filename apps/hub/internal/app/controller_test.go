@@ -20,6 +20,7 @@ import (
 
 	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/dashboard"
 	"jute-dash/apps/hub/internal/app/filesync"
 	"jute-dash/apps/hub/internal/app/voice"
 	a2a "jute-dash/apps/hub/internal/pkg/a2a"
@@ -47,6 +48,28 @@ func TestHealthEndpoint(t *testing.T) {
 	if body.Status != "ok" || body.Version != "test" {
 		t.Fatalf("unexpected response: %+v", body)
 	}
+}
+
+func waitForConfig(
+	t *testing.T,
+	configPath string,
+	matches func(config.Config) bool,
+) config.Config {
+	t.Helper()
+	var reloaded config.Config
+	var err error
+	for range 100 {
+		reloaded, err = LoadConfig(configPath)
+		if err == nil && matches(reloaded) {
+			return reloaded
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	t.Fatalf("config did not reach expected state: %+v", reloaded)
+	return config.Config{}
 }
 
 func TestAgentProxyCORSPreflightAllowsA2AVersionHeader(t *testing.T) {
@@ -90,7 +113,8 @@ func TestEventsStreamDisplayActions(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	ctx := t.Context()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/v1/events", nil)
 	if err != nil {
 		t.Fatalf("create request: %v", err)
@@ -320,6 +344,240 @@ func TestHouseholdSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 	}
 }
 
+func TestHouseholdSettingsEndpointNormalizesAppearanceForYAMLConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "jute.yaml")
+	cfg := testConfig()
+	if err := SaveYAML(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+
+	handler := NewServer(
+		cfg,
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		configPath,
+		nil,
+	)
+
+	payload := bytes.NewBufferString(`{
+		"display":{
+			"background":{"kind":"dynamic","value":"stardust"},
+			"widgetChrome":{"default":"auto"}
+		}
+	}`)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", payload)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var reloaded config.Config
+	var err error
+	for range 100 {
+		reloaded, err = LoadConfig(configPath)
+		if err == nil && reloaded.Display.Background.Kind == "dynamic" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if reloaded.Display.Background.Value != "stardust" ||
+		reloaded.Display.Background.Fit != "cover" ||
+		reloaded.Display.Background.Position != "center" ||
+		reloaded.Display.Background.Overlay != "none" {
+		t.Fatalf("appearance background was not normalized: %+v", reloaded.Display.Background)
+	}
+	if reloaded.Display.WidgetChrome.Default != "auto" {
+		t.Fatalf("appearance widget chrome was not persisted: %+v", reloaded.Display.WidgetChrome)
+	}
+}
+
+func TestHouseholdSettingsEndpointPersistsRepeatedAppearanceSavesToYAMLConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "jute.yaml")
+	cfg := testConfig()
+	if err := SaveYAML(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+
+	handler := NewServer(
+		cfg,
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		configPath,
+		nil,
+	)
+
+	firstPayload := bytes.NewBufferString(`{
+		"display":{
+			"colorMode":"dark",
+			"background":{"kind":"dynamic","value":"stardust"},
+			"widgetChrome":{"default":"smoked","smokedOpacity":0.4}
+		}
+	}`)
+	firstReq := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", firstPayload)
+	firstRec := httptest.NewRecorder()
+	handler.ServeHTTP(firstRec, firstReq)
+	if firstRec.Code != http.StatusOK {
+		t.Fatalf("expected first status 200, got %d: %s", firstRec.Code, firstRec.Body.String())
+	}
+	waitForConfig(t, configPath, func(cfg config.Config) bool {
+		return cfg.Display.ColorMode == "dark" &&
+			cfg.Display.WidgetChrome.Default == "smoked"
+	})
+
+	secondPayload := bytes.NewBufferString(`{
+		"display":{
+			"colorMode":"light",
+			"background":{"kind":"dynamic","value":"weather-ambient"},
+			"widgetChrome":{"default":"auto"}
+		}
+	}`)
+	secondReq := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", secondPayload)
+	secondRec := httptest.NewRecorder()
+	handler.ServeHTTP(secondRec, secondReq)
+	if secondRec.Code != http.StatusOK {
+		t.Fatalf("expected second status 200, got %d: %s", secondRec.Code, secondRec.Body.String())
+	}
+	reloaded := waitForConfig(t, configPath, func(cfg config.Config) bool {
+		return cfg.Display.ColorMode == "light" &&
+			cfg.Display.Background.Value == "weather-ambient" &&
+			cfg.Display.WidgetChrome.Default == "auto"
+	})
+	if reloaded.Display.ColorMode != "light" ||
+		reloaded.Display.Background.Value != "weather-ambient" ||
+		reloaded.Display.WidgetChrome.Default != "auto" {
+		t.Fatalf("second appearance save was not written to YAML: %+v", reloaded.Display)
+	}
+}
+
+func TestHouseholdSettingsEndpointClearsThemeBackgroundValue(t *testing.T) {
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+	handler := NewServer(
+		testConfig(),
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		"",
+		nil,
+	)
+
+	payload := bytes.NewBufferString(`{
+		"display":{
+			"background":{"kind":"theme","value":"stale-upload.jpg"},
+			"widgetChrome":{"default":"solid"}
+		}
+	}`)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", payload)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Display struct {
+			Background map[string]any `json:"background"`
+		} `json:"display"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := body.Display.Background["value"]; got != "" {
+		t.Fatalf("theme background value was not cleared: %+v", body.Display.Background)
+	}
+}
+
+func TestHouseholdSettingsEndpointRejectsInvalidAppearance(t *testing.T) {
+	handler := NewWithSetupStatus(testConfig(), "test", SetupStatus{Complete: true})
+	payload := bytes.NewBufferString(`{
+		"display":{
+			"background":{"kind":"color","value":""},
+			"widgetChrome":{"default":"auto"}
+		}
+	}`)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/settings/household", payload)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "display.background.value is required") {
+		t.Fatalf("unexpected error response: %s", rec.Body.String())
+	}
+}
+
+func TestServerStartupPersistsNormalizedLayoutVariantsToYAMLConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "jute.yaml")
+	cfg := testConfig()
+	cfg.Dashboard.SchemaVersion = 0
+	cfg.Dashboard.DefaultVariant = ""
+	cfg.Dashboard.Variants = nil
+	if err := SaveYAML(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+
+	_ = NewServer(
+		cfg,
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		configPath,
+		nil,
+	)
+
+	reloaded := waitForConfig(t, configPath, func(cfg config.Config) bool {
+		return cfg.Dashboard.SchemaVersion == dashboard.LayoutSchemaVersion &&
+			cfg.Dashboard.DefaultScreen != "" &&
+			len(cfg.Dashboard.Screens) > 0 &&
+			cfg.Dashboard.Screens[0].DefaultVariant != "" &&
+			len(cfg.Dashboard.Screens[0].Variants) > 0
+	})
+	if reloaded.Dashboard.SchemaVersion != dashboard.LayoutSchemaVersion {
+		t.Fatalf("schema version was not persisted: %+v", reloaded.Dashboard)
+	}
+	if reloaded.Dashboard.DefaultScreen == "" || len(reloaded.Dashboard.Screens) == 0 {
+		t.Fatalf("layout screens were not persisted: %+v", reloaded.Dashboard)
+	}
+	screen := reloaded.Dashboard.Screens[0]
+	if screen.DefaultVariant == "" || len(screen.Variants) == 0 {
+		t.Fatalf("layout variants were not persisted: %+v", screen)
+	}
+	firstWidgetID := screen.Widgets[0].ID
+	if _, ok := screen.Variants[0].Placements[firstWidgetID]; !ok {
+		t.Fatalf(
+			"layout variant placement for %q was not persisted: %+v",
+			firstWidgetID,
+			screen.Variants[0],
+		)
+	}
+}
+
 func TestRoomSettingsEndpointUpdatesStore(t *testing.T) {
 	runtimeStore := openInitializedServerStore(t)
 	defer runtimeStore.Close()
@@ -489,20 +747,9 @@ func TestRoomAndTileSettingsEndpointUpdatesYAMLConfig(t *testing.T) {
 		t.Fatalf("expected tile status 200, got %d: %s", tileRec.Code, tileRec.Body.String())
 	}
 
-	// Poll configPath for changes since syncing is asynchronous
-	var reloaded config.Config
-	var err error
-	for range 100 {
-		reloaded, err = LoadConfig(configPath)
-		if err == nil && len(reloaded.Rooms) == 1 && len(reloaded.Tiles) == 1 {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	if err != nil {
-		t.Fatalf("reload config: %v", err)
-	}
+	reloaded := waitForConfig(t, configPath, func(cfg config.Config) bool {
+		return len(cfg.Rooms) == 1 && len(cfg.Tiles) == 1
+	})
 	if len(reloaded.Rooms) != 1 || reloaded.Rooms[0].ID != "office" {
 		t.Fatalf("unexpected saved rooms: %+v", reloaded.Rooms)
 	}
@@ -2051,6 +2298,74 @@ func TestWidgetLayoutPutPersistsWithStore(t *testing.T) {
 	}
 }
 
+func TestWidgetLayoutPutPersistsToYAMLConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "jute.yaml")
+	cfg := testConfig()
+	if err := SaveYAML(configPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	runtimeStore := openInitializedServerStore(t)
+	defer runtimeStore.Close()
+	handler := NewServer(
+		cfg,
+		"test",
+		SetupStatus{Complete: true},
+		runtimeStore.DashboardRepo,
+		runtimeStore.HomestateRepo,
+		runtimeStore.VoiceRepo,
+		configPath,
+		nil,
+	)
+
+	layout := DefaultWidgetLayout()
+	layout.DefaultVariant = "desktop"
+	layout.Variants[3].Columns = 14
+	layout.Variants[3].Rows = 7
+	layout.Variants[3].Placements[layout.Widgets[0].ID] = WidgetPlacement{
+		X: 3,
+		Y: 1,
+		W: 4,
+		H: 1,
+	}
+	payload, err := json.Marshal(layout)
+	if err != nil {
+		t.Fatalf("marshal layout: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/widgets/layout", bytes.NewReader(payload))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var reloaded config.Config
+	for range 100 {
+		reloaded, err = LoadConfig(configPath)
+		if err == nil &&
+			len(reloaded.Dashboard.Screens) > 0 &&
+			reloaded.Dashboard.Screens[0].DefaultVariant == "desktop" &&
+			len(reloaded.Dashboard.Screens[0].Variants) > 3 &&
+			reloaded.Dashboard.Screens[0].Variants[3].Columns == 14 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if len(reloaded.Dashboard.Screens) == 0 ||
+		reloaded.Dashboard.Screens[0].DefaultVariant != "desktop" ||
+		len(reloaded.Dashboard.Screens[0].Variants) <= 3 ||
+		reloaded.Dashboard.Screens[0].Variants[3].Columns != 14 {
+		t.Fatalf("layout was not written to YAML config: %+v", reloaded.Dashboard)
+	}
+	if got := reloaded.Dashboard.Screens[0].Variants[3].Placements[layout.Widgets[0].ID]; got.X != 3 || got.W != 4 {
+		t.Fatalf("layout placement was not written to YAML config: %+v", got)
+	}
+}
+
 func TestWidgetLayoutPutRejectsInvalidLayout(t *testing.T) {
 	handler := New(testConfig(), "test")
 	payload := bytes.NewBufferString(
@@ -2103,7 +2418,7 @@ func TestWidgetLayoutResetEndpoint(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(body.Widgets) != 3 || !body.Widgets[0].Visible {
+	if len(body.Widgets) != 4 || !body.Widgets[0].Visible {
 		t.Fatalf("unexpected reset layout: %+v", body)
 	}
 }

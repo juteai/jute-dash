@@ -47,12 +47,24 @@ A specific placement of a Widget on the Dashboard, with its own position, settin
 _Avoid_: widget slot, tile instance
 
 **Widget Skill**:
-The agent-facing capability declaration for a Widget. Defined statically in the widget's `widget.yaml` manifest. Describes what context the Widget exposes, what actions the Hub can perform on its behalf, and what prompts help an Agent use it. The Hub reads Widget Skill manifests at startup and surfaces them through the MCP Bridge.
+The agent-facing capability declaration for a Widget. Currently defined statically in the widget's Go package under `widgets/{kind}/hub` by returning a `*widgetskills.Definition` from `Skill()`. Describes what context the Widget exposes, what actions the Hub can perform on its behalf, and what prompts help an Agent use it. The Hub reads registered Widget Skill declarations at startup and surfaces them through the MCP Bridge.
 _Avoid_: widget capability, widget tool, widget plugin
 
-**`widget.yaml`**:
-The manifest file for a Widget, committed alongside its Svelte source in `widgets/`. Contains identity, settings schema, and the Widget Skill declaration (`agentSkill`).
-_Avoid_: widget.json, widget manifest (use `widget.yaml`)
+**Widget Declaration**:
+The current runtime declaration of a Widget's identity, settings schema, Adapter Connection requirements, and optional Widget Skill. It lives in Go under `widgets/{kind}/hub`; manifest files such as `widget.yaml` are future work, not the current source of truth.
+_Avoid_: widget.yaml (when describing current runtime behavior), widget.json
+
+**Alert Focus**:
+The full-screen Display state shown when a timer, alarm, or calendar event alert is due. It is derived from hydrated Widget data plus the current Display clock, and it delegates snooze or dismiss back through Widget actions.
+_Avoid_: alarm modal, timer popup, notification screen
+
+**Notification Sound Policy**:
+The shared alert sound contract used by alert-capable Widgets and the Display. The v1 supported sounds are `chime`, `bell`, `pulse`, `soft`, and `none`; unsupported values fall back to `chime` unless a valid widget fallback is supplied.
+_Avoid_: ringtone system, audio theme, sound plugin
+
+**Alert Time State**:
+The time-derived status for an alert item: future, due/ringing, snoozed until a later due time, dismissed, cancelled, or expired after its event end. The Hub owns durable Alert Time State; the Display only derives a renderable focus state from Hub-provided data.
+_Avoid_: browser alarm state, local reminder state
 
 ### Themes and customization
 

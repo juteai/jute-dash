@@ -187,7 +187,10 @@ Before adding a new setting, classify it as one of:
 
 Classification of the new display/widget settings:
 
-- widget instance `mode` (`ui`/`headless`), widget settings values, and the 12-column layout are `household durable` (SQLite truth, YAML bootstrap/export);
+- dashboard screen definitions, screen-owned widget instances, widget instance `mode` (`ui`/`headless`), non-secret widget settings values, `connectionRefs`, and responsive layout variants are `household durable` (SQLite truth, YAML bootstrap/export);
+- the current active dashboard screen is durable display/profile state. Until full device-profile settings are exposed, the default display/profile path stores it with the active layout profile;
+- Adapter Connections are `household durable` records shared across widget instances;
+- Adapter Connection `secretRefs` are `secret reference` values. The hub may resolve them into raw provider material in process memory, but public APIs, YAML/JSON export, widget snapshots, A2A context, and MCP resources expose references or redacted availability only;
 - a widget's settings schema is part of its `install record` / built-in widget metadata (surfaced via the catalog), not a per-home setting;
 - the background reference and slideshow configuration (image references, interval, fit, overlay) are `household durable`;
 - uploaded background image binaries are `local media assets`.
@@ -217,12 +220,24 @@ Secrets are never stored directly in YAML, JSON, or ordinary SQLite settings row
 v1 secret references:
 
 - environment variable names;
+- encrypted local secret-vault records referenced as `db:<secret-id>`;
 - local token file references outside repo paths when explicitly configured;
 - auth configured booleans in public projections.
 
+Integration Widgets must use Adapter Connections for provider credentials. A Widget Instance stores `connectionRefs` such as `{ "bridge": "living-room-hue" }`; the referenced Adapter Connection stores non-secret adapter settings plus secret references such as `{ "username": "env:HUE_USERNAME" }` or `{ "access_token": "db:spotify/main/access_token" }`. Connection kinds expose typed setup metadata through `/api/v1/settings/connection-kinds`, and the Settings `Connections` surface saves records as `settings` plus `secretRefs`. The hub resolver validates required fields and is the only layer that turns those references into raw material for provider code.
+
+Spotify login uses Authorization Code with PKCE for local/self-hosted setup. A Spotify Adapter Connection may store a non-secret `client_id`, while access and refresh tokens are written as encrypted `db:` secret references by the hub. A Jute-managed Spotify app can be configured with `JUTE_SPOTIFY_CLIENT_ID`, allowing the connection record to omit `client_id`. The Display may request a short-lived Spotify access token from `/api/v1/integrations/spotify/web-playback-token` only to initialize Spotify's Web Playback SDK.
+
+Apple Music uses an Apple Music Adapter Connection with secret references for the MusicKit developer token and optional Music User Token. The Display may request MusicKit token material from `/api/v1/integrations/apple-music/music-kit-token` only to initialize MusicKit JS and authorize browser playback for a linked connection.
+
+Browser playback token material is transient Display runtime material. It must not be persisted in widget settings, browser storage, YAML, exported config, A2A context, MCP context, or logs.
+
+The local secret vault stores encrypted blobs in SQLite and keeps the raw master key out of the database. By default the master key is generated and stored in the host OS credential store. `JUTE_SECRET_KEY` can provide the 32-byte master key for CI, containers, service users, and Linux environments without a usable desktop keyring. The environment override supports base64, hex, or raw 32-byte values.
+
+Supported desktop credential stores are host-dependent: macOS Keychain, Windows Credential Manager, and Linux Secret Service, KWallet, Pass, or KeyCtl. If none is available and `JUTE_SECRET_KEY` is unset, secret resolution fails and Integration Widgets report safe connection issues.
+
 Future secret storage:
 
-- OS keyring;
 - OAuth device flow records;
 - encrypted backup/export support.
 
@@ -277,7 +292,7 @@ Voice settings are device-profile durable settings owned by the hub. The display
 - `GET /api/v1/settings/tiles`
 - `PUT /api/v1/settings/tiles`
 
-The current pre-v1 settings UI uses `GET/PATCH /api/v1/settings/household` for home name, locale, timezone, display theme, weather enablement, location, and units. It also uses `GET/PUT /api/v1/settings/rooms` and `GET/PUT /api/v1/settings/tiles` for the home model shown on the dashboard. Store-backed runs persist these records in SQLite. YAML-backed harness runs write the same records back to the active YAML config.
+The current pre-v1 settings UI uses `GET/PATCH /api/v1/settings/household` for home name, locale, timezone, display appearance, weather enablement, location, and units. Household display appearance writes are normalized through the same defaulting and validation rules as config import before they are saved. It also uses `GET/PUT /api/v1/settings/rooms` and `GET/PUT /api/v1/settings/tiles` for the home model shown on the dashboard. Store-backed runs persist these records in SQLite. YAML-backed harness runs write the same records back to the active YAML config.
 
 Future visual customization settings are documented in [Visual Customization](visual-customization.md). Theme selection, color mode, background policy, and default widget chrome are durable display settings. Theme Pack manifests are install records. Per-widget chrome overrides are widget settings.
 

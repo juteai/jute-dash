@@ -136,6 +136,64 @@ func (_c *LayoutStore_SaveWidgetLayout_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
+// SetActiveScreen provides a mock function with given fields: ctx, profileID, screenID
+func (_m *LayoutStore) SetActiveScreen(ctx context.Context, profileID string, screenID string) (dashboard.WidgetLayout, error) {
+	ret := _m.Called(ctx, profileID, screenID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetActiveScreen")
+	}
+
+	var r0 dashboard.WidgetLayout
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (dashboard.WidgetLayout, error)); ok {
+		return rf(ctx, profileID, screenID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) dashboard.WidgetLayout); ok {
+		r0 = rf(ctx, profileID, screenID)
+	} else {
+		r0 = ret.Get(0).(dashboard.WidgetLayout)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, profileID, screenID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// LayoutStore_SetActiveScreen_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetActiveScreen'
+type LayoutStore_SetActiveScreen_Call struct {
+	*mock.Call
+}
+
+// SetActiveScreen is a helper method to define mock.On call
+//   - ctx context.Context
+//   - profileID string
+//   - screenID string
+func (_e *LayoutStore_Expecter) SetActiveScreen(ctx interface{}, profileID interface{}, screenID interface{}) *LayoutStore_SetActiveScreen_Call {
+	return &LayoutStore_SetActiveScreen_Call{Call: _e.mock.On("SetActiveScreen", ctx, profileID, screenID)}
+}
+
+func (_c *LayoutStore_SetActiveScreen_Call) Run(run func(ctx context.Context, profileID string, screenID string)) *LayoutStore_SetActiveScreen_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *LayoutStore_SetActiveScreen_Call) Return(_a0 dashboard.WidgetLayout, _a1 error) *LayoutStore_SetActiveScreen_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *LayoutStore_SetActiveScreen_Call) RunAndReturn(run func(context.Context, string, string) (dashboard.WidgetLayout, error)) *LayoutStore_SetActiveScreen_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // WidgetLayout provides a mock function with given fields: ctx, profileID
 func (_m *LayoutStore) WidgetLayout(ctx context.Context, profileID string) (dashboard.WidgetLayout, error) {
 	ret := _m.Called(ctx, profileID)

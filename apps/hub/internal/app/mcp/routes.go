@@ -13,9 +13,10 @@ import (
 
 // RouteContext encapsulates context and Jute-specific display dependencies for MCP handlers.
 type RouteContext struct {
-	Context  context.Context
-	Snapshot widgetskills.Snapshot
-	Display  DisplayActions
+	Context          context.Context
+	Snapshot         widgetskills.Snapshot
+	Display          DisplayActions
+	ActionDispatcher WidgetActionDispatcher
 }
 
 // ResourceRoute defines the interface for an MCP resource route.
@@ -299,13 +300,19 @@ type juteSkillReadContextTool struct{}
 func (juteSkillReadContextTool) Name() string  { return "jute_skill_read_context" }
 func (juteSkillReadContextTool) Title() string { return "Read Widget Skill Context" }
 func (juteSkillReadContextTool) Description() string {
-	return "Read public context for a Widget Skill."
+	return "Read public context for an exact Widget Skill ID returned by jute_skill_list."
 }
 func (juteSkillReadContextTool) Scope() string { return agents.MCPScopeSkillsContextRead }
 func (juteSkillReadContextTool) InputSchema() map[string]any {
 	return objectSchema(map[string]any{
-		"skillId":          map[string]any{"type": "string"},
-		"widgetInstanceId": map[string]any{"type": "string"},
+		"skillId": map[string]any{
+			"type":        "string",
+			"description": "Exact Widget Skill ID returned by jute_skill_list.",
+		},
+		"widgetInstanceId": map[string]any{
+			"type":        "string",
+			"description": "Optional exact widget instance ID returned by jute_skill_list.",
+		},
 	}, []string{"skillId"})
 }
 func (juteSkillReadContextTool) Call(ctx RouteContext, args map[string]any) (any, error) {
@@ -318,25 +325,75 @@ type juteSkillInvokeActionTool struct{}
 func (juteSkillInvokeActionTool) Name() string  { return "jute_skill_invoke_action" }
 func (juteSkillInvokeActionTool) Title() string { return "Invoke Widget Skill Action" }
 func (juteSkillInvokeActionTool) Description() string {
-	return "Invoke a declared low-risk Widget Skill action through the hub."
+	return "Invoke an exact declared Widget Skill action through the hub. Call jute_skill_list first; do not invent generic skill IDs such as music_player, stocks, shares, or market_prices."
 }
 func (juteSkillInvokeActionTool) Scope() string { return agents.MCPScopeSkillsActionInvoke }
 func (juteSkillInvokeActionTool) InputSchema() map[string]any {
 	return objectSchema(map[string]any{
-		"skillId":          map[string]any{"type": "string"},
-		"widgetInstanceId": map[string]any{"type": "string"},
-		"actionId":         map[string]any{"type": "string"},
+		"skillId": map[string]any{
+			"type":        "string",
+			"description": "Exact Widget Skill ID returned by jute_skill_list, for example jute.spotify.control or jute.markets.current.",
+		},
+		"widgetInstanceId": map[string]any{
+			"type":        "string",
+			"description": "Optional exact widget instance ID returned by jute_skill_list.",
+		},
+		"actionId": map[string]any{
+			"type":        "string",
+			"description": "Exact action ID declared by the selected Widget Skill.",
+		},
+		"arguments": map[string]any{
+			"type":                 "object",
+			"description":          "Action-specific arguments declared by the Widget Skill actionDetails/inputSchema returned by jute_skill_list.",
+			"additionalProperties": true,
+		},
+		"confirmed": map[string]any{"type": "boolean"},
 	}, []string{"skillId", "actionId"})
 }
 func (juteSkillInvokeActionTool) Call(ctx RouteContext, args map[string]any) (any, error) {
+	skillID := stringArg(args, "skillId")
+	widgetID := stringArg(args, "widgetInstanceId")
+	actionID := stringArg(args, "actionId")
+	actionArgs := skillActionArguments(args)
+	if ctx.ActionDispatcher != nil {
+		skill, err := widgetskills.FindSkill(ctx.Snapshot, skillID, widgetID)
+		if err != nil {
+			return nil, err
+		}
+		confirmed, _ := args["confirmed"].(bool)
+		return ctx.ActionDispatcher.InvokeWidgetAction(
+			ctx.Context,
+			skill.WidgetInstanceID,
+			actionID,
+			actionArgs,
+			"mcp",
+			confirmed,
+		)
+	}
 	return widgetskills.InvokeAction(
 		ctx.Context,
 		ctx.Snapshot,
-		stringArg(args, "skillId"),
-		stringArg(args, "widgetInstanceId"),
-		stringArg(args, "actionId"),
-		args,
+		skillID,
+		widgetID,
+		actionID,
+		actionArgs,
 	)
+}
+
+func skillActionArguments(args map[string]any) map[string]any {
+	if raw, ok := args["arguments"].(map[string]any); ok {
+		return raw
+	}
+	cleaned := make(map[string]any, len(args))
+	for key, value := range args {
+		switch key {
+		case "skillId", "widgetInstanceId", "actionId", "confirmed":
+			continue
+		default:
+			cleaned[key] = value
+		}
+	}
+	return cleaned
 }
 
 type juteSkillPromptGetTool struct{}

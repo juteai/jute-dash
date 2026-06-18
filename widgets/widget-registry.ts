@@ -1,18 +1,35 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import ChatHistoryWidget from './chathistory/ChatHistoryWidget.svelte';
-import DateTimeWidget from './datetime/DateTimeWidget.svelte';
-import WeatherWidget from './weather/WeatherWidget.svelte';
-import RSSWidget from './rss/RSSWidget.svelte';
-import MarketsWidget from './markets/MarketsWidget.svelte';
-import { chatStore } from '$lib/chatStore';
-import { navigationStore } from '$lib/navigationStore';
+import ChatHistoryWidget from "./chathistory/web/ChatHistoryWidget.svelte";
+import DateTimeWidget from "./datetime/web/DateTimeWidget.svelte";
+import WeatherWidget from "./weather/web/WeatherWidget.svelte";
+import RSSWidget from "./rss/web/RSSWidget.svelte";
+import MarketsWidget from "./markets/web/MarketsWidget.svelte";
+import SpotifyWidget from "./spotify/web/SpotifyWidget.svelte";
+import AppleMusicWidget from "./applemusic/web/AppleMusicWidget.svelte";
+import PhilipsHueWidget from "./philipshue/web/PhilipsHueWidget.svelte";
+import Zigbee2MQTTWidget from "./zigbee2mqtt/web/Zigbee2MQTTWidget.svelte";
+import TimersAlarmsWidget from "./timersalarms/web/TimersAlarmsWidget.svelte";
+import CalendarWidget from "./calendar/web/CalendarWidget.svelte";
+import { chatStore } from "$lib/chatStore";
+import { navigationStore } from "$lib/navigationStore";
+import { createDisplayWidgetDispatcher } from "$lib/widgetActions";
 import type {
   DashboardData,
   ChatMessage,
   Agent,
   AgentAvailability,
-  WidgetInstance
-} from '$lib/types';
+  WidgetInstance,
+} from "$lib/types";
+
+function widgetPayload(widget: WidgetInstance): any {
+  const payload = widget.data as
+    | { data?: unknown; status?: string }
+    | undefined;
+  if (payload && "data" in payload) {
+    return payload.data;
+  }
+  return widget.data;
+}
 
 export interface WidgetRegistryEntry {
   component: any;
@@ -28,46 +45,46 @@ export interface WidgetRegistryEntry {
 }
 
 export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
-  'date-time': {
+  "date-time": {
     component: DateTimeWidget,
     props: ({ widget, stale }) => ({
       settings: {
-        timezone: 'UTC',
-        locale: 'en',
-        style: 'digital',
-        ...(widget.settings || {})
+        timezone: "UTC",
+        locale: "en",
+        style: "digital",
+        ...(widget.settings || {}),
       },
-      stale
-    })
+      stale,
+    }),
   },
   weather: {
     component: WeatherWidget,
     props: ({ widget, stale }) => ({
-      weather: widget.data ?? {
-        locationName: 'Not configured',
+      weather: widgetPayload(widget) ?? {
+        locationName: "Not configured",
         temperature: null,
-        temperatureUnit: 'celsius',
+        temperatureUnit: "celsius",
         apparentTemperature: null,
-        condition: 'Weather unavailable',
-        icon: 'cloud',
+        condition: "Weather unavailable",
+        icon: "cloud",
         weatherCode: null,
         humidity: null,
         windSpeed: null,
-        windSpeedUnit: 'kmh',
-        sunrise: '',
-        sunset: '',
+        windSpeedUnit: "kmh",
+        sunrise: "",
+        sunset: "",
         isDay: null,
-        updatedAt: '',
-        source: 'widget',
-        status: 'unavailable'
+        updatedAt: "",
+        source: "widget",
+        status: "unavailable",
       },
-      stale
-    })
+      stale,
+    }),
   },
   rss: {
     component: RSSWidget,
     props: ({ widget, stale, data }) => ({
-      data: widget.data,
+      data: widgetPayload(widget),
       stale,
       onQueryAgent: async (title: string, link: string) => {
         navigationStore.openChat();
@@ -76,15 +93,15 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
           `Read the article: ${title} (${link})`,
           data.agents,
           undefined,
-          fetch
+          fetch,
         );
-      }
-    })
+      },
+    }),
   },
   markets: {
     component: MarketsWidget,
     props: ({ widget, stale, data }) => ({
-      data: widget.data,
+      data: widgetPayload(widget),
       stale,
       onQueryAgent: async (symbol: string) => {
         navigationStore.openChat();
@@ -93,25 +110,111 @@ export const widgetRegistry: Record<string, WidgetRegistryEntry> = {
           `Show me details and recent news for ${symbol}`,
           data.agents,
           undefined,
-          fetch
+          fetch,
         );
-      }
-    })
+      },
+    }),
   },
-  'chat-history': {
+  "timers-alarms": {
+    component: TimersAlarmsWidget,
+    props: ({ widget, stale }) => ({
+      data: widgetPayload(widget) ?? {
+        active: [],
+        ringing: [],
+        notificationSound: widget.settings?.notificationSound ?? "chime",
+        defaultSnoozeMins: widget.settings?.defaultSnoozeMins ?? 9,
+      },
+      stale,
+      dispatch: createDisplayWidgetDispatcher(fetch, widget.id),
+    }),
+  },
+  calendar: {
+    component: CalendarWidget,
+    props: ({ widget, stale }) => ({
+      data: widgetPayload(widget) ?? {
+        events: [],
+        ringing: [],
+        alertLeadMinutes: widget.settings?.alertLeadMinutes ?? 10,
+        defaultSnoozeMins: widget.settings?.defaultSnoozeMins ?? 9,
+        notificationSound: widget.settings?.notificationSound ?? "chime",
+      },
+      stale,
+      dispatch: createDisplayWidgetDispatcher(fetch, widget.id),
+    }),
+  },
+  spotify: {
+    component: SpotifyWidget,
+    props: ({ widget, stale }) => ({
+      connectionId: widget.connectionRefs?.account ?? "",
+      data: widgetPayload(widget) ?? {
+        track_title: "Not Playing",
+        artist_name: "Unknown",
+        is_playing: false,
+        volume: 50,
+      },
+      stale,
+      dispatch: createDisplayWidgetDispatcher(fetch, widget.id),
+    }),
+  },
+  "apple-music": {
+    component: AppleMusicWidget,
+    props: ({ widget, stale }) => ({
+      connectionId: widget.connectionRefs?.account ?? "",
+      data: widgetPayload(widget) ?? {
+        track_title: "Not Playing",
+        artist_name: "Unknown",
+        is_playing: false,
+        volume: 50,
+      },
+      stale,
+      dispatch: createDisplayWidgetDispatcher(fetch, widget.id),
+    }),
+  },
+  "philips-hue": {
+    component: PhilipsHueWidget,
+    props: ({ widget, stale }) => ({
+      instanceId: widget.id,
+      data: widgetPayload(widget) ?? {
+        devices: [],
+      },
+      stale,
+      dispatch: async (action: string, args: Record<string, any> = {}) => {
+        return createDisplayWidgetDispatcher(fetch, widget.id)(action, {
+          deviceId: args.device_id || args.deviceId || "",
+          value: args.state !== undefined ? args.state : args.value,
+        });
+      },
+    }),
+  },
+  zigbee2mqtt: {
+    component: Zigbee2MQTTWidget,
+    props: ({ widget, stale }) => ({
+      data: widgetPayload(widget) ?? {
+        devices: [],
+      },
+      stale,
+      dispatch: async (action: string, args: Record<string, any> = {}) => {
+        return createDisplayWidgetDispatcher(fetch, widget.id)(action, {
+          deviceId: args.device_id || args.deviceId || "",
+          value: args.state !== undefined ? args.state : args.value,
+        });
+      },
+    }),
+  },
+  "chat-history": {
     component: ChatHistoryWidget,
     props: ({
       data,
       messages,
       selectedAgent,
       selectedAvailability,
-      onOpenChat
+      onOpenChat,
     }) => ({
       agents: data.agents,
       messages,
       selectedAgent,
       selectedAvailability,
-      onOpenChat
-    })
-  }
+      onOpenChat,
+    }),
+  },
 };

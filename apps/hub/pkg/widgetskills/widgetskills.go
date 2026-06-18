@@ -78,18 +78,20 @@ type Config struct {
 }
 
 type WidgetInstance struct {
-	ID       string         `json:"id"`
-	Kind     string         `json:"kind"`
-	Title    string         `json:"title"`
-	X        int            `json:"x"`
-	Y        int            `json:"y"`
-	W        int            `json:"w"`
-	H        int            `json:"h"`
-	Visible  bool           `json:"visible"`
-	Mode     string         `json:"mode,omitempty"`
-	Size     string         `json:"size"`
-	Settings map[string]any `json:"settings"`
-	Data     any            `json:"data,omitempty"`
+	ScreenID       string            `json:"screenId,omitempty"`
+	ID             string            `json:"id"`
+	Kind           string            `json:"kind"`
+	Title          string            `json:"title"`
+	X              int               `json:"x"`
+	Y              int               `json:"y"`
+	W              int               `json:"w"`
+	H              int               `json:"h"`
+	Visible        bool              `json:"visible"`
+	Mode           string            `json:"mode,omitempty"`
+	Size           string            `json:"size"`
+	Settings       map[string]any    `json:"settings"`
+	ConnectionRefs map[string]string `json:"connectionRefs,omitempty"`
+	Data           any               `json:"data,omitempty"`
 }
 
 // rendersTile reports whether a present widget instance draws a visible tile.
@@ -99,8 +101,17 @@ func (w WidgetInstance) rendersTile() bool {
 }
 
 type WidgetLayout struct {
-	ProfileID string           `json:"profileId"`
-	Widgets   []WidgetInstance `json:"widgets"`
+	ProfileID       string           `json:"profileId"`
+	DefaultScreenID string           `json:"defaultScreenId,omitempty"`
+	ActiveScreenID  string           `json:"activeScreenId,omitempty"`
+	Screens         []WidgetScreen   `json:"screens,omitempty"`
+	Widgets         []WidgetInstance `json:"widgets"`
+}
+
+type WidgetScreen struct {
+	ID      string   `json:"id"`
+	Label   string   `json:"label"`
+	Widgets []string `json:"widgets"`
 }
 
 type Agent struct {
@@ -170,13 +181,23 @@ type Skill struct {
 }
 
 type SkillSummary struct {
-	SkillID          string   `json:"skillId"`
-	WidgetInstanceID string   `json:"widgetInstanceId"`
-	WidgetKind       string   `json:"widgetKind"`
-	DisplayName      string   `json:"displayName"`
-	Summary          string   `json:"summary"`
-	Actions          []string `json:"actions"`
-	Prompts          []string `json:"prompts"`
+	SkillID          string          `json:"skillId"`
+	WidgetInstanceID string          `json:"widgetInstanceId"`
+	WidgetKind       string          `json:"widgetKind"`
+	DisplayName      string          `json:"displayName"`
+	Summary          string          `json:"summary"`
+	Actions          []string        `json:"actions"`
+	ActionDetails    []ActionSummary `json:"actionDetails,omitempty"`
+	Prompts          []string        `json:"prompts"`
+}
+
+type ActionSummary struct {
+	ID                   string         `json:"id"`
+	Title                string         `json:"title"`
+	Description          string         `json:"description"`
+	SideEffect           string         `json:"sideEffect"`
+	RequiresConfirmation bool           `json:"requiresConfirmation"`
+	InputSchema          map[string]any `json:"inputSchema,omitempty"`
 }
 
 type DashboardContext struct {
@@ -196,9 +217,18 @@ type Display struct {
 }
 
 type Dashboard struct {
+	VisibleWidgetIDs []string                 `json:"visibleWidgetIds"`
+	FocusedWidgetID  string                   `json:"focusedWidgetId"`
+	ActiveScreenID   string                   `json:"activeScreenId,omitempty"`
+	Screens          []DashboardScreenSummary `json:"screens,omitempty"`
+	Stale            bool                     `json:"stale"`
+}
+
+type DashboardScreenSummary struct {
+	ID               string   `json:"id"`
+	Label            string   `json:"label"`
 	VisibleWidgetIDs []string `json:"visibleWidgetIds"`
-	FocusedWidgetID  string   `json:"focusedWidgetId"`
-	Stale            bool     `json:"stale"`
+	Active           bool     `json:"active"`
 }
 
 type SkillResult struct {
@@ -220,6 +250,7 @@ type VisibleWidgets struct {
 }
 
 type WidgetSummary struct {
+	ScreenID    string        `json:"screenId,omitempty"`
 	ID          string        `json:"id"`
 	Kind        string        `json:"kind"`
 	Title       string        `json:"title"`
@@ -282,6 +313,7 @@ func DashboardSnapshot(snapshot Snapshot) DashboardContext {
 			visibleWidgetIDs = append(visibleWidgetIDs, widget.ID)
 		}
 	}
+	screenSummaries := dashboardScreenSummaries(snapshot)
 	for _, skill := range skills {
 		results = append(results, SkillResult{
 			SkillSummary: Summarize(skill),
@@ -316,10 +348,52 @@ func DashboardSnapshot(snapshot Snapshot) DashboardContext {
 		Dashboard: Dashboard{
 			VisibleWidgetIDs: visibleWidgetIDs,
 			FocusedWidgetID:  "",
+			ActiveScreenID:   snapshot.Layout.ActiveScreenID,
+			Screens:          screenSummaries,
 			Stale:            false,
 		},
 		Skills: results,
 	}
+}
+
+func dashboardScreenSummaries(snapshot Snapshot) []DashboardScreenSummary {
+	if len(snapshot.Layout.Screens) == 0 {
+		if len(snapshot.Layout.Widgets) == 0 {
+			return nil
+		}
+		ids := make([]string, 0, len(snapshot.Layout.Widgets))
+		for _, widget := range snapshot.Layout.Widgets {
+			if widget.rendersTile() {
+				ids = append(ids, widget.ID)
+			}
+		}
+		return []DashboardScreenSummary{{
+			ID:               firstNonEmpty(snapshot.Layout.ActiveScreenID, "home"),
+			Label:            "Home",
+			VisibleWidgetIDs: ids,
+			Active:           true,
+		}}
+	}
+	widgetsByID := map[string]WidgetInstance{}
+	for _, widget := range snapshot.Layout.Widgets {
+		widgetsByID[widget.ID] = widget
+	}
+	results := make([]DashboardScreenSummary, 0, len(snapshot.Layout.Screens))
+	for _, screen := range snapshot.Layout.Screens {
+		ids := []string{}
+		for _, widgetID := range screen.Widgets {
+			if widget, ok := widgetsByID[widgetID]; ok && widget.rendersTile() {
+				ids = append(ids, widget.ID)
+			}
+		}
+		results = append(results, DashboardScreenSummary{
+			ID:               screen.ID,
+			Label:            screen.Label,
+			VisibleWidgetIDs: ids,
+			Active:           screen.ID == snapshot.Layout.ActiveScreenID,
+		})
+	}
+	return results
 }
 
 func SkillListSnapshot(snapshot Snapshot) SkillList {
@@ -349,15 +423,16 @@ func VisibleWidgetsSnapshot(snapshot Snapshot) VisibleWidgets {
 			continue
 		}
 		summary := WidgetSummary{
-			ID:      widget.ID,
-			Kind:    widget.Kind,
-			Title:   widget.Title,
-			Size:    widget.Size,
-			X:       widget.X,
-			Y:       widget.Y,
-			W:       widget.W,
-			H:       widget.H,
-			Visible: widget.Visible,
+			ScreenID: widget.ScreenID,
+			ID:       widget.ID,
+			Kind:     widget.Kind,
+			Title:    widget.Title,
+			Size:     widget.Size,
+			X:        widget.X,
+			Y:        widget.Y,
+			W:        widget.W,
+			H:        widget.H,
+			Visible:  widget.Visible,
 		}
 		if skill, ok := skillsByWidget[widget.ID]; ok {
 			skillSummary := Summarize(skill)
@@ -489,8 +564,17 @@ func HomeAssistantGuidance() string {
 
 func Summarize(skill Skill) SkillSummary {
 	actionIDs := make([]string, 0, len(skill.Actions))
+	actionDetails := make([]ActionSummary, 0, len(skill.Actions))
 	for _, action := range skill.Actions {
 		actionIDs = append(actionIDs, action.ID)
+		actionDetails = append(actionDetails, ActionSummary{
+			ID:                   action.ID,
+			Title:                action.Title,
+			Description:          action.Description,
+			SideEffect:           action.SideEffect,
+			RequiresConfirmation: action.RequiresConfirmation,
+			InputSchema:          action.InputSchema,
+		})
 	}
 	promptIDs := make([]string, 0, len(skill.Prompts))
 	for _, prompt := range skill.Prompts {
@@ -503,6 +587,7 @@ func Summarize(skill Skill) SkillSummary {
 		DisplayName:      skill.DisplayName,
 		Summary:          skill.Summary,
 		Actions:          actionIDs,
+		ActionDetails:    actionDetails,
 		Prompts:          promptIDs,
 	}
 }
@@ -599,6 +684,9 @@ func homeAssistantGuidance() string {
 		"Return only the final user-facing answer in A2A messages. Never include private reasoning, scratchpad text, analysis, tool-selection notes, function-call plans, or statements like \"I should\" or \"no need to call tools\" in assistant output.",
 		"Use Jute MCP resources and Widget Skills to understand only the visible dashboard context that the hub exposes.",
 		"Prefer skill context over guesses. Invoke only declared actions, and only when the user's request requires that action or context.",
+		"For music playback requests, call jute_skill_list and choose the exact visible Spotify or Apple Music Widget Skill ID, widget instance ID, and declared action ID. Do not use generic music_player skill IDs or default widget IDs.",
+		"For RSS, headline, link, or article-reading requests, call jute_skill_list, choose the visible RSS Widget Skill, and invoke its declared read_article or grep_article action with the article URL and optional query.",
+		"For stocks, shares, crypto, commodities, or market-price requests, call jute_skill_list, choose the visible Markets Widget Skill, and use its declared query_stock, query_share, query_crypto, or query_ticker action with a ticker symbol.",
 		"For simple greetings or ordinary chat, reply naturally without calling tools.",
 		"Before using a tool, choose the narrowest relevant Jute resource or Widget Skill action. Do not invent tools or capabilities that are not listed.",
 		"Do not infer hidden widget state, secrets, private household data, camera frames, microphone audio, browser storage, or raw adapter payloads.",

@@ -43,6 +43,20 @@ If you want to set up your development environment, run the tests, or spin up th
 
 👉 **[CONTRIBUTING.md](CONTRIBUTING.md)**
 
+## Docker Deployment
+
+Jute Dash publishes a single-container image that runs the Go hub and serves the
+built display from the same process:
+
+```sh
+docker compose -f examples/compose/docker-compose.yml up
+```
+
+The Compose example mounts `examples/compose/config/config.yaml` as bootstrap
+configuration and stores runtime data in a Docker volume at `/data`. See
+[Distribution](docs/architecture/distribution.md#docker) for image tags,
+environment variables, and config/data mount details.
+
 ---
 
 ## License

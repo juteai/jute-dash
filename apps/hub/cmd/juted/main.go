@@ -22,11 +22,17 @@ import (
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/pkg/widgetskills"
 
-	_ "jute-dash/widgets/chathistory"
-	_ "jute-dash/widgets/datetime"
-	_ "jute-dash/widgets/markets"
-	_ "jute-dash/widgets/rss"
-	_ "jute-dash/widgets/weather"
+	_ "jute-dash/widgets/applemusic/hub"
+	_ "jute-dash/widgets/calendar/hub"
+	_ "jute-dash/widgets/chathistory/hub"
+	_ "jute-dash/widgets/datetime/hub"
+	_ "jute-dash/widgets/markets/hub"
+	_ "jute-dash/widgets/philipshue/hub"
+	_ "jute-dash/widgets/rss/hub"
+	_ "jute-dash/widgets/spotify/hub"
+	_ "jute-dash/widgets/timersalarms/hub"
+	_ "jute-dash/widgets/weather/hub"
+	_ "jute-dash/widgets/zigbee2mqtt/hub"
 )
 
 var version = "dev"
@@ -114,7 +120,7 @@ func run() error {
 	log.SetOutput(slog.NewLogLogger(logHandler, slog.LevelInfo).Writer())
 
 	displayActions := displayactions.NewDispatcher()
-	handler := app.NewServer(
+	handler := app.NewServerWithSecrets(
 		cfg,
 		version,
 		result.Setup,
@@ -123,6 +129,7 @@ func run() error {
 		runtimeStore.VoiceRepo,
 		*configPath,
 		displayActions,
+		runtimeStore.SecretVault,
 	)
 	logger.Info("jute data directory", "path", dataDir)
 
@@ -137,7 +144,10 @@ func run() error {
 			store:      runtimeStore,
 		}
 		mcpMux := http.NewServeMux()
-		mcpMux.Handle(cfg.MCP.Path, mcp.NewHandler(cfg.MCP, version, mcpProvider, displayActions))
+		mcpMux.Handle(
+			cfg.MCP.Path,
+			mcp.NewHandlerWithActions(cfg.MCP, version, mcpProvider, displayActions, handler),
+		)
 		mcpServer = &http.Server{
 			Addr:              cfg.MCP.ListenAddress,
 			Handler:           mcpMux,
@@ -288,31 +298,9 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 	}
 	wsCfg.Tiles = wsTiles
 
-	wsWidgets := make([]widgetskills.WidgetInstance, len(layout.Widgets))
-	for i, w := range layout.Widgets {
-		wsWidgets[i] = widgetskills.WidgetInstance{
-			ID:       w.ID,
-			Kind:     w.Kind,
-			Title:    w.Title,
-			X:        w.X,
-			Y:        w.Y,
-			W:        w.W,
-			H:        w.H,
-			Visible:  w.Visible,
-			Mode:     w.Mode,
-			Size:     w.Size,
-			Settings: w.Settings,
-			Data:     w.Data,
-		}
-	}
-	wsLayout := widgetskills.WidgetLayout{
-		ProfileID: layout.ProfileID,
-		Widgets:   wsWidgets,
-	}
-
 	return widgetskills.Snapshot{
 		Config:      wsCfg,
-		Layout:      wsLayout,
+		Layout:      dashboard.WidgetSkillsLayout(layout),
 		Agents:      agentsList,
 		GeneratedAt: time.Now().UTC(),
 	}, nil
