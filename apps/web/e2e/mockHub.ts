@@ -181,6 +181,16 @@ async function handleAPI(
   }
   if (path === '/api/v1/voice/status' && method === 'GET')
     return json(route, state.voice);
+  if (path === '/api/v1/voice/providers' && method === 'GET') {
+    return json(route, { providers: state.voiceProviders });
+  }
+  if (path === '/api/v1/tts/voices' && method === 'GET') {
+    return json(route, state.ttsVoices);
+  }
+  if (path === '/api/v1/voice/settings' && method === 'PATCH') {
+    state.voice = { ...state.voice, ...((await safeBody(request)) as object) };
+    return json(route, state.voice);
+  }
   if (path === '/api/v1/status' && method === 'GET')
     return json(route, state.status);
   if (path === '/api/v1/settings/household' && method === 'GET')
@@ -369,6 +379,8 @@ function mockState(options: MockHubOptions) {
     layout: widgetLayout,
     catalog: catalog(),
     voice: voice(),
+    voiceProviders: voiceProviders(),
+    ttsVoices: ttsVoices(),
     status,
     household: {
       home: { name: 'Jute Test Home' },
@@ -505,17 +517,94 @@ function voice() {
     serviceStatus: 'ready',
     deviceProfileId: 'test-display',
     wakeWordModelId: 'local',
+    wakeWordPhrase: 'Hey Jute',
+    wakeSensitivity: 0.5,
     sttProviderId: 'builtin',
     ttsProviderId: 'builtin',
     sttModelId: 'tiny',
     ttsModelId: 'local',
     ttsVoiceId: 'test',
+    ttsEnabled: true,
+    ttsLocale: 'en',
+    ttsSpeed: 1,
+    ttsVolume: 1,
     preferredAgentId: 'house',
     cloudOptIn: false,
     commandProvidersEnabled: false,
     followupWindowSeconds: 8,
     microphoneProfile: 'default',
     updatedAt: now
+  };
+}
+
+function voiceProviders() {
+  return [
+    {
+      id: 'local-wake',
+      name: 'Local Wake',
+      version: '1.0.0',
+      kind: 'wake-word',
+      transportType: 'command',
+      capabilities: {
+        streaming: false,
+        partialTranscripts: false,
+        offline: true
+      },
+      wakeWord: {
+        defaultModelId: 'hey-jute',
+        phrase: 'Hey Jute',
+        sensitivity: 0.55,
+        models: [{ id: 'hey-jute', phrase: 'Hey Jute', sensitivity: 0.55 }]
+      },
+      healthStatus: 'available',
+      updatedAt: now
+    },
+    {
+      id: 'local-stt',
+      name: 'Local STT',
+      version: '1.0.0',
+      kind: 'stt',
+      transportType: 'command',
+      capabilities: {
+        streaming: false,
+        partialTranscripts: false,
+        offline: true,
+        languages: ['en-GB'],
+        inputFormats: ['audio/wav']
+      },
+      healthStatus: 'available',
+      updatedAt: now
+    },
+    {
+      id: 'local-tts',
+      name: 'Local TTS',
+      version: '1.0.0',
+      kind: 'tts',
+      transportType: 'command',
+      capabilities: {
+        streaming: false,
+        partialTranscripts: false,
+        offline: true
+      },
+      healthStatus: 'available',
+      updatedAt: now
+    }
+  ];
+}
+
+function ttsVoices() {
+  return {
+    providerId: 'local-tts',
+    providerName: 'Local TTS',
+    healthStatus: 'available',
+    setupStatus: 'available',
+    selectedVoiceId: 'amy',
+    selectedModelId: 'local',
+    locale: 'en-GB',
+    speed: 1,
+    volume: 1,
+    cloudProvider: false,
+    voices: [{ id: 'amy', label: 'Amy', locale: 'en-GB', modelId: 'local' }]
   };
 }
 

@@ -88,3 +88,38 @@ test('settings writes household, rooms, tiles, and connections through hub', asy
   await settings.getByRole('button', { name: 'Save', exact: true }).click();
   await hub.expectWrite('PUT', '/api/v1/settings/connections');
 });
+
+test('settings saves voice provider selections through the hub', async ({
+  page
+}) => {
+  const hub = await createMockHub(page);
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'Settings' }).click();
+  const settings = page.getByLabel('Jute settings');
+  await settings.getByRole('button', { name: 'Voice', exact: true }).click();
+
+  await settings.getByLabel('Wake provider').selectOption('local-wake');
+  await settings.getByLabel('STT provider').selectOption('local-stt');
+  await settings.getByLabel('STT model').fill('tiny-en');
+  await settings.getByLabel('TTS provider').selectOption('local-tts');
+  await settings.getByLabel('TTS voice').selectOption('amy');
+  await settings.getByLabel('Command providers').check();
+  await settings.getByRole('button', { name: 'Save voice' }).click();
+
+  await expect
+    .poll(
+      () =>
+        hub.writes.find((write) => write.path === '/api/v1/voice/settings')
+          ?.body
+    )
+    .toMatchObject({
+      wakeWordModelId: 'hey-jute',
+      wakeWordPhrase: 'Hey Jute',
+      sttProviderId: 'local-stt',
+      sttModelId: 'tiny-en',
+      ttsProviderId: 'local-tts',
+      ttsVoiceId: 'amy',
+      commandProvidersEnabled: true
+    });
+});

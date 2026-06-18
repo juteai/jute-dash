@@ -62,6 +62,28 @@ test('SSE events drive degraded, notification, focus, and voice states', async (
     payload: { text: 'turn on the kitchen lights' }
   });
   await expect(page.getByText('turn on the kitchen lights')).toBeVisible();
+  await hub.emit('voice.transcript.final', {
+    id: 'transcript-1',
+    conversationId: 'conversation-1',
+    payload: { text: 'turn on the kitchen lights' }
+  });
+  await hub.emit('conversation.turn_completed', {
+    id: 'turn-1',
+    conversationId: 'conversation-1',
+    payload: { text: 'The kitchen lights are on.' }
+  });
+  await expect(page.getByText('The kitchen lights are on.')).toBeVisible();
+
+  await hub.emit('tts.failed', {
+    id: 'tts-1',
+    conversationId: 'conversation-1',
+    payload: { reason: 'tts_failure' }
+  });
+  await expect(
+    page.getByText(
+      'Speech playback is unavailable. The visual response is still available.'
+    )
+  ).toBeVisible();
 
   await hub.eventStreamError();
   await expect(page.getByRole('status')).toContainText(
