@@ -983,6 +983,44 @@ describe('browserVoiceSnapshot', () => {
     );
   });
 
+  it('does not accept placeholder browser or platform identity evidence', () => {
+    const report = browserVoiceReport({
+      snapshot: {
+        userAgent: 'unknown',
+        secureContext: true,
+        online: true,
+        capabilities: []
+      },
+      measurements: [
+        { label: 'Microphone permission', value: '90 ms' },
+        { label: 'Browser STT cold start', value: 'unsupported' },
+        { label: 'TTS cold start', value: '25 ms' },
+        { label: 'Hardware', value: 'Fixture kiosk, 4 GB RAM' },
+        { label: 'Model download size', value: '0 MB' },
+        { label: 'CPU', value: '8 percent average' },
+        { label: 'Offline behavior', value: 'browser STT unavailable offline' }
+      ],
+      platform: '',
+      standalone: true,
+      transcriptCaptured: true,
+      submittedThroughHub: true,
+      hubReceipt: hubReceiptAt()
+    });
+    const matrix = browserVoiceRunMatrix([report], '2026-06-15T16:19:10.000Z');
+
+    expect(matrix.rows[0]).toMatchObject({
+      target: 'kiosk-pwa',
+      browser: 'unknown',
+      platform: 'unknown platform'
+    });
+    expect(matrix.acceptance.problems).toContain(
+      'kiosk-pwa row is missing browser identity evidence'
+    );
+    expect(matrix.acceptance.problems).toContain(
+      'kiosk-pwa row is missing platform identity evidence'
+    );
+  });
+
   it('requires captured final transcripts for acceptance', () => {
     const row = {
       target: 'desktop-chromium' as const,

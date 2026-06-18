@@ -188,7 +188,7 @@ export function browserVoiceSnapshot(win: Window): BrowserVoiceSnapshot {
         id: 'audio-worklet',
         label: 'AudioWorklet VAD path',
         available: Boolean(audioGlobals.AudioWorkletNode),
-        detail: Boolean(audioGlobals.AudioWorkletNode)
+        detail: audioGlobals.AudioWorkletNode
           ? 'AudioWorkletNode is present for future low-latency VAD experiments.'
           : 'AudioWorkletNode is unavailable; fallback would need ScriptProcessor or hub-side VAD.'
       },
@@ -359,7 +359,7 @@ export function parseBrowserVoiceClosureBundleJSON(
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);
-  } catch (error) {
+  } catch {
     return {
       bundle: undefined,
       problems: [safeBrowserVoiceParseError('closure bundle JSON')]
@@ -488,7 +488,7 @@ export function parseBrowserVoiceReportsJSON(
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);
-  } catch (error) {
+  } catch {
     return {
       reports: [],
       problems: [safeBrowserVoiceParseError('saved runs JSON')]
@@ -520,7 +520,7 @@ export function parseBrowserVoiceRunMatrixJSON(
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);
-  } catch (error) {
+  } catch {
     return {
       matrix: undefined,
       problems: [safeBrowserVoiceParseError('saved matrix JSON')]
@@ -632,6 +632,12 @@ export function validateBrowserVoiceRunMatrix(
     }
     if (row.target === 'unknown-browser') {
       problems.push(`${prefix} cannot satisfy a required JUT-6 target`);
+    }
+    if (!isConcreteBrowserVoiceIdentity(row.browser)) {
+      problems.push(`${prefix} is missing browser identity evidence`);
+    }
+    if (!isConcreteBrowserVoiceIdentity(row.platform)) {
+      problems.push(`${prefix} is missing platform identity evidence`);
     }
     if (row.target === 'offline-display' && row.online) {
       problems.push(`${prefix} must be recorded while offline`);
@@ -1411,13 +1417,6 @@ function browserVoiceReportGaps(
   return gaps;
 }
 
-function hasMeasurement(
-  measurementsByLabel: Map<string, string>,
-  label: string
-): boolean {
-  return Boolean(measurementsByLabel.get(label)?.trim());
-}
-
 function hasSubstantiveMeasurement(
   measurementsByLabel: Map<string, string>,
   label: string
@@ -1434,6 +1433,30 @@ function hasSubstantiveMeasurement(
       'not provided'
     ].includes(value) &&
     !isSecretShapedMeasurement(value)
+  );
+}
+
+function isConcreteBrowserVoiceIdentity(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return Boolean(
+    normalized &&
+    ![
+      'unknown',
+      'unknown browser',
+      'unknown platform',
+      'not reported',
+      'not measured',
+      'not tested',
+      'untested',
+      'not provided',
+      'replace-with-browser',
+      'replace-with-platform',
+      'placeholder',
+      'todo',
+      'tbd'
+    ].includes(normalized) &&
+    !normalized.includes('replace-with') &&
+    !normalized.includes('placeholder')
   );
 }
 
