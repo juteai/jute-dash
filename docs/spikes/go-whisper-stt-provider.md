@@ -2,8 +2,9 @@
 
 ## Status
 
-Provider manifests, benchmark validation tooling, and one native packaging failure check are in place.
-The real fixture transcription benchmark with a local model is still pending.
+Provider manifests, benchmark validation tooling, container packaging evidence, model evidence, and
+a passing local fixture transcription benchmark are in place. The closure bundle validates as
+`documented-external-provider`.
 
 ## Upstream Snapshot
 
@@ -21,14 +22,14 @@ Verified on 2026-06-17 against
 - upstream license notes mention Apache-2.0 for go-whisper, MIT-licensed `whisper.cpp` static
   libraries, and FFmpeg LGPL 2.1 linkage considerations.
 
-This snapshot supports the current Jute decision to keep go-whisper outside the hub as an external
-sidecar/provider-pack candidate until benchmark and packaging evidence exists.
+This snapshot supports the current Jute decision to keep go-whisper outside the hub as a documented
+external sidecar/provider-pack candidate for v1.
 
 ## Decision
 
-Treat `mutablelogic/go-whisper` as a documented external STT provider candidate for v1. Do not make it a built-in provider or link it into the Go hub until Jute has benchmark results and a packaging decision.
+Treat `mutablelogic/go-whisper` as a documented external STT provider for v1. Do not make it a built-in provider or link it into the Go hub.
 
-The preferred integration shape is an `http-json` sidecar provider pack bound to loopback. A `command` provider can be added later for trusted installs, but command providers remain disabled unless explicitly enabled per household or device profile.
+The tested integration shape is a `command` provider for trusted installs, with command providers disabled unless explicitly enabled per household or device profile. An `http-json` sidecar provider pack can be added later once the exact go-whisper API route contract is pinned.
 
 ## Rationale
 
@@ -267,10 +268,10 @@ provider returns, and emits a normal `BenchmarkReport`:
 go run ./apps/hub/cmd/jute-voice-benchmark \
   -fixture-manifest stt-fixtures.json \
   -fixture-dir . \
-  -stt-command /absolute/path/to/go-whisper-command \
-  -stt-command-args-json '["transcribe", "--model", "tiny.en", "--language", "en-GB", "--input", "{inputPath}", "--json"]' \
+  -stt-command /absolute/path/to/gowhisper-jute-wrapper \
+  -stt-command-args-json '["{inputPath}","{modelId}","{language}"]' \
   -provider-id go-whisper-command \
-  -model-id tiny.en \
+  -model-id ggml-tiny-en \
   -model-hash sha256:replace-with-model-hash \
   -acceptance-preset > go-whisper-report.json
 ```
@@ -319,6 +320,22 @@ Minimum fixture:
 - a comparison against Jute's provider contract, not against go-whisper internals.
 
 The benchmark should not require a microphone, cloud credentials, or live household audio.
+
+### Validated JUT-13 Run
+
+Checked on 2026-06-18 from the Jute worktree with `ghcr.io/mutablelogic/go-whisper:latest`:
+
+- downloaded `ggml-tiny.en.bin` with `gowhisper download-model ggml-tiny.en.bin`;
+- model hash: `sha256:921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f`;
+- fixture: macOS `say` output for `turn on the lights`, converted with `afconvert` to 16 kHz mono
+  PCM WAV;
+- fixture hash: `sha256:77add20e9735b9bc564d352a5e697a773a4baf5c168ab1763750741c5832a2b7`;
+- go-whisper native JSON returned a segment transcript matching `turn on the lights.`;
+- a thin command wrapper converted the segment-array JSON into Jute's `{"text": ...}` provider
+  contract;
+- `go run ./apps/hub/cmd/jute-voice-benchmark ... -acceptance-preset` exited zero with one
+  `short-command` result, zero provider failures, and one transcript match;
+- the composed JUT-13 closure bundle validated with `Closure bundle complete: true`.
 
 ## Closure Gate For JUT-13
 
@@ -514,6 +531,6 @@ problems without transcript bodies, raw audio paths, or provider debug notes.
 
 ## Follow-Up Work
 
-- Run the fixture benchmark on CPU-only macOS or Linux.
-- Validate a Docker command and a native macOS Metal setup.
-- Decide whether Jute ships a provider-pack recipe, a tested external provider pack, or defers go-whisper behind documentation only.
+- Pin an `http-json` route contract if Jute wants a sidecar transport without a wrapper.
+- Re-test on representative Raspberry Pi-class hardware before enabling Raspberry Pi support.
+- Keep native macOS/Metal blocked until the whisper.cpp/ffmpeg/pkg-config dependency path is packaged.
