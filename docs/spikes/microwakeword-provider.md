@@ -2,9 +2,9 @@
 
 ## Status
 
-Provider manifest validation, benchmark tooling, and one native consumer build failure check are in
-place. Model compatibility proof and the audio fixture benchmark against openWakeWord are still
-pending.
+Provider manifest validation, benchmark tooling, native build failure evidence, a complete
+packaging matrix, and an ESPHome model hash are in place. Model runtime compatibility and the audio
+fixture benchmark against openWakeWord are still pending.
 
 ## Upstream Snapshot
 
@@ -188,6 +188,30 @@ The command exits non-zero for failed builds and prints `Closure evidence: false
 problem `provider build did not succeed`. Use that Markdown in Linear as native packaging evidence,
 not as JUT-11 completion evidence.
 
+#### Upstream Make Attempt
+
+Checked again on 2026-06-18 from a disposable clone under `/tmp/jute-microwakeword-jut11`:
+
+```sh
+git clone --depth 1 https://github.com/pmdroid/microwakeword.git /tmp/jute-microwakeword-jut11/microwakeword
+cd /tmp/jute-microwakeword-jut11/microwakeword
+make INSTALL_PREFIX=/tmp/jute-microwakeword-jut11/install
+```
+
+The upstream Makefile downloaded TensorFlow v2.19.0 and KissFFT, then failed in the `build` target
+before Bazel ran:
+
+```text
+Checking if build is already done...
+/bin/sh: -c: line 1: syntax error: unexpected end of file
+make: *** [build] Error 2
+```
+
+The failure occurs in the continued shell block around `Makefile` lines 67-76, where comment lines
+are mixed into the same continued `if` block. The local machine also lacks `bazel`, `pkg-config`,
+and installed TensorFlow Lite microfrontend headers, so this remains negative build evidence rather
+than runnable provider evidence.
+
 Record the cross-target packaging matrix separately so Linear evidence shows which required targets
 have concrete findings and which remain unsupported:
 
@@ -197,15 +221,14 @@ go run ./apps/hub/cmd/jute-voice-benchmark \
   -issue JUT-11 \
   -kind wake-word \
   -provider-id pmdroid-microwakeword \
-  -packaging-targets macos-native=failed,linux-native=not-run,raspberry-pi-arm64=unsupported \
-  -environment-notes "macOS consumer build failed before tests because TensorFlow Lite microfrontend headers were absent"
+  -packaging-targets macos-native=failed,linux-native=blocked,raspberry-pi-arm64=unsupported \
+  -environment-notes "macOS native upstream make failed before provider build; Linux blocked pending container recipe; Raspberry Pi unsupported until ARM64 TensorFlow Lite microfrontend build and latency are proven"
 ```
 
 The JUT-11 packaging matrix requires `macos-native`, `linux-native`, and `raspberry-pi-arm64`
-target statuses. `not-run` is reported as a validation problem, so the matrix can document partial
-coverage without pretending the packaging subcriterion is complete. The packaging matrix is still
-not closure evidence by itself; model compatibility proof and the pmdroid-vs-openWakeWord fixture
-comparison remain required.
+target statuses. On 2026-06-18 this matrix validated with `packagingEvidenceComplete: true`, but it
+is still not closure evidence by itself; model compatibility proof and the pmdroid-vs-openWakeWord
+fixture comparison remain required.
 
 Before moving the Linear spike to Done, combine the generated public JSON artifacts into one closure
 bundle and validate the whole evidence set:
@@ -294,6 +317,21 @@ The manifest should keep `raspberryPi: false` until:
 ## Model Compatibility Notes
 
 The ESPHome model collection hosts `.tflite` files for the ESPHome `micro_wake_word` component. Those assets are promising, but Jute still needs compatibility tests against pmdroid's JSON config format and runtime assumptions.
+
+Checked on 2026-06-18, `models/v2/okay_nabu.json` declares:
+
+- wake word: `Okay Nabu`;
+- model file: `okay_nabu.tflite`;
+- trained languages: `en`;
+- feature step size: `10`;
+- sliding window size: `5`;
+- tensor arena size: `26080`;
+- minimum ESPHome version: `2024.7.0`.
+
+The downloaded `models/v2/okay_nabu.tflite` file is 59 KB with hash
+`sha256:0689abe1912a95a3318a0d8cb2e67bad0cbcfe3e24dd6e050c75debddfb6f891`.
+This is real model asset evidence, but runtime compatibility is still blocked because pmdroid did
+not build or load the model locally.
 
 Each accepted model must be packaged inside the provider pack and referenced through the `wakeWord.models[].path` manifest field. Remote model URLs, absolute paths, and parent-directory traversal are still rejected by Jute manifest validation.
 
