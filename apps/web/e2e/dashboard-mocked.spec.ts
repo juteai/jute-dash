@@ -58,21 +58,62 @@ test('SSE events drive degraded, notification, focus, and voice states', async (
   ).toBeVisible();
 
   await hub.emit('voice.wake_detected', {});
+  const chat = page.getByLabel('Agent conversation');
+  await expect(chat).toBeVisible();
   await hub.emit('voice.transcript.partial', {
-    payload: { text: 'turn on the kitchen lights' }
+    conversationId: 'conversation-1',
+    payload: { text: 'turn on the kitchen' }
   });
-  await expect(page.getByText('turn on the kitchen lights')).toBeVisible();
+  await expect(
+    chat.locator('.message-bubble--user').getByText('turn on the kitchen')
+  ).toBeVisible();
   await hub.emit('voice.transcript.final', {
     id: 'transcript-1',
     conversationId: 'conversation-1',
     payload: { text: 'turn on the kitchen lights' }
   });
+  await expect(
+    chat
+      .locator('.message-bubble--user')
+      .getByText('turn on the kitchen lights')
+  ).toBeVisible();
+  await hub.emit('conversation.assistant_delta', {
+    id: 'turn-1-delta-1',
+    conversationId: 'conversation-1',
+    payload: {
+      agentId: 'house',
+      taskId: 'turn-1',
+      text: 'The kitchen lights',
+      append: false
+    }
+  });
+  await expect(
+    chat.locator('.message-bubble--assistant').getByText('The kitchen lights')
+  ).toBeVisible();
+  await hub.emit('conversation.assistant_delta', {
+    id: 'turn-1-delta-2',
+    conversationId: 'conversation-1',
+    payload: {
+      agentId: 'house',
+      taskId: 'turn-1',
+      text: ' are on.',
+      append: true
+    }
+  });
   await hub.emit('conversation.turn_completed', {
     id: 'turn-1',
     conversationId: 'conversation-1',
-    payload: { text: 'The kitchen lights are on.' }
+    payload: {
+      agentId: 'house',
+      taskId: 'turn-1',
+      text: 'The kitchen lights are on.'
+    }
   });
-  await expect(page.getByText('The kitchen lights are on.')).toBeVisible();
+  await expect(
+    chat
+      .locator('.message-bubble--assistant')
+      .getByText('The kitchen lights are on.')
+  ).toBeVisible();
 
   await hub.emit('tts.failed', {
     id: 'tts-1',

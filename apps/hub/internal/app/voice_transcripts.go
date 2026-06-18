@@ -332,6 +332,22 @@ func (s *Server) voiceAgentID(requested string, settings voice.Settings) string 
 }
 
 func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) error {
+	var ttsBuffer strings.Builder
+	spokeFromDeltas := false
+
+	speakBuffered := func(ctx context.Context, event agents.Event, force bool) {
+		text := strings.TrimSpace(ttsBuffer.String())
+		if text == "" {
+			return
+		}
+		if !force && !endsWithSentenceBoundary(text) {
+			return
+		}
+		ttsBuffer.Reset()
+		spokeFromDeltas = true
+		s.speakVoiceAssistantText(ctx, deviceID, event.ConversationID, event.TaskID, text)
+	}
+
 	return func(event agents.Event) error {
 		switch event.Kind {
 		case agents.EventTurnStarted:
@@ -349,10 +365,12 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) err
 				"agentId": event.AgentID,
 				"status":  "completed",
 			}
+			assistantText := ""
 			if event.Detail != nil {
 				payload["status"] = event.Detail.Conversation.Status
 				payload["taskId"] = event.Detail.Conversation.LatestTaskID
 				if text := latestAssistantMessageText(*event.Detail); text != "" {
+					assistantText = text
 					payload["text"] = text
 				}
 			}
@@ -362,6 +380,21 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) err
 				event.ConversationID,
 				payload,
 			)
+			if ttsBuffer.Len() > 0 {
+				speakBuffered(context.Background(), event, true)
+			} else if !spokeFromDeltas && assistantText != "" {
+				taskID := event.TaskID
+				if event.Detail != nil && event.Detail.Conversation.LatestTaskID != "" {
+					taskID = event.Detail.Conversation.LatestTaskID
+				}
+				s.speakVoiceAssistantText(
+					context.Background(),
+					deviceID,
+					event.ConversationID,
+					taskID,
+					assistantText,
+				)
+			}
 		case agents.EventStatusChanged:
 			s.voiceDispatcher.EmitConversationEvent(
 				voice.EventConversationTurnStarted,
@@ -374,6 +407,24 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) err
 				},
 			)
 		case agents.EventAssistantDelta:
+			s.voiceDispatcher.EmitConversationEvent(
+				voice.EventConversationAssistantDelta,
+				deviceID,
+				event.ConversationID,
+				map[string]any{
+					"agentId": event.AgentID,
+					"taskId":  event.TaskID,
+					"text":    event.Text,
+					"append":  event.Append,
+				},
+			)
+			if event.Text != "" {
+				if !event.Append {
+					ttsBuffer.Reset()
+				}
+				ttsBuffer.WriteString(event.Text)
+				speakBuffered(context.Background(), event, false)
+			}
 		case agents.EventTurnFailed:
 			s.voiceDispatcher.EmitConversationEvent(
 				voice.EventConversationTurnCompleted,
@@ -386,6 +437,49 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) err
 			)
 		}
 		return nil
+	}
+}
+
+func (s *Server) speakVoiceAssistantText(
+	ctx context.Context,
+	deviceID, conversationID, taskID, text string,
+) {
+	text = strings.TrimSpace(text)
+	if text == "" || s.voiceController == nil {
+		return
+	}
+	settings, err := s.voiceStore.VoiceSettings(ctx, voice.DefaultDeviceProfileID)
+	if err != nil ||
+		!settings.TTSEnabled ||
+		strings.TrimSpace(settings.TTSProviderID) == "" {
+		return
+	}
+	go func() {
+		ttsCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+		defer cancel()
+		_, _ = s.voiceController.Speak(
+			ttsCtx,
+			deviceID,
+			voice.TTSActionSpeak,
+			voice.TTSRequest{
+				Text:           text,
+				ConversationID: conversationID,
+				TurnID:         taskID,
+			},
+		)
+	}()
+}
+
+func endsWithSentenceBoundary(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	switch text[len(text)-1] {
+	case '.', '!', '?', '\n':
+		return true
+	default:
+		return false
 	}
 }
 

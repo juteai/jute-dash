@@ -54,6 +54,7 @@
   let longPressTimer: number | undefined;
   let slideshowIndex = 0;
   let slideshowTimer: number | undefined;
+  let lastVoiceChatSyncKey = '';
 
   /* eslint-disable no-useless-assignment */
   let lastData: DashboardData | undefined;
@@ -100,6 +101,21 @@
   $: weatherData = $hubStream.dashboard.layout.widgets.find(
     (w) => w.kind === 'weather'
   )?.data;
+  $: if (
+    mounted &&
+    $hubStream.voiceConversationId &&
+    $hubStream.voiceMessages.length > 0
+  ) {
+    syncVoiceConversationIntoChat(
+      $hubStream.voiceConversationId,
+      $hubStream.voiceAgentId ||
+        $hubStream.dashboard.voice.preferredAgentId ||
+        selectedAgent?.id ||
+        '',
+      $hubStream.voiceOrbState,
+      $hubStream.voiceMessages
+    );
+  }
 
   $: dashboardForView = {
     ...$hubStream.dashboard,
@@ -217,6 +233,54 @@
 
   function handleInteraction() {
     chatStore.resetTimer();
+  }
+
+  function syncVoiceConversationIntoChat(
+    conversationId: string,
+    agentId: string,
+    voiceOrbState: typeof $hubStream.voiceOrbState,
+    voiceMessages: typeof $hubStream.voiceMessages
+  ) {
+    if (!agentId) {
+      return;
+    }
+
+    const state =
+      voiceOrbState === 'error'
+        ? 'error'
+        : voiceOrbState === 'thinking' ||
+            (voiceOrbState === 'listening' &&
+              !voiceMessages.some((message) => message.role === 'assistant'))
+          ? 'thinking'
+          : 'idle';
+    const syncKey = JSON.stringify({
+      conversationId,
+      agentId,
+      state,
+      messages: voiceMessages.map((message) => [
+        message.id,
+        message.role,
+        message.text,
+        message.status
+      ])
+    });
+    if (syncKey === lastVoiceChatSyncKey) {
+      return;
+    }
+    lastVoiceChatSyncKey = syncKey;
+    chatStore.applyVoiceConversation(
+      conversationId,
+      agentId,
+      voiceMessages,
+      state
+    );
+  }
+  $: if (
+    mounted &&
+    ($hubStream.voiceConversationId ||
+      ($hubStream.showVoiceOverlay && $hubStream.voiceOrbState === 'listening'))
+  ) {
+    navigationStore.openChat();
   }
 
   function openSettings(section: typeof activeSettingsSection = 'household') {

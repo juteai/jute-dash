@@ -32,6 +32,7 @@ export interface HubStreamState {
   displayNotifications: DisplayNotification[];
   focusedWidgetId: string;
   voiceOrbState: VoiceOrbState;
+  voiceAgentId: string;
   voiceConversationId: string;
   voiceMessages: VoiceConversationMessage[];
   voiceTranscript: string;
@@ -137,6 +138,7 @@ const initialState: HubStreamState = {
   displayNotifications: [],
   focusedWidgetId: '',
   voiceOrbState: 'idle',
+  voiceAgentId: '',
   voiceConversationId: '',
   voiceMessages: [],
   voiceTranscript: '',
@@ -161,12 +163,33 @@ function voiceMessageID(prefix: string, event: { id?: string }): string {
     : `${prefix}-${Date.now()}`;
 }
 
+function voiceConversationMessageID(
+  prefix: string,
+  event: {
+    id?: string;
+    conversationId?: string;
+    payload?: { taskId?: string } & Record<string, unknown>;
+  }
+): string {
+  const suffix =
+    event.payload?.taskId ||
+    event.conversationId ||
+    (typeof event.id === 'string' ? event.id : '');
+  return suffix ? `${prefix}-${suffix}` : voiceMessageID(prefix, event);
+}
+
 function appendOrReplaceVoiceMessage(
   messages: VoiceConversationMessage[],
-  message: VoiceConversationMessage
+  message: VoiceConversationMessage,
+  append = false
 ): VoiceConversationMessage[] {
+  const existing = messages.find((item) => item.id === message.id);
+  const nextMessage =
+    existing && append
+      ? { ...message, text: `${existing.text}${message.text}` }
+      : message;
   const next = messages.filter((item) => item.id !== message.id);
-  return [...next, message].slice(-8);
+  return [...next, nextMessage].slice(-8);
 }
 
 function safeVoiceError(reason: unknown): string {
@@ -452,6 +475,7 @@ function createHubStreamStore() {
         update((s) => ({
           ...s,
           voiceConversationId: eventConversationID(e ?? {}),
+          voiceAgentId: '',
           voiceMessages: [],
           voiceOrbState: 'listening',
           voiceTranscript: '',
@@ -476,6 +500,19 @@ function createHubStreamStore() {
           voiceConversationId:
             eventConversationID(e ?? {}) || s.voiceConversationId,
           voiceTranscript: typeof text === 'string' ? text : s.voiceTranscript,
+          voiceMessages:
+            typeof text === 'string' && text
+              ? appendOrReplaceVoiceMessage(s.voiceMessages, {
+                  id: voiceConversationMessageID('user', e ?? {}),
+                  role: 'user',
+                  text,
+                  createdAt:
+                    typeof e?.createdAt === 'string'
+                      ? e.createdAt
+                      : new Date().toISOString(),
+                  status: 'partial'
+                })
+              : s.voiceMessages,
           voiceOrbState: 'listening',
           voiceError: '',
           showVoiceOverlay: true
@@ -499,7 +536,7 @@ function createHubStreamStore() {
           voiceMessages:
             typeof text === 'string' && text
               ? appendOrReplaceVoiceMessage(s.voiceMessages, {
-                  id: voiceMessageID('user', e ?? {}),
+                  id: voiceConversationMessageID('user', e ?? {}),
                   role: 'user',
                   text,
                   createdAt:
@@ -516,28 +553,38 @@ function createHubStreamStore() {
       });
 
       eventSource.addEventListener('conversation.started', (event) => {
-        const e = parseDisplayEvent<{ conversationId?: string }>(
-          (event as MessageEvent).data
-        );
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { agentId?: string };
+        }>((event as MessageEvent).data);
         logger.sse(event.type);
         update((s) => ({
           ...s,
           voiceConversationId:
             eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceAgentId:
+            typeof e?.payload?.agentId === 'string'
+              ? e.payload.agentId
+              : s.voiceAgentId,
           voiceError: '',
           showVoiceOverlay: true
         }));
       });
 
       eventSource.addEventListener('conversation.turn_started', (event) => {
-        const e = parseDisplayEvent<{ conversationId?: string }>(
-          (event as MessageEvent).data
-        );
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { agentId?: string };
+        }>((event as MessageEvent).data);
         logger.sse(event.type);
         update((s) => ({
           ...s,
           voiceConversationId:
             eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceAgentId:
+            typeof e?.payload?.agentId === 'string'
+              ? e.payload.agentId
+              : s.voiceAgentId,
           voiceOrbState: 'thinking',
           voiceError: '',
           showVoiceOverlay: true
@@ -549,7 +596,12 @@ function createHubStreamStore() {
           id?: string;
           conversationId?: string;
           createdAt?: string;
-          payload?: { speech?: string; text?: string; status?: string };
+          payload?: {
+            agentId?: string;
+            speech?: string;
+            text?: string;
+            status?: string;
+          };
         }>((event as MessageEvent).data);
         const speech = e?.payload?.speech;
         const text = e?.payload?.text;
@@ -564,10 +616,14 @@ function createHubStreamStore() {
           ...s,
           voiceConversationId:
             eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceAgentId:
+            typeof e?.payload?.agentId === 'string'
+              ? e.payload.agentId
+              : s.voiceAgentId,
           assistantSpeech: assistantText || s.assistantSpeech,
           voiceMessages: assistantText
             ? appendOrReplaceVoiceMessage(s.voiceMessages, {
-                id: voiceMessageID('assistant', e ?? {}),
+                id: voiceConversationMessageID('assistant', e ?? {}),
                 role: 'assistant',
                 text: assistantText,
                 createdAt:
@@ -577,6 +633,57 @@ function createHubStreamStore() {
                 status: 'speaking'
               })
             : s.voiceMessages,
+          voiceOrbState: 'speaking',
+          voiceError: '',
+          showVoiceOverlay: true
+        }));
+      });
+
+      eventSource.addEventListener('conversation.assistant_delta', (event) => {
+        const e = parseDisplayEvent<{
+          id?: string;
+          conversationId?: string;
+          createdAt?: string;
+          payload?: {
+            agentId?: string;
+            taskId?: string;
+            text?: string;
+            append?: boolean;
+          };
+        }>((event as MessageEvent).data);
+        const text = e?.payload?.text;
+        logger.sse(event.type, safeEventTextLength(text));
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceAgentId:
+            typeof e?.payload?.agentId === 'string'
+              ? e.payload.agentId
+              : s.voiceAgentId,
+          assistantSpeech:
+            typeof text === 'string'
+              ? e?.payload?.append
+                ? `${s.assistantSpeech}${text}`
+                : text
+              : s.assistantSpeech,
+          voiceMessages:
+            typeof text === 'string' && text
+              ? appendOrReplaceVoiceMessage(
+                  s.voiceMessages,
+                  {
+                    id: voiceConversationMessageID('assistant', e ?? {}),
+                    role: 'assistant',
+                    text,
+                    createdAt:
+                      typeof e?.createdAt === 'string'
+                        ? e.createdAt
+                        : new Date().toISOString(),
+                    status: 'speaking'
+                  },
+                  Boolean(e?.payload?.append)
+                )
+              : s.voiceMessages,
           voiceOrbState: 'speaking',
           voiceError: '',
           showVoiceOverlay: true
@@ -701,6 +808,7 @@ function createHubStreamStore() {
                 ...s,
                 showVoiceOverlay: false,
                 voiceConversationId: '',
+                voiceAgentId: '',
                 voiceMessages: [],
                 voiceTranscript: '',
                 assistantSpeech: '',
@@ -829,6 +937,7 @@ function createHubStreamStore() {
           ...s,
           voiceOrbState: 'idle',
           voiceConversationId: '',
+          voiceAgentId: '',
           voiceMessages: [],
           voiceTranscript: '',
           assistantSpeech: '',

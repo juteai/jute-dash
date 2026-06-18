@@ -19,6 +19,7 @@ const (
 	EventVoiceTranscriptFinal        = "voice.transcript.final"
 	EventConversationStarted         = "conversation.started"
 	EventConversationTurnStarted     = "conversation.turn_started"
+	EventConversationAssistantDelta  = "conversation.assistant_delta"
 	EventConversationTurnCompleted   = "conversation.turn_completed"
 	EventConversationFollowupStarted = "conversation.followup_started"
 	EventConversationEnded           = "conversation.ended"

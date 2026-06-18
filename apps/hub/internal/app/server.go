@@ -38,6 +38,7 @@ type Server struct {
 	settings           homestate.SettingsStore
 	voice              voice.Config
 	voiceStore         voice.Store
+	voiceController    *voice.Controller
 	voiceRuntime       *voiceConversationRuntime
 	configPath         string
 	syncer             filesync.Syncer
@@ -512,12 +513,13 @@ func newServerWithError(
 			ttsProvider = provider
 		}
 	}
-	voice.NewControllerWithTTSProvider(
+	server.voiceController = voice.NewControllerWithTTSProvider(
 		server.voiceStore,
 		server.voiceDispatcher,
 		server.voiceRuntime.cancelAll,
 		ttsProvider,
-	).RegisterRoutes(mux)
+	)
+	server.voiceController.RegisterRoutes(mux)
 
 	agents.NewController(agents.ControllerOptions{
 		Manager:             server.agentsManager,

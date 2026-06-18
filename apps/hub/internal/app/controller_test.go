@@ -1501,6 +1501,85 @@ func TestVoiceFinalTranscriptEmitsDisplayEventsInOrder(t *testing.T) {
 	}
 }
 
+func TestVoiceFinalTranscriptTriggersTTSEvents(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	cfg.Voice.TTSEnabled = true
+	cfg.Voice.TTSProviderID = "local-tts"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			Status:         "completed",
+			Text:           "The kitchen lights are on.",
+		}, nil
+	}
+	syncer := filesync.NewInMemorySyncer(cfg)
+	cards := agents.NewCardService()
+	manager := agents.NewAgentManager(syncer, cards, "")
+	dispatcher := voice.NewDispatcher()
+	store := voice.NewMemoryRepositoryFromConfig(cfg.Voice)
+	server := &Server{
+		cfg:             cfg,
+		agentsManager:   manager,
+		messages:        client,
+		voiceStore:      store,
+		voiceDispatcher: dispatcher,
+		voiceRuntime:    newVoiceConversationRuntime(),
+	}
+	server.voiceController = voice.NewController(store, dispatcher, nil)
+	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
+		GetRegistry:    manager.ActiveRegistry,
+		GetAgentConfig: manager.ConfiguredAgent,
+		GetAgentCardCache: func(context.Context, registry.Agent) (agents.AgentCardCache, bool) {
+			return agents.AgentCardCache{
+				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
+				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
+			}, true
+		},
+		GetDashboardContext: func(context.Context) map[string]any {
+			return map[string]any{}
+		},
+		Messages: client,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	events := dispatcher.Subscribe(ctx)
+
+	_, err := server.submitFinalTranscript(ctx, VoiceFinalTranscriptRequest{
+		Text:     "turn on the kitchen lights",
+		DeviceID: "kitchen-display",
+	})
+	if err != nil {
+		t.Fatalf("submitFinalTranscript() error = %v", err)
+	}
+
+	var sawStarted, sawCompleted bool
+	for !sawStarted || !sawCompleted {
+		select {
+		case event := <-events:
+			voiceEvent, ok := event.Data.(voice.VoiceEvent)
+			if !ok {
+				t.Fatalf("unexpected event data: %+v", event.Data)
+			}
+			switch event.Type {
+			case voice.EventTTSStarted:
+				sawStarted = true
+				if voiceEvent.DeviceID != "kitchen-display" ||
+					voiceEvent.ConversationID == "" {
+					t.Fatalf("TTS started lost voice routing context: %+v", voiceEvent)
+				}
+			case voice.EventTTSCompleted:
+				sawCompleted = true
+			}
+		case <-ctx.Done():
+			t.Fatalf("timed out waiting for TTS events started=%v completed=%v", sawStarted, sawCompleted)
+		}
+	}
+}
+
 func TestVoiceFinalTranscriptStreamsAssistantTextSafely(t *testing.T) {
 	cfg := testConfig()
 	cfg.Voice.Enabled = true

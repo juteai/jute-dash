@@ -259,47 +259,51 @@ func (c *Controller) handleTTSAction(w http.ResponseWriter, r *http.Request, act
 		httphelper.WriteError(w, http.StatusBadRequest, "invalid TTS request")
 		return
 	}
-	settings, err := c.store.VoiceSettings(r.Context(), "")
+	response, err := c.Speak(r.Context(), "default-display", action, req)
 	if err != nil {
 		httphelper.WriteError(w, http.StatusInternalServerError, "voice settings are unavailable")
 		return
 	}
+	httphelper.WriteJSON(w, http.StatusOK, response)
+}
+
+func (c *Controller) Speak(ctx context.Context, deviceID, action string, req TTSRequest) (TTSActionResponse, error) {
+	settings, err := c.store.VoiceSettings(ctx, "")
+	if err != nil {
+		return TTSActionResponse{}, err
+	}
 	req = effectiveTTSRequest(req, settings)
 	allowed, reason := speechPolicyAllows(req, settings)
-	synthesisCtx, cancelSynthesis := context.WithCancel(r.Context())
+	synthesisCtx, cancelSynthesis := context.WithCancel(ctx)
 	defer cancelSynthesis()
 	response := c.tts.Begin(action, req, settings, cancelSynthesis)
 	if !allowed {
 		response = c.tts.VisualOnly(response.ID, reason)
 		if c.display != nil {
-			c.display.EmitTTSEvent(EventTTSStopped, "default-display", response)
+			c.display.EmitTTSEvent(EventTTSStopped, deviceID, response)
 		}
-		httphelper.WriteJSON(w, http.StatusOK, response)
-		return
+		return response, nil
 	}
 	if c.display != nil {
-		c.display.EmitTTSEvent(EventTTSStarted, "default-display", response)
+		c.display.EmitTTSEvent(EventTTSStarted, deviceID, response)
 	}
 	if provider, err := c.activeTTSProvider(synthesisCtx); err != nil {
 		response = c.tts.Fail(response.ID, "provider_unavailable")
 		if c.display != nil {
-			c.display.EmitTTSEvent(EventTTSFailed, "default-display", response)
+			c.display.EmitTTSEvent(EventTTSFailed, deviceID, response)
 		}
-		httphelper.WriteJSON(w, http.StatusOK, response)
-		return
+		return response, nil
 	} else if provider != nil {
 		audio, err := provider.Synthesize(synthesisCtx, req)
 		if err != nil {
 			response = c.tts.Fail(response.ID, "provider_unavailable")
 			if response.State == TTSStateStopped {
-				httphelper.WriteJSON(w, http.StatusOK, response)
-				return
+				return response, nil
 			}
 			if c.display != nil {
-				c.display.EmitTTSEvent(EventTTSFailed, "default-display", response)
+				c.display.EmitTTSEvent(EventTTSFailed, deviceID, response)
 			}
-			httphelper.WriteJSON(w, http.StatusOK, response)
-			return
+			return response, nil
 		}
 		response = c.tts.CompleteWithAudio(response.ID, audio)
 	} else {
@@ -307,13 +311,12 @@ func (c *Controller) handleTTSAction(w http.ResponseWriter, r *http.Request, act
 		response = c.tts.Complete(response.ID)
 	}
 	if response.State == TTSStateStopped {
-		httphelper.WriteJSON(w, http.StatusOK, response)
-		return
+		return response, nil
 	}
 	if c.display != nil {
-		c.display.EmitTTSEvent(EventTTSCompleted, "default-display", response)
+		c.display.EmitTTSEvent(EventTTSCompleted, deviceID, response)
 	}
-	httphelper.WriteJSON(w, http.StatusOK, response)
+	return response, nil
 }
 
 func (c *Controller) activeTTSProvider(ctx context.Context) (TTSProvider, error) {
