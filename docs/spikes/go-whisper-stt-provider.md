@@ -406,15 +406,40 @@ go run ./apps/hub/cmd/jute-voice-benchmark \
   -issue JUT-13 \
   -kind stt \
   -provider-id go-whisper \
-  -packaging-targets cpu-only=failed,macos-metal=blocked,container-linux=not-run,raspberry-pi-arm64=unsupported \
-  -environment-notes "native go install failed before model execution; container run still pending"
+  -packaging-targets cpu-only=failed,macos-metal=blocked,container-linux=succeeded,raspberry-pi-arm64=unsupported \
+  -environment-notes "ghcr.io/mutablelogic/go-whisper:latest pulled on macOS arm64 Docker; server started on loopback as gowhisper@v0.0.39 with /api prefix; no local model downloaded or benchmarked"
 ```
 
 The JUT-13 packaging matrix requires `cpu-only`, `macos-metal`, `container-linux`, and
 `raspberry-pi-arm64` target statuses. `not-run` is reported as a validation problem, so the matrix
-can document partial coverage without pretending the packaging subcriterion is complete. The
-packaging matrix is still not closure evidence by itself; the real STT fixture benchmark and local
-model evidence remain required.
+can document partial coverage without pretending the packaging subcriterion is complete. A succeeded
+container target is enough to satisfy the packaging requirement for a `documented-external-provider`
+decision, but the packaging matrix is still not closure evidence by itself; the real STT fixture
+benchmark and local model evidence remain required.
+
+### Container Server Attempt
+
+Checked on 2026-06-18 from the Jute worktree, without provider API keys and without downloading a
+local model:
+
+```sh
+docker pull ghcr.io/mutablelogic/go-whisper:latest
+docker run -d --name jute-go-whisper-evidence \
+  -p 127.0.0.1:18081:8081 \
+  ghcr.io/mutablelogic/go-whisper:latest run
+docker exec jute-go-whisper-evidence gowhisper --help
+docker exec jute-go-whisper-evidence gowhisper run --help
+docker rm -f jute-go-whisper-evidence
+```
+
+The image pulled successfully with digest
+`sha256:a8ce61b10ea8e6e9fe2c19681063aab40f8a8f765d27a66e6c9b795c8ba9f1eb`.
+The container started as `gowhisper@v0.0.39`, logged `http server starting` on
+`0.0.0.0:8081` with prefix `/api`, and exposed CLI help for `models`, `download-model`,
+`transcribe`, `translate`, and `run`. Basic root and guessed `/api` probes returned 404, so the Jute
+HTTP JSON adapter still needs the exact go-whisper route mapping or a wrapper command before the
+fixture benchmark can run. This is valid container packaging evidence, not model or transcript
+evidence.
 
 Before moving the Linear spike to Done, compose the generated artifact files into one closure bundle
 and validate the whole evidence set:
