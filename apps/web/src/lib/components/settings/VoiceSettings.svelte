@@ -39,12 +39,15 @@
       ? !selectedTTSProvider.capabilities.offline
       : Boolean($settingsStore.ttsVoices?.cloudProvider);
 
-  $: if (voice) {
-    const currentJSON = JSON.stringify(voice);
-    if (currentJSON !== lastJSON) {
-      draft = structuredClone(voice);
-      lastJSON = currentJSON;
+  $: if (voice) syncVoiceDraft(voice);
+
+  function syncVoiceDraft(nextVoice: VoiceStatus) {
+    const currentJSON = JSON.stringify(nextVoice);
+    if (currentJSON === lastJSON) {
+      return;
     }
+    draft = structuredClone(nextVoice);
+    lastJSON = currentJSON;
   }
 
   function findProvider(

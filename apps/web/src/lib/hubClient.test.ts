@@ -32,8 +32,10 @@ describe('fallback dashboard', () => {
   });
 
   it('posts final browser spike transcripts to the hub voice API', async () => {
-    const fetcher = async (url: string | URL | Request, init?: RequestInit) =>
-      new Response(
+    const fetcher = async (url: string | URL | Request, init?: RequestInit) => {
+      void url;
+      void init;
+      return new Response(
         JSON.stringify({
           conversation: { id: 'conversation-1' },
           followup: { active: true, turns: 1, maxTurns: 5 }
@@ -43,6 +45,7 @@ describe('fallback dashboard', () => {
           headers: { 'Content-Type': 'application/json' }
         }
       );
+    };
     const calls: Array<{ url: string | URL | Request; init?: RequestInit }> =
       [];
     const recordingFetcher = (async (
@@ -102,9 +105,7 @@ describe('fallback dashboard', () => {
 
     const satellites = await getVoiceSatellites(fetcher);
 
-    expect(satellites[0].displayName).toBe(
-      'Kitchen Satellite [redacted-url]'
-    );
+    expect(satellites[0].displayName).toBe('Kitchen Satellite [redacted-url]');
     expect(satellites[0].roomLabel).toBe('Kitchen secret=[redacted]');
     expect(satellites[0].deviceProfileId).toBe(
       'kitchen-display password=[redacted]'
@@ -258,9 +259,7 @@ describe('fallback dashboard', () => {
 
     expect(satellite.enabled).toBe(false);
     expect(satellite.displayName).toBe('Kitchen Voice [redacted-url]');
-    expect(satellite.deviceProfileId).toBe(
-      'kitchen-display token=[redacted]'
-    );
+    expect(satellite.deviceProfileId).toBe('kitchen-display token=[redacted]');
     expect(JSON.stringify(satellite)).not.toContain('credential');
     expect(JSON.stringify(satellite)).not.toContain('secret-ref');
     expect(JSON.stringify(satellite)).not.toContain('raw transcript');

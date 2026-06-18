@@ -118,7 +118,9 @@ function boundedNumber(
   return Math.min(max, Math.max(min, next));
 }
 
-function normalizeVoiceSettings(settings: VoiceSettingsUpdate): VoiceSettingsUpdate {
+function normalizeVoiceSettings(
+  settings: VoiceSettingsUpdate
+): VoiceSettingsUpdate {
   const normalized = { ...settings };
   normalized.wakeSensitivity = boundedNumber(
     settings.wakeSensitivity,

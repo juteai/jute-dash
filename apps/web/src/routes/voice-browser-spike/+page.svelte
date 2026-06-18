@@ -52,14 +52,15 @@
   let savedRunsJSON = '';
   let savedMatrixJSON = '';
   let savedClosureBundleJSON = '';
-  let reportJSON = '';
-  let matrixJSON = '';
-  let matrixEvidenceMarkdown = '';
-  let closureBundleJSON = '';
-  let closureBundleEvidenceMarkdown = '';
-  let savedRunProblems: string[] = [];
-  let savedMatrixProblems: string[] = [];
-  let savedClosureBundleProblems: string[] = [];
+  let reportMeasurements: BrowserVoiceMeasurement[];
+  let reportJSON: string;
+  let matrixJSON: string;
+  let matrixEvidenceMarkdown: string;
+  let closureBundleJSON: string;
+  let closureBundleEvidenceMarkdown: string;
+  let savedRunProblems: string[];
+  let savedMatrixProblems: string[];
+  let savedClosureBundleProblems: string[];
   let hardwareNotes = '';
   let browserSTTColdStart = '';
   let modelDownloadSize = '';
@@ -77,6 +78,7 @@
     snapshot?.capabilities.find((item) => item.id === 'speech-synthesis')
       ?.available
   );
+  $: reportMeasurements = [...measurements, ...manualEvidenceMeasurements()];
   $: currentReport = snapshot
     ? browserVoiceReport({
         snapshot,
@@ -101,7 +103,6 @@
     savedClosureBundleJSON
   );
   $: savedClosureBundleProblems = savedClosureBundleParseResult.problems;
-  $: reportMeasurements = [...measurements, ...manualEvidenceMeasurements()];
   $: reportJSON = currentReport ? browserVoiceReportJSON(currentReport) : '';
   $: currentMatrix = currentReport
     ? browserVoiceRunMatrix([...savedRunParseResult.reports, currentReport])
@@ -644,7 +645,7 @@
       </label>
       {#if savedRunProblems.length}
         <div class="problems" role="alert">
-          {#each savedRunProblems as problem}
+          {#each savedRunProblems as problem (problem)}
             <p>{problem}</p>
           {/each}
         </div>
@@ -659,7 +660,7 @@
       </label>
       {#if savedMatrixProblems.length}
         <div class="problems" role="alert">
-          {#each savedMatrixProblems as problem}
+          {#each savedMatrixProblems as problem (problem)}
             <p>{problem}</p>
           {/each}
         </div>
@@ -676,7 +677,7 @@
               : 'Saved matrix gaps'}
           </strong>
           {#if importedMatrixAcceptance.problems.length}
-            {#each importedMatrixAcceptance.problems as problem}
+            {#each importedMatrixAcceptance.problems as problem (problem)}
               <p>{problem}</p>
             {/each}
           {/if}
@@ -692,7 +693,7 @@
       </label>
       {#if savedClosureBundleProblems.length}
         <div class="problems" role="alert">
-          {#each savedClosureBundleProblems as problem}
+          {#each savedClosureBundleProblems as problem (problem)}
             <p>{problem}</p>
           {/each}
         </div>
@@ -725,7 +726,7 @@
               : 'Acceptance gaps'}
           </strong>
           {#if matrixAcceptance.problems.length}
-            {#each matrixAcceptance.problems as problem}
+            {#each matrixAcceptance.problems as problem (problem)}
               <p>{problem}</p>
             {/each}
           {/if}

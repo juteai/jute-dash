@@ -144,9 +144,7 @@ describe('settingsStore', () => {
       'kitchen-display token=[redacted]'
     );
     expect(state.voiceSatellites[0].status).toBe('auth_failed');
-    expect(state.voiceSatellites[0].version).toBe(
-      '0.1.0 api_key=[redacted]'
-    );
+    expect(state.voiceSatellites[0].version).toBe('0.1.0 api_key=[redacted]');
     expect(JSON.stringify(state.voiceSatellites)).not.toContain('secret-ref');
     expect(JSON.stringify(state.voiceSatellites)).not.toContain('credential');
     expect(JSON.stringify(state.voiceSatellites)).not.toContain(
@@ -430,59 +428,61 @@ describe('settingsStore', () => {
 
   it('normalizes voice control ranges before saving through the hub API', async () => {
     let savedBody: Record<string, unknown> | undefined;
-    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url, init) => {
-      if (String(url).includes('/voice/settings')) {
-        savedBody = JSON.parse(String(init?.body));
-        return jsonResponse({
-          enabled: true,
-          muted: false,
-          state: 'idle',
-          serviceStatus: 'ready',
-          deviceProfileId: 'default-display',
-          wakeWordModelId: '',
-          wakeWordPhrase: '',
-          wakeSensitivity: savedBody?.wakeSensitivity,
-          sttProviderId: '',
-          ttsProviderId: '',
-          sttModelId: '',
-          ttsModelId: '',
-          ttsVoiceId: '',
-          ttsEnabled: true,
-          ttsLocale: 'en-GB',
-          ttsSpeed: savedBody?.ttsSpeed,
-          ttsVolume: savedBody?.ttsVolume,
-          preferredAgentId: '',
-          cloudOptIn: false,
-          commandProvidersEnabled: false,
-          followupWindowSeconds: savedBody?.followupWindowSeconds,
-          microphoneProfile: '',
-          updatedAt: '2026-06-16T10:00:00Z'
-        });
-      }
-      if (String(url).includes('/tts/voices')) {
-        return jsonResponse({
-          providerId: '',
-          healthStatus: 'disabled',
-          setupStatus: 'disabled',
-          locale: 'en',
-          speed: 1,
-          volume: 1,
-          cloudProvider: false,
-          voices: []
-        });
-      }
-      if (
-        String(url).includes('/config') ||
-        String(url).includes('/home') ||
-        String(url).includes('/agents') ||
-        String(url).includes('/widgets/layout') ||
-        String(url).includes('/voice/status') ||
-        String(url).includes('/status')
-      ) {
-        return jsonResponse({});
-      }
-      return jsonResponse({ error: 'Not mocked' }, { status: 400 });
-    });
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (url, init) => {
+        if (String(url).includes('/voice/settings')) {
+          savedBody = JSON.parse(String(init?.body));
+          return jsonResponse({
+            enabled: true,
+            muted: false,
+            state: 'idle',
+            serviceStatus: 'ready',
+            deviceProfileId: 'default-display',
+            wakeWordModelId: '',
+            wakeWordPhrase: '',
+            wakeSensitivity: savedBody?.wakeSensitivity,
+            sttProviderId: '',
+            ttsProviderId: '',
+            sttModelId: '',
+            ttsModelId: '',
+            ttsVoiceId: '',
+            ttsEnabled: true,
+            ttsLocale: 'en-GB',
+            ttsSpeed: savedBody?.ttsSpeed,
+            ttsVolume: savedBody?.ttsVolume,
+            preferredAgentId: '',
+            cloudOptIn: false,
+            commandProvidersEnabled: false,
+            followupWindowSeconds: savedBody?.followupWindowSeconds,
+            microphoneProfile: '',
+            updatedAt: '2026-06-16T10:00:00Z'
+          });
+        }
+        if (String(url).includes('/tts/voices')) {
+          return jsonResponse({
+            providerId: '',
+            healthStatus: 'disabled',
+            setupStatus: 'disabled',
+            locale: 'en',
+            speed: 1,
+            volume: 1,
+            cloudProvider: false,
+            voices: []
+          });
+        }
+        if (
+          String(url).includes('/config') ||
+          String(url).includes('/home') ||
+          String(url).includes('/agents') ||
+          String(url).includes('/widgets/layout') ||
+          String(url).includes('/voice/status') ||
+          String(url).includes('/status')
+        ) {
+          return jsonResponse({});
+        }
+        return jsonResponse({ error: 'Not mocked' }, { status: 400 });
+      });
 
     await settingsStore.saveVoice(
       {
