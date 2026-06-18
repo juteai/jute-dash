@@ -1430,6 +1430,53 @@ describe('browserVoiceSnapshot', () => {
     );
   });
 
+  it('requires microphone permission evidence to include timing', () => {
+    const acceptance = validateBrowserVoiceRunMatrix({
+      issue: 'JUT-6',
+      recommendation: 'experimental_display_local_only',
+      generatedAt: '2026-06-15T16:19:41.000Z',
+      targetsCovered: ['desktop-chromium'],
+      missingTargets: ['desktop-safari', 'kiosk-pwa', 'offline-display'],
+      rows: [
+        {
+          target: 'desktop-chromium',
+          generatedAt: '2026-06-15T16:19:41.000Z',
+          browser:
+            'Mozilla/5.0 AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',
+          platform: 'MacIntel',
+          displayMode: 'browser-tab',
+          online: true,
+          microphoneMeasured: true,
+          browserSTTMeasured: true,
+          ttsMeasured: true,
+          hardwareMeasured: true,
+          modelDownloadMeasured: true,
+          cpuMemoryMeasured: true,
+          offlineBehaviorMeasured: true,
+          finalTranscriptThroughHub: true,
+          finalTranscriptCaptured: true,
+          hubTranscriptReceipt: hubReceiptAt(),
+          recommendation: 'experimental_display_local_only',
+          evidence: {
+            microphone: 'Microphone permission: granted',
+            browserSTT: 'Browser STT cold start: 850 ms',
+            tts: 'TTS cold start: 25 ms',
+            hardware: 'Hardware: MacBook Pro M3, 18 GB RAM',
+            modelDownload: 'Model download size: 0 MB',
+            cpuMemory: 'CPU: 8 percent average',
+            offlineBehavior: 'Offline behavior: browser STT unavailable offline'
+          },
+          gaps: []
+        }
+      ],
+      gaps: []
+    });
+
+    expect(acceptance.problems).toContain(
+      'desktop-chromium row is missing microphone permission evidence'
+    );
+  });
+
   it('does not accept in-progress browser STT as cold-start evidence', () => {
     const report = browserVoiceReport({
       snapshot: {

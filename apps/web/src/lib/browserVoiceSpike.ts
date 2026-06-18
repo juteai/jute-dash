@@ -664,9 +664,13 @@ export function validateBrowserVoiceRunMatrix(
     }
     if (
       !row.microphoneMeasured ||
-      !hasExpectedRowEvidence(row.evidence.microphone, [
-        'Microphone permission'
-      ])
+      !hasExpectedRowEvidence(
+        row.evidence.microphone,
+        ['Microphone permission'],
+        {
+          requireNumericMeasurement: true
+        }
+      )
     ) {
       problems.push(`${prefix} is missing microphone permission evidence`);
     }
