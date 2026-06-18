@@ -8,7 +8,9 @@ import (
 )
 
 const (
-	ServiceStateError = "error"
+	ServiceStateError           = "error"
+	WakeStateDetected           = "wake_detected"
+	WakeStateCapturingUtterance = "capturing_utterance"
 )
 
 type AudioFrame struct {
@@ -56,6 +58,7 @@ type VoiceServiceSnapshot struct {
 type LocalVoiceService struct {
 	capture AudioCapture
 	vad     VoiceActivityDetector
+	wake    WakeProvider
 	emitter WakeEventEmitter
 	onTurn  func(CapturedUtterance)
 
@@ -72,6 +75,7 @@ func NewLocalVoiceService(
 	cfg VoiceServiceConfig,
 	capture AudioCapture,
 	vad VoiceActivityDetector,
+	wake WakeProvider,
 	emitter WakeEventEmitter,
 	onTurn func(CapturedUtterance),
 ) *LocalVoiceService {
@@ -79,6 +83,7 @@ func NewLocalVoiceService(
 	service := &LocalVoiceService{
 		capture: capture,
 		vad:     vad,
+		wake:    wake,
 		emitter: emitter,
 		onTurn:  onTurn,
 		cfg:     cfg,
@@ -298,13 +303,32 @@ func (s *LocalVoiceService) finishUtterance(frames []AudioFrame) {
 	}
 	first := frames[0]
 	last := frames[len(frames)-1]
-	s.onTurn(CapturedUtterance{
+	utterance := CapturedUtterance{
 		Frames:     cloneAudioFrames(frames),
 		StartedAt:  first.Timestamp,
 		EndedAt:    last.Timestamp.Add(last.Duration),
 		SampleRate: first.SampleRate,
 		Channels:   first.Channels,
-	})
+	}
+	if s.wake != nil {
+		detection, err := s.wake.DetectWake(context.Background(), utterance)
+		if err != nil || !detection.Detected {
+			s.emitStateIfDifferent(State(true, false))
+			return
+		}
+		if s.emitter != nil {
+			conversationID := newID("voice-conversation")
+			s.emitter.EmitVoiceWakeDetected(s.deviceID(), conversationID)
+			s.emitter.EmitVoiceStateChanged(s.deviceID(), VoiceStatePayload{
+				Enabled:       true,
+				Muted:         false,
+				State:         WakeStateDetected,
+				ServiceStatus: "ready",
+			})
+		}
+	}
+	s.emitStateIfDifferent("processing")
+	s.onTurn(utterance)
 }
 
 func (s *LocalVoiceService) emitState(state string) {
@@ -347,6 +371,12 @@ func (s *LocalVoiceService) deviceIDLocked() string {
 		return DefaultDeviceProfileID
 	}
 	return s.cfg.DeviceID
+}
+
+func (s *LocalVoiceService) deviceID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.deviceIDLocked()
 }
 
 func (s *LocalVoiceService) serviceStatusLocked() string {

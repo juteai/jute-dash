@@ -22,49 +22,59 @@ func (_m *WakeProvider) EXPECT() *WakeProvider_Expecter {
 	return &WakeProvider_Expecter{mock: &_m.Mock}
 }
 
-// RunOnce provides a mock function with given fields: ctx, emitter
-func (_m *WakeProvider) RunOnce(ctx context.Context, emitter voice.WakeEventEmitter) error {
-	ret := _m.Called(ctx, emitter)
+// DetectWake provides a mock function with given fields: ctx, utterance
+func (_m *WakeProvider) DetectWake(ctx context.Context, utterance voice.CapturedUtterance) (voice.WakeDetection, error) {
+	ret := _m.Called(ctx, utterance)
 
 	if len(ret) == 0 {
-		panic("no return value specified for RunOnce")
+		panic("no return value specified for DetectWake")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, voice.WakeEventEmitter) error); ok {
-		r0 = rf(ctx, emitter)
+	var r0 voice.WakeDetection
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, voice.CapturedUtterance) (voice.WakeDetection, error)); ok {
+		return rf(ctx, utterance)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, voice.CapturedUtterance) voice.WakeDetection); ok {
+		r0 = rf(ctx, utterance)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(voice.WakeDetection)
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, voice.CapturedUtterance) error); ok {
+		r1 = rf(ctx, utterance)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
-// WakeProvider_RunOnce_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RunOnce'
-type WakeProvider_RunOnce_Call struct {
+// WakeProvider_DetectWake_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DetectWake'
+type WakeProvider_DetectWake_Call struct {
 	*mock.Call
 }
 
-// RunOnce is a helper method to define mock.On call
+// DetectWake is a helper method to define mock.On call
 //   - ctx context.Context
-//   - emitter voice.WakeEventEmitter
-func (_e *WakeProvider_Expecter) RunOnce(ctx interface{}, emitter interface{}) *WakeProvider_RunOnce_Call {
-	return &WakeProvider_RunOnce_Call{Call: _e.mock.On("RunOnce", ctx, emitter)}
+//   - utterance voice.CapturedUtterance
+func (_e *WakeProvider_Expecter) DetectWake(ctx interface{}, utterance interface{}) *WakeProvider_DetectWake_Call {
+	return &WakeProvider_DetectWake_Call{Call: _e.mock.On("DetectWake", ctx, utterance)}
 }
 
-func (_c *WakeProvider_RunOnce_Call) Run(run func(ctx context.Context, emitter voice.WakeEventEmitter)) *WakeProvider_RunOnce_Call {
+func (_c *WakeProvider_DetectWake_Call) Run(run func(ctx context.Context, utterance voice.CapturedUtterance)) *WakeProvider_DetectWake_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(voice.WakeEventEmitter))
+		run(args[0].(context.Context), args[1].(voice.CapturedUtterance))
 	})
 	return _c
 }
 
-func (_c *WakeProvider_RunOnce_Call) Return(_a0 error) *WakeProvider_RunOnce_Call {
-	_c.Call.Return(_a0)
+func (_c *WakeProvider_DetectWake_Call) Return(_a0 voice.WakeDetection, _a1 error) *WakeProvider_DetectWake_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *WakeProvider_RunOnce_Call) RunAndReturn(run func(context.Context, voice.WakeEventEmitter) error) *WakeProvider_RunOnce_Call {
+func (_c *WakeProvider_DetectWake_Call) RunAndReturn(run func(context.Context, voice.CapturedUtterance) (voice.WakeDetection, error)) *WakeProvider_DetectWake_Call {
 	_c.Call.Return(run)
 	return _c
 }

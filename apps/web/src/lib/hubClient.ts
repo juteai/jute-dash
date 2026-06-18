@@ -12,8 +12,6 @@ import type {
   TilesSettings,
   UserFacingIssue,
   VoiceProvider,
-  VoiceSatellite,
-  VoiceSatelliteUpdate,
   VoiceFinalTranscriptRequest,
   VoiceFinalTranscriptResponse,
   VoiceSettingsUpdate,
@@ -343,37 +341,6 @@ export async function getVoiceProviders(
   return (response.providers ?? []).map(safeVoiceProvider);
 }
 
-export async function getVoiceSatellites(
-  fetcher: typeof fetch
-): Promise<VoiceSatellite[]> {
-  const response = await getJSON<{ satellites: VoiceSatellite[] }>(
-    fetcher,
-    '/api/v1/voice/satellites'
-  );
-  return (response.satellites ?? []).map(safeVoiceSatellite);
-}
-
-export async function updateVoiceSatellite(
-  fetcher: typeof fetch,
-  satelliteId: string,
-  update: VoiceSatelliteUpdate
-): Promise<VoiceSatellite> {
-  const response = await fetcher(
-    `${API_BASE}/api/v1/voice/satellites/${encodeURIComponent(satelliteId)}`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(update)
-    }
-  );
-  if (!response.ok) {
-    throw await hubError(response, 'Jute API request failed');
-  }
-  return safeVoiceSatellite((await response.json()) as VoiceSatellite);
-}
-
 export async function getTTSVoices(
   fetcher: typeof fetch,
   providerId = ''
@@ -617,35 +584,6 @@ function fallbackVoiceStatus(): VoiceStatus {
     microphoneProfile: '',
     updatedAt: new Date().toISOString()
   };
-}
-
-function safeVoiceSatellite(satellite: VoiceSatellite): VoiceSatellite {
-  return {
-    id: satellite.id,
-    displayName: redactCredentialText(satellite.displayName) ?? '',
-    roomLabel: redactCredentialText(satellite.roomLabel),
-    deviceProfileId: redactCredentialText(satellite.deviceProfileId) ?? '',
-    enabled: satellite.enabled,
-    status: safeSatelliteStatus(satellite.status),
-    version: redactCredentialText(satellite.version),
-    pairedAt: redactCredentialText(satellite.pairedAt) ?? '',
-    revokedAt: redactCredentialText(satellite.revokedAt),
-    lastSeenAt: redactCredentialText(satellite.lastSeenAt),
-    createdAt: redactCredentialText(satellite.createdAt) ?? '',
-    updatedAt: redactCredentialText(satellite.updatedAt) ?? ''
-  };
-}
-
-function safeSatelliteStatus(status: string): string {
-  const allowed = new Set([
-    'paired',
-    'offline',
-    'revoked',
-    'update_required',
-    'misconfigured',
-    'auth_failed'
-  ]);
-  return allowed.has(status) ? status : 'misconfigured';
 }
 
 function safeVoiceProvider(provider: VoiceProvider): VoiceProvider {

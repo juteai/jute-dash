@@ -18,17 +18,12 @@ type Store interface {
 	CancelVoice(ctx context.Context, deviceProfileID string) (Settings, error)
 	VoiceProviders(ctx context.Context) ([]ProviderPack, error)
 	TTSVoices(ctx context.Context, providerID, deviceProfileID string) (TTSVoicesResponse, error)
-	AuthenticateSatellite(ctx context.Context, id, authProof string) (SatelliteProjection, error)
-	VoiceSatellites(ctx context.Context) ([]SatelliteProjection, error)
-	VoiceSatellite(ctx context.Context, id string) (SatelliteProjection, error)
-	UpdateSatellite(ctx context.Context, id string, req SatelliteUpdateRequest) (SatelliteProjection, error)
 }
 
 type DisplayEmitter interface {
 	EmitVoiceStateChanged(deviceProfileID string, payload VoiceStatePayload) VoiceEvent
 	EmitConversationEvent(eventType, deviceID, conversationID string, payload any) VoiceEvent
 	EmitTTSEvent(eventType, deviceID string, response TTSActionResponse) VoiceEvent
-	EmitSatelliteEvent(eventType string, satellite SatelliteProjection, payload SatelliteEventPayload) VoiceEvent
 }
 
 type CancelledConversation struct {
@@ -354,53 +349,4 @@ func (c *Controller) handleTTSStop(w http.ResponseWriter, r *http.Request) {
 		c.display.EmitTTSEvent(EventTTSStopped, "default-display", response)
 	}
 	httphelper.WriteJSON(w, http.StatusOK, response)
-}
-
-func (c *Controller) handleSatelliteRoutes(w http.ResponseWriter, r *http.Request) {
-	const prefix = "/api/v1/voice/satellites/"
-	suffix := strings.TrimPrefix(r.URL.Path, prefix)
-	parts := strings.Split(strings.Trim(suffix, "/"), "/")
-	if len(parts) != 2 || parts[1] != "events" {
-		http.NotFound(w, r)
-		return
-	}
-	c.handleSatelliteEvent(w, r, parts[0])
-}
-
-func (c *Controller) handleSatelliteEvent(w http.ResponseWriter, r *http.Request, satelliteID string) {
-	if !httphelper.RequireMethod(w, r, http.MethodPost) {
-		return
-	}
-	satellite, err := c.store.AuthenticateSatellite(
-		r.Context(),
-		satelliteID,
-		r.Header.Get("X-Jute-Satellite-Auth"),
-	)
-	if err != nil {
-		httphelper.WriteError(w, http.StatusForbidden, "satellite is not authorized")
-		return
-	}
-
-	req, err := DecodeSatelliteEventRequest(r.Body)
-	if err != nil {
-		httphelper.WriteError(w, http.StatusBadRequest, "invalid satellite event request")
-		return
-	}
-	eventType, payload, err := satelliteEventPayload(req)
-	if err != nil {
-		httphelper.WriteError(w, http.StatusBadRequest, "invalid satellite event request")
-		return
-	}
-
-	var event VoiceEvent
-	if c.display != nil {
-		event = c.display.EmitSatelliteEvent(eventType, satellite, payload)
-	} else {
-		event = VoiceEvent{
-			Type:     eventType,
-			DeviceID: satellite.ID,
-			Payload:  payload,
-		}
-	}
-	httphelper.WriteJSON(w, http.StatusAccepted, event)
 }

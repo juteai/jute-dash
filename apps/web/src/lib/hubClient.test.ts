@@ -3,10 +3,8 @@ import {
   fallbackDashboard,
   getTTSVoices,
   getVoiceProviders,
-  getVoiceSatellites,
   initialDashboard,
-  submitVoiceFinalTranscript,
-  updateVoiceSatellite
+  submitVoiceFinalTranscript
 } from './hubClient';
 
 describe('fallback dashboard', () => {
@@ -70,56 +68,6 @@ describe('fallback dashboard', () => {
       deviceProfileId: 'browser-spike',
       deviceId: 'browser-spike-display'
     });
-  });
-
-  it('reads safe voice satellite projections from the hub', async () => {
-    const fetcher = (async () =>
-      new Response(
-        JSON.stringify({
-          satellites: [
-            {
-              id: 'sat-kitchen',
-              displayName:
-                'Kitchen Satellite http://provider.local?token=secret',
-              roomLabel: 'Kitchen secret:room-token',
-              deviceProfileId: 'kitchen-display password:profile-secret',
-              enabled: true,
-              status: 'stack trace with token=secret',
-              version: '0.1.0 apiKey=version-secret',
-              pairedAt: '2026-06-15T08:00:00Z',
-              lastSeenAt: '2026-06-15T08:05:00Z',
-              credentialSecretRef: 'secret-ref:JUTE_SATELLITE_TOKEN',
-              rawTranscript: 'raw transcript from the kitchen',
-              providerEndpointUrl: 'http://provider.local?token=secret',
-              lastError: 'stack trace with token=secret',
-              createdAt: '2026-06-15T08:00:00Z',
-              updatedAt: '2026-06-15T08:05:00Z'
-            }
-          ]
-        }),
-        {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      )) as typeof fetch;
-
-    const satellites = await getVoiceSatellites(fetcher);
-
-    expect(satellites[0].displayName).toBe('Kitchen Satellite [redacted-url]');
-    expect(satellites[0].roomLabel).toBe('Kitchen secret=[redacted]');
-    expect(satellites[0].deviceProfileId).toBe(
-      'kitchen-display password=[redacted]'
-    );
-    expect(satellites[0].status).toBe('misconfigured');
-    expect(satellites[0].version).toBe('0.1.0 api_key=[redacted]');
-    expect(JSON.stringify(satellites)).not.toContain('credential');
-    expect(JSON.stringify(satellites)).not.toContain('secret-ref');
-    expect(JSON.stringify(satellites)).not.toContain('raw transcript');
-    expect(JSON.stringify(satellites)).not.toContain('provider.local');
-    expect(JSON.stringify(satellites)).not.toContain('token=secret');
-    expect(JSON.stringify(satellites)).not.toContain('room-token');
-    expect(JSON.stringify(satellites)).not.toContain('profile-secret');
-    expect(JSON.stringify(satellites)).not.toContain('version-secret');
   });
 
   it('reads safe voice provider projections from the hub', async () => {
@@ -218,62 +166,5 @@ describe('fallback dashboard', () => {
     expect(serialized).not.toContain('secret-value');
     expect(serialized).not.toContain('voice-secret');
     expect(serialized).not.toContain('sk-voice-secret');
-  });
-
-  it('patches only explicit satellite settings', async () => {
-    const calls: Array<{ url: string | URL | Request; init?: RequestInit }> =
-      [];
-    const fetcher = (async (
-      url: string | URL | Request,
-      init?: RequestInit
-    ) => {
-      calls.push({ url, init });
-      return new Response(
-        JSON.stringify({
-          id: 'sat-kitchen',
-          displayName: 'Kitchen Voice tcp://provider.local:10300',
-          roomLabel: 'Kitchen',
-          deviceProfileId: 'kitchen-display token=profile-secret',
-          enabled: false,
-          status: 'paired',
-          credentialSecretRef: 'secret-ref:JUTE_SATELLITE_TOKEN',
-          rawTranscript: 'raw transcript from the kitchen',
-          providerEndpointUrl: 'http://provider.local?token=secret',
-          pairedAt: '2026-06-15T08:00:00Z',
-          createdAt: '2026-06-15T08:00:00Z',
-          updatedAt: '2026-06-15T08:10:00Z'
-        }),
-        {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
-    }) as typeof fetch;
-
-    const satellite = await updateVoiceSatellite(fetcher, 'sat-kitchen', {
-      displayName: 'Kitchen Voice',
-      roomLabel: 'Kitchen',
-      deviceProfileId: 'kitchen-display',
-      enabled: false
-    });
-
-    expect(satellite.enabled).toBe(false);
-    expect(satellite.displayName).toBe('Kitchen Voice [redacted-url]');
-    expect(satellite.deviceProfileId).toBe('kitchen-display token=[redacted]');
-    expect(JSON.stringify(satellite)).not.toContain('credential');
-    expect(JSON.stringify(satellite)).not.toContain('secret-ref');
-    expect(JSON.stringify(satellite)).not.toContain('raw transcript');
-    expect(JSON.stringify(satellite)).not.toContain('provider.local');
-    expect(JSON.stringify(satellite)).not.toContain('profile-secret');
-    expect(String(calls[0].url)).toContain(
-      '/api/v1/voice/satellites/sat-kitchen'
-    );
-    expect(calls[0].init?.method).toBe('PATCH');
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
-      displayName: 'Kitchen Voice',
-      roomLabel: 'Kitchen',
-      deviceProfileId: 'kitchen-display',
-      enabled: false
-    });
   });
 });

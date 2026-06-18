@@ -37,6 +37,26 @@ type thresholdVAD struct {
 	threshold byte
 }
 
+type recordingWakeEmitter struct {
+	events []VoiceEvent
+}
+
+func (e *recordingWakeEmitter) EmitVoiceStateChanged(deviceID string, payload VoiceStatePayload) VoiceEvent {
+	event := VoiceEvent{Type: EventVoiceStateChanged, DeviceID: deviceID, Payload: payload}
+	e.events = append(e.events, event)
+	return event
+}
+
+func (e *recordingWakeEmitter) EmitVoiceWakeDetected(deviceID, conversationID string) VoiceEvent {
+	event := VoiceEvent{
+		Type:           EventVoiceWakeDetected,
+		DeviceID:       deviceID,
+		ConversationID: conversationID,
+	}
+	e.events = append(e.events, event)
+	return event
+}
+
 func (v thresholdVAD) Speech(frame AudioFrame) bool {
 	for _, sample := range frame.PCM {
 		if sample >= v.threshold {
@@ -52,6 +72,7 @@ func TestLocalVoiceServiceStateTransitions(t *testing.T) {
 		VoiceServiceConfig{Enabled: false, Muted: false},
 		fixtureCapture{},
 		thresholdVAD{threshold: 10},
+		nil,
 		emitter,
 		nil,
 	)
@@ -90,6 +111,7 @@ func TestLocalVoiceServiceCapturesUtteranceWithPreRoll(t *testing.T) {
 		},
 		fixtureCapture{frames: frames},
 		thresholdVAD{threshold: 10},
+		nil,
 		emitter,
 		func(utterance CapturedUtterance) {
 			got = append(got, utterance)
@@ -115,7 +137,7 @@ func TestLocalVoiceServiceCapturesUtteranceWithPreRoll(t *testing.T) {
 		t.Fatalf("utterance leaked mutable fixture audio")
 	}
 	states := voiceStates(emitter.events)
-	wantStates := []string{"wake_listening", "capturing_utterance", "wake_listening"}
+	wantStates := []string{"wake_listening", "capturing_utterance", "processing", "wake_listening"}
 	if !reflect.DeepEqual(states, wantStates) {
 		t.Fatalf("unexpected states: got %v want %v", states, wantStates)
 	}
@@ -131,6 +153,7 @@ func TestLocalVoiceServiceCancelReturnsToWakeListeningWithoutUtterance(t *testin
 		VoiceServiceConfig{Enabled: true},
 		capture,
 		thresholdVAD{threshold: 10},
+		nil,
 		emitter,
 		func(utterance CapturedUtterance) {
 			got = append(got, utterance)
@@ -167,6 +190,7 @@ func TestLocalVoiceServiceCancelDiscardsActiveUtteranceAndContinuesListening(t *
 		},
 		capture,
 		thresholdVAD{threshold: 10},
+		nil,
 		emitter,
 		func(utterance CapturedUtterance) {
 			utterances <- utterance
@@ -207,6 +231,7 @@ func TestLocalVoiceServiceCancelDiscardsActiveUtteranceAndContinuesListening(t *
 		"capturing_utterance",
 		"wake_listening",
 		"capturing_utterance",
+		"processing",
 		"wake_listening",
 	}
 	if !reflect.DeepEqual(states, want) {
@@ -225,6 +250,7 @@ func TestLocalVoiceServiceMuteStopsActiveCaptureWithoutUtterance(t *testing.T) {
 		VoiceServiceConfig{Enabled: true, Muted: false, PreRoll: 100 * time.Millisecond},
 		capture,
 		thresholdVAD{threshold: 10},
+		nil,
 		emitter,
 		func(utterance CapturedUtterance) {
 			got = append(got, utterance)
@@ -261,6 +287,7 @@ func TestLocalVoiceServiceCaptureErrorUsesSafeStateWithoutAudio(t *testing.T) {
 		VoiceServiceConfig{Enabled: true},
 		fixtureCapture{err: errors.New("pcm bytes: secret raw audio")},
 		thresholdVAD{threshold: 10},
+		nil,
 		emitter,
 		nil,
 	)

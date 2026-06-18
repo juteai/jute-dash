@@ -312,8 +312,6 @@ func newServer(
 	mux.HandleFunc("/api/v1/status", server.handleStatus)
 	mux.HandleFunc("/api/v1/config", server.handleConfig)
 	mux.HandleFunc("/api/v1/voice/transcripts/final", server.handleVoiceFinalTranscript)
-	mux.HandleFunc("/api/v1/voice/satellites", server.handleVoiceSatellites)
-	mux.HandleFunc("/api/v1/voice/satellites/", server.handleVoiceSatelliteRoutes)
 
 	// Registrations
 	homestate.NewController(

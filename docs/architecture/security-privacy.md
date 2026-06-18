@@ -43,9 +43,6 @@ Rules:
 - voice logs exclude raw audio and raw transcripts by default;
 - ambient mode avoids showing transcripts unless the user has enabled visible conversation history.
 
-Headless voice satellites follow the same policy and add explicit pairing, revocation, safe event
-ingress, and multi-room privacy constraints defined in [Headless Voice Satellites](voice-satellites.md).
-
 ## Voice Provider Security
 
 Voice Provider Packs are untrusted by default unless they are built into Jute.

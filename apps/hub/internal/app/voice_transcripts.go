@@ -22,11 +22,6 @@ type VoiceFinalTranscriptRequest struct {
 	AgentID         string `json:"agentId,omitempty"`
 }
 
-type VoiceSatelliteFinalTranscriptRequest struct {
-	Text           string `json:"text"`
-	ConversationID string `json:"conversationId,omitempty"`
-}
-
 type VoiceFinalTranscriptResponse struct {
 	Conversation agents.ConversationDetail `json:"conversation"`
 	Followup     VoiceFollowupResponse     `json:"followup"`
@@ -116,6 +111,15 @@ func (s *Server) newLocalVoiceService(
 	if err != nil {
 		return nil, err
 	}
+	var wakeProvider voice.WakeProvider
+	if providerStore, ok := s.voiceStore.(interface {
+		ActiveWakeProvider(context.Context, string, string) (voice.WakeProvider, error)
+	}); ok {
+		wakeProvider, err = providerStore.ActiveWakeProvider(ctx, deviceProfileID, deviceID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return voice.NewLocalVoiceService(
 		voice.VoiceServiceConfig{
 			Enabled:  settings.Enabled,
@@ -124,6 +128,7 @@ func (s *Server) newLocalVoiceService(
 		},
 		capture,
 		vad,
+		wakeProvider,
 		s.voiceDispatcher,
 		func(utterance voice.CapturedUtterance) {
 			if _, err := processor.Process(ctx, utterance); err != nil && s.voiceDispatcher != nil {
@@ -298,131 +303,6 @@ func (s *Server) submitFinalTranscript(
 
 func sessionComplete(session voiceConversationSession) bool {
 	return session.Turns >= maxVoiceSessionTurns
-}
-
-func (s *Server) handleVoiceSatelliteRoutes(w http.ResponseWriter, r *http.Request) {
-	const prefix = "/api/v1/voice/satellites/"
-	suffix := strings.TrimPrefix(r.URL.Path, prefix)
-	parts := strings.Split(strings.Trim(suffix, "/"), "/")
-	if len(parts) == 1 && parts[0] != "" {
-		s.handleVoiceSatellite(w, r, parts[0])
-		return
-	}
-	if len(parts) == 2 && parts[1] == "events" {
-		s.handleVoiceSatelliteEvent(w, r, parts[0])
-		return
-	}
-	if len(parts) == 3 && parts[1] == "transcripts" && parts[2] == "final" {
-		s.handleVoiceSatelliteFinalTranscript(w, r, parts[0])
-		return
-	}
-	http.NotFound(w, r)
-}
-
-func (s *Server) handleVoiceSatellites(w http.ResponseWriter, r *http.Request) {
-	if !httphelper.RequireMethod(w, r, http.MethodGet) {
-		return
-	}
-	satellites, err := s.voiceStore.VoiceSatellites(r.Context())
-	if err != nil {
-		httphelper.WriteError(w, http.StatusInternalServerError, "voice satellites are unavailable")
-		return
-	}
-	httphelper.WriteJSON(w, http.StatusOK, map[string]any{"satellites": satellites})
-}
-
-func (s *Server) handleVoiceSatellite(w http.ResponseWriter, r *http.Request, satelliteID string) {
-	switch r.Method {
-	case http.MethodGet:
-		satellite, err := s.voiceStore.VoiceSatellite(r.Context(), satelliteID)
-		if err != nil {
-			httphelper.WriteError(w, http.StatusNotFound, "voice satellite was not found")
-			return
-		}
-		httphelper.WriteJSON(w, http.StatusOK, satellite)
-	case http.MethodPatch:
-		var req voice.SatelliteUpdateRequest
-		if err := decodeStrictJSON(r.Body, &req); err != nil {
-			httphelper.WriteError(w, http.StatusBadRequest, "invalid satellite settings request")
-			return
-		}
-		satellite, err := s.voiceStore.UpdateSatellite(r.Context(), satelliteID, req)
-		if err != nil {
-			if strings.Contains(err.Error(), "required") {
-				httphelper.WriteError(w, http.StatusBadRequest, "invalid satellite settings request")
-				return
-			}
-			httphelper.WriteError(w, http.StatusNotFound, "voice satellite was not found")
-			return
-		}
-		httphelper.WriteJSON(w, http.StatusOK, satellite)
-	default:
-		w.Header().Set("Allow", strings.Join([]string{http.MethodGet, http.MethodPatch}, ", "))
-		httphelper.WriteError(w, http.StatusMethodNotAllowed, "method not allowed")
-	}
-}
-
-func (s *Server) authenticateVoiceSatellite(
-	w http.ResponseWriter,
-	r *http.Request,
-	satelliteID string,
-) (voice.SatelliteProjection, bool) {
-	satellite, err := s.voiceStore.AuthenticateSatellite(
-		r.Context(),
-		satelliteID,
-		r.Header.Get("X-Jute-Satellite-Auth"),
-	)
-	if err != nil {
-		httphelper.WriteError(w, http.StatusForbidden, "satellite is not authorized")
-		return voice.SatelliteProjection{}, false
-	}
-	return satellite, true
-}
-
-func (s *Server) handleVoiceSatelliteEvent(w http.ResponseWriter, r *http.Request, satelliteID string) {
-	if !httphelper.RequireMethod(w, r, http.MethodPost) {
-		return
-	}
-	satellite, ok := s.authenticateVoiceSatellite(w, r, satelliteID)
-	if !ok {
-		return
-	}
-
-	req, err := voice.DecodeSatelliteEventRequest(r.Body)
-	if err != nil {
-		httphelper.WriteError(w, http.StatusBadRequest, "invalid satellite event request")
-		return
-	}
-	eventType, payload, err := voice.SatelliteEventPayloadFromRequest(req)
-	if err != nil {
-		httphelper.WriteError(w, http.StatusBadRequest, "invalid satellite event request")
-		return
-	}
-	event := s.voiceDispatcher.EmitSatelliteEvent(eventType, satellite, payload)
-	httphelper.WriteJSON(w, http.StatusAccepted, event)
-}
-
-func (s *Server) handleVoiceSatelliteFinalTranscript(w http.ResponseWriter, r *http.Request, satelliteID string) {
-	if !httphelper.RequireMethod(w, r, http.MethodPost) {
-		return
-	}
-	satellite, ok := s.authenticateVoiceSatellite(w, r, satelliteID)
-	if !ok {
-		return
-	}
-
-	var req VoiceSatelliteFinalTranscriptRequest
-	if err := decodeStrictJSON(r.Body, &req); err != nil {
-		httphelper.WriteError(w, http.StatusBadRequest, "invalid satellite final transcript request")
-		return
-	}
-
-	s.handleFinalTranscriptRequest(w, r, VoiceFinalTranscriptRequest{
-		Text:            req.Text,
-		DeviceProfileID: satellite.DeviceProfileID,
-		DeviceID:        satellite.ID,
-		ConversationID:  req.ConversationID,
-	})
 }
 
 func decodeStrictJSON(r io.Reader, dst any) error {

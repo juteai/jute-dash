@@ -74,95 +74,6 @@ describe('settingsStore', () => {
     expect(state.issue).toBe('');
   });
 
-  it('loads voice satellites as safe display projections', async () => {
-    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) => {
-      if (String(url).includes('/settings/household')) {
-        return jsonResponse(mockHouseholdSettings);
-      }
-      if (String(url).includes('/settings/rooms')) {
-        return jsonResponse({ rooms: [] });
-      }
-      if (String(url).includes('/settings/tiles')) {
-        return jsonResponse({ tiles: [] });
-      }
-      if (String(url).includes('/backgrounds')) {
-        return jsonResponse({ images: [] });
-      }
-      if (String(url).includes('/voice/providers')) {
-        return jsonResponse({ providers: [] });
-      }
-      if (String(url).includes('/voice/satellites')) {
-        return jsonResponse({
-          satellites: [
-            {
-              id: 'sat-kitchen',
-              displayName:
-                'Kitchen Satellite http://provider.local?token=secret',
-              roomLabel: 'Kitchen secret:room-token',
-              deviceProfileId: 'kitchen-display token=profile-secret',
-              enabled: true,
-              status: 'auth_failed',
-              version: '0.1.0 apiKey=version-secret',
-              pairedAt: '2026-06-15T08:00:00Z',
-              lastSeenAt: '2026-06-15T08:05:00Z',
-              credentialSecretRef: 'secret-ref:JUTE_SATELLITE_TOKEN',
-              rawTranscript: 'raw transcript from the kitchen',
-              providerEndpointUrl: 'http://provider.local?token=secret',
-              rawError: 'stack trace with token=secret',
-              createdAt: '2026-06-15T08:00:00Z',
-              updatedAt: '2026-06-15T08:05:00Z'
-            }
-          ]
-        });
-      }
-      if (String(url).includes('/tts/voices')) {
-        return jsonResponse({
-          providerId: '',
-          healthStatus: 'disabled',
-          setupStatus: 'disabled',
-          locale: 'en',
-          speed: 1,
-          volume: 1,
-          cloudProvider: false,
-          voices: []
-        });
-      }
-      return jsonResponse({ error: 'Not mocked' }, { status: 400 });
-    });
-
-    await settingsStore.load(fetcher);
-    const state = get(settingsStore);
-
-    expect(state.voiceSatellites).toHaveLength(1);
-    expect(state.voiceSatellites[0].displayName).toBe(
-      'Kitchen Satellite [redacted-url]'
-    );
-    expect(state.voiceSatellites[0].roomLabel).toBe(
-      'Kitchen secret=[redacted]'
-    );
-    expect(state.voiceSatellites[0].deviceProfileId).toBe(
-      'kitchen-display token=[redacted]'
-    );
-    expect(state.voiceSatellites[0].status).toBe('auth_failed');
-    expect(state.voiceSatellites[0].version).toBe('0.1.0 api_key=[redacted]');
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain('secret-ref');
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain('credential');
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain(
-      'raw transcript'
-    );
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain(
-      'provider.local'
-    );
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain('token=secret');
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain('room-token');
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain(
-      'profile-secret'
-    );
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain(
-      'version-secret'
-    );
-  });
-
   it('loads voice providers as safe setup projections', async () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) => {
       if (String(url).includes('/settings/household')) {
@@ -204,9 +115,6 @@ describe('settingsStore', () => {
             }
           ]
         });
-      }
-      if (String(url).includes('/voice/satellites')) {
-        return jsonResponse({ satellites: [] });
       }
       if (String(url).includes('/tts/voices')) {
         return jsonResponse({
@@ -255,9 +163,6 @@ describe('settingsStore', () => {
       }
       if (String(url).includes('/voice/providers')) {
         return jsonResponse({ providers: [] });
-      }
-      if (String(url).includes('/voice/satellites')) {
-        return jsonResponse({ satellites: [] });
       }
       if (String(url).includes('/tts/voices')) {
         return jsonResponse({
@@ -541,9 +446,6 @@ describe('settingsStore', () => {
           ]
         });
       }
-      if (String(url).includes('/voice/satellites')) {
-        return jsonResponse({ satellites: [] });
-      }
       if (String(url).includes('/tts/voices')) {
         return jsonResponse({ providerId: 'cloud-tts', voices: [] });
       }
@@ -613,9 +515,6 @@ describe('settingsStore', () => {
           ]
         });
       }
-      if (String(url).includes('/voice/satellites')) {
-        return jsonResponse({ satellites: [] });
-      }
       if (String(url).includes('/tts/voices')) {
         return jsonResponse({ providerId: '', voices: [] });
       }
@@ -648,104 +547,5 @@ describe('settingsStore', () => {
       savingVoice: false,
       issue: 'Command providers must be enabled before saving Command STT.'
     });
-  });
-
-  it('updates a satellite projection without secret material', async () => {
-    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) => {
-      if (String(url).includes('/settings/household')) {
-        return jsonResponse(mockHouseholdSettings);
-      }
-      if (String(url).includes('/settings/rooms')) {
-        return jsonResponse({ rooms: [] });
-      }
-      if (String(url).includes('/settings/tiles')) {
-        return jsonResponse({ tiles: [] });
-      }
-      if (String(url).includes('/backgrounds')) {
-        return jsonResponse({ images: [] });
-      }
-      if (String(url).includes('/voice/providers')) {
-        return jsonResponse({ providers: [] });
-      }
-      if (String(url).includes('/voice/satellites/sat-kitchen')) {
-        return jsonResponse({
-          id: 'sat-kitchen',
-          displayName: 'Kitchen Voice https://provider.local?token=secret',
-          roomLabel: 'Kitchen password:room-secret',
-          deviceProfileId: 'kitchen-display apiKey=profile-secret',
-          enabled: false,
-          status: 'unexpected raw error token=secret',
-          pairedAt: '2026-06-15T08:00:00Z',
-          createdAt: '2026-06-15T08:00:00Z',
-          updatedAt: '2026-06-15T08:10:00Z'
-        });
-      }
-      if (String(url).includes('/voice/satellites')) {
-        return jsonResponse({
-          satellites: [
-            {
-              id: 'sat-kitchen',
-              displayName: 'Kitchen Satellite',
-              roomLabel: '',
-              deviceProfileId: 'default-display',
-              enabled: true,
-              status: 'paired',
-              pairedAt: '2026-06-15T08:00:00Z',
-              createdAt: '2026-06-15T08:00:00Z',
-              updatedAt: '2026-06-15T08:00:00Z'
-            }
-          ]
-        });
-      }
-      if (String(url).includes('/tts/voices')) {
-        return jsonResponse({
-          providerId: '',
-          healthStatus: 'disabled',
-          setupStatus: 'disabled',
-          locale: 'en',
-          speed: 1,
-          volume: 1,
-          cloudProvider: false,
-          voices: []
-        });
-      }
-      return jsonResponse({ error: 'Not mocked' }, { status: 400 });
-    });
-
-    await settingsStore.load(fetcher);
-    await settingsStore.updateSatellite(
-      'sat-kitchen',
-      {
-        displayName: 'Kitchen Voice',
-        roomLabel: 'Kitchen',
-        deviceProfileId: 'kitchen-display',
-        enabled: false
-      },
-      fetcher
-    );
-    const state = get(settingsStore);
-
-    expect(state.savingSatellite).toBe(false);
-    expect(state.voiceSatellites[0].displayName).toBe(
-      'Kitchen Voice [redacted-url]'
-    );
-    expect(state.voiceSatellites[0].roomLabel).toBe(
-      'Kitchen password=[redacted]'
-    );
-    expect(state.voiceSatellites[0].deviceProfileId).toBe(
-      'kitchen-display api_key=[redacted]'
-    );
-    expect(state.voiceSatellites[0].status).toBe('misconfigured');
-    expect(state.voiceSatellites[0].enabled).toBe(false);
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain('secret-ref');
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain('credential');
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain(
-      'provider.local'
-    );
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain('token=secret');
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain('room-secret');
-    expect(JSON.stringify(state.voiceSatellites)).not.toContain(
-      'profile-secret'
-    );
   });
 });

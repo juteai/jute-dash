@@ -30,7 +30,7 @@ func (p CommandSTTProvider) Transcribe(ctx context.Context, utterance CapturedUt
 	if !filepath.IsAbs(p.Command) {
 		return STTResult{}, errors.New("command STT provider command must be absolute")
 	}
-	wav, err := EncodeBenchmarkWAV(utterance)
+	wav, err := EncodeWAV(utterance)
 	if err != nil {
 		return STTResult{}, err
 	}
@@ -56,7 +56,7 @@ func (p CommandSTTProvider) Transcribe(ctx context.Context, utterance CapturedUt
 	cmd := exec.CommandContext( //nolint:gosec // command providers require explicit settings opt-in and absolute manifest commands.
 		commandCtx,
 		p.Command,
-		commandSTTArgs(
+		commandArgs(
 			p.Args,
 			tempPath,
 			p.ModelID,
@@ -70,17 +70,6 @@ func (p CommandSTTProvider) Transcribe(ctx context.Context, utterance CapturedUt
 		return STTResult{}, errCommandSTTProviderUnavailable
 	}
 	return decodeCommandSTTOutput(output, p, utterance.EndedAt.Sub(utterance.StartedAt))
-}
-
-func commandSTTArgs(args []string, inputPath string, modelID string, language string) []string {
-	out := make([]string, 0, len(args))
-	for _, arg := range args {
-		arg = strings.ReplaceAll(arg, "{inputPath}", inputPath)
-		arg = strings.ReplaceAll(arg, "{modelId}", modelID)
-		arg = strings.ReplaceAll(arg, "{language}", language)
-		out = append(out, arg)
-	}
-	return out
 }
 
 func decodeCommandSTTOutput(output []byte, p CommandSTTProvider, fallbackDuration time.Duration) (STTResult, error) {
@@ -101,7 +90,7 @@ func decodeCommandSTTOutput(output []byte, p CommandSTTProvider, fallbackDuratio
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return STTResult{}, errCommandSTTProviderUnavailable
 	}
-	text := sanitizeText(firstHTTPJSONNonEmpty(out.Text, out.Transcript))
+	text := sanitizeText(firstNonEmpty(out.Text, out.Transcript))
 	if text == "" {
 		return STTResult{}, errors.New("command STT transcript was empty")
 	}
@@ -113,9 +102,9 @@ func decodeCommandSTTOutput(output []byte, p CommandSTTProvider, fallbackDuratio
 	}
 	return STTResult{
 		Text:       text,
-		ProviderID: safeIdentifier(firstHTTPJSONNonEmpty(out.ProviderID, p.ProviderID)),
-		ModelID:    safeIdentifier(firstHTTPJSONNonEmpty(out.ModelID, p.ModelID)),
-		Language:   safeIdentifier(firstHTTPJSONNonEmpty(out.Language, p.Language)),
+		ProviderID: safeIdentifier(firstNonEmpty(out.ProviderID, p.ProviderID)),
+		ModelID:    safeIdentifier(firstNonEmpty(out.ModelID, p.ModelID)),
+		Language:   safeIdentifier(firstNonEmpty(out.Language, p.Language)),
 		Duration:   duration,
 	}, nil
 }

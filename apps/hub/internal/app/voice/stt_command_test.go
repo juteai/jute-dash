@@ -8,12 +8,7 @@ import (
 )
 
 func TestCommandSTTProviderRunsAbsoluteCommandWithInputPathModelAndLanguage(t *testing.T) {
-	fixture, err := NewBenchmarkToneFixture("short-command", "fixture", BenchmarkAudioSpec{
-		Duration: 20 * time.Millisecond,
-	})
-	if err != nil {
-		t.Fatalf("fixture: %v", err)
-	}
+	utterance := testUtterance()
 	result, err := (CommandSTTProvider{
 		ProviderID: "go-whisper-command",
 		Command:    os.Args[0],
@@ -26,7 +21,7 @@ func TestCommandSTTProviderRunsAbsoluteCommandWithInputPathModelAndLanguage(t *t
 		},
 		ModelID:  "tiny-en",
 		Language: "en-GB",
-	}).Transcribe(t.Context(), fixture.Utterance)
+	}).Transcribe(t.Context(), utterance)
 	if err != nil {
 		t.Fatalf("Transcribe() error = %v", err)
 	}
@@ -37,6 +32,16 @@ func TestCommandSTTProviderRunsAbsoluteCommandWithInputPathModelAndLanguage(t *t
 		result.Duration != 42*time.Millisecond {
 		t.Fatalf("unexpected result: %+v", result)
 	}
+}
+
+func testUtterance() CapturedUtterance {
+	return UtteranceFromPCM(
+		[]byte{1, 0, 2, 0},
+		DefaultSampleRate,
+		DefaultChannels,
+		time.Now().UTC(),
+		20*time.Millisecond,
+	)
 }
 
 func TestCommandSTTProviderHelper(t *testing.T) {

@@ -7,6 +7,18 @@ import (
 	"time"
 )
 
+type STTResult struct {
+	Text       string        `json:"text"`
+	ProviderID string        `json:"providerId"`
+	ModelID    string        `json:"modelId,omitempty"`
+	Language   string        `json:"language,omitempty"`
+	Duration   time.Duration `json:"duration"`
+}
+
+type STTProvider interface {
+	Transcribe(ctx context.Context, utterance CapturedUtterance) (STTResult, error)
+}
+
 type FinalTranscript struct {
 	Text            string        `json:"text"`
 	DeviceProfileID string        `json:"deviceProfileId,omitempty"`

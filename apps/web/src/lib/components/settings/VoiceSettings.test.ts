@@ -69,7 +69,7 @@ const readyVoice: VoiceStatus = {
   updatedAt: '2026-06-17T08:00:00Z'
 };
 
-async function loadVoiceSettings(status = 'auth_failed') {
+async function loadVoiceSettings() {
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) => {
     if (String(url).includes('/settings/household')) {
       return jsonResponse(household);
@@ -123,30 +123,6 @@ async function loadVoiceSettings(status = 'auth_failed') {
         ]
       });
     }
-    if (String(url).includes('/voice/satellites')) {
-      return jsonResponse({
-        satellites: [
-          {
-            id: 'sat-kitchen',
-            displayName: 'Kitchen Satellite https://hub.local?token=secret',
-            roomLabel: 'Kitchen password:room-secret',
-            deviceProfileId: 'kitchen-display apiKey=profile-secret',
-            enabled: status !== 'revoked',
-            status,
-            version: '0.2.0 token=version-secret',
-            pairedAt: '2026-06-17T08:00:00Z',
-            revokedAt:
-              status === 'revoked' ? '2026-06-17T09:00:00Z' : undefined,
-            lastSeenAt: '2026-06-17T08:05:00Z',
-            credentialSecretRef: 'secret-ref:JUTE_SATELLITE_TOKEN',
-            rawTranscript: 'unlock the side door',
-            rawError: 'dial tcp 127.0.0.1:10500 token=secret',
-            createdAt: '2026-06-17T08:00:00Z',
-            updatedAt: '2026-06-17T08:05:00Z'
-          }
-        ]
-      });
-    }
     if (String(url).includes('/tts/voices')) {
       return jsonResponse({
         providerId: 'command-tts',
@@ -175,7 +151,7 @@ describe('VoiceSettings', () => {
     settingsStore.clearIssue();
   });
 
-  it('renders safe satellite projections separately from display profile controls', async () => {
+  it('renders hub-owned voice settings', async () => {
     await loadVoiceSettings();
 
     const { body } = render(VoiceSettings);
@@ -191,26 +167,6 @@ describe('VoiceSettings', () => {
     expect(body).toContain('Command TTS · available · local');
     expect(body).toContain('TTS setup');
     expect(body).toContain('available');
-    expect(body).toContain('Satellites');
-    expect(body).toContain('sat-kitchen');
-    expect(body).toContain('auth_failed');
-    expect(body).toContain('Kitchen Satellite [redacted-url]');
-    expect(body).toContain('Kitchen password=[redacted]');
-    expect(body).toContain('kitchen-display api_key=[redacted]');
-    expect(body).not.toContain('JUTE_SATELLITE_TOKEN');
-    expect(body).not.toContain('hub.local');
-    expect(body).not.toContain('token=secret');
-    expect(body).not.toContain('room-secret');
-    expect(body).not.toContain('profile-secret');
-    expect(body).not.toContain('unlock the side door');
-  });
-
-  it('renders revoked satellites as non-editable from the old credential path', async () => {
-    await loadVoiceSettings('revoked');
-
-    const { body } = render(VoiceSettings);
-
-    expect(body).toContain('revoked');
-    expect(body).toContain('disabled');
+    expect(body).not.toContain('Satellites');
   });
 });

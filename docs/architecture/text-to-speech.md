@@ -10,9 +10,9 @@ TTS uses the same [Voice Provider Packs](voice-providers.md) model as speech-to-
 
 Default architecture path:
 
-1. **Wyoming-compatible local TTS service** for local/LAN deployments and Home Assistant-compatible voice stacks.
-2. **sherpa-onnx provider pack** for embedded/local TTS where Jute can call a sidecar or future built-in adapter.
-3. **Piper/OHF Piper provider pack** as an external service or command wrapper. Jute should not bundle GPL TTS engines without a future licensing decision.
+1. **Hub-owned command provider** for local installed TTS engines.
+2. **sherpa-onnx provider pack** for embedded/local TTS where Jute can call a command or builtin adapter.
+3. **Piper/OHF Piper provider pack** as a command wrapper. Jute should not bundle GPL TTS engines without a future licensing decision.
 4. **Browser `speechSynthesis` fallback** for display-only preview or degraded mode. It is not the headless or canonical voice path.
 5. **OpenAI text-to-speech provider pack** as optional cloud-quality TTS, using user-provided credentials and explicit cloud opt-in.
 
@@ -114,27 +114,17 @@ TTS provider manifests declare:
 
 For low-latency local playback, prefer PCM or WAV. For network transfer, Opus or MP3 may be acceptable when supported.
 
-## Wyoming TTS Path
+## Command TTS Path
 
-The first local-first TTS provider path is Wyoming over loopback or LAN TCP. Jute sends a
-`synthesize` request with hub-approved text and the selected voice/locale, then reads Wyoming
-`audio-start`, `audio-chunk`, and `audio-stop` events. The adapter returns playable PCM audio bytes
-with provider ID, voice ID, locale, sample rate, sample width, channel count, content type, playback
-kind, and duration metadata.
-
-Wyoming TTS health uses safe provider states:
-
-- invalid or unsafe endpoint: `misconfigured`;
-- unreachable endpoint: `offline`;
-- successful local/LAN connection: `available`.
-
-The adapter never embeds credentials in endpoints and does not upload text to cloud providers unless
-cloud opt-in and a cloud provider pack are explicitly selected.
+The first local-first TTS provider path is a hub-owned command provider. Jute invokes an absolute
+local command with hub-approved text and selected voice/locale/model arguments, then accepts safe JSON
+metadata about the produced playback. The command is disabled until explicitly enabled and must not
+receive secrets through argv.
 
 At runtime, the hub resolves the selected TTS Provider Pack from SQLite and attaches a provider only
-when the manifest is a local/offline Wyoming TTS pack, the provider health is `available` or
+when the manifest is local/offline, command providers are enabled, provider health is `available` or
 `degraded`, required credentials are satisfied, and TTS is enabled for the device profile. Public
-provider and voice-listing APIs continue to omit transport endpoints and credential metadata.
+provider and voice-listing APIs continue to omit command paths and credential metadata.
 If a device profile references a voice ID that the current provider manifest no longer declares, the
 hub falls back to the manifest's default voice before returning `GET /api/v1/tts/voices` metadata or
 calling the active provider. Voice listing may be scoped with `deviceProfileId`; otherwise the default
@@ -152,7 +142,7 @@ Implemented foundation APIs:
 - `POST /api/v1/tts/speak`: queues speech for approved assistant text or explicit UI action.
 - `POST /api/v1/tts/stop`: stops current playback.
 
-The preview/speak HTTP implementation applies hub speech policy, emits safe TTS state events, and returns a control response. When a selected local Wyoming or HTTP JSON provider is available, the server calls the provider synthesis path and returns safe playback metadata such as content type, sample format, duration, and audio byte count without putting raw audio bytes on the JSON or SSE surface. Without an attached provider, the same API remains a safe control/event path for UI integration tests.
+The preview/speak HTTP implementation applies hub speech policy, emits safe TTS state events, and returns a control response. When a selected command provider is available, the server calls the provider synthesis path and returns safe playback metadata such as content type, sample format, duration, and audio byte count without putting raw audio bytes on the JSON or SSE surface. Without an attached provider, the same API remains a safe control/event path for UI integration tests.
 
 `POST /api/v1/tts/stop` records `tts.stopped` as a terminal state for the active action and cancels
 any in-flight provider synthesis context, including barge-in stops. If the provider returns after

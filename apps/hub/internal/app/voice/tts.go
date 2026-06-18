@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -42,6 +43,19 @@ type TTSStopRequest struct {
 	ConversationID string `json:"conversationId,omitempty"`
 	TurnID         string `json:"turnId,omitempty"`
 	Reason         string `json:"reason,omitempty"`
+}
+
+type TTSAudioResult struct {
+	Audio        []byte        `json:"-"`
+	ProviderID   string        `json:"providerId"`
+	VoiceID      string        `json:"voiceId,omitempty"`
+	Locale       string        `json:"locale,omitempty"`
+	ContentType  string        `json:"contentType"`
+	SampleRate   int           `json:"sampleRate,omitempty"`
+	SampleWidth  int           `json:"sampleWidth,omitempty"`
+	Channels     int           `json:"channels,omitempty"`
+	Duration     time.Duration `json:"duration,omitempty"`
+	PlaybackKind string        `json:"playbackKind"`
 }
 
 func DecodeTTSRequest(r io.Reader) (TTSRequest, error) {

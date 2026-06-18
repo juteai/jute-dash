@@ -13,24 +13,19 @@ import (
 )
 
 const (
-	EventVoiceStateChanged             = "voice.state_changed"
-	EventVoiceWakeDetected             = "voice.wake_detected"
-	EventVoiceTranscriptPartial        = "voice.transcript.partial"
-	EventVoiceTranscriptFinal          = "voice.transcript.final"
-	EventConversationStarted           = "conversation.started"
-	EventConversationTurnStarted       = "conversation.turn_started"
-	EventConversationTurnCompleted     = "conversation.turn_completed"
-	EventConversationFollowupStarted   = "conversation.followup_started"
-	EventConversationEnded             = "conversation.ended"
-	EventTTSStarted                    = "tts.started"
-	EventTTSCompleted                  = "tts.completed"
-	EventTTSFailed                     = "tts.failed"
-	EventTTSStopped                    = "tts.stopped"
-	EventVoiceSatelliteStateChanged    = "voice.satellite_state_changed"
-	EventVoiceSatelliteHealthChanged   = "voice.satellite_health_changed"
-	EventVoiceSatelliteWakeDetected    = "voice.satellite_wake_detected"
-	EventVoiceSatelliteVersionChanged  = "voice.satellite_version_changed"
-	EventVoiceSatelliteUpdateAvailable = "voice.satellite_update_available"
+	EventVoiceStateChanged           = "voice.state_changed"
+	EventVoiceWakeDetected           = "voice.wake_detected"
+	EventVoiceTranscriptPartial      = "voice.transcript.partial"
+	EventVoiceTranscriptFinal        = "voice.transcript.final"
+	EventConversationStarted         = "conversation.started"
+	EventConversationTurnStarted     = "conversation.turn_started"
+	EventConversationTurnCompleted   = "conversation.turn_completed"
+	EventConversationFollowupStarted = "conversation.followup_started"
+	EventConversationEnded           = "conversation.ended"
+	EventTTSStarted                  = "tts.started"
+	EventTTSCompleted                = "tts.completed"
+	EventTTSFailed                   = "tts.failed"
+	EventTTSStopped                  = "tts.stopped"
 )
 
 var secretPattern = regexp.MustCompile(`(?i)\b(bearer|token|secret|password|api[_-]?key)\s*[:=]\s*[^,\s]+`)
@@ -44,20 +39,6 @@ type VoiceStatePayload struct {
 
 type VoiceTranscriptPayload struct {
 	Text string `json:"text"`
-}
-
-type SatelliteEventPayload struct {
-	SatelliteID              string   `json:"satelliteId"`
-	DeviceProfileID          string   `json:"deviceProfileId"`
-	RoomLabel                string   `json:"roomLabel,omitempty"`
-	State                    string   `json:"state,omitempty"`
-	Health                   string   `json:"health,omitempty"`
-	Version                  string   `json:"version,omitempty"`
-	UpdateChannel            string   `json:"updateChannel,omitempty"`
-	WakeModelID              string   `json:"wakeModelId,omitempty"`
-	ProviderIDs              []string `json:"providerIds,omitempty"`
-	SafeErrorCode            string   `json:"safeErrorCode,omitempty"`
-	LocalProcessingLatencyMS int      `json:"localProcessingLatencyMs,omitempty"`
 }
 
 type VoiceEvent struct {
@@ -180,32 +161,6 @@ func (d *Dispatcher) EmitTTSEvent(eventType, deviceID string, response TTSAction
 	return event
 }
 
-func (d *Dispatcher) EmitSatelliteEvent(
-	eventType string,
-	satellite SatelliteProjection,
-	payload SatelliteEventPayload,
-) VoiceEvent {
-	payload.SatelliteID = safeIdentifier(satellite.ID)
-	payload.DeviceProfileID = safeIdentifier(satellite.DeviceProfileID)
-	payload.RoomLabel = sanitizeText(satellite.RoomLabel)
-	payload.State = safeIdentifier(payload.State)
-	payload.Health = safeIdentifier(payload.Health)
-	payload.Version = safeIdentifier(payload.Version)
-	payload.UpdateChannel = safeIdentifier(payload.UpdateChannel)
-	payload.WakeModelID = safeIdentifier(payload.WakeModelID)
-	payload.SafeErrorCode = safeIdentifier(payload.SafeErrorCode)
-	payload.ProviderIDs = safeIdentifiers(payload.ProviderIDs)
-	event := VoiceEvent{
-		ID:        newID("voice-satellite"),
-		Type:      eventType,
-		CreatedAt: d.now().UTC().Format(time.RFC3339Nano),
-		DeviceID:  safeIdentifier(satellite.ID),
-		Payload:   payload,
-	}
-	d.publish(displayactions.Event{Type: eventType, Data: event})
-	return event
-}
-
 func (d *Dispatcher) publish(event displayactions.Event) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -229,19 +184,6 @@ func safeIdentifier(value string) string {
 	value = strings.TrimSpace(value)
 	value = secretPattern.ReplaceAllString(value, "$1=[redacted]")
 	return value
-}
-
-func safeIdentifiers(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	safe := make([]string, 0, len(values))
-	for _, value := range values {
-		if trimmed := safeIdentifier(value); trimmed != "" {
-			safe = append(safe, trimmed)
-		}
-	}
-	return safe
 }
 
 func sanitizeText(value string) string {

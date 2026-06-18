@@ -525,57 +525,6 @@ func TestVoiceProvidersDisableCloudSTTWithoutOptIn(t *testing.T) {
 	}
 }
 
-func TestActiveWakeProviderResolvesSelectedWyomingProvider(t *testing.T) {
-	st := openTestStore(t)
-	defer st.Close()
-	bootstrap := DefaultConfig()
-	bootstrap.Voice.Enabled = true
-	bootstrap.Voice.WakeWordModelID = "hey-jute"
-	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	insertWakeProvider(t, st, "local-wake", "available", true, nil)
-
-	provider, err := st.VoiceRepo.ActiveWakeProvider(context.Background(), "", "kitchen-display")
-	if err != nil {
-		t.Fatalf("ActiveWakeProvider() error = %v", err)
-	}
-	wyoming, ok := provider.(voice.WyomingWakeProvider)
-	if !ok {
-		t.Fatalf("expected WyomingWakeProvider, got %T", provider)
-	}
-	if wyoming.ProviderID != "local-wake" ||
-		wyoming.Endpoint != "tcp://127.0.0.1:10400" ||
-		wyoming.DeviceID != "kitchen-display" ||
-		len(wyoming.ModelNames) != 1 ||
-		wyoming.ModelNames[0] != "hey-jute" {
-		t.Fatalf("unexpected active wake provider: %+v", wyoming)
-	}
-}
-
-func TestActiveWakeProviderFallsBackToProviderDefaultModel(t *testing.T) {
-	st := openTestStore(t)
-	defer st.Close()
-	bootstrap := DefaultConfig()
-	bootstrap.Voice.Enabled = true
-	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	insertWakeProvider(t, st, "local-wake", "available", true, nil)
-
-	provider, err := st.VoiceRepo.ActiveWakeProvider(context.Background(), "", "")
-	if err != nil {
-		t.Fatalf("ActiveWakeProvider() error = %v", err)
-	}
-	wyoming, ok := provider.(voice.WyomingWakeProvider)
-	if !ok {
-		t.Fatalf("expected WyomingWakeProvider, got %T", provider)
-	}
-	if len(wyoming.ModelNames) != 1 || wyoming.ModelNames[0] != "hey-jute" {
-		t.Fatalf("unexpected default wake model: %+v", wyoming.ModelNames)
-	}
-}
-
 func TestActiveWakeProviderIgnoresUnsupportedOrUnsafeProviders(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -644,65 +593,6 @@ func TestActiveWakeProviderIgnoresUnsupportedOrUnsafeProviders(t *testing.T) {
 				t.Fatalf("expected no active wake provider, got %T", provider)
 			}
 		})
-	}
-}
-
-func TestActiveSTTProviderResolvesSelectedWyomingProvider(t *testing.T) {
-	st := openTestStore(t)
-	defer st.Close()
-	bootstrap := DefaultConfig()
-	bootstrap.Voice.Enabled = true
-	bootstrap.Voice.STTProviderID = "local-stt"
-	bootstrap.Voice.STTModelID = "tiny-en"
-	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	insertSTTProvider(t, st, "local-stt", "available", true, nil)
-
-	provider, err := st.VoiceRepo.ActiveSTTProvider(context.Background(), "")
-	if err != nil {
-		t.Fatalf("ActiveSTTProvider() error = %v", err)
-	}
-	wyoming, ok := provider.(voice.WyomingSTTProvider)
-	if !ok {
-		t.Fatalf("expected WyomingSTTProvider, got %T", provider)
-	}
-	if wyoming.ProviderID != "local-stt" ||
-		wyoming.Endpoint != "tcp://127.0.0.1:10300" ||
-		wyoming.ModelID != "tiny-en" ||
-		wyoming.Language != "en-GB" {
-		t.Fatalf("unexpected active STT provider: %+v", wyoming)
-	}
-}
-
-func TestActiveSTTProviderResolvesSelectedHTTPJSONProvider(t *testing.T) {
-	st := openTestStore(t)
-	defer st.Close()
-	bootstrap := DefaultConfig()
-	bootstrap.Voice.Enabled = true
-	bootstrap.Voice.STTProviderID = "go-whisper"
-	bootstrap.Voice.STTModelID = "tiny-en"
-	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	insertSTTProviderWithTransport(t, st, "go-whisper", "available", true, nil, voice.TransportManifest{
-		Type:     "http-json",
-		Endpoint: "http://127.0.0.1:8081/transcribe",
-	})
-
-	provider, err := st.VoiceRepo.ActiveSTTProvider(context.Background(), "")
-	if err != nil {
-		t.Fatalf("ActiveSTTProvider() error = %v", err)
-	}
-	httpJSON, ok := provider.(voice.HTTPJSONSTTProvider)
-	if !ok {
-		t.Fatalf("expected HTTPJSONSTTProvider, got %T", provider)
-	}
-	if httpJSON.ProviderID != "go-whisper" ||
-		httpJSON.Endpoint != "http://127.0.0.1:8081/transcribe" ||
-		httpJSON.ModelID != "tiny-en" ||
-		httpJSON.Language != "en-GB" {
-		t.Fatalf("unexpected active STT provider: %+v", httpJSON)
 	}
 }
 
@@ -974,69 +864,6 @@ func TestTTSVoicesHandlesUnavailableProviderStates(t *testing.T) {
 	}
 }
 
-func TestActiveTTSProviderResolvesSelectedWyomingProvider(t *testing.T) {
-	st := openTestStore(t)
-	defer st.Close()
-	bootstrap := DefaultConfig()
-	bootstrap.Voice.TTSProviderID = "local-tts"
-	bootstrap.Voice.TTSVoiceID = "amy"
-	bootstrap.Voice.TTSLocale = "en-GB"
-	bootstrap.Voice.TTSEnabled = true
-	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	insertTTSProvider(t, st, "local-tts", "available", true, nil)
-
-	provider, err := st.VoiceRepo.ActiveTTSProvider(context.Background(), "")
-	if err != nil {
-		t.Fatalf("ActiveTTSProvider() error = %v", err)
-	}
-	wyoming, ok := provider.(voice.WyomingTTSProvider)
-	if !ok {
-		t.Fatalf("expected WyomingTTSProvider, got %T", provider)
-	}
-	if wyoming.ProviderID != "local-tts" ||
-		wyoming.Endpoint != "tcp://127.0.0.1:10500" ||
-		wyoming.VoiceID != "amy" ||
-		wyoming.Locale != "en-GB" {
-		t.Fatalf("unexpected active TTS provider: %+v", wyoming)
-	}
-}
-
-func TestActiveTTSProviderResolvesSelectedHTTPJSONProvider(t *testing.T) {
-	st := openTestStore(t)
-	defer st.Close()
-	bootstrap := DefaultConfig()
-	bootstrap.Voice.TTSProviderID = "http-tts"
-	bootstrap.Voice.TTSModelID = "selected-model"
-	bootstrap.Voice.TTSVoiceID = "amy"
-	bootstrap.Voice.TTSLocale = "en-GB"
-	bootstrap.Voice.TTSEnabled = true
-	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
-		t.Fatalf("Initialize() error = %v", err)
-	}
-	insertTTSProviderWithTransport(t, st, "http-tts", "available", true, nil, voice.TransportManifest{
-		Type:     "http-json",
-		Endpoint: "http://127.0.0.1:10501/tts",
-	})
-
-	provider, err := st.VoiceRepo.ActiveTTSProvider(context.Background(), "")
-	if err != nil {
-		t.Fatalf("ActiveTTSProvider() error = %v", err)
-	}
-	httpJSON, ok := provider.(voice.HTTPJSONTTSProvider)
-	if !ok {
-		t.Fatalf("expected HTTPJSONTTSProvider, got %T", provider)
-	}
-	if httpJSON.ProviderID != "http-tts" ||
-		httpJSON.Endpoint != "http://127.0.0.1:10501/tts" ||
-		httpJSON.ModelID != "selected-model" ||
-		httpJSON.VoiceID != "amy" ||
-		httpJSON.Locale != "en-GB" {
-		t.Fatalf("unexpected active TTS provider: %+v", httpJSON)
-	}
-}
-
 func TestActiveTTSProviderFallsBackWhenSelectedVoiceIsNoLongerDeclared(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
@@ -1045,6 +872,7 @@ func TestActiveTTSProviderFallsBackWhenSelectedVoiceIsNoLongerDeclared(t *testin
 	bootstrap.Voice.TTSVoiceID = "removed-voice"
 	bootstrap.Voice.TTSLocale = "en-GB"
 	bootstrap.Voice.TTSEnabled = true
+	bootstrap.Voice.CommandProvidersEnabled = true
 	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
@@ -1054,12 +882,12 @@ func TestActiveTTSProviderFallsBackWhenSelectedVoiceIsNoLongerDeclared(t *testin
 	if err != nil {
 		t.Fatalf("ActiveTTSProvider() error = %v", err)
 	}
-	wyoming, ok := provider.(voice.WyomingTTSProvider)
+	command, ok := provider.(voice.CommandTTSProvider)
 	if !ok {
-		t.Fatalf("expected WyomingTTSProvider, got %T", provider)
+		t.Fatalf("expected CommandTTSProvider, got %T", provider)
 	}
-	if wyoming.VoiceID != "amy" || wyoming.Locale != "en-GB" {
-		t.Fatalf("expected active provider to use default voice metadata, got %+v", wyoming)
+	if command.VoiceID != "amy" || command.Locale != "en-GB" {
+		t.Fatalf("expected active provider to use default voice metadata, got %+v", command)
 	}
 }
 
@@ -1110,6 +938,7 @@ func TestActiveTTSProviderIgnoresUnsupportedOrUnsafeProviders(t *testing.T) {
 			bootstrap := DefaultConfig()
 			bootstrap.Voice.TTSProviderID = "local-tts"
 			bootstrap.Voice.TTSEnabled = tt.ttsEnabled
+			bootstrap.Voice.CommandProvidersEnabled = true
 			if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
 				t.Fatalf("Initialize() error = %v", err)
 			}
@@ -1193,14 +1022,9 @@ func insertTTSProvider(
 ) {
 	t.Helper()
 	transport := voice.TransportManifest{
-		Type:     "wyoming",
-		Endpoint: "tcp://127.0.0.1:10500",
-	}
-	if !offline {
-		transport = voice.TransportManifest{
-			Type:     "http-json",
-			Endpoint: "https://tts.example.com/v1",
-		}
+		Type:    "command",
+		Command: "/usr/local/bin/jute-tts",
+		Args:    []string{"--voice", "{modelId}", "--locale", "{language}", "--text", "{text}"},
 	}
 	insertTTSProviderWithTransport(t, st, providerID, health, offline, credentials, transport)
 }
@@ -1291,14 +1115,9 @@ func insertSTTProvider(
 ) {
 	t.Helper()
 	transport := voice.TransportManifest{
-		Type:     "wyoming",
-		Endpoint: "tcp://127.0.0.1:10300",
-	}
-	if !offline {
-		transport = voice.TransportManifest{
-			Type:     "http-json",
-			Endpoint: "https://stt.example.com/v1",
-		}
+		Type:    "command",
+		Command: "/usr/local/bin/jute-stt",
+		Args:    []string{"--model", "{modelId}", "--input", "{inputPath}"},
 	}
 	insertSTTProviderWithTransport(t, st, providerID, health, offline, credentials, transport)
 }
@@ -1369,14 +1188,9 @@ func insertWakeProvider(
 ) {
 	t.Helper()
 	transport := voice.TransportManifest{
-		Type:     "wyoming",
-		Endpoint: "tcp://127.0.0.1:10400",
-	}
-	if !offline {
-		transport = voice.TransportManifest{
-			Type:     "http-json",
-			Endpoint: "https://wake.example.com/v1",
-		}
+		Type:    "command",
+		Command: "/usr/local/bin/jute-wake",
+		Args:    []string{"--model", "{modelId}", "--input", "{inputPath}"},
 	}
 	if credentials == nil {
 		credentials = []voice.CredentialManifest{}

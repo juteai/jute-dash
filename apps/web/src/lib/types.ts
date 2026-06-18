@@ -253,29 +253,6 @@ export type VoiceProvider = {
   updatedAt: string;
 };
 
-export type VoiceSatellite = {
-  id: string;
-  displayName: string;
-  roomLabel?: string;
-  deviceProfileId: string;
-  enabled: boolean;
-  status: string;
-  version?: string;
-  pairedAt: string;
-  revokedAt?: string;
-  lastSeenAt?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type VoiceSatelliteUpdate = {
-  displayName?: string;
-  roomLabel?: string;
-  deviceProfileId?: string;
-  enabled?: boolean;
-  revoke?: boolean;
-};
-
 export type VoiceProviderCapabilities = {
   streaming: boolean;
   partialTranscripts: boolean;

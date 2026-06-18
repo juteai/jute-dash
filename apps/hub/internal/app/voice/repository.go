@@ -170,6 +170,7 @@ func (r *Repository) VoiceProviders(ctx context.Context) ([]ProviderPack, error)
 
 //nolint:nilnil // nil provider with nil error means voice has no usable wake provider.
 func (r *Repository) ActiveWakeProvider(ctx context.Context, deviceProfileID, deviceID string) (WakeProvider, error) {
+	_ = deviceID
 	settings, err := r.VoiceSettings(ctx, deviceProfileID)
 	if err != nil {
 		return nil, err
@@ -201,7 +202,8 @@ func (r *Repository) ActiveWakeProvider(ctx context.Context, deviceProfileID, de
 		if !manifest.Capabilities.Offline || missingRequiredCredential(manifest) {
 			continue
 		}
-		if manifest.Transport.Type != "wyoming" || strings.TrimSpace(manifest.Transport.Endpoint) == "" {
+		if manifest.Transport.Type != "command" || !settings.CommandProvidersEnabled ||
+			strings.TrimSpace(manifest.Transport.Command) == "" {
 			continue
 		}
 
@@ -209,12 +211,12 @@ func (r *Repository) ActiveWakeProvider(ctx context.Context, deviceProfileID, de
 		if modelID == "" {
 			continue
 		}
-		return DefaultWyomingWakeProvider(
-			manifest.Transport.Endpoint,
-			provider.ID,
-			deviceID,
-			modelID,
-		), nil
+		return CommandWakeProvider{
+			ProviderID: provider.ID,
+			Command:    manifest.Transport.Command,
+			Args:       append([]string(nil), manifest.Transport.Args...),
+			ModelID:    modelID,
+		}, nil
 	}
 	return nil, nil
 }
@@ -250,28 +252,7 @@ func (r *Repository) ActiveSTTProvider(ctx context.Context, deviceProfileID stri
 	if !manifest.Capabilities.Offline || missingRequiredCredential(manifest) {
 		return nil, nil
 	}
-	switch manifest.Transport.Type {
-	case "wyoming":
-		if strings.TrimSpace(manifest.Transport.Endpoint) == "" {
-			return nil, nil
-		}
-		return WyomingSTTProvider{
-			ProviderID: provider.ID,
-			Endpoint:   manifest.Transport.Endpoint,
-			ModelID:    strings.TrimSpace(settings.STTModelID),
-			Language:   firstLanguage(manifest.Capabilities.Languages),
-		}, nil
-	case "http-json":
-		if strings.TrimSpace(manifest.Transport.Endpoint) == "" {
-			return nil, nil
-		}
-		return HTTPJSONSTTProvider{
-			ProviderID: provider.ID,
-			Endpoint:   manifest.Transport.Endpoint,
-			ModelID:    strings.TrimSpace(settings.STTModelID),
-			Language:   firstLanguage(manifest.Capabilities.Languages),
-		}, nil
-	case "command":
+	if manifest.Transport.Type == "command" {
 		if !settings.CommandProvidersEnabled || strings.TrimSpace(manifest.Transport.Command) == "" {
 			return nil, nil
 		}
@@ -287,9 +268,9 @@ func (r *Repository) ActiveSTTProvider(ctx context.Context, deviceProfileID stri
 }
 
 func (r *Repository) TTSVoices(ctx context.Context, providerID, deviceProfileID string) (TTSVoicesResponse, error) {
-	settings, err := r.VoiceSettings(ctx, deviceProfileID)
-	if err != nil {
-		return TTSVoicesResponse{}, err
+	settings, settingsErr := r.VoiceSettings(ctx, deviceProfileID)
+	if settingsErr != nil {
+		return TTSVoicesResponse{}, settingsErr
 	}
 	providerID = strings.TrimSpace(providerID)
 	if providerID == "" {
@@ -311,16 +292,16 @@ func (r *Repository) TTSVoices(ctx context.Context, providerID, deviceProfileID 
 	}
 
 	var provider ProviderPackDB
-	if err := r.db.WithContext(ctx).First(&provider, "id = ?", providerID).Error; err != nil {
+	if r.db.WithContext(ctx).First(&provider, "id = ?", providerID).Error != nil {
 		response.HealthStatus = "missing"
 		response.SetupStatus = "missing"
-		return response, nil
+		return response, nil //nolint:nilerr // missing voice providers are represented in response status.
 	}
 	response.ProviderName = provider.Name
 	response.HealthStatus = provider.HealthStatus
 
-	manifest, err := DecodeProviderManifest(provider.ManifestJSON)
-	if err != nil || len(ValidateProviderManifest(manifest)) > 0 {
+	manifest, manifestValid := decodeValidProviderManifest(provider.ManifestJSON)
+	if !manifestValid {
 		response.SetupStatus = "misconfigured"
 		return response, nil
 	}
@@ -361,6 +342,11 @@ func (r *Repository) TTSVoices(ctx context.Context, providerID, deviceProfileID 
 	return response, nil
 }
 
+func decodeValidProviderManifest(raw string) (ProviderManifest, bool) {
+	manifest, err := DecodeProviderManifest(raw)
+	return manifest, err == nil && len(ValidateProviderManifest(manifest)) == 0
+}
+
 //nolint:nilnil,nilerr // nil provider with nil error means voice has no usable TTS provider.
 func (r *Repository) ActiveTTSProvider(ctx context.Context, deviceProfileID string) (TTSProvider, error) {
 	settings, err := r.VoiceSettings(ctx, deviceProfileID)
@@ -392,10 +378,6 @@ func (r *Repository) ActiveTTSProvider(ctx context.Context, deviceProfileID stri
 	if !manifest.Capabilities.Offline || missingRequiredCredential(manifest) {
 		return nil, nil
 	}
-	if strings.TrimSpace(manifest.Transport.Endpoint) == "" {
-		return nil, nil
-	}
-
 	voiceID := ttsSelectedVoiceID(manifest, settings.TTSVoiceID)
 	locale := strings.TrimSpace(settings.TTSLocale)
 	if locale == "" {
@@ -406,17 +388,14 @@ func (r *Repository) ActiveTTSProvider(ctx context.Context, deviceProfileID stri
 		modelID = manifest.TTS.DefaultModelID
 	}
 	switch manifest.Transport.Type {
-	case "wyoming":
-		return WyomingTTSProvider{
+	case "command":
+		if !settings.CommandProvidersEnabled || strings.TrimSpace(manifest.Transport.Command) == "" {
+			return nil, nil
+		}
+		return CommandTTSProvider{
 			ProviderID: provider.ID,
-			Endpoint:   manifest.Transport.Endpoint,
-			VoiceID:    voiceID,
-			Locale:     locale,
-		}, nil
-	case "http-json":
-		return HTTPJSONTTSProvider{
-			ProviderID: provider.ID,
-			Endpoint:   manifest.Transport.Endpoint,
+			Command:    manifest.Transport.Command,
+			Args:       append([]string(nil), manifest.Transport.Args...),
 			ModelID:    modelID,
 			VoiceID:    voiceID,
 			Locale:     locale,

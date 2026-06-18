@@ -12,22 +12,16 @@ Voice Provider Packs are not widgets, A2A agents, or in-process Go plugins:
 - STT/TTS providers convert audio to text or text to audio;
 - the Go hub remains the conversation authority.
 
-The canonical provider runtime is the local Jute Voice Service calling manifest-declared provider
-packs. Browser APIs are not provider packs for v1. A browser fallback may expose push-to-talk capture,
-`speechSynthesis` preview, or WebAssembly/WebGPU speech experiments in the Svelte display, but those
-paths are degraded/display-local modes. They must still send final transcripts to the hub, obey
-cloud opt-in, avoid background wake listening, and cannot be used by headless satellites. Browser
-permission grants, cached model assets, installed speech packs, and PWA/kiosk runtime behavior are
-device-session facts, not provider-pack capabilities, so they must be measured by the browser voice
-spike rather than declared as durable provider support.
-Satellite provider placement, resource hints, and credential boundaries are specified in
-[Headless Voice Satellites](voice-satellites.md).
+The canonical provider runtime is the hub-owned Jute Voice Service calling manifest-declared
+provider packs. Browser APIs are not provider packs for v1.
 
 ## Decision
 
 Do not use Go's `plugin` package for v1. It is too tied to toolchain, operating system, architecture, and build constraints for Jute's multi-platform goals.
 
-Instead, voice providers are discovered by manifest and connected through isolated process or network boundaries. The Jute Voice Service calls the selected provider, and the hub stores provider choices and conversation state.
+Instead, voice providers are discovered by manifest and called by the hub runtime. The default v1
+transport is an explicitly enabled local command or a builtin adapter; network transports are
+advanced metadata only until a separate architecture decision makes them product runtime paths.
 
 Supported provider kinds:
 
@@ -38,10 +32,9 @@ Supported provider kinds:
 
 Supported transports:
 
-- `wyoming`: preferred local/LAN protocol for open voice services.
-- `http-json`: preferred transport for sidecars and cloud adapters.
 - `command`: trusted local wrapper for installed tools and model CLIs; disabled unless explicitly enabled.
 - `builtin`: adapters shipped with Jute, implemented through the same contract.
+- `wyoming` and `http-json`: accepted in manifests for future/advanced provider work, but not the default hub runtime.
 
 ## Ecosystem References
 
@@ -51,8 +44,8 @@ Supported transports:
 - [OpenAI text-to-speech](https://developers.openai.com/api/docs/guides/text-to-speech): optional cloud TTS provider with streaming and multiple output formats.
 - [OHF Piper](https://github.com/OHF-Voice/piper1-gpl): fast local neural TTS engine. It should be integrated as an external service or command provider unless Jute makes an explicit licensing decision.
 - [go-whisper](https://github.com/mutablelogic/go-whisper): local Whisper STT service. Treat it as a documented external `command` provider for trusted installs in v1; keep command providers opt-in and do not link whisper.cpp or FFmpeg into the hub.
-- Browser APIs: display-local fallback candidate only. The [browser voice feasibility spike](../spikes/browser-voice-feasibility.md) measures microphone, Web Audio, Web Speech, WebAssembly/WebGPU speech experiments, and `speechSynthesis`, but these APIs are not canonical provider-pack transports for v1. `SpeechRecognition` remains unsuitable as a default local-first provider while browser support and server-backed recognition behavior vary.
-- [pmdroid/microwakeword](https://github.com/pmdroid/microwakeword): experimental Go wake-word wrapper over TensorFlow Lite and the audio microfrontend. Defer production adoption until the [microWakeWord provider spike](../spikes/microwakeword-provider.md) proves native packaging, model compatibility, and fixture benchmark parity with openWakeWord.
+- Browser APIs: display-local fallback candidate only. They are not canonical provider-pack transports for v1.
+- [pmdroid/microwakeword](https://github.com/pmdroid/microwakeword): experimental Go wake-word wrapper over TensorFlow Lite and the audio microfrontend. Defer production adoption until native packaging and model compatibility are proven.
 
 ## Pack Layout
 
@@ -74,8 +67,9 @@ The manifest is the stable contract:
   "version": "1.0.0",
   "kind": "stt",
   "transport": {
-    "type": "wyoming",
-    "endpoint": "tcp://127.0.0.1:10300"
+    "type": "command",
+    "command": "/usr/local/bin/jute-stt",
+    "args": ["--model", "{modelId}", "--input", "{inputPath}"]
   },
   "capabilities": {
     "streaming": false,
@@ -115,8 +109,9 @@ Wake-word providers use the same manifest envelope and add a `wakeWord` section:
   "version": "1.0.0",
   "kind": "wake-word",
   "transport": {
-    "type": "wyoming",
-    "endpoint": "tcp://127.0.0.1:10400"
+    "type": "command",
+    "command": "/usr/local/bin/jute-wake",
+    "args": ["--model", "{modelId}", "--input", "{inputPath}"]
   },
   "capabilities": {
     "offline": true,
@@ -180,38 +175,9 @@ through the declared secret reference path, not encoded into provider URLs.
 
 ## Transport Rules
 
-### Wyoming
-
-Use `wyoming` for local services and LAN voice pipelines. It is the preferred integration path for Home Assistant-compatible voice tooling and Raspberry Pi-style deployments.
-
-Rules:
-
-- endpoint must be loopback or LAN-scoped;
-- provider health checks must fail closed when the endpoint is unreachable;
-- remote internet Wyoming endpoints are not supported in v1;
-- auto-discovery can be added later, but manual endpoint configuration is enough for v1.
-
-The first wake-word baseline is `wyoming-openwakeword`. Jute connects over Wyoming TCP, sends
-`detect` with selected model names, and maps a Wyoming `detection` event to hub/display wake and
-capture state transitions. Wyoming `not-detected` is intentionally silent unless debug mode is
-enabled.
-
-### HTTP JSON
-
-Use `http-json` for sidecars, cloud adapters, and provider services that need ordinary HTTP request/response semantics.
-
-Rules:
-
-- local STT sidecars receive one captured utterance as WAV-in-JSON and return final transcript JSON;
-- cloud providers must declare `offline: false`;
-- credentials are read by the hub or voice service from secret references;
-- endpoints must not contain userinfo, credential query parameters, or raw credential values;
-- TLS is required for non-local endpoints;
-- timeout, retry, and payload-size limits are controlled by Jute, not the provider pack.
-
 ### Command
 
-Use `command` only for trusted local wrappers around installed engines.
+Use `command` for trusted local wrappers around installed engines.
 
 Rules:
 
@@ -256,11 +222,10 @@ Wake-word thresholds are persisted per device profile. Failed wake checks stay s
 
 STT providers accept one utterance from the Jute Voice Service and return a final transcript. The provider does not call the hub or A2A agents; the voice service reports final text to `POST /api/v1/voice/transcripts/final`, and the hub owns agent selection, dashboard context redaction, follow-up policy, and A2A dispatch.
 
-The first local STT path uses Wyoming ASR. Jute writes `transcribe`, `audio-start`,
-`audio-chunk`, and `audio-stop` events to the provider and reads either a final `transcript` or a
-streaming transcript sequence. The adapter reports provider/model/language/duration metadata beside
-the transcript, keeps raw PCM out of logs, and treats endpoint failures as recoverable provider
-state rather than a display-owned conversation failure.
+The first local STT path uses command providers. Jute writes the captured utterance to a temporary
+WAV, invokes the configured command with `{inputPath}` and `{modelId}`, and reads final transcript
+JSON. The adapter reports provider/model/language/duration metadata beside the transcript, keeps raw
+PCM out of logs, and treats command failures as recoverable provider state.
 
 Minimum input:
 
@@ -289,11 +254,9 @@ Partial transcripts are optional. Partial transcripts are shown in the UI only a
 
 TTS providers accept assistant text and return playable audio, a stream, or a local playback request.
 
-The first local TTS path uses Wyoming synthesis. Jute writes `synthesize` with hub-approved text and
-selected voice/locale metadata, then reads `audio-start`, `audio-chunk`, and `audio-stop` events. The
-adapter returns playable PCM audio plus provider, voice, locale, format, and duration metadata.
-Provider offline or synthesis failure emits recoverable TTS failure behavior; the visual assistant
-response remains canonical.
+The first local TTS path uses command providers. Jute invokes the configured command with
+hub-approved text and selected voice/locale/model metadata, then reads safe playback JSON. Provider
+failure emits recoverable TTS failure behavior; the visual assistant response remains canonical.
 
 Minimum input:
 
@@ -341,11 +304,10 @@ Persisted settings:
 
 Default selection order:
 
-1. configured local/LAN Wyoming provider;
+1. configured command provider when command providers are explicitly enabled;
 2. configured built-in provider;
-3. configured HTTP JSON sidecar;
-4. configured cloud provider, only when cloud opt-in is enabled;
-5. disabled provider with visual-only fallback.
+3. configured cloud provider, only when cloud opt-in is enabled;
+4. disabled provider with visual-only fallback.
 
 ## Health And Test States
 

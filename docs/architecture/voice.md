@@ -233,45 +233,17 @@ Error flow:
 
 ## Provider Strategy
 
-STT and TTS integrations use [Voice Provider Packs](voice-providers.md). Provider packs are selectable, manifest-driven integrations that run through process or network boundaries. They are not Go in-process dynamic plugins.
+STT and TTS integrations use [Voice Provider Packs](voice-providers.md). Provider packs are selectable, manifest-driven integrations owned by the hub runtime. They are not Go in-process dynamic plugins and they do not require extra long-running server daemons for the default path.
 
-Wake-word providers:
+Wake-word providers default to hub-owned `command` or `builtin` adapters. The hub captures audio,
+writes a temporary WAV when needed, invokes the selected local provider command, emits
+`voice.wake_detected` on detection, and then continues to STT. microWakeWord remains deferred until
+its native dependency chain is worth carrying.
 
-- default: openWakeWord through a loopback or LAN Wyoming service;
-- later: Porcupine, microWakeWord, and Wyoming-compatible engines.
-
-The first wake-word adapter speaks Wyoming over TCP to `wyoming-openwakeword` or a compatible mock.
-It sends a `detect` request for the selected model names, treats `detection` as a wake event, and
-keeps `not-detected` silent unless debug mode is enabled. A detection causes the hub/display stream
-to emit `voice.wake_detected`, followed by `voice.state_changed` transitions through
-`wake_detected` and `capturing_utterance`. The adapter accepts only loopback or LAN-scoped endpoints
-and rejects endpoint URLs with embedded credentials.
-
-At runtime, the hub resolves the active wake provider from SQLite by scanning installed wake-word
-Provider Packs in deterministic order. It activates only local/offline Wyoming packs whose health is
-`available` or `degraded`, whose required credentials are satisfied, and whose manifest declares the
-selected wake model. If no device-profile model is selected, the provider pack default model is used.
-Unsupported, unsafe, cloud, unhealthy, or credential-incomplete wake packs fail closed.
-
-STT providers:
-
-- default path: Wyoming-compatible local/LAN STT services;
-- local/offline candidates: sherpa-onnx ASR and Whisper-compatible sidecars;
-- optional cloud providers such as OpenAI speech-to-text for higher accuracy;
-- cloud upload requires explicit household or device profile opt-in.
-
-The first STT adapter speaks Wyoming over TCP to a local or LAN ASR provider. It sends
-`transcribe`, `audio-start`, one or more `audio-chunk` events with raw PCM payloads, and
-`audio-stop`, then accepts either a final `transcript` event or streaming
-`transcript-start`/`transcript-chunk`/`transcript-stop` events. The adapter returns the final text
-plus provider ID, model ID, language, and utterance duration to the hub-owned voice transcript
-pipeline. It does not call A2A agents directly and does not log raw audio.
-
-At runtime, the hub resolves the selected STT Provider Pack from SQLite and activates an STT
-provider only when voice is enabled, the manifest is a local/offline Wyoming, `http-json`, or
-explicitly-enabled `command` STT pack, required credentials are satisfied, and provider health is
-`available` or `degraded`. Public provider summaries continue to omit transport endpoints and
-credential metadata.
+STT providers default to trusted hub-owned command adapters, with go-whisper-style local CLIs as the
+first practical path. Command providers are disabled until explicitly enabled, must use absolute
+commands, receive a temporary WAV path through `{inputPath}`, and return final transcript JSON.
+Cloud upload still requires explicit opt-in.
 
 Captured utterances flow through a hub-owned STT turn processor: the local voice service hands off a
 cloned utterance, the selected provider returns transcript metadata, and only the sanitized final
@@ -284,19 +256,12 @@ then synthetic PCM tests exercise the capture-to-STT-to-final-transcript path. I
 fails, the hub emits a safe degraded `voice.state_changed` error state and does not create an A2A
 turn.
 
-Wyoming STT health uses the same safe provider states as the provider list:
-
-- invalid or unsafe endpoint: `misconfigured`;
-- unreachable endpoint: `offline`;
-- successful local/LAN connection: `available`;
-- cloud STT providers remain `disabled` until cloud opt-in is enabled.
-
 TTS providers:
 
 - optional in v1;
-- default path: Wyoming-compatible local/LAN TTS services;
+- default path: hub-owned command or builtin local TTS adapters;
 - embedded/local candidate: sherpa-onnx TTS through a provider pack;
-- Piper/OHF Piper should be external service or command-provider integration unless a future licensing decision changes this;
+- Piper/OHF Piper should be a command-provider integration unless a future licensing decision changes this;
 - optional cloud providers such as OpenAI text-to-speech require explicit opt-in;
 - the visual conversation UI must remain fully useful when TTS is disabled.
 
@@ -304,35 +269,9 @@ The provider interfaces should support health status, model name, language, late
 
 TTS-specific playback, caching, and speech policy details are specified in [Text-To-Speech Architecture](text-to-speech.md).
 
-## Headless Satellite Constraints
-
-Headless voice satellites are specified in [Headless Voice Satellites](voice-satellites.md). They
-are not part of the v1 display-device implementation, but the v1 voice contracts reserve the shape:
-
-- satellites run the same local capture, VAD, wake-word, and pre-roll responsibilities as the display-side Jute Voice Service;
-- satellites report state and final transcripts to the hub through hub-owned voice APIs, not directly to A2A agents;
-- each satellite maps to a device profile so provider choices, wake sensitivity, cloud opt-in, command-provider enablement, microphone profile, and preferred agent stay device-scoped;
-- satellite connections must be local-first, paired, authenticated, and bound to loopback or explicitly configured LAN addresses by default;
-- satellites must not send raw microphone audio, pre-roll buffers, or partial transcripts to A2A agents;
-- hub events must continue to expose safe device and conversation identifiers without raw audio, provider credentials, private widget state, or precise presence data.
-
-[Headless Voice Satellites](voice-satellites.md) is the planning gate for implementation. It defines:
-
-- pairing, authentication, revocation, and trust bootstrap;
-- device-profile binding and whether per-satellite settings inherit from household defaults or
-  require explicit overrides;
-- which provider packs run on the satellite versus hub-adjacent services;
-- safe hub API/event payloads for satellite state, wake, final transcript, health, version, and
-  update status;
-- update and provisioning strategy for Raspberry Pi-class hardware;
-- multi-room routing, room attribution, and privacy boundaries without leaking precise presence.
-
-Full satellite provisioning, pairing, update, and multi-room routing remain out of scope for the
-current display-device implementation.
-
 ## Foundation Implementation Slices
 
-The first voice implementation creates durable voice settings, safe hub status/control APIs, display mute/listening status, event emission, selected local Wyoming STT/TTS provider resolution, and the hub-owned final-transcript-to-A2A handoff. The visual conversation remains the reliable baseline when provider resolution or synthesis/transcription fails.
+The first voice implementation creates durable voice settings, safe hub status/control APIs, display mute/listening status, event emission, command-provider wake/STT/TTS resolution, and the hub-owned final-transcript-to-A2A handoff. The visual conversation remains the reliable baseline when provider resolution or synthesis/transcription fails.
 
 Implemented v1 foundation APIs:
 

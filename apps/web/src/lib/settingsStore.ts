@@ -14,8 +14,6 @@ import {
   uploadBackgroundImage as apiUploadBackgroundImage,
   deleteBackgroundImage as apiDeleteBackgroundImage,
   getVoiceProviders as apiGetVoiceProviders,
-  getVoiceSatellites as apiGetVoiceSatellites,
-  updateVoiceSatellite as apiUpdateVoiceSatellite,
   getTTSVoices as apiGetTTSVoices,
   saveVoiceSettings as apiSaveVoiceSettings
 } from '$lib/hubClient';
@@ -28,8 +26,6 @@ import type {
   Tile,
   BackgroundImage,
   VoiceProvider,
-  VoiceSatellite,
-  VoiceSatelliteUpdate,
   TTSVoicesResponse,
   VoiceSettingsUpdate
 } from '$lib/types';
@@ -41,7 +37,6 @@ export interface SettingsState {
   savingTiles: boolean;
   savingAgent: boolean;
   savingVoice: boolean;
-  savingSatellite: boolean;
   uploadingBackground: boolean;
   issue: string;
   householdSettings: HouseholdSettings | undefined;
@@ -49,7 +44,6 @@ export interface SettingsState {
   tileSettings: Tile[];
   backgroundLibrary: BackgroundImage[];
   voiceProviders: VoiceProvider[];
-  voiceSatellites: VoiceSatellite[];
   ttsVoices: TTSVoicesResponse | undefined;
 }
 
@@ -60,7 +54,6 @@ const initialState: SettingsState = {
   savingTiles: false,
   savingAgent: false,
   savingVoice: false,
-  savingSatellite: false,
   uploadingBackground: false,
   issue: '',
   householdSettings: undefined,
@@ -68,7 +61,6 @@ const initialState: SettingsState = {
   tileSettings: [],
   backgroundLibrary: [],
   voiceProviders: [],
-  voiceSatellites: [],
   ttsVoices: undefined
 };
 
@@ -150,23 +142,17 @@ function createSettingsStore() {
     load: async (fetcher: typeof fetch = window.fetch) => {
       update((s) => ({ ...s, loading: true, issue: '' }));
       try {
-        const [
-          household,
-          rooms,
-          tiles,
-          backgrounds,
-          providers,
-          satellites,
-          ttsVoices
-        ] = await Promise.all([
-          getHouseholdSettings(fetcher),
-          getRoomSettings(fetcher),
-          getTileSettings(fetcher),
-          apiGetBackgroundImages(fetcher).catch(() => [] as BackgroundImage[]),
-          apiGetVoiceProviders(fetcher).catch(() => [] as VoiceProvider[]),
-          apiGetVoiceSatellites(fetcher).catch(() => [] as VoiceSatellite[]),
-          apiGetTTSVoices(fetcher).catch(() => undefined)
-        ]);
+        const [household, rooms, tiles, backgrounds, providers, ttsVoices] =
+          await Promise.all([
+            getHouseholdSettings(fetcher),
+            getRoomSettings(fetcher),
+            getTileSettings(fetcher),
+            apiGetBackgroundImages(fetcher).catch(
+              () => [] as BackgroundImage[]
+            ),
+            apiGetVoiceProviders(fetcher).catch(() => [] as VoiceProvider[]),
+            apiGetTTSVoices(fetcher).catch(() => undefined)
+          ]);
         update((s) => ({
           ...s,
           loading: false,
@@ -175,7 +161,6 @@ function createSettingsStore() {
           tileSettings: tiles,
           backgroundLibrary: backgrounds,
           voiceProviders: providers,
-          voiceSatellites: satellites,
           ttsVoices
         }));
       } catch (err) {
@@ -276,45 +261,15 @@ function createSettingsStore() {
       }
     },
     refreshVoiceProviders: async (fetcher: typeof fetch = window.fetch) => {
-      const [providers, satellites, ttsVoices] = await Promise.all([
+      const [providers, ttsVoices] = await Promise.all([
         apiGetVoiceProviders(fetcher).catch(() => [] as VoiceProvider[]),
-        apiGetVoiceSatellites(fetcher).catch(() => [] as VoiceSatellite[]),
         apiGetTTSVoices(fetcher).catch(() => undefined)
       ]);
       update((s) => ({
         ...s,
         voiceProviders: providers,
-        voiceSatellites: satellites,
         ttsVoices
       }));
-    },
-    updateSatellite: async (
-      satelliteId: string,
-      satelliteUpdate: VoiceSatelliteUpdate,
-      fetcher: typeof fetch = window.fetch
-    ) => {
-      update((s) => ({ ...s, savingSatellite: true, issue: '' }));
-      try {
-        const saved = await apiUpdateVoiceSatellite(
-          fetcher,
-          satelliteId,
-          satelliteUpdate
-        );
-        update((s) => ({
-          ...s,
-          savingSatellite: false,
-          voiceSatellites: s.voiceSatellites.map((satellite) =>
-            satellite.id === saved.id ? saved : satellite
-          )
-        }));
-      } catch (err) {
-        update((s) => ({
-          ...s,
-          savingSatellite: false,
-          issue: 'Satellite settings could not be updated.'
-        }));
-        throw err;
-      }
     },
     refreshTTSVoices: async (
       providerId: string,

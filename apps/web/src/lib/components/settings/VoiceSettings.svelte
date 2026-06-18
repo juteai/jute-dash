@@ -1,17 +1,16 @@
 <script lang="ts">
-  import { Ban, Mic, MicOff, Save, Square } from 'lucide-svelte';
+  import { Mic, MicOff, Save, Square } from 'lucide-svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
   import { settingsStore } from '$lib/settingsStore';
   import { hubStream } from '$lib/hubStream';
-  import type { VoiceProvider, VoiceSatellite, VoiceStatus } from '$lib/types';
+  import type { VoiceProvider, VoiceStatus } from '$lib/types';
 
   let draft: VoiceStatus | undefined;
   let lastJSON = '';
 
   $: voice = $hubStream.dashboard.voice;
   $: providers = $settingsStore.voiceProviders;
-  $: satellites = $settingsStore.voiceSatellites;
   $: wakeProviders = providers.filter(
     (provider) => provider.kind === 'wake-word'
   );
@@ -143,19 +142,6 @@
 
   async function cancelVoice() {
     await hubStream.cancelVoiceSession(fetch);
-  }
-
-  async function saveSatellite(satellite: VoiceSatellite) {
-    await settingsStore.updateSatellite(satellite.id, {
-      displayName: satellite.displayName,
-      roomLabel: satellite.roomLabel ?? '',
-      deviceProfileId: satellite.deviceProfileId,
-      enabled: satellite.enabled
-    });
-  }
-
-  async function revokeSatellite(satellite: VoiceSatellite) {
-    await settingsStore.updateSatellite(satellite.id, { revoke: true });
   }
 </script>
 
@@ -360,82 +346,6 @@
     {#if selectedTTSProvider?.lastError}
       <p class="settings-note">{selectedTTSProvider.lastError}</p>
     {/if}
-
-    {#if satellites.length > 0}
-      <div class="satellite-section">
-        <div class="section-heading">
-          <strong>Satellites</strong>
-          <span>{satellites.length}</span>
-        </div>
-        <div class="satellite-list">
-          {#each satellites as satellite (satellite.id)}
-            <div class="satellite-item">
-              <div class="satellite-summary">
-                <div>
-                  <strong>{satellite.displayName}</strong>
-                  <span>{satellite.id}</span>
-                </div>
-                <Badge tone={badgeTone(satellite.status)}>
-                  {satellite.status}
-                </Badge>
-              </div>
-
-              <div class="satellite-grid">
-                <label>
-                  <span>Name</span>
-                  <input bind:value={satellite.displayName} />
-                </label>
-                <label>
-                  <span>Room</span>
-                  <input bind:value={satellite.roomLabel} />
-                </label>
-                <label>
-                  <span>Device profile</span>
-                  <input bind:value={satellite.deviceProfileId} />
-                </label>
-                <label>
-                  <span>Version</span>
-                  <input value={satellite.version ?? ''} disabled />
-                </label>
-                <label class="switch-field">
-                  <span>Enabled</span>
-                  <input
-                    type="checkbox"
-                    bind:checked={satellite.enabled}
-                    disabled={satellite.status === 'revoked'}
-                  />
-                </label>
-                <label>
-                  <span>Last seen</span>
-                  <input value={satellite.lastSeenAt ?? ''} disabled />
-                </label>
-              </div>
-
-              <div class="satellite-actions">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  on:click={() => saveSatellite(satellite)}
-                  disabled={$settingsStore.savingSatellite ||
-                    satellite.status === 'revoked'}
-                >
-                  <Save size={16} />Save
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  on:click={() => revokeSatellite(satellite)}
-                  disabled={$settingsStore.savingSatellite ||
-                    satellite.status === 'revoked'}
-                >
-                  <Ban size={16} />Revoke
-                </Button>
-              </div>
-            </div>
-          {/each}
-        </div>
-      </div>
-    {/if}
   </div>
 {:else}
   <p class="settings-empty">Voice settings are loading.</p>
@@ -519,93 +429,6 @@
     justify-content: flex-end;
   }
 
-  .satellite-section {
-    display: grid;
-    gap: 10px;
-  }
-
-  .section-heading,
-  .satellite-summary,
-  .satellite-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    justify-content: space-between;
-  }
-
-  .section-heading strong {
-    color: var(--foreground);
-    font-size: 0.9rem;
-  }
-
-  .section-heading span,
-  .satellite-summary span {
-    color: var(--muted);
-    font-size: 0.78rem;
-    font-weight: 700;
-  }
-
-  .satellite-list {
-    display: grid;
-    gap: 10px;
-  }
-
-  .satellite-item {
-    display: grid;
-    gap: 10px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--surface-muted);
-    padding: 10px;
-  }
-
-  .satellite-summary > div {
-    display: grid;
-    gap: 3px;
-    min-width: 0;
-  }
-
-  .satellite-summary strong {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--foreground);
-    font-size: 0.86rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .satellite-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .satellite-grid label {
-    display: grid;
-    gap: 6px;
-    min-width: 0;
-  }
-
-  .satellite-grid span {
-    color: var(--muted);
-    font-size: 0.76rem;
-    font-weight: 760;
-  }
-
-  .satellite-grid input:not([type='checkbox']) {
-    min-width: 0;
-    min-height: 40px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--surface);
-    color: var(--foreground);
-    padding: 0 10px;
-  }
-
-  .satellite-grid input:disabled {
-    opacity: 0.72;
-  }
-
   .settings-note,
   .settings-empty {
     margin: 0;
@@ -624,8 +447,7 @@
 
   @media (max-width: 640px) {
     .voice-status-row,
-    .settings-form-grid,
-    .satellite-grid {
+    .settings-form-grid {
       grid-template-columns: 1fr;
     }
 

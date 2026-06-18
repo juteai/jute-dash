@@ -31,12 +31,10 @@ Wake-word, STT, and TTS integrations are Voice Provider Packs. Do not add new pr
 
 Provider transports:
 
-- `wyoming` for preferred local/LAN voice services;
-- `http-json` for sidecars and cloud adapters;
 - `command` for trusted local wrappers, disabled unless explicitly enabled;
 - `builtin` for adapters shipped with Jute.
+- `wyoming` and `http-json` are manifest-compatible advanced transports, not the default hub runtime.
 
-STT `http-json` sidecars receive one captured utterance as WAV-in-JSON and return final transcript JSON.
 STT `command` providers receive a temporary WAV path through `{inputPath}` and never run unless command providers are enabled.
 
 Each provider has a `jute.voice.provider.json` manifest. The manifest declares provider ID, name, version, kind, transport, supported locales, streaming support, offline/network behavior, audio formats, hardware hints, license, and contribution metadata.
@@ -73,30 +71,12 @@ STT providers should accept one utterance and return:
 - duration;
 - provider/model metadata.
 
-Wyoming STT adapters should:
-
-- accept only loopback or LAN-scoped TCP endpoints;
-- send `transcribe`, `audio-start`, `audio-chunk`, and `audio-stop` events;
-- support both final `transcript` and streaming transcript chunk responses;
-- return transcript, provider ID, model ID, language, and duration metadata to the hub;
-- never log raw PCM payloads or raw provider internals;
-- map unsafe endpoint configuration to `misconfigured` and unreachable providers to `offline`.
-
 TTS providers should accept text and return:
 
 - playable audio or a local playback request;
 - provider/model metadata;
 - duration when available;
 - error state when synthesis fails.
-
-Wyoming TTS adapters should:
-
-- accept only loopback or LAN-scoped TCP endpoints;
-- send `synthesize` with hub-approved text and selected voice/locale metadata;
-- read `audio-start`, `audio-chunk`, and `audio-stop` responses;
-- return playable audio bytes with provider, voice, locale, format, sample rate, channel, and duration metadata;
-- map unsafe endpoint configuration to `misconfigured` and unreachable providers to `offline`;
-- never fail the visual conversation when synthesis or playback fails.
 
 Fallback rules:
 
@@ -137,10 +117,10 @@ Voice Provider Packs are distinct from widgets and A2A agents. A voice provider 
 ## Wake Word Rules
 
 - Wake word detection runs locally before cloud STT.
-- Default engine is openWakeWord via `wyoming-openwakeword` or a Wyoming-compatible wake provider.
-- Wyoming wake adapters must accept only loopback or LAN-scoped endpoints and must reject embedded credentials.
-- Map Wyoming `detection` to `voice.wake_detected`, then `wake_detected` and `capturing_utterance` state changes.
-- Keep Wyoming `not-detected` silent unless debug mode is enabled.
+- Default path is a hub-owned command or builtin wake provider.
+- Command wake providers receive a temporary WAV path through `{inputPath}` and return detection JSON.
+- Map detection to `voice.wake_detected`, then `wake_detected` and `capturing_utterance` state changes.
+- Keep non-detections silent unless debug mode is enabled.
 - Keep wake-word thresholds configurable per device profile.
 - Failed wake checks should stay silent unless debug mode is enabled.
 - Use local VAD and pre-roll buffering so the first words after the wake word are not clipped.
@@ -198,28 +178,6 @@ Voice Provider Packs are distinct from widgets and A2A agents. A voice provider 
 - Command providers must be disabled unless explicitly enabled by the household or device profile.
 - Redact precise presence and private widget data from conversation context.
 
-## Headless Satellite Rules
-
-- Follow [Headless Voice Satellites](../architecture/voice-satellites.md) before adding satellite runtime code.
-- Treat headless satellites as voice services attached to device profiles.
-- Keep satellite capture, VAD, wake-word detection, and pre-roll local to the satellite.
-- Route only safe state and final transcripts to the hub.
-- Require explicit pairing/authentication before accepting satellite events.
-- Bind satellite-facing services to loopback by default, and require explicit LAN configuration for multi-device deployments.
-- Do not let satellites call A2A agents, widgets, MCP tools, or provider credentials directly.
-- Satellite implementation must preserve pairing/revocation, device-profile binding, provider
-  placement, safe hub payloads, update strategy, and multi-room privacy boundaries from the
-  architecture plan.
-- Raspberry Pi-class documentation must describe a manual Linux service path first. Do not promise
-  automatic image builds, unattended provisioning, hub-pushed code updates, or public internet
-  satellite access without a new architecture decision.
-- Portable satellite config must contain only non-secret settings and secret references such as
-  `authSecretEnv`. Raw auth proofs, provider API keys, OAuth tokens, raw PCM, pre-roll buffers, real
-  household transcripts, and provider-internal payloads must stay out of YAML/JSON config, tests, and
-  docs examples.
-- The fixture-driven satellite runtime should remain runnable in CI and local development without
-  microphone hardware, model downloads, or LAN devices.
-
 ## Implementation Order
 
 1. Define hub voice status and conversation state types.
@@ -227,7 +185,6 @@ Voice Provider Packs are distinct from widgets and A2A agents. A voice provider 
 3. Add display conversation UI states using mock events.
 4. Add local display-device voice service with wake-word and VAD.
 5. Add Voice Provider Pack manifest validation and provider health state.
-6. Add STT provider selection, starting with Wyoming-compatible local/LAN providers.
+6. Add STT provider selection, starting with hub-owned command providers.
 7. Route final transcripts into the A2A message/task pipeline.
 8. Add optional TTS provider selection, voice listing, preview, playback, and stop controls.
-9. Add headless satellite support through the same hub conversation APIs.
