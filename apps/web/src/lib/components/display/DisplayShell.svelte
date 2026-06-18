@@ -495,6 +495,7 @@
         assistantSpeech={$hubStream.assistantSpeech}
         voiceError={$hubStream.voiceError}
         followupExpiresAt={$hubStream.voiceFollowupExpiresAt}
+        showConversationText
         on:toggleMute={toggleVoiceMute}
         on:cancel={cancelVoiceSession}
       />
