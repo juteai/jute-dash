@@ -1109,7 +1109,8 @@ function hasExpectedRowEvidence(
         'not measured',
         'not tested',
         'untested',
-        'not provided'
+        'not provided',
+        'started'
       ].includes(measured)
     ) {
       return false;
@@ -1430,7 +1431,8 @@ function hasSubstantiveMeasurement(
       'not measured',
       'not tested',
       'untested',
-      'not provided'
+      'not provided',
+      'started'
     ].includes(value) &&
     !isSecretShapedMeasurement(value)
   );

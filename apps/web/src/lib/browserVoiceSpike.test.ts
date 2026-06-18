@@ -130,7 +130,7 @@ describe('browserVoiceSnapshot', () => {
       },
       measurements: [
         { label: 'Microphone permission', value: '90 ms' },
-        { label: 'Browser STT cold start', value: 'started' },
+        { label: 'Browser STT cold start', value: '850 ms' },
         { label: 'TTS cold start', value: '25 ms' },
         { label: 'Hardware', value: 'MacBook Pro M3, 18 GB RAM' },
         { label: 'Model download size', value: '0 MB' },
@@ -281,7 +281,7 @@ describe('browserVoiceSnapshot', () => {
       },
       measurements: [
         { label: 'Microphone permission', value: '90 ms' },
-        { label: 'Browser STT cold start', value: 'started' },
+        { label: 'Browser STT cold start', value: '850 ms' },
         { label: 'TTS cold start', value: '25 ms' },
         { label: 'Hardware', value: 'MacBook Pro M3, 18 GB RAM' },
         { label: 'Model download size', value: '0 MB' },
@@ -462,7 +462,7 @@ describe('browserVoiceSnapshot', () => {
       },
       measurements: [
         { label: 'Microphone permission', value: '90 ms' },
-        { label: 'Browser STT cold start', value: 'started' },
+        { label: 'Browser STT cold start', value: '850 ms' },
         { label: 'TTS cold start', value: '25 ms' },
         { label: 'Hardware', value: 'MacBook Pro M3, 18 GB RAM' },
         { label: 'Model download size', value: '0 MB' },
@@ -1427,6 +1427,41 @@ describe('browserVoiceSnapshot', () => {
         'desktop-chromium row is missing browser STT evidence',
         'desktop-chromium row is missing speechSynthesis evidence'
       ])
+    );
+  });
+
+  it('does not accept in-progress browser STT as cold-start evidence', () => {
+    const report = browserVoiceReport({
+      snapshot: {
+        userAgent:
+          'Mozilla/5.0 AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',
+        secureContext: true,
+        online: true,
+        capabilities: []
+      },
+      measurements: [
+        { label: 'Microphone permission', value: '90 ms' },
+        { label: 'Browser STT cold start', value: 'started' },
+        { label: 'TTS cold start', value: '25 ms' },
+        { label: 'Hardware', value: 'MacBook Pro M3, 18 GB RAM' },
+        { label: 'Model download size', value: '0 MB' },
+        { label: 'CPU', value: '8 percent average' },
+        { label: 'Offline behavior', value: 'browser STT unavailable offline' }
+      ],
+      platform: 'MacIntel',
+      standalone: false,
+      transcriptCaptured: true,
+      submittedThroughHub: true,
+      hubReceipt: hubReceiptAt()
+    });
+    const matrix = browserVoiceRunMatrix([report], '2026-06-15T16:19:43.000Z');
+
+    expect(report.gaps).toContain(
+      'browser speech recognition cold-start not measured'
+    );
+    expect(matrix.rows[0].browserSTTMeasured).toBe(false);
+    expect(matrix.acceptance.problems).toContain(
+      'desktop-chromium row is missing browser STT evidence'
     );
   });
 
