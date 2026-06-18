@@ -319,7 +319,7 @@ Future CLI behavior:
 - `juted --config`: provide YAML or JSON bootstrap/import config.
 - `juted --listen`: boot-only listen override.
 - `juted --headless`: start without serving the display.
-- `juted --display-dir`: serve local static display assets instead of embedded assets.
+- `juted --display-dir`: serve local static display assets from a directory.
 
 The current `--config` behavior is provisional. Once SQLite persistence exists, `--config` is bootstrap input for an empty store unless an explicit import command is used.
 

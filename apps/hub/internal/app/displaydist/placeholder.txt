@@ -1,1 +1,0 @@
-Release builds copy the Svelte display build output into this directory before compiling juted.

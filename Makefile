@@ -1,10 +1,9 @@
 SHELL := /bin/bash
 
 WEB_DIR := apps/web
-HUB_DISPLAY_DIR := apps/hub/internal/app/displaydist
 NPM ?= npm
 
-.PHONY: setup pre-commit-install lint test test-coverage generate-mocks web-lint web-format-check web-check web-test web-test-coverage web-build hub-embed-display check reset
+.PHONY: setup pre-commit-install lint test test-coverage generate-mocks web-lint web-format-check web-check web-test web-test-coverage web-build check reset
 
 setup:
 	@echo "Checking for Homebrew dependencies..."
@@ -64,10 +63,6 @@ web-test-coverage:
 
 web-build:
 	cd $(WEB_DIR) && $(NPM) run build
-
-hub-embed-display: web-build
-	rm -rf $(HUB_DISPLAY_DIR)/*
-	cp -R $(WEB_DIR)/build/. $(HUB_DISPLAY_DIR)/
 
 check: generate-mocks lint test web-lint web-format-check web-check web-test web-build
 

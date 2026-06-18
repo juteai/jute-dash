@@ -2,7 +2,6 @@ package app
 
 import (
 	"bytes"
-	"embed"
 	"io/fs"
 	"net/http"
 	"os"
@@ -10,9 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 )
-
-//go:embed displaydist/*
-var embeddedDisplayAssets embed.FS
 
 type DisplayAssets struct {
 	Headless  bool
@@ -22,21 +18,9 @@ type DisplayAssets struct {
 
 func selectedDisplayAssets(options []DisplayAssets) DisplayAssets {
 	if len(options) == 0 {
-		return DisplayAssets{FS: embeddedDisplayFS()}
+		return DisplayAssets{}
 	}
-	assets := options[0]
-	if assets.FS == nil && strings.TrimSpace(assets.Directory) == "" {
-		assets.FS = embeddedDisplayFS()
-	}
-	return assets
-}
-
-func embeddedDisplayFS() fs.FS {
-	sub, err := fs.Sub(embeddedDisplayAssets, "displaydist")
-	if err != nil {
-		return emptyFS{}
-	}
-	return sub
+	return options[0]
 }
 
 func displayAssetHandler(assets DisplayAssets) http.Handler {
@@ -100,10 +84,4 @@ func cleanDisplayAssetPath(requestPath string) string {
 func displayAssetExists(displayFS fs.FS, name string) bool {
 	info, err := fs.Stat(displayFS, name)
 	return err == nil && !info.IsDir()
-}
-
-type emptyFS struct{}
-
-func (emptyFS) Open(string) (fs.File, error) {
-	return nil, fs.ErrNotExist
 }
