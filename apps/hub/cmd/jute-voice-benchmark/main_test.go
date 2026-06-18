@@ -989,6 +989,100 @@ func TestVoiceBenchmarkCommandComposesCompleteJUT11ClosureBundleWithBaseline(t *
 	}
 }
 
+func TestVoiceBenchmarkCommandComposesJUT11RejectBundleWithoutModelOrBenchmarkArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	providerPath := writeRawJSONArtifactForTest(t, dir, "provider.json", json.RawMessage(`{
+		"id": "org.pmdroid.microwakeword.local",
+		"name": "microWakeWord Local",
+		"version": "experimental",
+		"kind": "wake-word",
+		"transport": {"type": "builtin", "endpoint": "local-voice-service"},
+		"capabilities": {"offline": true, "languages": ["en"]},
+		"hardware": {"cpu": true, "raspberryPi": false},
+		"credentials": [],
+		"license": {"name": "MIT", "url": "local-license-reference"},
+		"contribution": {"source": "local-source-reference", "maintainers": ["pmdroid"]},
+		"wakeWord": {
+			"defaultModelId": "okay-nabu",
+			"phrase": "Okay Nabu",
+			"languages": ["en"],
+			"sensitivity": 0.55,
+			"models": [
+				{"id": "okay-nabu", "path": "assets/okay-nabu.tflite", "phrase": "Okay Nabu", "languages": ["en"], "sensitivity": 0.55}
+			]
+		}
+	}`))
+	fixturePath := writeRawJSONArtifactForTest(t, dir, "fixtures.json", json.RawMessage(`{
+		"issue": "JUT-11",
+		"kind": "wake-word",
+		"fixtures": [
+			{"id": "positive-wake", "path": "wake/positive-wake.wav", "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "source": "synthetic-test", "recordedAt": "2026-06-17T09:00:00Z", "consent": true, "expectWake": true, "language": "en"},
+			{"id": "near-miss", "path": "wake/near-miss.wav", "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "source": "synthetic-test", "recordedAt": "2026-06-17T09:00:00Z", "consent": true, "expectWake": false, "language": "en"},
+			{"id": "ambient-room", "path": "wake/ambient-room.wav", "sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "source": "synthetic-test", "recordedAt": "2026-06-17T09:00:00Z", "consent": true, "expectWake": false, "language": "en"},
+			{"id": "conversation-long", "path": "wake/conversation-long.wav", "sha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999", "source": "synthetic-test", "recordedAt": "2026-06-17T09:00:00Z", "consent": true, "expectWake": false, "language": "en"}
+		]
+	}`))
+	buildPath := writeJSONArtifactForTest(t, dir, "build.json", providerBuildEvidence{
+		GeneratedAt:         "2026-06-17T09:00:00Z",
+		Issue:               "JUT-11",
+		ProviderID:          "pmdroid-microwakeword",
+		ProviderKind:        "wake-word",
+		Target:              "native-consumer",
+		CommandID:           "go-test-package",
+		Status:              "failed",
+		ExitCode:            1,
+		ErrorCode:           "missing-header",
+		MissingDependencies: []string{"tensorflow-lite-microfrontend-header"},
+		Runtime:             "linux/arm64 go1.25.0",
+		ClosureEvidence:     false,
+		Problems:            []string{"provider build did not succeed"},
+	})
+	packagingPath := writeJSONArtifactForTest(t, dir, "packaging.json", &providerPackagingEvidence{
+		GeneratedAt:  "2026-06-17T09:01:00Z",
+		Issue:        "JUT-11",
+		ProviderID:   "pmdroid-microwakeword",
+		ProviderKind: "wake-word",
+		Targets: []providerPackagingTarget{
+			{Target: "linux-native", Status: "failed"},
+		},
+		Runtime:                   "linux/arm64 go1.25.0",
+		Notes:                     "Linux native build failed before model load",
+		PackagingEvidenceComplete: true,
+	})
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{
+		"-closure-bundle-compose",
+		"JUT-11",
+		"-decision-status",
+		"reject",
+		"-decision-rationale",
+		"Native pmdroid microWakeWord build evidence failed on the tested target, so production adoption is rejected for v1.",
+		"-provider-manifest",
+		providerPath,
+		"-fixture-manifest-artifact",
+		fixturePath,
+		"-build-evidence-artifacts",
+		buildPath,
+		"-packaging-evidence-artifact",
+		packagingPath,
+	}, strings.NewReader(""), &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("expected JUT-11 reject compose success, got code %d stderr %s", code, stderr.String())
+	}
+	var composed providerClosureBundleFile
+	if err := json.Unmarshal(stdout.Bytes(), &composed); err != nil {
+		t.Fatalf("decode composed JUT-11 reject bundle: %v\n%s", err, stdout.String())
+	}
+	if composed.Decision.Status != "reject" ||
+		len(composed.ModelEvidence) != 0 ||
+		len(composed.BenchmarkReport) != 0 ||
+		len(composed.BaselineReport) != 0 {
+		t.Fatalf("unexpected composed JUT-11 reject bundle: %+v", composed)
+	}
+}
+
 func TestVoiceBenchmarkCommandRejectsClosureBundleWithPlaceholderRuntime(t *testing.T) {
 	dir := t.TempDir()
 	bundlePath := filepath.Join(dir, "go-whisper-placeholder-runtime.json")

@@ -789,6 +789,7 @@ func composeProviderClosureBundle(inputs providerClosureBundleComposeInputs) (pr
 	if strings.TrimSpace(inputs.decisionRationale) == "" {
 		return providerClosureBundleFile{}, errors.New("decision-rationale is required")
 	}
+	rejectJUT11 := issue == "JUT-11" && safeEvidenceToken(inputs.decisionStatus) == "reject"
 	providerManifest, err := readRawJSONArtifact(inputs.providerManifest, "provider-manifest")
 	if err != nil {
 		return providerClosureBundleFile{}, err
@@ -805,19 +806,23 @@ func composeProviderClosureBundle(inputs providerClosureBundleComposeInputs) (pr
 	if err != nil {
 		return providerClosureBundleFile{}, err
 	}
-	modelEvidence, err := readModelEvidenceArtifacts(inputs.modelEvidence)
-	if err != nil {
-		return providerClosureBundleFile{}, err
-	}
-	benchmarkReport, err := readRawJSONArtifact(inputs.benchmarkReport, "benchmark-report-artifact")
-	if err != nil {
-		return providerClosureBundleFile{}, err
-	}
+	var modelEvidence []providerModelEvidence
+	var benchmarkReport json.RawMessage
 	var baselineReport json.RawMessage
-	if strings.TrimSpace(inputs.baselineReport) != "" {
-		baselineReport, err = readRawJSONArtifact(inputs.baselineReport, "baseline-report-artifact")
+	if !rejectJUT11 {
+		modelEvidence, err = readModelEvidenceArtifacts(inputs.modelEvidence)
 		if err != nil {
 			return providerClosureBundleFile{}, err
+		}
+		benchmarkReport, err = readRawJSONArtifact(inputs.benchmarkReport, "benchmark-report-artifact")
+		if err != nil {
+			return providerClosureBundleFile{}, err
+		}
+		if strings.TrimSpace(inputs.baselineReport) != "" {
+			baselineReport, err = readRawJSONArtifact(inputs.baselineReport, "baseline-report-artifact")
+			if err != nil {
+				return providerClosureBundleFile{}, err
+			}
 		}
 	}
 	return providerClosureBundleFile{

@@ -687,15 +687,17 @@ evidence is required:
   installation was avoided;
 - Raspberry Pi or ARM64 notes from a representative target when feasible, or a concrete reason it
   remains untested and therefore unsupported;
-- model compatibility proof for at least one ESPHome model asset and one OHF-trained or
-  OHF-compatible model asset, including model IDs, file hashes, and config/runtime assumptions;
-- a pmdroid/microWakeWord benchmark report over the required wake fixture set
-  (`positive-wake`, `near-miss`, `ambient-room`, `conversation-long`) with a non-placeholder
-  `sha256:<64 hex>` model hash and matching expected wake/no-wake outcomes;
-- a distinct Wyoming/openWakeWord baseline report over the same fixture IDs;
-- `go run ./apps/hub/cmd/jute-voice-benchmark -report microwakeword-report.json
--baseline-report openwakeword-report.json -acceptance-preset` exits zero and produces the
-  comparison Markdown used as Linear evidence;
+- for a `defer` or `adopt-optional-provider` decision, model compatibility proof for at least one
+  ESPHome model asset and one OHF-trained or OHF-compatible model asset, including model IDs, file
+  hashes, and config/runtime assumptions;
+- for a `defer` or `adopt-optional-provider` decision, a pmdroid/microWakeWord benchmark report over
+  the required wake fixture set (`positive-wake`, `near-miss`, `ambient-room`, `conversation-long`)
+  with a non-placeholder `sha256:<64 hex>` model hash and matching expected wake/no-wake outcomes;
+- for a `defer` or `adopt-optional-provider` decision, a distinct Wyoming/openWakeWord baseline
+  report over the same fixture IDs;
+- for a `defer` or `adopt-optional-provider` decision,
+  `go run ./apps/hub/cmd/jute-voice-benchmark -report microwakeword-report.json -baseline-report openwakeword-report.json -acceptance-preset`
+  exits zero and produces the comparison Markdown used as Linear evidence;
 - no `github.com/pmdroid/microwakeword`, TensorFlow, or TensorFlow Lite dependency appears in
   production `go.mod`/`go.sum` unless the final decision explicitly changes from `defer` to
   `adopt as optional provider`.
@@ -717,6 +719,20 @@ go run ./apps/hub/cmd/jute-voice-benchmark \
 
 go run ./apps/hub/cmd/jute-voice-benchmark \
   -closure-bundle microwakeword-closure-bundle.json
+```
+
+For a `reject` decision based on failed, blocked, or interrupted pmdroid build evidence, omit the
+model, benchmark, and baseline artifacts:
+
+```sh
+go run ./apps/hub/cmd/jute-voice-benchmark \
+  -closure-bundle-compose JUT-11 \
+  -decision-status reject \
+  -decision-rationale "Measured build and packaging evidence reject pmdroid/microWakeWord for v1." \
+  -provider-manifest microwakeword-provider.json \
+  -fixture-manifest-artifact wake-fixtures.json \
+  -build-evidence-artifacts microwakeword-build.json \
+  -packaging-evidence-artifact microwakeword-packaging.json > microwakeword-closure-bundle.json
 ```
 
 The composer validates the assembled bundle before writing it, so missing artifacts, malformed rows,
