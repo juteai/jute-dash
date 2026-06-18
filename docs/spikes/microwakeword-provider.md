@@ -359,6 +359,52 @@ This confirms the Linux provider-pack recipe must install/pin Bazel before it ca
 TensorFlow Lite and audio microfrontend build products. It is still failed build evidence, not
 runnable provider evidence.
 
+#### Linux Container Bazelisk And Python 3.12 Attempt
+
+Checked on 2026-06-18 in the same disposable `golang:1.25` Linux container with Bazel supplied by
+Bazelisk:
+
+```sh
+docker run --rm golang:1.25 sh -lc '
+  GO=/usr/local/go/bin/go
+  mkdir -p /tmp/bin /tmp/jute-microwakeword-linux-py312
+  $GO install github.com/bazelbuild/bazelisk@latest
+  cp /go/bin/bazelisk /tmp/bin/bazel
+  export PATH=/tmp/bin:$PATH
+  export HERMETIC_PYTHON_VERSION=3.12
+  cd /tmp/jute-microwakeword-linux-py312
+  git clone --depth 1 https://github.com/pmdroid/microwakeword.git microwakeword
+  cd microwakeword
+  make INSTALL_PREFIX=/tmp/jute-microwakeword-linux-py312/install
+'
+```
+
+Without `HERMETIC_PYTHON_VERSION=3.12`, TensorFlow selected Python 3.13 and failed because
+TensorFlow v2.19.0 only provides requirement lockfiles for Python 3.9, 3.10, 3.11, and 3.12.
+
+With `HERMETIC_PYTHON_VERSION=3.12`, Bazel built the TensorFlow Lite audio microfrontend target:
+
+```text
+Target //tensorflow/lite/experimental/microfrontend/lib:microfrontend up-to-date:
+  bazel-bin/tensorflow/lite/experimental/microfrontend/lib/libmicrofrontend.a
+  bazel-bin/tensorflow/lite/experimental/microfrontend/lib/libmicrofrontend.pic.a
+  bazel-bin/tensorflow/lite/experimental/microfrontend/lib/libmicrofrontend.so
+```
+
+The build then advanced to `//tensorflow/lite/c:tensorflowlite_c` and failed when the Bazel server
+terminated while compiling TensorFlow Lite C:
+
+```text
+Server terminated abruptly (error code: 14, error message: 'Socket closed')
+make: *** [Makefile:67: build] Error 37
+```
+
+The public build evidence generated inside the same container records runtime `linux/arm64
+go1-25-11`, target `linux-native-upstream-make-bazelisk-python312`, status `failed`, exit code
+`37`, and error code `bazel-server-socket-closed`. This proves the provider-pack recipe needs
+Bazelisk or pinned Bazel plus a Python 3.12 hermetic setting, and still needs a successful
+TensorFlow Lite C build before pmdroid can load a model.
+
 ### Raspberry Pi
 
 Raspberry Pi support is unproven for Jute. It needs a native ARM64 build or cross-compiled provider artifact, plus a real latency and CPU benchmark on representative hardware.
