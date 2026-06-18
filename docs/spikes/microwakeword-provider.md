@@ -332,6 +332,33 @@ go1-25-11`, target `linux-native-container`, status `failed`, and missing depend
 blocked placeholder, but it still does not satisfy JUT-11 closure because no model loaded, no wake
 detection ran, and no openWakeWord baseline comparison was produced.
 
+#### Linux Container Upstream Make Attempt
+
+Checked on 2026-06-18 in the same disposable `golang:1.25` Linux container:
+
+```sh
+docker run --rm golang:1.25 sh -lc '
+  mkdir -p /tmp/jute-microwakeword-linux-make
+  cd /tmp/jute-microwakeword-linux-make
+  git clone --depth 1 https://github.com/pmdroid/microwakeword.git microwakeword
+  cd microwakeword
+  make INSTALL_PREFIX=/tmp/jute-microwakeword-linux-make/install
+'
+```
+
+The container had `git`, `make`, and `gcc`. The upstream Makefile cloned TensorFlow v2.19.0 and
+KissFFT, then failed in the `build` target because Bazel was not installed:
+
+```text
+Building library...
+/bin/sh: 8: bazel: not found
+make: *** [Makefile:67: build] Error 127
+```
+
+This confirms the Linux provider-pack recipe must install/pin Bazel before it can even reach the
+TensorFlow Lite and audio microfrontend build products. It is still failed build evidence, not
+runnable provider evidence.
+
 ### Raspberry Pi
 
 Raspberry Pi support is unproven for Jute. It needs a native ARM64 build or cross-compiled provider artifact, plus a real latency and CPU benchmark on representative hardware.
