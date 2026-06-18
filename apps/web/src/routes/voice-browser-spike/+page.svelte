@@ -154,6 +154,11 @@
         detail: memory?.jsHeapSizeLimit
           ? `limit ${formatBytes(memory.jsHeapSizeLimit)}`
           : 'browser does not expose memory metrics'
+      },
+      {
+        label: 'Model download size',
+        value: '0 MB',
+        detail: 'browser spike route did not load a WASM or Transformers model'
       }
     ];
     if (!window.speechSynthesis) {
