@@ -533,7 +533,7 @@ Wrap each provider run in `NewWakeBenchmarkReport("JUT-11", ...)` and attach the
 
 Before treating a run as acceptance evidence, pass the report through `ValidateBenchmarkReport` with `Issue: "JUT-11"`, `Kind: "wake-word"`, `RequireModelHash: true`, `RequireAllWakeMatches: true`, and `RequireResourceSamples: true`. Strict validation should have no unresolved gaps, no provider failures, at least the declared fixture count, unique fixture result IDs, a `sha256:<64 hex>` model hash, result provider/model IDs that match the report environment, a measured `resourceSample.duration` for every successful fixture row, and expected wake/no-wake outcomes for every fixture. Validation recomputes the summary from fixture rows, so copied reports cannot hide provider failures, false accepts, or false rejects by editing aggregate counts.
 
-The benchmark CLI also has an issue-specific acceptance preset for JUT-11, so saved pmdroid or openWakeWord reports can be checked with one flag. The preset requires the named fixture IDs `positive-wake`, `near-miss`, `ambient-room`, and `conversation-long`, a model hash, and matching expected wake/no-wake outcomes:
+The benchmark CLI also has an issue-specific acceptance preset for JUT-11 candidate reports. The preset requires the provider ID to identify pmdroid, the named fixture IDs `positive-wake`, `near-miss`, `ambient-room`, and `conversation-long`, a model hash, and matching expected wake/no-wake outcomes:
 
 ```sh
 go run ./apps/hub/cmd/jute-voice-benchmark \
@@ -553,7 +553,7 @@ go run ./apps/hub/cmd/jute-voice-benchmark \
 
 The command exits non-zero when strict validation fails, while still printing the privacy-safe Markdown evidence summary. Saved benchmark report JSON is decoded with unknown-field rejection before validation, so copied artifacts that include raw audio, provider debug fields, or undeclared internals are rejected instead of silently ignored.
 
-After both pmdroid/microWakeWord and the openWakeWord/Wyoming baseline have been run against the same fixture manifest, generate a comparison artifact:
+After both pmdroid/microWakeWord and the openWakeWord/Wyoming baseline have been run against the same fixture manifest, generate a comparison artifact. The comparison command validates the baseline with the same fixture/model/result requirements while allowing the baseline provider to be openWakeWord/Wyoming instead of pmdroid:
 
 ```sh
 go run ./apps/hub/cmd/jute-voice-benchmark \
