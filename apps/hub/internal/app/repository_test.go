@@ -14,6 +14,7 @@ import (
 	"jute-dash/apps/hub/internal/app/config"
 	"jute-dash/apps/hub/internal/app/dashboard"
 	"jute-dash/apps/hub/internal/app/homestate"
+	"jute-dash/apps/hub/internal/app/repository"
 	"jute-dash/apps/hub/internal/app/voice"
 	"jute-dash/apps/hub/internal/pkg/a2a"
 )
@@ -1379,7 +1380,7 @@ func TestWidgetLayoutMigratesV2LayoutToHomeScreen(t *testing.T) {
 			Visible:  true,
 		}},
 	}
-	normalized, err := dashboard.NormalizeWidgetLayout(layout, widgetCatalogForSeed())
+	normalized, err := dashboard.NormalizeWidgetLayout(layout, repository.WidgetCatalogForSeed())
 	if err != nil {
 		t.Fatalf("NormalizeWidgetLayout() error = %v", err)
 	}
@@ -1457,7 +1458,7 @@ func TestSaveWidgetLayoutRejectsDuplicateWidgetIDsAcrossScreens(t *testing.T) {
 	})
 	if _, err := dashboard.NormalizeWidgetLayout(
 		layout,
-		widgetCatalogForSeed(),
+		repository.WidgetCatalogForSeed(),
 	); !errors.Is(err, dashboard.ErrInvalidLayout) {
 		t.Fatalf("NormalizeWidgetLayout() error = %v, want ErrInvalidLayout", err)
 	}
@@ -1475,7 +1476,7 @@ func TestSaveWidgetLayoutRejectsDuplicateSingleInstanceKindsAcrossScreens(t *tes
 	})
 	if _, err := dashboard.NormalizeWidgetLayout(
 		layout,
-		widgetCatalogForSeed(),
+		repository.WidgetCatalogForSeed(),
 	); !errors.Is(err, dashboard.ErrInvalidLayout) {
 		t.Fatalf("NormalizeWidgetLayout() error = %v, want ErrInvalidLayout", err)
 	}

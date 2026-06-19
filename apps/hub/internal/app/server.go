@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,20 +11,25 @@ import (
 	"sync"
 	"time"
 
+	v1 "jute-dash/apps/hub/api/hub/v1"
 	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/controller"
 	"jute-dash/apps/hub/internal/app/dashboard"
-	"jute-dash/apps/hub/internal/app/events"
-	"jute-dash/apps/hub/internal/app/filesync"
 	"jute-dash/apps/hub/internal/app/homestate"
 	"jute-dash/apps/hub/internal/app/voice"
 	"jute-dash/apps/hub/internal/app/widgetactions"
 	a2aclient "jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
+	"jute-dash/apps/hub/internal/pkg/filesync"
 	"jute-dash/apps/hub/internal/pkg/httphelper"
+	"jute-dash/apps/hub/internal/pkg/middleware"
+	"jute-dash/apps/hub/internal/pkg/paths"
 	"jute-dash/apps/hub/internal/pkg/registry"
 	"jute-dash/apps/hub/pkg/widgetskills"
 	"jute-dash/widgets"
+
+	"github.com/labstack/echo/v4"
 )
 
 type Server struct {
@@ -178,7 +182,6 @@ func NewServer(
 		voiceStore,
 		configPath,
 		display,
-		DisplayOptions{Headless: true},
 	)
 }
 
@@ -193,81 +196,23 @@ func NewServerWithSecrets(
 	display *displayactions.Dispatcher,
 	secrets secretStore,
 ) *Server {
-	server, err := NewServerWithSecretsAndDisplay(
+	server, err := newServerWithError(
 		cfg,
 		version,
+		nil,
 		setup,
+		dashboard.DefaultWidgetLayout(),
 		layoutStore,
 		settingsStore,
 		voiceStore,
 		configPath,
 		display,
 		secrets,
-		DisplayOptions{Headless: true},
 	)
 	if err != nil {
 		panic(err)
 	}
 	return server
-}
-
-func NewServerWithDisplay(
-	cfg config.Config,
-	version string,
-	setup homestate.SetupStatus,
-	layoutStore dashboard.LayoutStore,
-	settingsStore homestate.SettingsStore,
-	voiceStore voice.Store,
-	configPath string,
-	display *displayactions.Dispatcher,
-	displayOptions DisplayOptions,
-) (*Server, error) {
-	return NewServerWithSecretsAndDisplay(
-		cfg,
-		version,
-		setup,
-		layoutStore,
-		settingsStore,
-		voiceStore,
-		configPath,
-		display,
-		nil,
-		displayOptions,
-	)
-}
-
-func NewServerWithSecretsAndDisplay(
-	cfg config.Config,
-	version string,
-	setup homestate.SetupStatus,
-	layoutStore dashboard.LayoutStore,
-	settingsStore homestate.SettingsStore,
-	voiceStore voice.Store,
-	configPath string,
-	display *displayactions.Dispatcher,
-	secrets secretStore,
-	displayOptions DisplayOptions,
-) (*Server, error) {
-	layout := dashboard.DefaultWidgetLayout()
-	if layoutStore != nil {
-		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
-			layout = loaded
-		}
-	}
-	return newServerWithError(
-		cfg,
-		version,
-		nil,
-		setup,
-		layout,
-		layoutStore,
-		settingsStore,
-		voiceStore,
-		configPath,
-		display,
-		secrets,
-		displayOptions,
-	)
 }
 
 func newServer(
@@ -281,12 +226,7 @@ func newServer(
 	voiceStore voice.Store,
 	configPath string,
 	display *displayactions.Dispatcher,
-	displayOptions ...DisplayOptions,
 ) *Server {
-	opts := DisplayOptions{Headless: true}
-	if len(displayOptions) > 0 {
-		opts = displayOptions[0]
-	}
 	server, err := newServerWithError(
 		cfg,
 		version,
@@ -299,7 +239,6 @@ func newServer(
 		configPath,
 		display,
 		nil,
-		opts,
 	)
 	if err != nil {
 		panic(err)
@@ -319,7 +258,6 @@ func newServerWithError(
 	configPath string,
 	display *displayactions.Dispatcher,
 	secretStore secretStore,
-	displayOptions DisplayOptions,
 ) (*Server, error) {
 	if messageSender == nil {
 		messageSender = a2aclient.NewJSONRPCClient()
@@ -499,7 +437,7 @@ func newServerWithError(
 		},
 	).RegisterRoutes(mux)
 
-	dashboard.NewBackgroundsController(backgroundsDir).RegisterRoutes(mux)
+	dashboard.NewBackgroundsController(paths.BackgroundsDirPath()).RegisterRoutes(mux)
 
 	var ttsProvider voice.TTSProvider
 	if providerStore, ok := server.voiceStore.(interface {
@@ -529,19 +467,19 @@ func newServerWithError(
 	}).RegisterRoutes(mux)
 
 	// SSE broker mount
-	broker := events.NewBroker(server.display, server.voiceDispatcher)
+	broker := controller.NewBroker(server.display, server.voiceDispatcher)
 	mux.Handle("/api/v1/events", broker)
 
-	displayHandler, err := displayOptions.handler()
-	if err != nil && !errors.Is(err, errDisplayDisabled) {
-		return nil, err
-	}
-	if displayHandler != nil {
-		mux.Handle("/", displayHandler)
-	}
-
-	handler := withCommonHeaders(withCORS(mux))
-	server.handler = RequestLogger(slog.Default() /*nolint:sloglint // use default global logger */)(handler)
+	legacyHandler := withCommonHeaders(withCORS(mux))
+	echoServer := echo.New()
+	echoServer.HideBanner = true
+	v1.RegisterHandlers(echoServer, controller.New(legacyHandler))
+	echoServer.Any("/*", echo.WrapHandler(legacyHandler))
+	server.handler = middleware.RequestLogger(
+		slog.Default(), /*nolint:sloglint // use default global logger */
+	)(
+		echoServer,
+	)
 	return server, nil
 }
 

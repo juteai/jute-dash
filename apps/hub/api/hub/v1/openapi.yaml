@@ -1,0 +1,545 @@
+openapi: 3.0.3
+info:
+  title: Jute Hub API
+  version: 0.0.1
+servers:
+  - url: /
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      responses:
+        "200":
+          description: Hub is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /api/v1/status:
+    get:
+      operationId: getStatus
+      responses:
+        "200":
+          description: Hub runtime status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+  /api/v1/config:
+    get:
+      operationId: getConfig
+      responses:
+        "200":
+          description: Effective dashboard config.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/events:
+    get:
+      operationId: getEvents
+      responses:
+        "200":
+          description: Server-sent hub events.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /api/v1/setup/status:
+    get:
+      operationId: getSetupStatus
+      responses:
+        "200":
+          description: Setup state.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/settings/household:
+    get:
+      operationId: getHouseholdSettings
+      responses:
+        "200":
+          description: Household settings.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    patch:
+      operationId: patchHouseholdSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated household settings.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/settings/rooms:
+    get:
+      operationId: getRooms
+      responses:
+        "200":
+          description: Rooms.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+    put:
+      operationId: putRooms
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+      responses:
+        "200":
+          description: Updated rooms.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+  /api/v1/settings/tiles:
+    get:
+      operationId: getTiles
+      responses:
+        "200":
+          description: Tiles.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+    put:
+      operationId: putTiles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+      responses:
+        "200":
+          description: Updated tiles.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+  /api/v1/settings/connection-kinds:
+    get:
+      operationId: getConnectionKinds
+      responses:
+        "200":
+          description: Connection kinds.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/settings/connections:
+    get:
+      operationId: getConnections
+      responses:
+        "200":
+          description: Adapter connections.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      operationId: postConnection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Saved connection.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/home:
+    get:
+      operationId: getHome
+      responses:
+        "200":
+          description: Home state.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/widgets/catalog:
+    get:
+      operationId: getWidgetCatalog
+      responses:
+        "200":
+          description: Widget catalog.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/widgets/layout:
+    get:
+      operationId: getWidgetLayout
+      parameters:
+        - in: query
+          name: profileId
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Widget layout.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    put:
+      operationId: putWidgetLayout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Saved widget layout.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/widgets/layout/active-screen:
+    patch:
+      operationId: patchWidgetLayoutActiveScreen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [screenId]
+              properties:
+                screenId:
+                  type: string
+      responses:
+        "200":
+          description: Saved widget layout.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/widgets/layout/reset:
+    post:
+      operationId: postWidgetLayoutReset
+      parameters:
+        - in: query
+          name: profileId
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reset widget layout.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/backgrounds:
+    get:
+      operationId: getBackgrounds
+      responses:
+        "200":
+          description: Background images.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      operationId: postBackground
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Uploaded background.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/agents:
+    get:
+      operationId: getAgents
+      responses:
+        "200":
+          description: Agents.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      operationId: postAgentConversation
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Agent response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/voice/status:
+    get:
+      operationId: getVoiceStatus
+      responses:
+        "200":
+          description: Voice status.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/voice/settings:
+    patch:
+      operationId: patchVoiceSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Voice status.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/voice/mute:
+    post:
+      operationId: postVoiceMute
+      responses:
+        "200":
+          description: Voice status.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/voice/unmute:
+    post:
+      operationId: postVoiceUnmute
+      responses:
+        "200":
+          description: Voice status.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/voice/cancel:
+    post:
+      operationId: postVoiceCancel
+      responses:
+        "200":
+          description: Voice status.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/voice/providers:
+    get:
+      operationId: getVoiceProviders
+      responses:
+        "200":
+          description: Voice providers.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/voice/transcripts/final:
+    post:
+      operationId: postVoiceFinalTranscript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                deviceProfileId:
+                  type: string
+                deviceId:
+                  type: string
+                conversationId:
+                  type: string
+                agentId:
+                  type: string
+      responses:
+        "200":
+          description: Voice conversation response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/tts/voices:
+    get:
+      operationId: getTTSVoices
+      parameters:
+        - in: query
+          name: providerId
+          schema:
+            type: string
+        - in: query
+          name: deviceProfileId
+          schema:
+            type: string
+      responses:
+        "200":
+          description: TTS voices.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/tts/speak:
+    post:
+      operationId: postTTSSpeak
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: TTS action response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/tts/stop:
+    post:
+      operationId: postTTSStop
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: TTS stop response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status, version, startedAt]
+      properties:
+        status:
+          type: string
+        version:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+    Status:
+      type: object
+      required: [status, version, startedAt, setup, config, eventStream, mcp, agents, voice]
+      properties:
+        status:
+          type: string
+        version:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        setup:
+          type: object
+          additionalProperties: true
+        config:
+          type: object
+          additionalProperties: true
+        eventStream:
+          type: object
+          additionalProperties: true
+        mcp:
+          type: object
+          additionalProperties: true
+        agents:
+          type: object
+          additionalProperties: true
+        voice:
+          type: object
+          additionalProperties: true

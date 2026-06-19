@@ -1,4 +1,4 @@
-package app
+package paths
 
 import (
 	"errors"
@@ -42,6 +42,10 @@ var backgroundsDir string
 // called once during startup before the HTTP handler is constructed.
 func SetBackgroundsDir(dir string) {
 	backgroundsDir = strings.TrimSpace(dir)
+}
+
+func BackgroundsDirPath() string {
+	return backgroundsDir
 }
 
 func defaultDataDir() (string, error) {

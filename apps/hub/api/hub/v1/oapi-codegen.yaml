@@ -1,0 +1,7 @@
+package: v1
+output: apps/hub/api/hub/v1/hub.gen.go
+generate:
+  echo-server: true
+  models: true
+output-options:
+  skip-prune: false

@@ -12,9 +12,9 @@ import (
 	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/app/dashboard"
 	"jute-dash/apps/hub/internal/app/homestate"
-	"jute-dash/apps/hub/internal/app/mcp"
 	"jute-dash/apps/hub/internal/app/voice"
 	"jute-dash/apps/hub/internal/pkg/a2a"
+	"jute-dash/apps/hub/internal/pkg/mcp"
 
 	"go.yaml.in/yaml/v4"
 )

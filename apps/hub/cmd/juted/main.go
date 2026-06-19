@@ -18,9 +18,10 @@ import (
 	"jute-dash/apps/hub/internal/app"
 	"jute-dash/apps/hub/internal/app/config"
 	"jute-dash/apps/hub/internal/app/dashboard"
-	"jute-dash/apps/hub/internal/app/mcp"
-	"jute-dash/apps/hub/internal/displayassets"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
+	"jute-dash/apps/hub/internal/pkg/logging"
+	"jute-dash/apps/hub/internal/pkg/mcp"
+	"jute-dash/apps/hub/internal/pkg/paths"
 	"jute-dash/apps/hub/pkg/widgetskills"
 
 	_ "jute-dash/widgets/applemusic/hub"
@@ -49,12 +50,6 @@ func run() error {
 	configPath := flag.String("config", os.Getenv("JUTE_CONFIG"), "optional path to Jute bootstrap config YAML or JSON")
 	dataDirOverride := flag.String("data-dir", os.Getenv("JUTE_DATA_DIR"), "override Jute runtime data directory")
 	listenOverride := flag.String("listen", os.Getenv("JUTE_LISTEN"), "override listen address")
-	displayDir := flag.String(
-		"display-dir",
-		os.Getenv("JUTE_DISPLAY_DIR"),
-		"serve display assets from a local directory instead of embedded assets",
-	)
-	headless := flag.Bool("headless", false, "start the hub API without serving the display")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -62,12 +57,12 @@ func run() error {
 	// Initial fallback logger before config is loaded
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	dataDir, err := app.ResolveDataDir(*dataDirOverride)
+	dataDir, err := paths.ResolveDataDir(*dataDirOverride)
 	if err != nil {
 		return fmt.Errorf("resolve data directory: %w", err)
 	}
-	app.SetBackgroundsDir(app.BackgroundsDir(dataDir))
-	runtimeStore, err := app.Open(app.DatabasePath(dataDir), logger)
+	paths.SetBackgroundsDir(paths.BackgroundsDir(dataDir))
+	runtimeStore, err := app.Open(paths.DatabasePath(dataDir), logger)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
@@ -114,7 +109,7 @@ func run() error {
 	}
 
 	// Setup structured logging using config settings
-	logHandler, err := app.SetupLogger(cfg.Log, dataDir)
+	logHandler, err := logging.SetupLogger(cfg.Log, dataDir)
 	if err != nil {
 		return fmt.Errorf("setup logger: %w", err)
 	}
@@ -127,7 +122,7 @@ func run() error {
 	log.SetOutput(slog.NewLogLogger(logHandler, slog.LevelInfo).Writer())
 
 	displayActions := displayactions.NewDispatcher()
-	handler, err := app.NewServerWithSecretsAndDisplay(
+	handler := app.NewServerWithSecrets(
 		cfg,
 		version,
 		result.Setup,
@@ -137,15 +132,7 @@ func run() error {
 		*configPath,
 		displayActions,
 		runtimeStore.SecretVault,
-		app.DisplayOptions{
-			Headless: *headless,
-			Dir:      *displayDir,
-			FS:       displayassets.FS,
-		},
 	)
-	if err != nil {
-		return fmt.Errorf("configure display assets: %w", err)
-	}
 	logger.Info("jute data directory", "path", dataDir)
 
 	baseCtx, cancelBase := context.WithCancel(context.Background())

@@ -1,4 +1,4 @@
-package secrets
+package repository
 
 import (
 	"context"
@@ -13,7 +13,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/99designs/keyring"
 	"gorm.io/gorm"
@@ -257,7 +256,3 @@ func DecodeMasterKey(value string) ([]byte, error) {
 
 //nolint:gochecknoglobals // test seam for environment-backed master key.
 var getenv = os.Getenv
-
-func nowUTC() string {
-	return time.Now().UTC().Format(time.RFC3339Nano)
-}

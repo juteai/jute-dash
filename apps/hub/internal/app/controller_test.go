@@ -16,18 +16,18 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/app/config"
 	"jute-dash/apps/hub/internal/app/dashboard"
-	"jute-dash/apps/hub/internal/app/filesync"
 	"jute-dash/apps/hub/internal/app/voice"
 	a2a "jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
+	"jute-dash/apps/hub/internal/pkg/filesync"
+	"jute-dash/apps/hub/internal/pkg/middleware"
 	"jute-dash/apps/hub/internal/pkg/registry"
-	"jute-dash/apps/hub/mocks"
+	"jute-dash/apps/hub/tests/mocks"
 
 	"github.com/stretchr/testify/mock"
 )
@@ -71,78 +71,6 @@ func waitForConfig(
 	}
 	t.Fatalf("config did not reach expected state: %+v", reloaded)
 	return config.Config{}
-}
-
-func TestDisplayAssetsServeRootAndFallbackRoutes(t *testing.T) {
-	handler, err := NewServerWithDisplay(
-		testConfig(),
-		"test",
-		SetupStatus{Complete: true},
-		nil,
-		nil,
-		nil,
-		"",
-		nil,
-		DisplayOptions{
-			FS: fstest.MapFS{
-				"dist/index.html": {
-					Data: []byte("<!doctype html><title>Jute Dash</title>"),
-				},
-				"dist/assets/app.js": {
-					Data: []byte("console.log('jute')"),
-				},
-			},
-		},
-	)
-	if err != nil {
-		t.Fatalf("create server: %v", err)
-	}
-
-	for _, path := range []string{"/", "/settings", "/assets/app.js"} {
-		req := httptest.NewRequest(http.MethodGet, path, nil)
-		rec := httptest.NewRecorder()
-
-		handler.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s expected status 200, got %d: %s", path, rec.Code, rec.Body.String())
-		}
-	}
-}
-
-func TestDisplayAssetsDoNotCaptureAPIRoutes(t *testing.T) {
-	handler, err := NewServerWithDisplay(
-		testConfig(),
-		"test",
-		SetupStatus{Complete: true},
-		nil,
-		nil,
-		nil,
-		"",
-		nil,
-		DisplayOptions{
-			FS: fstest.MapFS{
-				"dist/index.html": {
-					Data: []byte("<!doctype html><title>Jute Dash</title>"),
-				},
-			},
-		},
-	)
-	if err != nil {
-		t.Fatalf("create server: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/not-found", nil)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected API miss to stay 404, got %d: %s", rec.Code, rec.Body.String())
-	}
-	if strings.Contains(rec.Body.String(), "Jute Dash") {
-		t.Fatal("API miss was served the display fallback")
-	}
 }
 
 func TestAgentProxyCORSPreflightAllowsA2AVersionHeader(t *testing.T) {
@@ -1043,7 +971,7 @@ func TestVoiceSettingsPatchRejectsTrailingCredentialPayloadWithoutLoggingIt(t *t
 	handler := New(testConfig(), "test")
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	loggedHandler := RequestLogger(logger)(handler)
+	loggedHandler := middleware.RequestLogger(logger)(handler)
 	req := httptest.NewRequest(
 		http.MethodPatch,
 		"/api/v1/voice/settings",
@@ -1203,7 +1131,7 @@ func TestTTSActionRejectsTrailingSensitivePayloadWithoutLoggingIt(t *testing.T) 
 	handler := New(cfg, "test")
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	loggedHandler := RequestLogger(logger)(handler)
+	loggedHandler := middleware.RequestLogger(logger)(handler)
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/tts/speak",
@@ -1235,7 +1163,7 @@ func TestTTSStopRejectsTrailingCredentialPayloadWithoutLoggingIt(t *testing.T) {
 	handler := New(testConfig(), "test")
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	loggedHandler := RequestLogger(logger)(handler)
+	loggedHandler := middleware.RequestLogger(logger)(handler)
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/tts/stop",
@@ -2011,7 +1939,7 @@ func TestVoiceTranscriptRequestLoggingOmitsRawTranscriptsAndAudio(t *testing.T) 
 
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	handler := RequestLogger(logger)(NewWithMessageSender(cfg, "test", client))
+	handler := middleware.RequestLogger(logger)(NewWithMessageSender(cfg, "test", client))
 
 	transcriptNeedle := "RAW_TRANSCRIPT_SHOULD_NOT_BE_LOGGED"
 	audioNeedle := "RAW_AUDIO_SHOULD_NOT_BE_LOGGED"

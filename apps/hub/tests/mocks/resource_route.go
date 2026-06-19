@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	mcp "jute-dash/apps/hub/internal/app/mcp"
+	mcp "jute-dash/apps/hub/internal/pkg/mcp"
 
 	mock "github.com/stretchr/testify/mock"
 
