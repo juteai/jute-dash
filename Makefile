@@ -50,7 +50,7 @@ generate-mocks:
 	go tool mockery --config=/dev/null --name=Syncer --srcpkg=jute-dash/apps/hub/internal/app/service/agents --output=apps/hub/internal/app/service/agents --filename=agent_syncer_mock_test.go --structname=AgentSyncer --with-expecter --inpackage --testonly
 
 integration-test-local:
-	go tool ginkgo --label-filter=SMOKE ./apps/hub/tests/integration/specs
+	JUTE_HUB_INTEGRATION=1 go tool ginkgo --label-filter=SMOKE ./apps/hub/tests/integration/specs
 
 web-lint:
 	cd $(WEB_DIR) && $(NPM) run lint
