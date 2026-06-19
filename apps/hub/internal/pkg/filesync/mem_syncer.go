@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/service/agents"
 )
 
 // InMemorySyncer is an in-memory Syncer adapter for testing.

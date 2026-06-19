@@ -4,9 +4,9 @@
 
 Jute ships as several artifacts built from the same hub and display foundation:
 
-- **Standalone hub binary:** Go binary with embedded display assets for single-device and headless installs.
+- **Standalone hub binary:** Go binary for the hub API, persistence, event stream, A2A, MCP, and voice runtime.
 - **Docker image:** multi-arch image for home servers, NAS devices, and development.
-- **PWA/kiosk web app:** browser install target served by the hub.
+- **PWA/kiosk web app:** browser install target built and served as a separate display artifact.
 - **Raspberry Pi/systemd package:** install script and service unit for wall display and headless nodes.
 - **Desktop wrapper:** later Tauri wrapper around the display UI for macOS, Windows, and Linux.
 
@@ -14,11 +14,11 @@ The standalone hub binary is the primary v1 distribution target.
 
 ## Build Strategy
 
-- Build SvelteKit as static client assets.
-- Embed built assets into the Go hub using `embed`.
-- Serve the embedded display from the hub in single-device mode.
-- Allow `JUTE_DISPLAY_DIR` override during development to serve local web assets.
-- Keep the hub usable with `--headless` or equivalent runtime setting.
+- Build the Go hub as a headless-capable API/runtime binary.
+- Build the SvelteKit display as a separate web artifact.
+- Keep the display as a hub client in every install mode.
+- Do not embed or serve the display bundle from the hub binary.
+- Keep runtime settings, including voice and display profile settings, owned by the hub API.
 
 ## CI/CD
 
@@ -63,17 +63,18 @@ The local stack serves the development display at `https://localhost:5173` for b
 
 ### Single Binary
 
-Run one binary that serves the hub API and display:
+Run one binary that serves the hub API and local runtime:
 
 ```sh
 juted --config /etc/jute/config.yaml
 ```
 
 Once SQLite persistence exists, `--config` bootstraps an empty runtime store. Runtime settings then live in the data directory.
+Install the display separately as a PWA/kiosk app or serve it from a dedicated static web host that points at the hub API.
 
 ### Docker
 
-Run the hub and display in a single container with config and data mounted:
+Run the hub container with config and data mounted:
 
 ```sh
 docker run --rm \

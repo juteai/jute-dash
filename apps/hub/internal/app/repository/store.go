@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"jute-dash/apps/hub/internal/app/config"
-	"jute-dash/apps/hub/internal/app/dashboard"
-	"jute-dash/apps/hub/internal/app/homestate"
-	"jute-dash/apps/hub/internal/app/voice"
+	"jute-dash/apps/hub/internal/app/service/dashboard"
+	"jute-dash/apps/hub/internal/app/service/homestate"
+	"jute-dash/apps/hub/internal/app/service/voice"
 	"jute-dash/apps/hub/internal/pkg/database"
 	"jute-dash/apps/hub/internal/pkg/filesync"
 

@@ -3,11 +3,11 @@ package app
 import (
 	"context"
 
-	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/app/config"
-	"jute-dash/apps/hub/internal/app/dashboard"
-	"jute-dash/apps/hub/internal/app/homestate"
-	"jute-dash/apps/hub/internal/app/voice"
+	"jute-dash/apps/hub/internal/app/service/agents"
+	"jute-dash/apps/hub/internal/app/service/dashboard"
+	"jute-dash/apps/hub/internal/app/service/homestate"
+	"jute-dash/apps/hub/internal/app/service/voice"
 
 	_ "jute-dash/widgets/chathistory/hub"
 	_ "jute-dash/widgets/datetime/hub"

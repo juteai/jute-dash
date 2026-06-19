@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"jute-dash/apps/hub/internal/app/homestate"
+	"jute-dash/apps/hub/internal/app/service/homestate"
 	"jute-dash/apps/hub/internal/pkg/httphelper"
 )
 

@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"jute-dash/apps/hub/internal/app/agents"
+	"jute-dash/apps/hub/internal/app/service/agents"
 	"jute-dash/apps/hub/pkg/widgetskills"
 
 	_ "jute-dash/widgets/spotify/hub"

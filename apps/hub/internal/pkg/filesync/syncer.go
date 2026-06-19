@@ -3,8 +3,8 @@ package filesync
 import (
 	"context"
 
-	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/service/agents"
 )
 
 // ConfigStore defines the database/runtime abstraction for querying

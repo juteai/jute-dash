@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"jute-dash/apps/hub/internal/app/agents"
+	"jute-dash/apps/hub/internal/app/service/agents"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/pkg/widgetskills"
 )

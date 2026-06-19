@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"jute-dash/apps/hub/internal/app/homestate"
+	"jute-dash/apps/hub/internal/app/service/homestate"
 )
 
 type memorySecretStore map[string]string

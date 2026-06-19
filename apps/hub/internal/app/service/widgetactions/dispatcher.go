@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"jute-dash/apps/hub/internal/app/dashboard"
+	"jute-dash/apps/hub/internal/app/service/dashboard"
 	"jute-dash/apps/hub/pkg/widgetskills"
 	"jute-dash/widgets"
 )

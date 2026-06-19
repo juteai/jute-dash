@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"jute-dash/apps/hub/internal/app/agents"
-	"jute-dash/apps/hub/internal/app/dashboard"
+	"jute-dash/apps/hub/internal/app/service/agents"
+	"jute-dash/apps/hub/internal/app/service/dashboard"
 )
 
 func TestLoadAppliesDefaults(t *testing.T) {

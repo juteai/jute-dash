@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"jute-dash/apps/hub/internal/app/agents"
 	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/service/agents"
 )
 
 type fileSyncer struct {

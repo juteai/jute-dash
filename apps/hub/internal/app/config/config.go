@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"jute-dash/apps/hub/internal/app/agents"
-	"jute-dash/apps/hub/internal/app/dashboard"
-	"jute-dash/apps/hub/internal/app/homestate"
-	"jute-dash/apps/hub/internal/app/voice"
+	"jute-dash/apps/hub/internal/app/service/agents"
+	"jute-dash/apps/hub/internal/app/service/dashboard"
+	"jute-dash/apps/hub/internal/app/service/homestate"
+	"jute-dash/apps/hub/internal/app/service/voice"
 	"jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/mcp"
 

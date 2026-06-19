@@ -31,11 +31,12 @@ Start with the architecture docs before making product changes:
 - [Distribution](docs/architecture/distribution.md)
 - [UX Customization](docs/architecture/ux-customization.md)
 - [Security And Privacy](docs/architecture/security-privacy.md)
+- [Hub Developer Guidelines](docs/developer/hub-guidelines.md)
 
 ## Implementation Rules
 
 - Keep the Go hub headless-capable. Do not put core orchestration only in the webapp.
-- Keep the display as a hub client. Do not call remote agents or smart-home integrations directly from Svelte.
+- Keep the display as a hub client. Do not embed or serve the display bundle from the hub, and do not call remote agents or smart-home integrations directly from Svelte.
 - Treat the existing `apps/web` dashboard as throwaway POC UI. Do not preserve current CSS, layout, side panel, tile structure, or styling unless it matches [Display UX](docs/architecture/display-ux.md).
 - Use shadcn-svelte conventions and Theme Pack tokens from [Visual Customization](docs/architecture/visual-customization.md) for future frontend work.
 - Use the hub API as the source of truth for durable settings, layouts, agents, widgets, and home state.

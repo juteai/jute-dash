@@ -17,7 +17,7 @@ import (
 
 	"jute-dash/apps/hub/internal/app"
 	"jute-dash/apps/hub/internal/app/config"
-	"jute-dash/apps/hub/internal/app/dashboard"
+	"jute-dash/apps/hub/internal/app/service/dashboard"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/internal/pkg/logging"
 	"jute-dash/apps/hub/internal/pkg/mcp"

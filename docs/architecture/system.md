@@ -14,7 +14,7 @@ This split keeps the hub useful without a screen and keeps the display portable 
 ## Deployment Modes
 
 - **Single-device display:** hub and display run on the same device. This is the default developer and kiosk mode.
-- **Remote display:** one hub serves one or more browser/tablet displays on the local network.
+- **Remote display:** one hub accepts one or more browser/tablet display clients on the local network.
 - **Headless hub:** hub runs without the display for voice nodes, automations, and remote A2A routing.
 - **Paired display:** display runs as a PWA or native wrapper and connects to a discovered or manually configured hub.
 
@@ -57,6 +57,7 @@ flowchart LR
 - Own SQLite migrations, persistence, and import/export.
 - Own first-run setup status and safe default initialization.
 - Serve the local API for displays and developer tools.
+- Remain a headless-capable runtime; do not embed or serve the display bundle.
 - Emit state updates over Server-Sent Events first; use WebSockets later only when bidirectional low-latency transport is required.
 - Resolve, cache, validate, and select A2A Agent Cards.
 - Send A2A tasks and stream task updates back to displays.

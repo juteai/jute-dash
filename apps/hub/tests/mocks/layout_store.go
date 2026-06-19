@@ -4,7 +4,7 @@ package mocks
 
 import (
 	context "context"
-	dashboard "jute-dash/apps/hub/internal/app/dashboard"
+	dashboard "jute-dash/apps/hub/internal/app/service/dashboard"
 
 	mock "github.com/stretchr/testify/mock"
 )

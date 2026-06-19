@@ -3,8 +3,10 @@
 package mocks
 
 import (
+	config "jute-dash/apps/hub/internal/app/config"
+	agents "jute-dash/apps/hub/internal/app/service/agents"
+
 	context "context"
-	agents "jute-dash/apps/hub/internal/app/agents"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -80,6 +82,108 @@ func (_c *Syncer_AgentsConfig_Call) RunAndReturn(run func(context.Context) ([]ag
 	return _c
 }
 
+// Load provides a mock function with given fields: ctx
+func (_m *Syncer) Load(ctx context.Context) (config.Config, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Load")
+	}
+
+	var r0 config.Config
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (config.Config, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) config.Config); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(config.Config)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Syncer_Load_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Load'
+type Syncer_Load_Call struct {
+	*mock.Call
+}
+
+// Load is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *Syncer_Expecter) Load(ctx interface{}) *Syncer_Load_Call {
+	return &Syncer_Load_Call{Call: _e.mock.On("Load", ctx)}
+}
+
+func (_c *Syncer_Load_Call) Run(run func(ctx context.Context)) *Syncer_Load_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *Syncer_Load_Call) Return(_a0 config.Config, _a1 error) *Syncer_Load_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Syncer_Load_Call) RunAndReturn(run func(context.Context) (config.Config, error)) *Syncer_Load_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Sync provides a mock function with given fields: ctx
+func (_m *Syncer) Sync(ctx context.Context) error {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Sync")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// Syncer_Sync_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Sync'
+type Syncer_Sync_Call struct {
+	*mock.Call
+}
+
+// Sync is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *Syncer_Expecter) Sync(ctx interface{}) *Syncer_Sync_Call {
+	return &Syncer_Sync_Call{Call: _e.mock.On("Sync", ctx)}
+}
+
+func (_c *Syncer_Sync_Call) Run(run func(ctx context.Context)) *Syncer_Sync_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *Syncer_Sync_Call) Return(_a0 error) *Syncer_Sync_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *Syncer_Sync_Call) RunAndReturn(run func(context.Context) error) *Syncer_Sync_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SyncAgents provides a mock function with given fields: ctx, configs
 func (_m *Syncer) SyncAgents(ctx context.Context, configs []agents.AgentConfig) error {
 	ret := _m.Called(ctx, configs)
@@ -123,6 +227,53 @@ func (_c *Syncer_SyncAgents_Call) Return(_a0 error) *Syncer_SyncAgents_Call {
 }
 
 func (_c *Syncer_SyncAgents_Call) RunAndReturn(run func(context.Context, []agents.AgentConfig) error) *Syncer_SyncAgents_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SyncWith provides a mock function with given fields: ctx, fn
+func (_m *Syncer) SyncWith(ctx context.Context, fn func(*config.Config) error) error {
+	ret := _m.Called(ctx, fn)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SyncWith")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, func(*config.Config) error) error); ok {
+		r0 = rf(ctx, fn)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// Syncer_SyncWith_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SyncWith'
+type Syncer_SyncWith_Call struct {
+	*mock.Call
+}
+
+// SyncWith is a helper method to define mock.On call
+//   - ctx context.Context
+//   - fn func(*config.Config) error
+func (_e *Syncer_Expecter) SyncWith(ctx interface{}, fn interface{}) *Syncer_SyncWith_Call {
+	return &Syncer_SyncWith_Call{Call: _e.mock.On("SyncWith", ctx, fn)}
+}
+
+func (_c *Syncer_SyncWith_Call) Run(run func(ctx context.Context, fn func(*config.Config) error)) *Syncer_SyncWith_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(func(*config.Config) error))
+	})
+	return _c
+}
+
+func (_c *Syncer_SyncWith_Call) Return(_a0 error) *Syncer_SyncWith_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *Syncer_SyncWith_Call) RunAndReturn(run func(context.Context, func(*config.Config) error) error) *Syncer_SyncWith_Call {
 	_c.Call.Return(run)
 	return _c
 }

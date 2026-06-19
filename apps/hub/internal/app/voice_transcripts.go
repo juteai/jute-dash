@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"jute-dash/apps/hub/internal/app/agents"
-	"jute-dash/apps/hub/internal/app/voice"
+	"jute-dash/apps/hub/internal/app/service/agents"
+	"jute-dash/apps/hub/internal/app/service/voice"
 	"jute-dash/apps/hub/internal/pkg/httphelper"
 )
 
