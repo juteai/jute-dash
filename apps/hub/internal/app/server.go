@@ -196,7 +196,7 @@ func NewServerWithSecrets(
 	display *displayactions.Dispatcher,
 	secrets secretStore,
 ) *Server {
-	server, err := newServerWithError(
+	return newServerWithSecrets(
 		cfg,
 		version,
 		nil,
@@ -209,10 +209,6 @@ func NewServerWithSecrets(
 		display,
 		secrets,
 	)
-	if err != nil {
-		panic(err)
-	}
-	return server
 }
 
 func newServer(
@@ -227,7 +223,7 @@ func newServer(
 	configPath string,
 	display *displayactions.Dispatcher,
 ) *Server {
-	server, err := newServerWithError(
+	return newServerWithSecrets(
 		cfg,
 		version,
 		messageSender,
@@ -240,13 +236,9 @@ func newServer(
 		display,
 		nil,
 	)
-	if err != nil {
-		panic(err)
-	}
-	return server
 }
 
-func newServerWithError(
+func newServerWithSecrets(
 	cfg config.Config,
 	version string,
 	messageSender a2aclient.MessageSender,
@@ -258,7 +250,7 @@ func newServerWithError(
 	configPath string,
 	display *displayactions.Dispatcher,
 	secretStore secretStore,
-) (*Server, error) {
+) *Server {
 	if messageSender == nil {
 		messageSender = a2aclient.NewJSONRPCClient()
 	}
@@ -480,7 +472,7 @@ func newServerWithError(
 	)(
 		echoServer,
 	)
-	return server, nil
+	return server
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
