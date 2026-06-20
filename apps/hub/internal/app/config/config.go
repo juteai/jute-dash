@@ -17,18 +17,21 @@ import (
 )
 
 type Config struct {
-	Home      model.HomeConfig       `json:"home"      yaml:"home"`
-	Server    ServerConfig           `json:"server"    yaml:"server"`
-	Log       LogConfig              `json:"log"       yaml:"log"`
-	MCP       mcp.Config             `json:"mcp"       yaml:"mcp"`
-	A2A       a2a.AgentCardURLPolicy `json:"a2a"       yaml:"a2a"`
-	Display   model.DisplayConfig    `json:"display"   yaml:"display"`
-	Voice     model.Config           `json:"voice"     yaml:"voice"`
-	Dashboard model.DashboardConfig  `json:"dashboard" yaml:"dashboard"`
-	Agents    []model.AgentConfig    `json:"agents"    yaml:"agents"`
-	Rooms     []model.RoomConfig     `json:"rooms"     yaml:"rooms"`
-	Tiles     []model.TileConfig     `json:"tiles"     yaml:"tiles"`
+	Home          model.HomeConfig       `json:"home"               yaml:"home"`
+	Server        ServerConfig           `json:"server"             yaml:"server"`
+	Log           LogConfig              `json:"log"                yaml:"log"`
+	MCP           mcp.Config             `json:"mcp"                yaml:"mcp"`
+	A2A           a2a.AgentCardURLPolicy `json:"a2a"                yaml:"a2a"`
+	Display       model.DisplayConfig    `json:"display"            yaml:"display"`
+	Voice         model.Config           `json:"voice"              yaml:"voice"`
+	ProviderPacks ProviderPackConfigs    `json:"voiceProviderPacks" yaml:"voice-provider-packs"`
+	Dashboard     model.DashboardConfig  `json:"dashboard"          yaml:"dashboard"`
+	Agents        []model.AgentConfig    `json:"agents"             yaml:"agents"`
+	Rooms         []model.RoomConfig     `json:"rooms"              yaml:"rooms"`
+	Tiles         []model.TileConfig     `json:"tiles"              yaml:"tiles"`
 }
+
+type ProviderPackConfigs []model.ProviderPackConfig
 
 type ServerConfig struct {
 	ListenAddress string `json:"listenAddress" yaml:"listen-address"`
@@ -124,6 +127,12 @@ func ValidateConfig(cfg Config) error {
 	problems = append(problems, a2a.ValidateAgentCardURLPolicy(cfg.A2A)...)
 	problems = append(problems, model.ValidateDisplay(cfg.Display)...)
 	problems = append(problems, model.Validate(cfg.Voice)...)
+	validateUniqueIDs(
+		"voiceProviderPacks",
+		cfg.ProviderPacks,
+		func(pack model.ProviderPackConfig) string { return pack.ID },
+		&problems,
+	)
 
 	seenAgents := map[string]struct{}{}
 	for i, agent := range cfg.Agents {

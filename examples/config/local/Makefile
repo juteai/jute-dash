@@ -2,6 +2,7 @@ SHELL := /bin/bash
 JUTE_MCP_URL ?= http://127.0.0.1:8790/mcp
 JUTE_WEB_URL ?= https://localhost:5173
 JUTE_WEB_SCRIPT ?= dev:https
+JUTE_DATA_DIR ?= ../../../.jute/local-dev
 
 .PHONY: run run-http run-mock run-kronk run-ollama run-gemini clean
 
@@ -10,7 +11,7 @@ run:
 	@echo "Starting Jute Hub + HTTPS Web Dashboard (standalone)..."
 	@echo "Open $(JUTE_WEB_URL)"
 	@trap 'kill 0' SIGINT; \
-	(cd ../../../apps/hub && go run ./cmd/juted -config ../../examples/config/local/config.yaml) & \
+	(cd ../../../apps/hub && go run ./cmd/juted -config ../../examples/config/local/config.yaml -data-dir "$(JUTE_DATA_DIR)") & \
 	(cd ../../../apps/web && npm run $(JUTE_WEB_SCRIPT)) & \
 	wait
 
@@ -52,4 +53,4 @@ run-gemini:
 
 # 7. Reset local development databases and caches
 clean:
-	rm -rf ../../../.jute/dev-mock-a2a ../../../.jute/dev-kronk-a2a
+	rm -rf ../../../.jute/local-dev ../../../.jute/dev-mock-a2a ../../../.jute/dev-kronk-a2a

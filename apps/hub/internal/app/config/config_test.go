@@ -624,6 +624,7 @@ func TestDevConfigLoads(t *testing.T) {
 	}
 	assertDevAgents(t, cfg)
 	assertDevHarnessWidgets(t, cfg)
+	assertDevVoice(t, cfg)
 }
 
 func TestDevMCPConfigLoads(t *testing.T) {
@@ -637,6 +638,23 @@ func TestDevMCPConfigLoads(t *testing.T) {
 		t.Fatalf("unexpected dev MCP config: %+v", cfg.MCP)
 	}
 	assertDevAgents(t, cfg)
+	assertDevVoice(t, cfg)
+}
+
+func assertDevVoice(t *testing.T, cfg Config) {
+	t.Helper()
+	if !cfg.Voice.Enabled ||
+		cfg.Voice.MutedByDefault ||
+		cfg.Voice.WakeWordModelID != "hey-jute" ||
+		cfg.Voice.STTProviderID != "local-dev-stt" ||
+		cfg.Voice.TTSProviderID != "local-dev-tts" ||
+		cfg.Voice.TTSVoiceID != "amy" ||
+		!cfg.Voice.CommandProvidersEnabled {
+		t.Fatalf("unexpected dev voice config: %+v", cfg.Voice)
+	}
+	if len(cfg.ProviderPacks) != 3 {
+		t.Fatalf("expected 3 dev voice provider packs, got %d", len(cfg.ProviderPacks))
+	}
 }
 
 func assertDevAgents(t *testing.T, cfg Config) {

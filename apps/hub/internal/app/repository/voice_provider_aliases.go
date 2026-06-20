@@ -6,8 +6,12 @@ type WakeProvider = service.WakeProvider
 type STTProvider = service.STTProvider
 type TTSProvider = service.TTSProvider
 type ProviderManifest = service.ProviderManifest
+type TransportManifest = service.TransportManifest
+type CredentialManifest = service.CredentialManifest
 type WakeWordManifest = service.WakeWordManifest
 type WakeWordModelManifest = service.WakeWordModelManifest
+type TTSManifest = service.TTSManifest
+type TTSVoiceManifest = service.TTSVoiceManifest
 
 const (
 	ProviderKindWakeWord = service.ProviderKindWakeWord

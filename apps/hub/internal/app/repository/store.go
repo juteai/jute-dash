@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/model"
 	"jute-dash/apps/hub/internal/pkg/database"
 	"jute-dash/apps/hub/internal/pkg/filesync"
 
@@ -398,9 +399,138 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 		if err := tx.Create(&vDB).Error; err != nil {
 			return fmt.Errorf("seed voice settings: %w", err)
 		}
+		if err := seedProviderPacks(ctx, tx, cfg.ProviderPacks, now); err != nil {
+			return err
+		}
 
 		return nil
 	})
+}
+
+func seedProviderPacks(
+	ctx context.Context,
+	tx *gorm.DB,
+	packs []model.ProviderPackConfig,
+	now string,
+) error {
+	for _, pack := range packs {
+		provider, err := providerPackDBFromConfig(pack, now)
+		if err != nil {
+			return err
+		}
+		if err := tx.WithContext(ctx).Create(&provider).Error; err != nil {
+			return fmt.Errorf("seed voice provider %s: %w", pack.ID, err)
+		}
+	}
+	return nil
+}
+
+func providerPackDBFromConfig(pack model.ProviderPackConfig, now string) (ProviderPackDB, error) {
+	manifest := providerManifestFromConfig(pack)
+	if problems := ValidateProviderManifest(manifest); len(problems) > 0 {
+		return ProviderPackDB{}, fmt.Errorf(
+			"invalid voice provider pack %s: %s",
+			pack.ID,
+			strings.Join(problems, "; "),
+		)
+	}
+	manifestBytes, err := json.Marshal(manifest)
+	if err != nil {
+		return ProviderPackDB{}, fmt.Errorf("marshal voice provider %s: %w", pack.ID, err)
+	}
+	health := strings.TrimSpace(pack.Health)
+	if health == "" {
+		health = "available"
+	}
+	transportType := strings.TrimSpace(pack.TransportKind)
+	if transportType == "" {
+		transportType = manifest.Transport.Type
+	}
+	installedAt := strings.TrimSpace(pack.InstalledAt)
+	if installedAt == "" {
+		installedAt = now
+	}
+	updatedAt := strings.TrimSpace(pack.UpdatedAt)
+	if updatedAt == "" {
+		updatedAt = now
+	}
+	return ProviderPackDB{
+		ID:            manifest.ID,
+		Name:          manifest.Name,
+		Version:       manifest.Version,
+		Kind:          manifest.Kind,
+		TransportType: transportType,
+		ManifestJSON:  string(manifestBytes),
+		HealthStatus:  health,
+		LastError:     pack.Error,
+		InstalledAt:   installedAt,
+		UpdatedAt:     updatedAt,
+	}, nil
+}
+
+func providerManifestFromConfig(pack model.ProviderPackConfig) ProviderManifest {
+	credentials := make([]CredentialManifest, 0, len(pack.Credentials))
+	for _, credential := range pack.Credentials {
+		credentials = append(credentials, CredentialManifest{
+			ID:       credential.ID,
+			Label:    credential.Label,
+			Source:   credential.Source,
+			Env:      credential.Env,
+			Required: credential.Required,
+		})
+	}
+	var wakeWord WakeWordManifest
+	if pack.Wake != nil {
+		wakeModels := make([]WakeWordModelManifest, 0, len(pack.Wake.Models))
+		for _, wakeModel := range pack.Wake.Models {
+			wakeModels = append(wakeModels, WakeWordModelManifest{
+				ID:          wakeModel.ID,
+				Path:        wakeModel.Path,
+				Phrase:      wakeModel.Phrase,
+				Languages:   append([]string(nil), wakeModel.Languages...),
+				Sensitivity: wakeModel.Sensitivity,
+			})
+		}
+		wakeWord = WakeWordManifest{
+			DefaultModelID: pack.Wake.DefaultModelID,
+			Phrase:         pack.Wake.Phrase,
+			Languages:      append([]string(nil), pack.Wake.Languages...),
+			Sensitivity:    pack.Wake.Sensitivity,
+			Models:         wakeModels,
+		}
+	}
+	var tts TTSManifest
+	if pack.TTS != nil {
+		ttsVoices := make([]TTSVoiceManifest, 0, len(pack.TTS.Voices))
+		for _, voice := range pack.TTS.Voices {
+			ttsVoices = append(ttsVoices, TTSVoiceManifest{
+				ID:      voice.ID,
+				Label:   voice.Label,
+				Locale:  voice.Locale,
+				ModelID: voice.ModelID,
+			})
+		}
+		tts = TTSManifest{
+			DefaultVoiceID: pack.TTS.DefaultVoiceID,
+			DefaultModelID: pack.TTS.DefaultModelID,
+			Voices:         ttsVoices,
+		}
+	}
+	return ProviderManifest{
+		ID:      pack.ID,
+		Name:    pack.Name,
+		Version: pack.Version,
+		Kind:    pack.Kind,
+		Transport: TransportManifest{
+			Type:    pack.Transport.Type,
+			Command: pack.Transport.Command,
+			Args:    append([]string(nil), pack.Transport.Args...),
+		},
+		Capabilities: pack.Caps,
+		Credentials:  credentials,
+		WakeWord:     wakeWord,
+		TTS:          tts,
+	}
 }
 
 func (s *Store) ensureDefaultVoiceSettings(ctx context.Context, voiceCfg Config) error {

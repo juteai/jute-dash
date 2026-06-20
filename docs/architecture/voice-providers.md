@@ -333,6 +333,8 @@ Provider submissions must document:
 
 Provider packs should include conformance tests once the provider test harness exists. The first harness should use mocked STT/TTS endpoints so CI does not require microphones, speakers, model downloads, or paid APIs.
 
+Bootstrap configs may include `voice-provider-packs` records to seed provider manifests into the hub store for a fresh install or local dev stack. Runtime provider state still lives in SQLite; the bootstrap file is not the live source of truth after seeding.
+
 ## Security Rules
 
 - Treat third-party provider manifests as untrusted input; reject unknown fields and trailing JSON before validation.

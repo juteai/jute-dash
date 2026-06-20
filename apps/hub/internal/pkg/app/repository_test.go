@@ -362,6 +362,97 @@ func TestVoiceProvidersDefaultsToEmptyList(t *testing.T) {
 	}
 }
 
+func TestInitializeSeedsProviderPacksFromBootstrap(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+
+	bootstrap := DefaultConfig()
+	bootstrap.Voice.Enabled = true
+	bootstrap.Voice.MutedByDefault = false
+	bootstrap.Voice.WakeWordModelID = "hey-jute"
+	bootstrap.Voice.STTProviderID = "local-dev-stt"
+	bootstrap.Voice.TTSProviderID = "local-dev-tts"
+	bootstrap.Voice.TTSVoiceID = "amy"
+	bootstrap.Voice.CommandProvidersEnabled = true
+	bootstrap.ProviderPacks = []model.ProviderPackConfig{
+		{
+			ID:      "local-dev-wake",
+			Name:    "Local Dev Wake",
+			Version: "dev",
+			Kind:    service.ProviderKindWakeWord,
+			Transport: model.ProviderTransport{
+				Type:    "command",
+				Command: "/bin/sh",
+				Args:    []string{"dev-voice-provider.sh", "wake", "{inputPath}", "{modelId}"},
+			},
+			Caps: model.ProviderCapabilities{Offline: true, Languages: []string{"en"}},
+			Wake: &model.WakeWordProvider{
+				DefaultModelID: "hey-jute",
+				Phrase:         "Hey Jute",
+				Sensitivity:    0.5,
+				Models: []model.WakeWordModelConfig{{
+					ID:          "hey-jute",
+					Path:        "models/hey-jute.tflite",
+					Phrase:      "Hey Jute",
+					Sensitivity: 0.5,
+				}},
+			},
+		},
+		{
+			ID:      "local-dev-stt",
+			Name:    "Local Dev STT",
+			Version: "dev",
+			Kind:    service.ProviderKindSTT,
+			Transport: model.ProviderTransport{
+				Type:    "command",
+				Command: "/bin/sh",
+				Args:    []string{"dev-voice-provider.sh", "stt", "{inputPath}", "{modelId}"},
+			},
+			Caps: model.ProviderCapabilities{Offline: true, Languages: []string{"en"}},
+		},
+		{
+			ID:      "local-dev-tts",
+			Name:    "Local Dev TTS",
+			Version: "dev",
+			Kind:    service.ProviderKindTTS,
+			Transport: model.ProviderTransport{
+				Type:    "command",
+				Command: "/bin/sh",
+				Args:    []string{"dev-voice-provider.sh", "tts"},
+			},
+			Caps: model.ProviderCapabilities{Offline: true, Languages: []string{"en"}},
+			TTS: &model.TTSProvider{
+				DefaultVoiceID: "amy",
+				DefaultModelID: "dev-voice",
+				Voices: []model.TTSVoiceConfig{{
+					ID:      "amy",
+					Label:   "Amy",
+					Locale:  "en",
+					ModelID: "dev-voice",
+				}},
+			},
+		},
+	}
+	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	providers, err := st.VoiceRepo.VoiceProviders(context.Background())
+	if err != nil {
+		t.Fatalf("VoiceProviders() error = %v", err)
+	}
+	if len(providers) != 3 {
+		t.Fatalf("expected seeded voice providers, got %+v", providers)
+	}
+	voices, err := st.VoiceRepo.TTSVoices(context.Background(), "", "")
+	if err != nil {
+		t.Fatalf("TTSVoices() error = %v", err)
+	}
+	if voices.ProviderID != "local-dev-tts" || voices.SetupStatus != "available" || len(voices.Voices) != 1 {
+		t.Fatalf("unexpected seeded TTS voices: %+v", voices)
+	}
+}
+
 func TestVoiceProvidersIncludesWakeWordManifestSummary(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()

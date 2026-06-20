@@ -42,26 +42,122 @@ display:
     accent-color: neutral
     idle-mode: ambient
 voice:
-    enabled: false
-    muted-by-default: true
-    wake-word-model-id: ""
-    wake-word-phrase: ""
+    enabled: true
+    muted-by-default: false
+    wake-word-model-id: hey-jute
+    wake-word-phrase: Hey Jute
     wake-sensitivity: 0.5
-    stt-provider-id: ""
-    tts-provider-id: ""
-    stt-model-id: ""
+    stt-provider-id: local-dev-stt
+    tts-provider-id: local-dev-tts
+    stt-model-id: dev-transcript
     tts-model-id: ""
-    tts-voice-id: ""
-    tts-enabled: false
+    tts-voice-id: amy
+    tts-enabled: true
     tts-locale: en
     tts-speed: 1
     tts-volume: 1
-    preferred-agent-id: mock-agent
+    preferred-agent-id: kronk-agent
     cloud-opt-in: false
-    command-providers-enabled: false
+    command-providers-enabled: true
     sensitive-output-policy: visual_only_sensitive
     followup-window-seconds: 8
     microphone-profile: ""
+voice-provider-packs:
+    - id: local-dev-wake
+      name: Local Dev Wake
+      version: dev
+      kind: wake-word
+      transport:
+        type: command
+        command: /bin/sh
+        args:
+            - ../../examples/config/local/dev-voice-provider.sh
+            - wake
+            - --model
+            - '{modelId}'
+            - --input
+            - '{inputPath}'
+      capabilities:
+        streaming: false
+        partial-transcripts: false
+        offline: true
+        languages:
+            - en
+        input-formats:
+            - audio/wav;rate=16000
+      credentials: []
+      wake-word:
+        default-model-id: hey-jute
+        phrase: Hey Jute
+        languages:
+            - en
+        sensitivity: 0.5
+        models:
+            - id: hey-jute
+              path: models/hey-jute.tflite
+              phrase: Hey Jute
+              languages:
+                - en
+              sensitivity: 0.5
+      health-status: available
+    - id: local-dev-stt
+      name: Local Dev STT
+      version: dev
+      kind: stt
+      transport:
+        type: command
+        command: /bin/sh
+        args:
+            - ../../examples/config/local/dev-voice-provider.sh
+            - stt
+            - --model
+            - '{modelId}'
+            - --input
+            - '{inputPath}'
+            - --language
+            - '{language}'
+      capabilities:
+        streaming: false
+        partial-transcripts: false
+        offline: true
+        languages:
+            - en
+        input-formats:
+            - audio/wav;rate=16000
+      credentials: []
+      health-status: available
+    - id: local-dev-tts
+      name: Local Dev TTS
+      version: dev
+      kind: tts
+      transport:
+        type: command
+        command: /bin/sh
+        args:
+            - ../../examples/config/local/dev-voice-provider.sh
+            - tts
+            - --voice
+            - '{modelId}'
+            - --language
+            - '{language}'
+      capabilities:
+        streaming: false
+        partial-transcripts: false
+        offline: true
+        languages:
+            - en
+        input-formats:
+            - text/plain
+      credentials: []
+      tts:
+        default-voice-id: amy
+        default-model-id: dev-voice
+        voices:
+            - id: amy
+              label: Amy
+              locale: en
+              model-id: dev-voice
+      health-status: available
 dashboard:
     schema-version: 3
     default-variant: tablet-landscape

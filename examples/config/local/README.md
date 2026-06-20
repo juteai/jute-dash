@@ -29,6 +29,8 @@ The browser may ask you to accept the local self-signed certificate the first ti
 make run-http
 ```
 
+`make run` uses a repo-local data directory at `.jute/local-dev` and seeds deterministic local voice provider packs for wake, STT, and TTS. The providers are command-backed dev shims, so the Voice settings screen starts with provider choices selected without requiring a microphone model, Whisper install, or TTS engine.
+
 ### Running with a Specific Agent
 Each target starts the local Jute stack and launches the respective agent module from `examples/agents/` in parallel:
 

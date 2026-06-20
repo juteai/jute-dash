@@ -243,7 +243,11 @@
                 (event.currentTarget as HTMLSelectElement).value
               )}
           >
-            <option value="">Not configured</option>
+            <option value="">
+              {wakeProviders.length === 0
+                ? 'No wake providers installed'
+                : 'Choose wake provider'}
+            </option>
             {#each wakeProviders as provider (provider.id)}
               <option value={provider.id}>{providerLabel(provider)}</option>
             {/each}
@@ -253,7 +257,7 @@
         <label>
           <span>Wake model</span>
           <select bind:value={draft.wakeWordModelId}>
-            <option value="">Not configured</option>
+            <option value="">Choose wake model</option>
             {#each wakeModels as model (model.id)}
               <option value={model.id}>{model.phrase || model.id}</option>
             {/each}
@@ -279,7 +283,11 @@
         <label>
           <span>STT provider</span>
           <select bind:value={draft.sttProviderId}>
-            <option value="">Not configured</option>
+            <option value="">
+              {sttProviders.length === 0
+                ? 'No STT providers installed'
+                : 'Choose STT provider'}
+            </option>
             {#each sttProviders as provider (provider.id)}
               <option value={provider.id}>{providerLabel(provider)}</option>
             {/each}
@@ -288,7 +296,7 @@
 
         <label>
           <span>STT model</span>
-          <input bind:value={draft.sttModelId} />
+          <input bind:value={draft.sttModelId} placeholder="Provider default" />
         </label>
       </div>
     </section>
@@ -311,7 +319,11 @@
         <label>
           <span>TTS provider</span>
           <select bind:value={draft.ttsProviderId} on:change={refreshTTSVoices}>
-            <option value="">Not configured</option>
+            <option value="">
+              {ttsProviders.length === 0
+                ? 'No TTS providers installed'
+                : 'Choose TTS provider'}
+            </option>
             {#each ttsProviders as provider (provider.id)}
               <option value={provider.id}>{providerLabel(provider)}</option>
             {/each}
@@ -332,7 +344,7 @@
 
         <label>
           <span>TTS locale</span>
-          <input bind:value={draft.ttsLocale} />
+          <input bind:value={draft.ttsLocale} placeholder="Provider default" />
         </label>
 
         <label>

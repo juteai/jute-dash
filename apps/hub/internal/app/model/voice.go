@@ -102,12 +102,60 @@ type ProviderPack struct {
 	UpdatedAt        string                   `json:"updatedAt"`
 }
 
+// ProviderPackConfig is a bootstrap install record for a voice provider pack.
+type ProviderPackConfig struct {
+	ID            string               `json:"id"                      yaml:"id"`
+	Name          string               `json:"name"                    yaml:"name"`
+	Version       string               `json:"version"                 yaml:"version"`
+	Kind          string               `json:"kind"                    yaml:"kind"`
+	Transport     ProviderTransport    `json:"transport"               yaml:"transport"`
+	Caps          ProviderCapabilities `json:"capabilities"            yaml:"capabilities"`
+	Credentials   []ProviderCredential `json:"credentials"             yaml:"credentials"`
+	Wake          *WakeWordProvider    `json:"wakeWord,omitempty"      yaml:"wake-word,omitempty"`
+	TTS           *TTSProvider         `json:"tts,omitempty"           yaml:"tts,omitempty"`
+	Health        string               `json:"healthStatus"            yaml:"health-status"`
+	Error         string               `json:"lastError,omitempty"     yaml:"last-error,omitempty"`
+	InstalledAt   string               `json:"installedAt,omitempty"   yaml:"installed-at,omitempty"`
+	UpdatedAt     string               `json:"updatedAt,omitempty"     yaml:"updated-at,omitempty"`
+	TransportKind string               `json:"transportType,omitempty" yaml:"transport-type,omitempty"`
+}
+
+type ProviderTransport struct {
+	Type    string   `json:"type"              yaml:"type"`
+	Command string   `json:"command,omitempty" yaml:"command,omitempty"`
+	Args    []string `json:"args,omitempty"    yaml:"args,omitempty"`
+}
+
+type ProviderCredential struct {
+	ID       string `json:"id"       yaml:"id"`
+	Label    string `json:"label"    yaml:"label"`
+	Source   string `json:"source"   yaml:"source"`
+	Env      string `json:"env"      yaml:"env"`
+	Required bool   `json:"required" yaml:"required"`
+}
+
 type ProviderCapabilities struct {
-	Streaming          bool     `json:"streaming"`
-	PartialTranscripts bool     `json:"partialTranscripts"`
-	Offline            bool     `json:"offline"`
-	Languages          []string `json:"languages,omitempty"`
-	InputFormats       []string `json:"inputFormats,omitempty"`
+	Streaming          bool     `json:"streaming"              yaml:"streaming"`
+	PartialTranscripts bool     `json:"partialTranscripts"     yaml:"partial-transcripts"`
+	Offline            bool     `json:"offline"                yaml:"offline"`
+	Languages          []string `json:"languages,omitempty"    yaml:"languages,omitempty"`
+	InputFormats       []string `json:"inputFormats,omitempty" yaml:"input-formats,omitempty"`
+}
+
+type WakeWordProvider struct {
+	DefaultModelID string                `json:"defaultModelId"      yaml:"default-model-id"`
+	Phrase         string                `json:"phrase,omitempty"    yaml:"phrase,omitempty"`
+	Languages      []string              `json:"languages,omitempty" yaml:"languages,omitempty"`
+	Sensitivity    float64               `json:"sensitivity"         yaml:"sensitivity"`
+	Models         []WakeWordModelConfig `json:"models,omitempty"    yaml:"models,omitempty"`
+}
+
+type WakeWordModelConfig struct {
+	ID          string   `json:"id"                  yaml:"id"`
+	Path        string   `json:"path"                yaml:"path"`
+	Phrase      string   `json:"phrase,omitempty"    yaml:"phrase,omitempty"`
+	Languages   []string `json:"languages,omitempty" yaml:"languages,omitempty"`
+	Sensitivity float64  `json:"sensitivity"         yaml:"sensitivity"`
 }
 
 type WakeWordProviderSummary struct {
@@ -123,6 +171,19 @@ type WakeWordModelSummary struct {
 	Phrase      string   `json:"phrase,omitempty"`
 	Languages   []string `json:"languages,omitempty"`
 	Sensitivity float64  `json:"sensitivity,omitempty"`
+}
+
+type TTSProvider struct {
+	DefaultVoiceID string           `json:"defaultVoiceId,omitempty" yaml:"default-voice-id,omitempty"`
+	DefaultModelID string           `json:"defaultModelId,omitempty" yaml:"default-model-id,omitempty"`
+	Voices         []TTSVoiceConfig `json:"voices,omitempty"         yaml:"voices,omitempty"`
+}
+
+type TTSVoiceConfig struct {
+	ID      string `json:"id"                yaml:"id"`
+	Label   string `json:"label"             yaml:"label"`
+	Locale  string `json:"locale"            yaml:"locale"`
+	ModelID string `json:"modelId,omitempty" yaml:"model-id,omitempty"`
 }
 
 type TTSVoicesResponse struct {
