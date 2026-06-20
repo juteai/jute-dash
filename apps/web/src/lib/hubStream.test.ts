@@ -10,7 +10,8 @@ vi.mock('$lib/hubClient', () => ({
   getDashboard: vi.fn(),
   muteVoice: vi.fn(),
   unmuteVoice: vi.fn(),
-  cancelVoice: vi.fn()
+  cancelVoice: vi.fn(),
+  submitVoiceFinalTranscript: vi.fn()
 }));
 
 vi.mock('$lib/logger', () => ({
@@ -58,6 +59,37 @@ describe('hubStream voice events', () => {
       setTimeout: vi.fn(() => 1),
       clearTimeout: vi.fn(),
       fetch: vi.fn()
+    });
+  });
+
+  it('submits browser speech as a final hub voice transcript', async () => {
+    const { hubStream } = await import('./hubStream');
+    const { submitVoiceFinalTranscript } = await import('$lib/hubClient');
+    vi.mocked(submitVoiceFinalTranscript).mockResolvedValue({
+      conversation: {},
+      followup: { active: false, turns: 1, maxTurns: 5 }
+    });
+    const fetcher = vi.fn() as unknown as typeof fetch;
+
+    hubStream.beginBrowserVoiceTurn();
+    hubStream.applyBrowserVoicePartial('turn on');
+    await hubStream.submitBrowserVoiceTranscript('turn on the lights', fetcher);
+
+    expect(submitVoiceFinalTranscript).toHaveBeenCalledWith(fetcher, {
+      text: 'turn on the lights',
+      deviceProfileId: '',
+      conversationId: expect.stringMatching(/^browser-voice-/),
+      agentId: ''
+    });
+    expect(get(hubStream)).toMatchObject({
+      voiceOrbState: 'thinking',
+      voiceTranscript: 'turn on the lights',
+      showVoiceOverlay: true
+    });
+    expect(get(hubStream).voiceMessages.at(-1)).toMatchObject({
+      role: 'user',
+      text: 'turn on the lights',
+      status: 'final'
     });
   });
 

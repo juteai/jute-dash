@@ -35,6 +35,10 @@
   import { chatStore } from '$lib/chatStore';
   import { settingsStore } from '$lib/settingsStore';
   import { navigationStore } from '$lib/navigationStore';
+  import {
+    browserSpeechSupported,
+    listenForBrowserSpeech
+  } from '$lib/browserSpeech';
 
   export let data: DashboardData;
 
@@ -57,6 +61,7 @@
   let slideshowIndex = 0;
   let slideshowTimer: number | undefined;
   let lastVoiceChatSyncKey = '';
+  let browserVoiceListening = false;
 
   /* eslint-disable no-useless-assignment */
   let lastData: DashboardData | undefined;
@@ -376,10 +381,38 @@
   }
 
   async function toggleVoiceMute() {
+    if (
+      browser &&
+      $navigationStore.mode === 'chat' &&
+      browserSpeechSupported() &&
+      !browserVoiceListening
+    ) {
+      await startBrowserVoiceTurn();
+      return;
+    }
+
     try {
       await hubStream.toggleVoiceMute(fetch);
     } catch (err) {
       console.error('Failed to toggle voice mute:', err);
+    }
+  }
+
+  async function startBrowserVoiceTurn() {
+    browserVoiceListening = true;
+    hubStream.beginBrowserVoiceTurn();
+    try {
+      const text = await listenForBrowserSpeech({
+        lang: $hubStream.dashboard.voice.ttsLocale || 'en-GB',
+        onPartial: hubStream.applyBrowserVoicePartial
+      });
+      await hubStream.submitBrowserVoiceTranscript(text, fetch);
+    } catch (err) {
+      hubStream.failBrowserVoiceTurn(
+        err instanceof Error ? err.message : 'Browser microphone failed.'
+      );
+    } finally {
+      browserVoiceListening = false;
     }
   }
 
