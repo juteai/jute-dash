@@ -191,6 +191,17 @@ async function handleAPI(
     state.voice = { ...state.voice, ...((await safeBody(request)) as object) };
     return json(route, state.voice);
   }
+  if (path === '/api/v1/voice/unmute' && method === 'POST') {
+    state.voice = { ...state.voice, muted: false, state: 'wake_listening' };
+    return json(route, state.voice);
+  }
+  if (path === '/api/v1/voice/mute' && method === 'POST') {
+    state.voice = { ...state.voice, muted: true, state: 'muted' };
+    return json(route, state.voice);
+  }
+  if (path === '/api/v1/voice/cancel' && method === 'POST') {
+    return json(route, state.voice);
+  }
   if (path === '/api/v1/status' && method === 'GET')
     return json(route, state.status);
   if (path === '/api/v1/settings/household' && method === 'GET')

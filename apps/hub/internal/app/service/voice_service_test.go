@@ -143,6 +143,44 @@ func TestLocalVoiceServiceCapturesUtteranceWithPreRoll(t *testing.T) {
 	}
 }
 
+func TestLocalVoiceServiceMaxUtteranceFlushesWithoutWaitingForSilence(t *testing.T) {
+	start := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	frames := []AudioFrame{
+		fixtureFrame(start, 0, 42),
+		fixtureFrame(start, 100*time.Millisecond, 50),
+		fixtureFrame(start, 200*time.Millisecond, 60),
+		fixtureFrame(start, 300*time.Millisecond, 0),
+	}
+	emitter := &recordingWakeEmitter{}
+	var got []CapturedUtterance
+	service := NewLocalVoiceService(
+		VoiceServiceConfig{
+			Enabled:      true,
+			Muted:        false,
+			MaxUtterance: 300 * time.Millisecond,
+		},
+		fixtureCapture{frames: frames},
+		thresholdVAD{threshold: 10},
+		nil,
+		emitter,
+		func(utterance CapturedUtterance) {
+			got = append(got, utterance)
+		},
+	)
+
+	if err := service.Start(context.Background()); err != nil {
+		t.Fatalf("start service: %v", err)
+	}
+	waitServiceDone(t, service)
+
+	if len(got) != 1 {
+		t.Fatalf("expected max utterance flush, got %d utterances", len(got))
+	}
+	if len(got[0].Frames) != 3 || got[0].EndedAt.Sub(got[0].StartedAt) != 300*time.Millisecond {
+		t.Fatalf("unexpected max utterance capture: %+v", got[0])
+	}
+}
+
 func TestLocalVoiceServiceCancelReturnsToWakeListeningWithoutUtterance(t *testing.T) {
 	frames := make(chan AudioFrame)
 	errs := make(chan error)

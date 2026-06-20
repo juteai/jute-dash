@@ -1,11 +1,13 @@
 package specs
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strings"
 
 	"jute-dash/apps/hub/tests/integration/bootstrap"
 
@@ -88,6 +90,13 @@ var _ = Describe("Hub endpoint coverage", Label("SMOKE"), func() {
 	})
 
 	It("covers voice and TTS endpoints", func(ctx SpecContext) {
+		streamReq, err := http.NewRequestWithContext(ctx, http.MethodGet, bootstrap.BaseURL()+"/api/v1/events", nil)
+		Expect(err).NotTo(HaveOccurred())
+		streamResp, err := client.Do(streamReq)
+		Expect(err).NotTo(HaveOccurred())
+		defer streamResp.Body.Close()
+		stream := bufio.NewReader(streamResp.Body)
+
 		status := expectJSON(ctx, client, http.MethodGet, "/api/v1/voice/status", nil, http.StatusOK)
 		expectJSON(ctx, client, http.MethodPatch, "/api/v1/voice/settings", map[string]any{
 			"enabled":               boolField(status, "enabled"),
@@ -96,7 +105,9 @@ var _ = Describe("Hub endpoint coverage", Label("SMOKE"), func() {
 			"followupWindowSeconds": numberField(status, "followupWindowSeconds", 8),
 		}, http.StatusOK)
 		expectJSON(ctx, client, http.MethodPost, "/api/v1/voice/mute", nil, http.StatusOK)
+		expectSSEPayload(ctx, stream, "voice.state_changed", true)
 		expectJSON(ctx, client, http.MethodPost, "/api/v1/voice/unmute", nil, http.StatusOK)
+		expectSSEPayload(ctx, stream, "voice.state_changed", false)
 		expectJSON(ctx, client, http.MethodPost, "/api/v1/voice/cancel", nil, http.StatusOK)
 		expectJSON(ctx, client, http.MethodGet, "/api/v1/voice/providers", nil, http.StatusOK)
 		expectJSON(ctx, client, http.MethodPost, "/api/v1/voice/transcripts/final", map[string]any{
@@ -149,6 +160,37 @@ func expectNoBody(ctx SpecContext, client *http.Client, method, path string, sta
 	Expect(err).NotTo(HaveOccurred())
 	defer resp.Body.Close()
 	Expect(resp.StatusCode).To(Equal(status))
+}
+
+func expectSSEPayload(ctx SpecContext, reader *bufio.Reader, eventName string, muted bool) {
+	var sawEvent bool
+	for {
+		select {
+		case <-ctx.Done():
+			Fail("timed out waiting for " + eventName)
+		default:
+		}
+		line, err := reader.ReadString('\n')
+		Expect(err).NotTo(HaveOccurred())
+		line = strings.TrimSpace(line)
+		if line == "event: "+eventName {
+			sawEvent = true
+			continue
+		}
+		if !sawEvent || !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		var envelope struct {
+			Payload struct {
+				Muted bool `json:"muted"`
+			} `json:"payload"`
+		}
+		Expect(json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &envelope)).To(Succeed())
+		if envelope.Payload.Muted == muted {
+			return
+		}
+		sawEvent = false
+	}
 }
 
 func stringField(values map[string]any, key, fallback string) string {
