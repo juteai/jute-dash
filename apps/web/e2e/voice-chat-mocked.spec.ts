@@ -50,7 +50,9 @@ test('chat mic button submits browser speech through hub voice transcript route'
   await page.goto('/');
   await page.getByRole('button', { name: 'Open chat' }).click();
 
-  await page.getByRole('button', { name: 'Voice muted' }).last().click();
+  const mic = page.getByRole('button', { name: 'Wake listening' }).last();
+  await expect(mic).toHaveAttribute('aria-pressed', 'false');
+  await mic.click();
   await hub.expectWrite('POST', '/api/v1/voice/transcripts/final');
   await expect(
     page
@@ -66,4 +68,20 @@ test('chat mic button submits browser speech through hub voice transcript route'
         )?.body
     )
     .toMatchObject({ text: 'turn on the lights' });
+});
+
+test('voice mute button is plain when listening and colored when muted', async ({
+  page
+}) => {
+  const hub = await createMockHub(page);
+  await page.goto('/');
+
+  const listening = page.getByRole('button', { name: 'Wake listening' });
+  await expect(listening).toHaveAttribute('aria-pressed', 'false');
+
+  await listening.click();
+  await hub.expectWrite('POST', '/api/v1/voice/mute');
+  await expect(
+    page.getByRole('button', { name: 'Voice muted' })
+  ).toHaveAttribute('aria-pressed', 'true');
 });

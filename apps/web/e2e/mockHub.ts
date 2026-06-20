@@ -203,6 +203,9 @@ async function handleAPI(
     return json(route, state.voice);
   }
   if (path === '/api/v1/voice/transcripts/final' && method === 'POST') {
+    if (!state.voice.enabled || state.voice.muted) {
+      return json(route, { error: 'voice is not listening' }, 409);
+    }
     return json(route, {
       conversation: { id: 'browser-voice-test' },
       followup: { active: false, turns: 1, maxTurns: 5 }
@@ -529,8 +532,8 @@ function agent() {
 function voice() {
   return {
     enabled: true,
-    muted: true,
-    state: 'idle',
+    muted: false,
+    state: 'wake_listening',
     serviceStatus: 'ready',
     deviceProfileId: 'test-display',
     wakeWordModelId: 'local',

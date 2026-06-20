@@ -44,7 +44,7 @@
     label={voiceLabel}
     variant="outline"
     disabled={!voiceReady || state === 'thinking' || state === 'streaming'}
-    pressed={voiceReady && !voice.muted}
+    pressed={voiceReady && voice.muted}
     on:click={onVoiceClick}
   >
     {#if voiceReady && !voice.muted}
