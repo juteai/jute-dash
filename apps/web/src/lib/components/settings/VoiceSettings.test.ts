@@ -87,6 +87,34 @@ async function loadVoiceSettings() {
       return jsonResponse({
         providers: [
           {
+            id: 'local-wake',
+            name: 'Local Wake',
+            version: '1.0.0',
+            kind: 'wake-word',
+            transportType: 'command',
+            capabilities: {
+              streaming: false,
+              partialTranscripts: false,
+              offline: true,
+              languages: ['en-GB'],
+              inputFormats: ['audio/pcm']
+            },
+            wakeWord: {
+              defaultModelId: 'hey-jute',
+              phrase: 'Hey Jute',
+              sensitivity: 0.5,
+              models: [
+                {
+                  id: 'hey-jute',
+                  phrase: 'Hey Jute',
+                  sensitivity: 0.5
+                }
+              ]
+            },
+            healthStatus: 'available',
+            updatedAt: '2026-06-17T08:00:00Z'
+          },
+          {
             id: 'cloud-stt',
             name: 'Cloud STT',
             version: '1.0.0',
@@ -149,26 +177,52 @@ describe('VoiceSettings', () => {
     settingsStore.clearIssue();
   });
 
-  it('renders hub-owned voice settings', async () => {
+  it('renders wake settings without STT or TTS controls', async () => {
     await loadVoiceSettings();
 
-    const { body } = render(VoiceSettings);
+    const { body } = render(VoiceSettings, { props: { section: 'wake' } });
 
     expect(body).toContain('Device profile');
     expect(body).toContain('kitchen-display');
     expect(body).toContain('Mute');
     expect(body).toContain('Cancel');
     expect(body).toContain('Save voice');
-    expect(body).toContain('Activation');
     expect(body).toContain('Provider access');
-    expect(body).toContain('Wake and transcript');
-    expect(body).toContain('Spoken response');
+    expect(body).toContain('Wake provider');
+    expect(body).toContain('Wake model');
     expect(body).toContain('Cloud providers');
     expect(body).toContain('Command providers');
+    expect(body).toContain('Local Wake · local · available');
+    expect(body).not.toContain('STT provider');
+    expect(body).not.toContain('TTS provider');
+    expect(body).not.toContain('Satellites');
+  });
+
+  it('renders STT settings without Wake or TTS controls', async () => {
+    await loadVoiceSettings();
+
+    const { body } = render(VoiceSettings, { props: { section: 'stt' } });
+
+    expect(body).toContain('Provider access');
+    expect(body).toContain('STT provider');
+    expect(body).toContain('STT model');
     expect(body).toContain('Cloud STT · cloud · available');
+    expect(body).not.toContain('Wake provider');
+    expect(body).not.toContain('TTS provider');
+  });
+
+  it('renders TTS settings without Wake or STT controls', async () => {
+    await loadVoiceSettings();
+
+    const { body } = render(VoiceSettings, { props: { section: 'tts' } });
+
+    expect(body).toContain('Provider access');
+    expect(body).toContain('TTS provider');
+    expect(body).toContain('TTS voice');
     expect(body).toContain('Command TTS · local · available');
     expect(body).toContain('TTS setup');
     expect(body).toContain('available');
-    expect(body).not.toContain('Satellites');
+    expect(body).not.toContain('Wake provider');
+    expect(body).not.toContain('STT provider');
   });
 });

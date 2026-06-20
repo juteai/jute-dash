@@ -46,7 +46,9 @@
     | 'connections'
     | 'agents'
     | 'mcp'
-    | 'voice'
+    | 'voice-wake'
+    | 'voice-stt'
+    | 'voice-tts'
     | 'appearance'
     | 'about' = 'household';
   let mounted = false;

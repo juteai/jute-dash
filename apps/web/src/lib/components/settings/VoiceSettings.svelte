@@ -6,6 +6,8 @@
   import { hubStream } from '$lib/hubStream';
   import type { VoiceProvider, VoiceStatus } from '$lib/types';
 
+  export let section: 'wake' | 'stt' | 'tts' = 'wake';
+
   let draft: VoiceStatus | undefined;
   let lastJSON = '';
 
@@ -181,42 +183,6 @@
     </div>
 
     <section class="settings-section">
-      <h3>Activation</h3>
-      <div class="settings-form-grid">
-        <label class="switch-field">
-          <span>Voice</span>
-          <input type="checkbox" bind:checked={draft.enabled} />
-        </label>
-
-        <label>
-          <span>Preferred agent</span>
-          <select bind:value={draft.preferredAgentId}>
-            <option value="">First enabled agent</option>
-            {#each $hubStream.dashboard.agents as agent (agent.id)}
-              <option value={agent.id}>{agent.name}</option>
-            {/each}
-          </select>
-        </label>
-
-        <label>
-          <span>Follow-up window</span>
-          <input
-            type="number"
-            min="1"
-            max="45"
-            step="1"
-            bind:value={draft.followupWindowSeconds}
-          />
-        </label>
-
-        <label>
-          <span>Microphone profile</span>
-          <input bind:value={draft.microphoneProfile} />
-        </label>
-      </div>
-    </section>
-
-    <section class="settings-section">
       <h3>Provider access</h3>
       <div class="settings-form-grid">
         <label class="switch-field">
@@ -231,152 +197,199 @@
       </div>
     </section>
 
-    <section class="settings-section">
-      <h3>Wake and transcript</h3>
-      <div class="settings-form-grid">
-        <label>
-          <span>Wake provider</span>
-          <select
-            value={selectedWakeProvider?.id ?? ''}
-            on:change={(event) =>
-              selectWakeProvider(
-                (event.currentTarget as HTMLSelectElement).value
-              )}
-          >
-            <option value="">
-              {wakeProviders.length === 0
-                ? 'No wake providers installed'
-                : 'Choose wake provider'}
-            </option>
-            {#each wakeProviders as provider (provider.id)}
-              <option value={provider.id}>{providerLabel(provider)}</option>
-            {/each}
-          </select>
-        </label>
+    {#if section === 'wake'}
+      <section class="settings-section">
+        <h3>Wake</h3>
+        <div class="settings-form-grid">
+          <label class="switch-field">
+            <span>Voice</span>
+            <input type="checkbox" bind:checked={draft.enabled} />
+          </label>
 
-        <label>
-          <span>Wake model</span>
-          <select bind:value={draft.wakeWordModelId}>
-            <option value="">Choose wake model</option>
-            {#each wakeModels as model (model.id)}
-              <option value={model.id}>{model.phrase || model.id}</option>
-            {/each}
-          </select>
-        </label>
-
-        <label>
-          <span>Wake phrase</span>
-          <input bind:value={draft.wakeWordPhrase} />
-        </label>
-
-        <label>
-          <span>Wake sensitivity {draft.wakeSensitivity.toFixed(2)}</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            bind:value={draft.wakeSensitivity}
-          />
-        </label>
-
-        <label>
-          <span>STT provider</span>
-          <select bind:value={draft.sttProviderId}>
-            <option value="">
-              {sttProviders.length === 0
-                ? 'No STT providers installed'
-                : 'Choose STT provider'}
-            </option>
-            {#each sttProviders as provider (provider.id)}
-              <option value={provider.id}>{providerLabel(provider)}</option>
-            {/each}
-          </select>
-        </label>
-
-        <label>
-          <span>STT model</span>
-          <input bind:value={draft.sttModelId} placeholder="Provider default" />
-        </label>
-      </div>
-    </section>
-
-    <section class="settings-section">
-      <h3>Spoken response</h3>
-      <div class="settings-form-grid">
-        <label class="switch-field">
-          <span>TTS</span>
-          <input type="checkbox" bind:checked={draft.ttsEnabled} />
-        </label>
-
-        <label>
-          <span>TTS setup</span>
-          <Badge tone={badgeTone(ttsSetupStatus)}
-            >{statusLabel(ttsSetupStatus)}</Badge
-          >
-        </label>
-
-        <label>
-          <span>TTS provider</span>
-          <select bind:value={draft.ttsProviderId} on:change={refreshTTSVoices}>
-            <option value="">
-              {ttsProviders.length === 0
-                ? 'No TTS providers installed'
-                : 'Choose TTS provider'}
-            </option>
-            {#each ttsProviders as provider (provider.id)}
-              <option value={provider.id}>{providerLabel(provider)}</option>
-            {/each}
-          </select>
-        </label>
-
-        <label>
-          <span>TTS voice</span>
-          <select bind:value={draft.ttsVoiceId}>
-            <option value="">Provider default</option>
-            {#each ttsVoices as voiceOption (voiceOption.id)}
-              <option value={voiceOption.id}>
-                {voiceOption.label} · {voiceOption.locale}
+          <label>
+            <span>Wake provider</span>
+            <select
+              value={selectedWakeProvider?.id ?? ''}
+              on:change={(event) =>
+                selectWakeProvider(
+                  (event.currentTarget as HTMLSelectElement).value
+                )}
+            >
+              <option value="">
+                {wakeProviders.length === 0
+                  ? 'No wake providers installed'
+                  : 'Choose wake provider'}
               </option>
-            {/each}
-          </select>
-        </label>
+              {#each wakeProviders as provider (provider.id)}
+                <option value={provider.id}>{providerLabel(provider)}</option>
+              {/each}
+            </select>
+          </label>
 
-        <label>
-          <span>TTS locale</span>
-          <input bind:value={draft.ttsLocale} placeholder="Provider default" />
-        </label>
+          <label>
+            <span>Wake model</span>
+            <select bind:value={draft.wakeWordModelId}>
+              <option value="">Choose wake model</option>
+              {#each wakeModels as model (model.id)}
+                <option value={model.id}>{model.phrase || model.id}</option>
+              {/each}
+            </select>
+          </label>
 
-        <label>
-          <span>TTS speed {draft.ttsSpeed.toFixed(2)}</span>
-          <input
-            type="range"
-            min="0.5"
-            max="2"
-            step="0.05"
-            bind:value={draft.ttsSpeed}
-          />
-        </label>
+          <label>
+            <span>Wake phrase</span>
+            <input bind:value={draft.wakeWordPhrase} />
+          </label>
 
-        <label>
-          <span>TTS volume {draft.ttsVolume.toFixed(2)}</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            bind:value={draft.ttsVolume}
-          />
-        </label>
-      </div>
-    </section>
+          <label>
+            <span>Wake sensitivity {draft.wakeSensitivity.toFixed(2)}</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={draft.wakeSensitivity}
+            />
+          </label>
 
-    {#if selectedTTSCloud && !draft.cloudOptIn}
+          <label>
+            <span>Preferred agent</span>
+            <select bind:value={draft.preferredAgentId}>
+              <option value="">First enabled agent</option>
+              {#each $hubStream.dashboard.agents as agent (agent.id)}
+                <option value={agent.id}>{agent.name}</option>
+              {/each}
+            </select>
+          </label>
+
+          <label>
+            <span>Follow-up window</span>
+            <input
+              type="number"
+              min="1"
+              max="45"
+              step="1"
+              bind:value={draft.followupWindowSeconds}
+            />
+          </label>
+
+          <label>
+            <span>Microphone profile</span>
+            <input bind:value={draft.microphoneProfile} />
+          </label>
+        </div>
+      </section>
+    {:else if section === 'stt'}
+      <section class="settings-section">
+        <h3>STT</h3>
+        <div class="settings-form-grid">
+          <label>
+            <span>STT provider</span>
+            <select bind:value={draft.sttProviderId}>
+              <option value="">
+                {sttProviders.length === 0
+                  ? 'No STT providers installed'
+                  : 'Choose STT provider'}
+              </option>
+              {#each sttProviders as provider (provider.id)}
+                <option value={provider.id}>{providerLabel(provider)}</option>
+              {/each}
+            </select>
+          </label>
+
+          <label>
+            <span>STT model</span>
+            <input
+              bind:value={draft.sttModelId}
+              placeholder="Provider default"
+            />
+          </label>
+        </div>
+      </section>
+    {:else}
+      <section class="settings-section">
+        <h3>TTS</h3>
+        <div class="settings-form-grid">
+          <label class="switch-field">
+            <span>TTS</span>
+            <input type="checkbox" bind:checked={draft.ttsEnabled} />
+          </label>
+
+          <label>
+            <span>TTS setup</span>
+            <Badge tone={badgeTone(ttsSetupStatus)}
+              >{statusLabel(ttsSetupStatus)}</Badge
+            >
+          </label>
+
+          <label>
+            <span>TTS provider</span>
+            <select
+              bind:value={draft.ttsProviderId}
+              on:change={refreshTTSVoices}
+            >
+              <option value="">
+                {ttsProviders.length === 0
+                  ? 'No TTS providers installed'
+                  : 'Choose TTS provider'}
+              </option>
+              {#each ttsProviders as provider (provider.id)}
+                <option value={provider.id}>{providerLabel(provider)}</option>
+              {/each}
+            </select>
+          </label>
+
+          <label>
+            <span>TTS voice</span>
+            <select bind:value={draft.ttsVoiceId}>
+              <option value="">Provider default</option>
+              {#each ttsVoices as voiceOption (voiceOption.id)}
+                <option value={voiceOption.id}>
+                  {voiceOption.label} · {voiceOption.locale}
+                </option>
+              {/each}
+            </select>
+          </label>
+
+          <label>
+            <span>TTS locale</span>
+            <input
+              bind:value={draft.ttsLocale}
+              placeholder="Provider default"
+            />
+          </label>
+
+          <label>
+            <span>TTS speed {draft.ttsSpeed.toFixed(2)}</span>
+            <input
+              type="range"
+              min="0.5"
+              max="2"
+              step="0.05"
+              bind:value={draft.ttsSpeed}
+            />
+          </label>
+
+          <label>
+            <span>TTS volume {draft.ttsVolume.toFixed(2)}</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={draft.ttsVolume}
+            />
+          </label>
+        </div>
+      </section>
+    {/if}
+
+    {#if section === 'tts' && selectedTTSCloud && !draft.cloudOptIn}
       <p class="settings-note">
         Cloud opt-in is required for the selected TTS provider.
       </p>
     {/if}
-    {#if selectedTTSProvider?.lastError}
+    {#if section === 'tts' && selectedTTSProvider?.lastError}
       <p class="settings-note">{selectedTTSProvider.lastError}</p>
     {/if}
   </div>

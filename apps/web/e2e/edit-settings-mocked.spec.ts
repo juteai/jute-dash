@@ -97,21 +97,37 @@ test('settings saves voice provider selections through the hub', async ({
 
   await page.getByRole('button', { name: 'Settings' }).click();
   const settings = page.getByLabel('Jute settings');
-  await settings.getByRole('button', { name: 'Voice', exact: true }).click();
 
+  await settings.getByRole('button', { name: 'Wake', exact: true }).click();
   await settings.getByLabel('Wake provider').selectOption('local-wake');
+  await settings.getByLabel('Command providers').check();
+  await settings.getByRole('button', { name: 'Save voice' }).click();
+
+  await settings.getByRole('button', { name: 'STT', exact: true }).click();
   await settings.getByLabel('STT provider').selectOption('local-stt');
   await settings.getByLabel('STT model').fill('tiny-en');
+  await settings.getByRole('button', { name: 'Save voice' }).click();
+
+  await settings.getByRole('button', { name: 'TTS', exact: true }).click();
   await settings.getByLabel('TTS provider').selectOption('local-tts');
+  await expect(settings.getByLabel('TTS voice')).toContainText('Amy');
   await settings.getByLabel('TTS voice').selectOption('amy');
-  await settings.getByLabel('Command providers').check();
   await settings.getByRole('button', { name: 'Save voice' }).click();
 
   await expect
     .poll(
       () =>
-        hub.writes.find((write) => write.path === '/api/v1/voice/settings')
-          ?.body
+        hub.writes.filter((write) => write.path === '/api/v1/voice/settings')
+          .length
+    )
+    .toBe(3);
+
+  await expect
+    .poll(
+      () =>
+        hub.writes
+          .filter((write) => write.path === '/api/v1/voice/settings')
+          .at(-1)?.body
     )
     .toMatchObject({
       wakeWordModelId: 'hey-jute',
