@@ -42,6 +42,7 @@ type Server struct {
 	voiceStore         controller.VoiceStore
 	voiceSpeaker       *service.Speaker
 	voiceRuntime       *service.ConversationRuntime
+	voiceService       *service.LocalVoiceService
 	configPath         string
 	syncer             filesync.Syncer
 	display            *displayactions.Dispatcher
@@ -447,7 +448,12 @@ func newServerWithSecrets(
 		server.voiceDispatcher,
 		server.voiceRuntime.CancelAll,
 		server.voiceSpeaker,
+	).OnRuntimeChanged(
+		server.restartConfiguredVoiceService,
+		server.setVoiceRuntimeMuted,
+		server.cancelVoiceRuntime,
 	).RegisterRoutes(mux)
+	server.restartConfiguredVoiceService(context.Background())
 
 	controller.NewAgentController(controller.AgentControllerOptions{
 		Manager:             server.agentsManager,
@@ -471,6 +477,74 @@ func newServerWithSecrets(
 		echoServer,
 	)
 	return server
+}
+
+func (s *Server) restartConfiguredVoiceService(ctx context.Context) {
+	s.stopVoiceService()
+	if strings.TrimSpace(s.cfg.Voice.CaptureCommand) == "" {
+		return
+	}
+	settings, err := s.voiceStore.VoiceSettings(ctx, "")
+	if err != nil || !settings.Enabled || settings.Muted {
+		return
+	}
+	capture := service.CommandAudioCapture{
+		Command:       s.cfg.Voice.CaptureCommand,
+		Args:          append([]string(nil), s.cfg.Voice.CaptureArgs...),
+		SampleRate:    s.cfg.Voice.CaptureSampleRate,
+		Channels:      s.cfg.Voice.CaptureChannels,
+		SampleWidth:   s.cfg.Voice.CaptureSampleWidth,
+		FrameDuration: time.Duration(s.cfg.Voice.CaptureFrameMs) * time.Millisecond,
+	}
+	vad := service.EnergyVAD{Threshold: s.cfg.Voice.VADThreshold}
+	voiceService, err := s.newLocalVoiceService(ctx, "", "", capture, vad)
+	if err != nil {
+		slog.Default().WarnContext(ctx, "voice runtime unavailable", "error", err)
+		return
+	}
+	if err := voiceService.Start(context.Background()); err != nil {
+		slog.Default().WarnContext(ctx, "voice runtime did not start", "error", err)
+		return
+	}
+	s.mu.Lock()
+	s.voiceService = voiceService
+	s.mu.Unlock()
+}
+
+func (s *Server) stopVoiceService() {
+	s.mu.Lock()
+	voiceService := s.voiceService
+	s.voiceService = nil
+	s.mu.Unlock()
+	if voiceService != nil {
+		voiceService.Stop()
+	}
+}
+
+func (s *Server) setVoiceRuntimeMuted(muted bool) {
+	s.mu.Lock()
+	voiceService := s.voiceService
+	s.mu.Unlock()
+	if voiceService == nil {
+		if !muted {
+			s.restartConfiguredVoiceService(context.Background())
+		}
+		return
+	}
+	if muted {
+		voiceService.Mute()
+		return
+	}
+	voiceService.Unmute()
+}
+
+func (s *Server) cancelVoiceRuntime() {
+	s.mu.Lock()
+	voiceService := s.voiceService
+	s.mu.Unlock()
+	if voiceService != nil {
+		voiceService.Cancel()
+	}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -5,8 +5,7 @@ import {
   muteVoice,
   unmuteVoice,
   cancelVoice,
-  getDashboard,
-  submitVoiceFinalTranscript
+  getDashboard
 } from '$lib/hubClient';
 import { logger } from '$lib/logger';
 import { navigationStore } from '$lib/navigationStore';
@@ -162,10 +161,6 @@ function voiceMessageID(prefix: string, event: { id?: string }): string {
   return typeof event.id === 'string' && event.id
     ? `${prefix}-${event.id}`
     : `${prefix}-${Date.now()}`;
-}
-
-function localVoiceConversationID(): string {
-  return `browser-voice-${Date.now()}`;
 }
 
 function voiceConversationMessageID(
@@ -898,92 +893,6 @@ function createHubStreamStore() {
         });
         throw err;
       }
-    },
-    beginBrowserVoiceTurn: () => {
-      update((s) => ({
-        ...s,
-        voiceOrbState: 'listening',
-        voiceConversationId:
-          s.voiceConversationId || localVoiceConversationID(),
-        voiceAgentId:
-          s.voiceAgentId ||
-          s.dashboard.voice.preferredAgentId ||
-          s.dashboard.agents.find((agent) => agent.enabled)?.id ||
-          '',
-        voiceTranscript: '',
-        voiceError: '',
-        showVoiceOverlay: true
-      }));
-    },
-    applyBrowserVoicePartial: (text: string) => {
-      const safeText = text.trim();
-      if (!safeText) return;
-      update((s) => ({
-        ...s,
-        voiceTranscript: safeText,
-        voiceMessages: appendOrReplaceVoiceMessage(s.voiceMessages, {
-          id: 'user-browser-voice',
-          role: 'user',
-          text: safeText,
-          createdAt: new Date().toISOString(),
-          status: 'partial'
-        }),
-        voiceOrbState: 'listening',
-        showVoiceOverlay: true
-      }));
-    },
-    submitBrowserVoiceTranscript: async (
-      text: string,
-      fetcher: typeof fetch = window.fetch
-    ) => {
-      const safeText = text.trim();
-      if (!safeText) {
-        throw new Error('No speech detected.');
-      }
-
-      let conversationId = '';
-      let agentId = '';
-      let voice: VoiceStatus = initialStub.voice;
-      update((s) => {
-        conversationId = s.voiceConversationId || localVoiceConversationID();
-        agentId =
-          s.voiceAgentId ||
-          s.dashboard.voice.preferredAgentId ||
-          s.dashboard.agents.find((agent) => agent.enabled)?.id ||
-          '';
-        voice = s.dashboard.voice;
-        return {
-          ...s,
-          voiceConversationId: conversationId,
-          voiceAgentId: agentId,
-          voiceTranscript: safeText,
-          voiceMessages: appendOrReplaceVoiceMessage(s.voiceMessages, {
-            id: 'user-browser-voice',
-            role: 'user',
-            text: safeText,
-            createdAt: new Date().toISOString(),
-            status: 'final'
-          }),
-          voiceOrbState: 'thinking',
-          voiceError: '',
-          showVoiceOverlay: true
-        };
-      });
-
-      await submitVoiceFinalTranscript(fetcher, {
-        text: safeText,
-        deviceProfileId: voice.deviceProfileId,
-        conversationId,
-        agentId
-      });
-    },
-    failBrowserVoiceTurn: (reason: string) => {
-      update((s) => ({
-        ...s,
-        voiceOrbState: 'error',
-        voiceError: reason,
-        showVoiceOverlay: true
-      }));
     },
     toggleVoiceMute: async (fetcher: typeof fetch = window.fetch) => {
       let currentMuted = false;

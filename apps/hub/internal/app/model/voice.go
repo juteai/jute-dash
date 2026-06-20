@@ -7,26 +7,33 @@ import (
 
 // VoiceConfig represents wake word and STT/TTS provider config.
 type VoiceConfig struct {
-	Enabled                 bool    `json:"enabled"                 yaml:"enabled"`
-	MutedByDefault          bool    `json:"mutedByDefault"          yaml:"muted-by-default"`
-	WakeWordModelID         string  `json:"wakeWordModelId"         yaml:"wake-word-model-id"`
-	WakeWordPhrase          string  `json:"wakeWordPhrase"          yaml:"wake-word-phrase"`
-	WakeSensitivity         float64 `json:"wakeSensitivity"         yaml:"wake-sensitivity"`
-	STTProviderID           string  `json:"sttProviderId"           yaml:"stt-provider-id"`
-	TTSProviderID           string  `json:"ttsProviderId"           yaml:"tts-provider-id"`
-	STTModelID              string  `json:"sttModelId"              yaml:"stt-model-id"`
-	TTSModelID              string  `json:"ttsModelId"              yaml:"tts-model-id"`
-	TTSVoiceID              string  `json:"ttsVoiceId"              yaml:"tts-voice-id"`
-	TTSEnabled              bool    `json:"ttsEnabled"              yaml:"tts-enabled"`
-	TTSLocale               string  `json:"ttsLocale"               yaml:"tts-locale"`
-	TTSSpeed                float64 `json:"ttsSpeed"                yaml:"tts-speed"`
-	TTSVolume               float64 `json:"ttsVolume"               yaml:"tts-volume"`
-	PreferredAgentID        string  `json:"preferredAgentId"        yaml:"preferred-agent-id"`
-	CloudOptIn              bool    `json:"cloudOptIn"              yaml:"cloud-opt-in"`
-	CommandProvidersEnabled bool    `json:"commandProvidersEnabled" yaml:"command-providers-enabled"`
-	SensitiveOutputPolicy   string  `json:"sensitiveOutputPolicy"   yaml:"sensitive-output-policy"`
-	FollowupWindowSeconds   int     `json:"followupWindowSeconds"   yaml:"followup-window-seconds"`
-	MicrophoneProfile       string  `json:"microphoneProfile"       yaml:"microphone-profile"`
+	Enabled                 bool     `json:"enabled"                 yaml:"enabled"`
+	MutedByDefault          bool     `json:"mutedByDefault"          yaml:"muted-by-default"`
+	WakeWordModelID         string   `json:"wakeWordModelId"         yaml:"wake-word-model-id"`
+	WakeWordPhrase          string   `json:"wakeWordPhrase"          yaml:"wake-word-phrase"`
+	WakeSensitivity         float64  `json:"wakeSensitivity"         yaml:"wake-sensitivity"`
+	STTProviderID           string   `json:"sttProviderId"           yaml:"stt-provider-id"`
+	TTSProviderID           string   `json:"ttsProviderId"           yaml:"tts-provider-id"`
+	STTModelID              string   `json:"sttModelId"              yaml:"stt-model-id"`
+	TTSModelID              string   `json:"ttsModelId"              yaml:"tts-model-id"`
+	TTSVoiceID              string   `json:"ttsVoiceId"              yaml:"tts-voice-id"`
+	TTSEnabled              bool     `json:"ttsEnabled"              yaml:"tts-enabled"`
+	TTSLocale               string   `json:"ttsLocale"               yaml:"tts-locale"`
+	TTSSpeed                float64  `json:"ttsSpeed"                yaml:"tts-speed"`
+	TTSVolume               float64  `json:"ttsVolume"               yaml:"tts-volume"`
+	PreferredAgentID        string   `json:"preferredAgentId"        yaml:"preferred-agent-id"`
+	CloudOptIn              bool     `json:"cloudOptIn"              yaml:"cloud-opt-in"`
+	CommandProvidersEnabled bool     `json:"commandProvidersEnabled" yaml:"command-providers-enabled"`
+	SensitiveOutputPolicy   string   `json:"sensitiveOutputPolicy"   yaml:"sensitive-output-policy"`
+	FollowupWindowSeconds   int      `json:"followupWindowSeconds"   yaml:"followup-window-seconds"`
+	MicrophoneProfile       string   `json:"microphoneProfile"       yaml:"microphone-profile"`
+	CaptureCommand          string   `json:"captureCommand"          yaml:"capture-command"`
+	CaptureArgs             []string `json:"captureArgs,omitempty"   yaml:"capture-args,omitempty"`
+	CaptureSampleRate       int      `json:"captureSampleRate"       yaml:"capture-sample-rate"`
+	CaptureChannels         int      `json:"captureChannels"         yaml:"capture-channels"`
+	CaptureSampleWidth      int      `json:"captureSampleWidth"      yaml:"capture-sample-width"`
+	CaptureFrameMs          int      `json:"captureFrameMs"          yaml:"capture-frame-ms"`
+	VADThreshold            int      `json:"vadThreshold"            yaml:"vad-threshold"`
 }
 
 // Config is kept as a compatibility alias while callers migrate to VoiceConfig.
@@ -327,6 +334,11 @@ func DefaultConfig() Config {
 		TTSLocale:             "en",
 		TTSSpeed:              1,
 		TTSVolume:             1,
+		CaptureSampleRate:     16000,
+		CaptureChannels:       1,
+		CaptureSampleWidth:    2,
+		CaptureFrameMs:        100,
+		VADThreshold:          500,
 	}
 }
 
@@ -350,9 +362,25 @@ func ApplyDefaults(cfg *Config) {
 	if cfg.TTSVolume == 0 {
 		cfg.TTSVolume = defaults.TTSVolume
 	}
+	if cfg.CaptureSampleRate == 0 {
+		cfg.CaptureSampleRate = defaults.CaptureSampleRate
+	}
+	if cfg.CaptureChannels == 0 {
+		cfg.CaptureChannels = defaults.CaptureChannels
+	}
+	if cfg.CaptureSampleWidth == 0 {
+		cfg.CaptureSampleWidth = defaults.CaptureSampleWidth
+	}
+	if cfg.CaptureFrameMs == 0 {
+		cfg.CaptureFrameMs = defaults.CaptureFrameMs
+	}
+	if cfg.VADThreshold == 0 {
+		cfg.VADThreshold = defaults.VADThreshold
+	}
 }
 
 func Validate(cfg Config) []string {
+	applyCaptureDefaults(&cfg)
 	var problems []string
 	if cfg.FollowupWindowSeconds < 1 || cfg.FollowupWindowSeconds > 30 {
 		problems = append(problems, "voice.followupWindowSeconds must be between 1 and 30")
@@ -369,5 +397,42 @@ func Validate(cfg Config) []string {
 	if cfg.TTSVolume < 0 || cfg.TTSVolume > 1 {
 		problems = append(problems, "voice.ttsVolume must be between 0 and 1")
 	}
+	if strings.TrimSpace(cfg.CaptureCommand) != "" && !strings.HasPrefix(strings.TrimSpace(cfg.CaptureCommand), "/") {
+		problems = append(problems, "voice.captureCommand must be an absolute path")
+	}
+	if cfg.CaptureSampleRate < 8000 || cfg.CaptureSampleRate > 48000 {
+		problems = append(problems, "voice.captureSampleRate must be between 8000 and 48000")
+	}
+	if cfg.CaptureChannels != 1 {
+		problems = append(problems, "voice.captureChannels must be 1")
+	}
+	if cfg.CaptureSampleWidth != 2 {
+		problems = append(problems, "voice.captureSampleWidth must be 2")
+	}
+	if cfg.CaptureFrameMs < 10 || cfg.CaptureFrameMs > 500 {
+		problems = append(problems, "voice.captureFrameMs must be between 10 and 500")
+	}
+	if cfg.VADThreshold < 1 || cfg.VADThreshold > 32767 {
+		problems = append(problems, "voice.vadThreshold must be between 1 and 32767")
+	}
 	return problems
+}
+
+func applyCaptureDefaults(cfg *Config) {
+	defaults := DefaultConfig()
+	if cfg.CaptureSampleRate == 0 {
+		cfg.CaptureSampleRate = defaults.CaptureSampleRate
+	}
+	if cfg.CaptureChannels == 0 {
+		cfg.CaptureChannels = defaults.CaptureChannels
+	}
+	if cfg.CaptureSampleWidth == 0 {
+		cfg.CaptureSampleWidth = defaults.CaptureSampleWidth
+	}
+	if cfg.CaptureFrameMs == 0 {
+		cfg.CaptureFrameMs = defaults.CaptureFrameMs
+	}
+	if cfg.VADThreshold == 0 {
+		cfg.VADThreshold = defaults.VADThreshold
+	}
 }

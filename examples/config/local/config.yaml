@@ -62,6 +62,15 @@ voice:
     sensitive-output-policy: visual_only_sensitive
     followup-window-seconds: 8
     microphone-profile: ""
+    capture-command: /bin/sh
+    capture-args:
+        - ../../examples/config/local/dev-voice-provider.sh
+        - capture
+    capture-sample-rate: 16000
+    capture-channels: 1
+    capture-sample-width: 2
+    capture-frame-ms: 100
+    vad-threshold: 500
 voice-provider-packs:
     - id: local-dev-wake
       name: Local Dev Wake

@@ -32,6 +32,9 @@ type VoiceController struct {
 	display VoiceDisplayEmitter
 	speaker *service.Speaker
 	cancel  func() []service.CancelledConversation
+	restart func(context.Context)
+	mute    func(bool)
+	reset   func()
 }
 
 func NewVoiceController(
@@ -66,6 +69,17 @@ func NewVoiceControllerWithTTSProvider(
 	provider service.TTSProvider,
 ) *VoiceController {
 	return NewVoiceControllerWithSpeaker(store, display, cancel, service.NewSpeaker(store, display, provider))
+}
+
+func (c *VoiceController) OnRuntimeChanged(
+	restart func(context.Context),
+	mute func(bool),
+	reset func(),
+) *VoiceController {
+	c.restart = restart
+	c.mute = mute
+	c.reset = reset
+	return c
 }
 
 func DecodeSettingsUpdateRequest(r io.Reader) (SettingsUpdateRequest, error) {
@@ -120,6 +134,9 @@ func (c *VoiceController) handleVoiceSettings(w http.ResponseWriter, r *http.Req
 			ServiceStatus: status.ServiceStatus,
 		})
 	}
+	if c.restart != nil {
+		c.restart(r.Context())
+	}
 	httphelper.WriteJSON(w, http.StatusOK, status)
 }
 
@@ -153,6 +170,9 @@ func (c *VoiceController) handleVoiceMute(w http.ResponseWriter, r *http.Request
 			ServiceStatus: status.ServiceStatus,
 		})
 	}
+	if c.mute != nil {
+		c.mute(true)
+	}
 	if c.cancel != nil {
 		c.cancel()
 	}
@@ -176,6 +196,9 @@ func (c *VoiceController) handleVoiceUnmute(w http.ResponseWriter, r *http.Reque
 			State:         status.State,
 			ServiceStatus: status.ServiceStatus,
 		})
+	}
+	if c.mute != nil {
+		c.mute(false)
 	}
 	httphelper.WriteJSON(w, http.StatusOK, status)
 }
@@ -218,6 +241,9 @@ func (c *VoiceController) handleVoiceCancel(w http.ResponseWriter, r *http.Reque
 				map[string]any{"reason": "canceled"},
 			)
 		}
+	}
+	if c.reset != nil {
+		c.reset()
 	}
 	httphelper.WriteJSON(w, http.StatusOK, status)
 }

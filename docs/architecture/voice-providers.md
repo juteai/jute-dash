@@ -288,8 +288,9 @@ Implemented foundation provider APIs:
 - `GET /api/v1/voice/providers`: list discovered wake/STT/TTS providers and health states.
 - `GET /api/v1/tts/voices`: list voices for the selected or requested TTS provider, scoped by
   optional `deviceProfileId`.
-- `POST /api/v1/tts/speak`: apply speech policy, synthesize approved assistant text through the
-  configured TTS provider when available, and emit safe speak TTS state events.
+- `POST /api/v1/tts/speak`: apply speech policy, send approved assistant text to the configured
+  TTS provider when available, and emit safe speak TTS state events. Command providers may perform
+  local playback and return only safe playback metadata.
 - `POST /api/v1/tts/stop`: stop current transient TTS state and emit `tts.stopped`.
 
 The foundation TTS control APIs return safe playback metadata for synthesized provider audio. They

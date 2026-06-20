@@ -169,7 +169,7 @@ sequenceDiagram
   Hub->>Agent: Sends next A2A turn
 ```
 
-Wake flow:
+Implemented command-capture wake flow:
 
 1. Device continuously listens locally for the configured wake word while unmuted.
 2. On wake, Jute plays or displays an acknowledgement state.
@@ -211,12 +211,11 @@ Captured utterances flow through a hub-owned STT turn processor: the local voice
 cloned utterance, the selected provider returns transcript metadata, and only the sanitized final
 transcript is submitted through the same server-owned final transcript sink used by
 `/api/v1/voice/transcripts/final`. Provider connection details and raw audio stay out of the
-submitted transcript payload. The server constructs this processor from the active STT provider
-store and the device profile before connecting it to local capture. The local voice service builder
-remains hardware-free at startup: platform capture and VAD implementations are passed in explicitly,
-then synthetic PCM tests exercise the capture-to-STT-to-final-transcript path. If STT processing
-fails, the hub emits a safe degraded `voice.state_changed` error state and does not create an A2A
-turn.
+submitted transcript payload. The hub starts the local voice service when voice is enabled, unmuted,
+and `voice.capture-command` is configured. The capture command is a hub-owned local process that
+streams signed 16-bit little-endian mono PCM to stdout; the hub frames it, runs VAD, then passes the
+utterance through wake/STT. If STT processing fails, the hub emits a safe degraded
+`voice.state_changed` error state and does not create an A2A turn.
 
 TTS providers:
 
