@@ -159,10 +159,14 @@ describe('VoiceSettings', () => {
     expect(body).toContain('Mute');
     expect(body).toContain('Cancel');
     expect(body).toContain('Save voice');
+    expect(body).toContain('Activation');
+    expect(body).toContain('Provider access');
+    expect(body).toContain('Wake and transcript');
+    expect(body).toContain('Spoken response');
     expect(body).toContain('Cloud providers');
     expect(body).toContain('Command providers');
-    expect(body).toContain('Cloud STT · available · cloud');
-    expect(body).toContain('Command TTS · available · local');
+    expect(body).toContain('Cloud STT · cloud · available');
+    expect(body).toContain('Command TTS · local · available');
     expect(body).toContain('TTS setup');
     expect(body).toContain('available');
     expect(body).not.toContain('Satellites');
