@@ -67,6 +67,7 @@ type GetTTSVoicesParams struct {
 
 // PostVoiceAudioParams defines parameters for PostVoiceAudio.
 type PostVoiceAudioParams struct {
+	Wake                 *bool   `form:"wake,omitempty" json:"wake,omitempty"`
 	XJuteSampleRate      *int    `json:"X-Jute-Sample-Rate,omitempty"`
 	XJuteChannels        *int    `json:"X-Jute-Channels,omitempty"`
 	XJuteDeviceProfileId *string `json:"X-Jute-Device-Profile-Id,omitempty"`
@@ -466,6 +467,12 @@ func (w *ServerInterfaceWrapper) PostVoiceAudio(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params PostVoiceAudioParams
+	// ------------- Optional query parameter "wake" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "wake", ctx.QueryParams(), &params.Wake, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter wake: %s", err))
+	}
 
 	headers := ctx.Request().Header
 	// ------------- Optional header parameter "X-Jute-Sample-Rate" -------------

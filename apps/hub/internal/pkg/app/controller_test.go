@@ -1734,6 +1734,66 @@ func TestVoiceAudioRoutesBrowserPCMThroughHubSTT(t *testing.T) {
 	}
 }
 
+func TestVoiceAudioCanRequireWakeBeforeSTT(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-browser-wake-1",
+			Status:         "completed",
+			Text:           "Done.",
+		}, nil
+	}
+	syncer := filesync.NewInMemorySyncer(cfg)
+	cards := service.NewCardService()
+	manager := service.NewAgentManager(syncer, cards, "")
+	store := &fixtureActiveWakeSTTVoiceStore{
+		fixtureActiveSTTVoiceStore: &fixtureActiveSTTVoiceStore{
+			MemoryVoiceRepository: repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice),
+			provider: &fixtureAppSTTProvider{
+				result: service.STTResult{Text: "turn on the lights", ProviderID: "local-stt"},
+			},
+		},
+		wake: &fixtureAppWakeProvider{detected: true},
+	}
+	server := &Server{
+		cfg:             cfg,
+		agentsManager:   manager,
+		messages:        client,
+		voiceStore:      store,
+		voiceDispatcher: service.NewVoiceDispatcher(),
+		voiceRuntime:    service.NewConversationRuntime(),
+	}
+	server.turnRunner = service.NewRunner(service.RunnerOptions{
+		GetRegistry:    manager.ActiveRegistry,
+		GetAgentConfig: manager.ConfiguredAgent,
+		GetAgentCardCache: func(context.Context, registry.Agent) (service.AgentCardCache, bool) {
+			return service.AgentCardCache{
+				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
+				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
+			}, true
+		},
+		GetDashboardContext: func(context.Context) map[string]any { return map[string]any{} },
+		Messages:            client,
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/audio?wake=true", bytes.NewReader([]byte{0xff, 0x7f}))
+	rec := httptest.NewRecorder()
+
+	server.handleVoiceAudio(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !store.wake.seen || client.SentMessages[0].Text != "turn on the lights" {
+		t.Fatalf("wake-gated audio did not reach STT/A2A: wake=%v sent=%+v", store.wake.seen, client.SentMessages)
+	}
+}
+
 func TestLocalVoiceServiceBuilderEmitsRecoverableErrorWhenSTTFails(t *testing.T) {
 	cfg := testConfig()
 	cfg.Voice.Enabled = true
@@ -3450,6 +3510,20 @@ func (s *fixtureActiveSTTVoiceStore) ActiveSTTProvider(context.Context, string) 
 	return s.provider, nil
 }
 
+type fixtureActiveWakeSTTVoiceStore struct {
+	*fixtureActiveSTTVoiceStore
+
+	wake *fixtureAppWakeProvider
+}
+
+func (s *fixtureActiveWakeSTTVoiceStore) ActiveWakeProvider(
+	context.Context,
+	string,
+	string,
+) (service.WakeProvider, error) {
+	return s.wake, nil
+}
+
 type fixtureAppSTTProvider struct {
 	result service.STTResult
 	err    error
@@ -3465,6 +3539,19 @@ func (p *fixtureAppSTTProvider) Transcribe(
 		return service.STTResult{}, p.err
 	}
 	return p.result, nil
+}
+
+type fixtureAppWakeProvider struct {
+	detected bool
+	seen     bool
+}
+
+func (p *fixtureAppWakeProvider) DetectWake(
+	context.Context,
+	service.CapturedUtterance,
+) (service.WakeDetection, error) {
+	p.seen = true
+	return service.WakeDetection{Detected: p.detected}, nil
 }
 
 type fixtureAppCapture struct {

@@ -59,6 +59,8 @@
   let slideshowTimer: number | undefined;
   let lastVoiceChatSyncKey = '';
   let browserVoiceCapturing = false;
+  let browserWakeListening = false;
+  let browserWakeBlocked = false;
 
   /* eslint-disable no-useless-assignment */
   let lastData: DashboardData | undefined;
@@ -128,6 +130,19 @@
         ? $layoutStore.draftLayout
         : $hubStream.dashboard.layout
   };
+  $: shouldListenForBrowserWake =
+    browser &&
+    mounted &&
+    !browserWakeListening &&
+    !browserWakeBlocked &&
+    !browserVoiceCapturing &&
+    $navigationStore.mode !== 'chat' &&
+    $hubStream.dashboard.voice.enabled &&
+    $hubStream.dashboard.voice.serviceStatus === 'ready' &&
+    !$hubStream.dashboard.voice.muted;
+  $: if (shouldListenForBrowserWake) {
+    void startBrowserWakeLoop();
+  }
 
   $: configuringWidget =
     $layoutStore.configuringWidgetId && $layoutStore.draftLayout
@@ -223,6 +238,7 @@
   });
 
   onDestroy(() => {
+    browserWakeBlocked = true;
     chatStore.stopTimer();
   });
 
@@ -402,6 +418,39 @@
     } finally {
       browserVoiceCapturing = false;
     }
+  }
+
+  async function startBrowserWakeLoop() {
+    browserWakeListening = true;
+    try {
+      while (shouldContinueWakeLoop()) {
+        try {
+          const recording = await captureBrowserVoicePCM();
+          await hubStream.submitBrowserWakeAudio(recording, fetch);
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : 'Browser microphone failed.';
+          if (message !== 'No speech detected.') {
+            browserWakeBlocked = true;
+            hubStream.failBrowserVoiceCapture(message);
+          }
+        }
+      }
+    } finally {
+      browserWakeListening = false;
+    }
+  }
+
+  function shouldContinueWakeLoop() {
+    return (
+      browser &&
+      mounted &&
+      !browserWakeBlocked &&
+      !browserVoiceCapturing &&
+      $navigationStore.mode !== 'chat' &&
+      $hubStream.dashboard.voice.serviceStatus === 'ready' &&
+      !$hubStream.dashboard.voice.muted
+    );
   }
 
   async function cancelVoiceSession() {

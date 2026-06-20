@@ -12,8 +12,9 @@ The chosen posture is **local-first hybrid**:
 - the Go hub remains the conversation authority;
 - A2A agents receive transcripts and redacted context, not raw microphone audio.
 
-Canonical voice runtime is inside the Go hub. Browser-side capture, browser STT, and browser TTS are
-out of scope for v1; the Svelte display consumes hub APIs and events only.
+Canonical voice runtime is inside the Go hub. The Svelte display may act as a browser microphone
+client by sending PCM to the hub, but browser STT, browser wake-word decisions, browser TTS, and
+direct A2A routing are out of scope for v1.
 
 ## Ecosystem References
 
@@ -218,9 +219,11 @@ utterance through wake/STT. If STT processing fails, the hub emits a safe degrad
 `voice.state_changed` error state and does not create an A2A turn.
 
 For display/browser microphone input, the display only captures PCM after browser permission is
-granted and posts the utterance to `POST /api/v1/voice/audio`. The hub validates the PCM format,
-runs VAD and the selected STT provider, then submits the sanitized final transcript through the same
-A2A text path. Browser `SpeechRecognition` remains out of scope.
+granted. Push-to-talk posts an utterance to `POST /api/v1/voice/audio`; passive dashboard wake
+listening posts speech candidates to `POST /api/v1/voice/audio?wake=true`. The hub validates PCM,
+runs VAD, applies the selected wake provider when `wake=true`, runs the selected STT provider only
+after wake detection, then submits the sanitized final transcript through the same A2A text path.
+Browser `SpeechRecognition`, browser wake models, and browser TTS remain out of scope.
 
 TTS providers:
 

@@ -20,6 +20,7 @@ type VoiceFinalTranscriptRequest struct {
 	DeviceID        string `json:"deviceId,omitempty"`
 	ConversationID  string `json:"conversationId,omitempty"`
 	AgentID         string `json:"agentId,omitempty"`
+	wakeDetected    bool
 }
 
 type VoiceFinalTranscriptResponse struct {
@@ -82,12 +83,25 @@ func (s *Server) handleVoiceAudio(w http.ResponseWriter, r *http.Request) {
 		httphelper.WriteError(w, http.StatusBadRequest, "speech is required")
 		return
 	}
-	response, err := s.submitVoiceUtterance(r.Context(), VoiceFinalTranscriptRequest{
+	req := VoiceFinalTranscriptRequest{
 		DeviceProfileID: strings.TrimSpace(r.Header.Get("X-Jute-Device-Profile-Id")),
 		DeviceID:        strings.TrimSpace(r.Header.Get("X-Jute-Device-Id")),
 		ConversationID:  strings.TrimSpace(r.Header.Get("X-Jute-Conversation-Id")),
 		AgentID:         strings.TrimSpace(r.Header.Get("X-Jute-Agent-Id")),
-	}, utterance)
+	}
+	if r.URL.Query().Get("wake") == "true" {
+		detected, err := s.detectWake(r.Context(), req, utterance)
+		if err != nil {
+			httphelper.WriteError(w, http.StatusInternalServerError, "wake detection is unavailable")
+			return
+		}
+		if !detected {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		req.wakeDetected = true
+	}
+	response, err := s.submitVoiceUtterance(r.Context(), req, utterance)
 	if err != nil {
 		var transcriptErr voiceTranscriptError
 		if errors.As(err, &transcriptErr) {
@@ -98,6 +112,28 @@ func (s *Server) handleVoiceAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httphelper.WriteJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) detectWake(
+	ctx context.Context,
+	req VoiceFinalTranscriptRequest,
+	utterance service.CapturedUtterance,
+) (bool, error) {
+	providerStore, ok := s.voiceStore.(interface {
+		ActiveWakeProvider(context.Context, string, string) (service.WakeProvider, error)
+	})
+	if !ok {
+		return false, errors.New("wake provider store is unavailable")
+	}
+	wake, err := providerStore.ActiveWakeProvider(ctx, req.DeviceProfileID, req.DeviceID)
+	if err != nil || wake == nil {
+		return false, err
+	}
+	detection, err := wake.DetectWake(ctx, utterance)
+	if err != nil || !detection.Detected {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Server) activeSTTProvider(ctx context.Context, deviceProfileID string) (service.STTProvider, error) {
@@ -293,6 +329,15 @@ func (s *Server) submitFinalTranscript(
 	conversationID := session.ConversationID
 	agentID := s.voiceAgentID(req.AgentID, settings)
 
+	if req.wakeDetected {
+		s.voiceDispatcher.EmitVoiceWakeDetected(deviceID(req), conversationID)
+		s.voiceDispatcher.EmitVoiceStateChanged(deviceID(req), service.VoiceStatePayload{
+			Enabled:       true,
+			Muted:         false,
+			State:         service.WakeStateDetected,
+			ServiceStatus: "ready",
+		})
+	}
 	if started {
 		s.voiceDispatcher.EmitConversationEvent(
 			service.EventConversationStarted,

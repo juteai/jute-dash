@@ -81,3 +81,39 @@ test('chat mic asks the browser for microphone access', async ({ page }) => {
     .toBe(true);
   await expect(page.getByText('Microphone permission denied.')).toBeVisible();
 });
+
+test('dashboard wake listening asks the browser for microphone access', async ({
+  page
+}) => {
+  await page.addInitScript(() => {
+    (
+      window as Window & typeof globalThis & { __juteMicRequested?: boolean }
+    ).__juteMicRequested = false;
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: async () => {
+          (
+            window as Window &
+              typeof globalThis & { __juteMicRequested?: boolean }
+          ).__juteMicRequested = true;
+          throw new Error('Microphone permission denied.');
+        }
+      }
+    });
+  });
+  await createMockHub(page);
+  await page.goto('/');
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as Window &
+              typeof globalThis & { __juteMicRequested?: boolean }
+          ).__juteMicRequested
+      )
+    )
+    .toBe(true);
+});

@@ -973,6 +973,24 @@ function createHubStreamStore() {
         agentId
       });
     },
+    submitBrowserWakeAudio: async (
+      recording: { audio: Blob; sampleRate: number; channels: number },
+      fetcher: typeof fetch = window.fetch
+    ) => {
+      let voice: VoiceStatus = initialStub.voice;
+      update((s) => {
+        voice = s.dashboard.voice;
+        return s;
+      });
+      await submitVoiceAudio(fetcher, recording.audio, {
+        sampleRate: recording.sampleRate,
+        channels: recording.channels,
+        deviceProfileId: voice.deviceProfileId,
+        deviceId: voice.deviceProfileId,
+        agentId: voice.preferredAgentId,
+        requireWake: true
+      });
+    },
     failBrowserVoiceCapture: (reason: string) => {
       update((s) => ({
         ...s,

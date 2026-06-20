@@ -13,7 +13,7 @@ Do not call A2A agents directly from voice providers or the display.
 Canonical runtime boundary:
 
 - build production wake-word, VAD, STT, TTS, follow-up, and mute/cancel behavior in the Go hub voice runtime and hub APIs;
-- keep the display as a hub client; do not implement browser microphone capture, browser STT, or browser TTS as v1 runtime paths;
+- keep the display as a hub client; browser microphone capture may send PCM to the hub, but browser wake decisions, browser STT, and browser TTS are not v1 runtime paths;
 - do not rely on browser `SpeechRecognition` for local-first STT.
 
 ## Provider Interfaces
@@ -114,7 +114,8 @@ Voice Provider Packs are distinct from widgets and A2A agents. A voice provider 
 
 - Keep microphone capture behind the `AudioCapture` interface so hub-owned platform drivers can change without changing conversation logic.
 - For v1, command capture is the small local driver path: configure `voice.capture-command` to stream signed 16-bit little-endian mono PCM to stdout. Keep the command local and explicitly configured.
-- Browser capture may post mono signed 16-bit PCM to `/api/v1/voice/audio`; the browser must not run STT or send final transcript text directly from local recognition.
+- Browser capture may post mono signed 16-bit PCM to `/api/v1/voice/audio`; use `?wake=true` for dashboard wake candidates that must pass hub wake detection before STT.
+- The browser must not run wake-word models, STT, or send final transcript text directly from local recognition.
 - Keep VAD behind the `VoiceActivityDetector` interface and run it before STT provider calls.
 - Maintain a time-windowed pre-roll buffer in memory only.
 - Unit and integration tests should use synthetic PCM fixture frames, not real microphones.

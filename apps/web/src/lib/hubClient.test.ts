@@ -68,12 +68,13 @@ describe('fallback dashboard', () => {
         sampleRate: 16000,
         channels: 1,
         deviceProfileId: 'browser-display',
-        conversationId: 'conversation-1'
+        conversationId: 'conversation-1',
+        requireWake: true
       }
     );
 
     expect(response.followup.active).toBe(true);
-    expect(String(calls[0].url)).toContain('/api/v1/voice/audio');
+    expect(String(calls[0].url)).toContain('/api/v1/voice/audio?wake=true');
     expect(calls[0].init?.method).toBe('POST');
     const headers = calls[0].init?.headers as Headers;
     expect(headers.get('X-Jute-Sample-Rate')).toBe('16000');

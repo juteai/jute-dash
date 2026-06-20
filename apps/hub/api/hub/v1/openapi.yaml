@@ -420,6 +420,10 @@ paths:
     post:
       operationId: postVoiceAudio
       parameters:
+        - in: query
+          name: wake
+          schema:
+            type: boolean
         - in: header
           name: X-Jute-Sample-Rate
           schema:

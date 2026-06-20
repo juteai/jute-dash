@@ -418,6 +418,7 @@ export async function submitVoiceAudio(
     deviceId?: string;
     conversationId?: string;
     agentId?: string;
+    requireWake?: boolean;
   }
 ): Promise<VoiceFinalTranscriptResponse> {
   const headers = new Headers({
@@ -433,13 +434,20 @@ export async function submitVoiceAudio(
   ] as const) {
     if (value) headers.set(name, value);
   }
-  const response = await fetcher(`${API_BASE}/api/v1/voice/audio`, {
+  const suffix = options.requireWake ? '?wake=true' : '';
+  const response = await fetcher(`${API_BASE}/api/v1/voice/audio${suffix}`, {
     method: 'POST',
     headers,
     body: audio
   });
   if (!response.ok) {
     throw await hubError(response, 'Jute API request failed');
+  }
+  if (response.status === 204) {
+    return {
+      conversation: {},
+      followup: { active: false, turns: 0, maxTurns: 0 }
+    };
   }
   return response.json() as Promise<VoiceFinalTranscriptResponse>;
 }
