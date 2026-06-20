@@ -12,10 +12,9 @@ import (
 	"testing"
 
 	"jute-dash/apps/hub/internal/app/config"
+	"jute-dash/apps/hub/internal/app/model"
 	"jute-dash/apps/hub/internal/app/repository"
-	"jute-dash/apps/hub/internal/app/service/dashboard"
-	"jute-dash/apps/hub/internal/app/service/homestate"
-	"jute-dash/apps/hub/internal/app/service/voice"
+	"jute-dash/apps/hub/internal/app/service"
 	"jute-dash/apps/hub/internal/pkg/a2a"
 )
 
@@ -272,7 +271,7 @@ func TestSaveVoiceSettingsPersistsDeviceProfileDurableFields(t *testing.T) {
 	followup := 12
 	mic := "kitchen-array"
 
-	saved, err := st.VoiceRepo.SaveVoiceSettings(context.Background(), voice.SettingsUpdateRequest{
+	saved, err := st.VoiceRepo.SaveVoiceSettings(context.Background(), model.SettingsUpdateRequest{
 		Enabled:                 &enabled,
 		WakeWordModelID:         &wakeModel,
 		WakeWordPhrase:          &wakePhrase,
@@ -328,7 +327,7 @@ func TestSaveVoiceSettingsRejectsOutOfRangeValues(t *testing.T) {
 	}
 	followup := 45
 
-	_, err := st.VoiceRepo.SaveVoiceSettings(context.Background(), voice.SettingsUpdateRequest{
+	_, err := st.VoiceRepo.SaveVoiceSettings(context.Background(), model.SettingsUpdateRequest{
 		FollowupWindowSeconds: &followup,
 	})
 	if err == nil {
@@ -373,7 +372,7 @@ func TestVoiceProvidersIncludesWakeWordManifestSummary(t *testing.T) {
 		"id":      "org.example.openwakeword",
 		"name":    "Example openWakeWord",
 		"version": "1.0.0",
-		"kind":    voice.ProviderKindWakeWord,
+		"kind":    service.ProviderKindWakeWord,
 		"transport": map[string]any{
 			"type":    "command",
 			"command": "/usr/local/bin/jute-wake",
@@ -408,11 +407,11 @@ func TestVoiceProvidersIncludesWakeWordManifestSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal manifest: %v", err)
 	}
-	provider := voice.ProviderPackDB{
+	provider := repository.ProviderPackDB{
 		ID:               "org.example.openwakeword",
 		Name:             "Example openWakeWord",
 		Version:          "1.0.0",
-		Kind:             voice.ProviderKindWakeWord,
+		Kind:             service.ProviderKindWakeWord,
 		TransportType:    "command",
 		ManifestJSON:     string(manifestBytes),
 		HealthStatus:     "available",
@@ -432,7 +431,7 @@ func TestVoiceProvidersIncludesWakeWordManifestSummary(t *testing.T) {
 		t.Fatalf("expected one provider, got %+v", providers)
 	}
 	got := providers[0]
-	if got.Kind != voice.ProviderKindWakeWord || got.WakeWord == nil {
+	if got.Kind != service.ProviderKindWakeWord || got.WakeWord == nil {
 		t.Fatalf("expected wake-word provider summary, got %+v", got)
 	}
 	if got.WakeWord.DefaultModelID != "hey-jute" ||
@@ -462,7 +461,7 @@ func TestActiveWakeProviderIgnoresUnsupportedOrUnsafeProviders(t *testing.T) {
 		health      string
 		offline     bool
 		modelID     string
-		credentials []voice.CredentialManifest
+		credentials []service.CredentialManifest
 	}{
 		{
 			name:    "voice disabled",
@@ -494,7 +493,7 @@ func TestActiveWakeProviderIgnoresUnsupportedOrUnsafeProviders(t *testing.T) {
 			enabled: true,
 			health:  "available",
 			offline: true,
-			credentials: []voice.CredentialManifest{{
+			credentials: []service.CredentialManifest{{
 				ID:       "apiKey",
 				Label:    "API key",
 				Source:   "env",
@@ -537,7 +536,7 @@ func TestActiveSTTProviderResolvesSelectedCommandProviderWhenEnabled(t *testing.
 	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
-	insertSTTProviderWithTransport(t, st, "go-whisper-command", "available", true, nil, voice.TransportManifest{
+	insertSTTProviderWithTransport(t, st, "go-whisper-command", "available", true, nil, service.TransportManifest{
 		Type:    "command",
 		Command: "/usr/local/bin/gowhisper",
 		Args:    []string{"transcribe", "--model", "{modelId}", "--input", "{inputPath}", "--json"},
@@ -547,7 +546,7 @@ func TestActiveSTTProviderResolvesSelectedCommandProviderWhenEnabled(t *testing.
 	if err != nil {
 		t.Fatalf("ActiveSTTProvider() error = %v", err)
 	}
-	command, ok := provider.(voice.CommandSTTProvider)
+	command, ok := provider.(service.CommandSTTProvider)
 	if !ok {
 		t.Fatalf("expected CommandSTTProvider, got %T", provider)
 	}
@@ -569,7 +568,7 @@ func TestActiveSTTProviderIgnoresCommandProviderWhenDisabled(t *testing.T) {
 	if _, err := st.Initialize(context.Background(), bootstrap, true); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
-	insertSTTProviderWithTransport(t, st, "go-whisper-command", "available", true, nil, voice.TransportManifest{
+	insertSTTProviderWithTransport(t, st, "go-whisper-command", "available", true, nil, service.TransportManifest{
 		Type:    "command",
 		Command: "/usr/local/bin/gowhisper",
 		Args:    []string{"transcribe", "--model", "{modelId}", "--input", "{inputPath}", "--json"},
@@ -590,7 +589,7 @@ func TestActiveSTTProviderIgnoresUnsupportedOrUnsafeProviders(t *testing.T) {
 		enabled     bool
 		health      string
 		offline     bool
-		credentials []voice.CredentialManifest
+		credentials []service.CredentialManifest
 	}{
 		{
 			name:    "voice disabled",
@@ -615,7 +614,7 @@ func TestActiveSTTProviderIgnoresUnsupportedOrUnsafeProviders(t *testing.T) {
 			enabled: true,
 			health:  "available",
 			offline: true,
-			credentials: []voice.CredentialManifest{{
+			credentials: []service.CredentialManifest{{
 				ID:       "apiKey",
 				Label:    "API key",
 				Source:   "env",
@@ -717,7 +716,7 @@ func TestTTSVoicesHandlesUnavailableProviderStates(t *testing.T) {
 		health         string
 		offline        bool
 		cloudOptIn     bool
-		credentials    []voice.CredentialManifest
+		credentials    []service.CredentialManifest
 		wantSetup      string
 		wantHealth     string
 		wantCloud      bool
@@ -748,7 +747,7 @@ func TestTTSVoicesHandlesUnavailableProviderStates(t *testing.T) {
 			providerID: "credential-tts",
 			health:     "available",
 			offline:    true,
-			credentials: []voice.CredentialManifest{{
+			credentials: []service.CredentialManifest{{
 				ID:       "apiKey",
 				Label:    "API key",
 				Source:   "env",
@@ -812,7 +811,7 @@ func TestActiveTTSProviderFallsBackWhenSelectedVoiceIsNoLongerDeclared(t *testin
 	if err != nil {
 		t.Fatalf("ActiveTTSProvider() error = %v", err)
 	}
-	command, ok := provider.(voice.CommandTTSProvider)
+	command, ok := provider.(service.CommandTTSProvider)
 	if !ok {
 		t.Fatalf("expected CommandTTSProvider, got %T", provider)
 	}
@@ -827,7 +826,7 @@ func TestActiveTTSProviderIgnoresUnsupportedOrUnsafeProviders(t *testing.T) {
 		health      string
 		offline     bool
 		ttsEnabled  bool
-		credentials []voice.CredentialManifest
+		credentials []service.CredentialManifest
 	}{
 		{
 			name:       "disabled setting",
@@ -852,7 +851,7 @@ func TestActiveTTSProviderIgnoresUnsupportedOrUnsafeProviders(t *testing.T) {
 			health:     "available",
 			offline:    true,
 			ttsEnabled: true,
-			credentials: []voice.CredentialManifest{{
+			credentials: []service.CredentialManifest{{
 				ID:       "apiKey",
 				Label:    "API key",
 				Source:   "env",
@@ -948,10 +947,10 @@ func insertTTSProvider(
 	providerID string,
 	health string,
 	offline bool,
-	credentials []voice.CredentialManifest,
+	credentials []service.CredentialManifest,
 ) {
 	t.Helper()
-	transport := voice.TransportManifest{
+	transport := service.TransportManifest{
 		Type:    "command",
 		Command: "/usr/local/bin/jute-tts",
 		Args:    []string{"--voice", "{modelId}", "--locale", "{language}"},
@@ -965,29 +964,29 @@ func insertTTSProviderWithTransport(
 	providerID string,
 	health string,
 	offline bool,
-	credentials []voice.CredentialManifest,
-	transport voice.TransportManifest,
+	credentials []service.CredentialManifest,
+	transport service.TransportManifest,
 ) {
 	t.Helper()
 	if credentials == nil {
-		credentials = []voice.CredentialManifest{}
+		credentials = []service.CredentialManifest{}
 	}
-	manifest := voice.ProviderManifest{
+	manifest := service.ProviderManifest{
 		ID:        providerID,
 		Name:      "Test TTS",
 		Version:   "1.0.0",
-		Kind:      voice.ProviderKindTTS,
+		Kind:      service.ProviderKindTTS,
 		Transport: transport,
-		Capabilities: voice.ProviderCapabilities{
+		Capabilities: model.ProviderCapabilities{
 			Streaming: true,
 			Offline:   offline,
 			Languages: []string{"en", "en-GB"},
 		},
 		Credentials: credentials,
-		TTS: voice.TTSManifest{
+		TTS: service.TTSManifest{
 			DefaultVoiceID: "amy",
 			DefaultModelID: "local-model",
-			Voices: []voice.TTSVoiceManifest{
+			Voices: []service.TTSVoiceManifest{
 				{
 					ID:      "amy",
 					Label:   "Amy",
@@ -1007,11 +1006,11 @@ func insertTTSProviderWithTransport(
 	if err != nil {
 		t.Fatalf("marshal TTS manifest: %v", err)
 	}
-	provider := voice.ProviderPackDB{
+	provider := repository.ProviderPackDB{
 		ID:            providerID,
 		Name:          "Test TTS",
 		Version:       "1.0.0",
-		Kind:          voice.ProviderKindTTS,
+		Kind:          service.ProviderKindTTS,
 		TransportType: transport.Type,
 		ManifestJSON:  string(manifestBytes),
 		HealthStatus:  health,
@@ -1028,10 +1027,10 @@ func insertSTTProvider(
 	providerID string,
 	health string,
 	offline bool,
-	credentials []voice.CredentialManifest,
+	credentials []service.CredentialManifest,
 ) {
 	t.Helper()
-	transport := voice.TransportManifest{
+	transport := service.TransportManifest{
 		Type:    "command",
 		Command: "/usr/local/bin/jute-stt",
 		Args:    []string{"--model", "{modelId}", "--input", "{inputPath}"},
@@ -1045,20 +1044,20 @@ func insertSTTProviderWithTransport(
 	providerID string,
 	health string,
 	offline bool,
-	credentials []voice.CredentialManifest,
-	transport voice.TransportManifest,
+	credentials []service.CredentialManifest,
+	transport service.TransportManifest,
 ) {
 	t.Helper()
 	if credentials == nil {
-		credentials = []voice.CredentialManifest{}
+		credentials = []service.CredentialManifest{}
 	}
-	manifest := voice.ProviderManifest{
+	manifest := service.ProviderManifest{
 		ID:        providerID,
 		Name:      "Test STT",
 		Version:   "1.0.0",
-		Kind:      voice.ProviderKindSTT,
+		Kind:      service.ProviderKindSTT,
 		Transport: transport,
-		Capabilities: voice.ProviderCapabilities{
+		Capabilities: model.ProviderCapabilities{
 			Streaming:          true,
 			PartialTranscripts: true,
 			Offline:            offline,
@@ -1071,11 +1070,11 @@ func insertSTTProviderWithTransport(
 	if err != nil {
 		t.Fatalf("marshal STT manifest: %v", err)
 	}
-	provider := voice.ProviderPackDB{
+	provider := repository.ProviderPackDB{
 		ID:            providerID,
 		Name:          "Test STT",
 		Version:       "1.0.0",
-		Kind:          voice.ProviderKindSTT,
+		Kind:          service.ProviderKindSTT,
 		TransportType: transport.Type,
 		ManifestJSON:  string(manifestBytes),
 		HealthStatus:  health,
@@ -1092,36 +1091,36 @@ func insertWakeProvider(
 	providerID string,
 	health string,
 	offline bool,
-	credentials []voice.CredentialManifest,
+	credentials []service.CredentialManifest,
 ) {
 	t.Helper()
-	transport := voice.TransportManifest{
+	transport := service.TransportManifest{
 		Type:    "command",
 		Command: "/usr/local/bin/jute-wake",
 		Args:    []string{"--model", "{modelId}", "--input", "{inputPath}"},
 	}
 	if credentials == nil {
-		credentials = []voice.CredentialManifest{}
+		credentials = []service.CredentialManifest{}
 	}
-	manifest := voice.ProviderManifest{
+	manifest := service.ProviderManifest{
 		ID:        providerID,
 		Name:      "Test Wake",
 		Version:   "1.0.0",
-		Kind:      voice.ProviderKindWakeWord,
+		Kind:      service.ProviderKindWakeWord,
 		Transport: transport,
-		Capabilities: voice.ProviderCapabilities{
+		Capabilities: model.ProviderCapabilities{
 			Streaming:    true,
 			Offline:      offline,
 			Languages:    []string{"en-GB", "en"},
 			InputFormats: []string{"audio/pcm;rate=16000;width=2;channels=1"},
 		},
 		Credentials: credentials,
-		WakeWord: voice.WakeWordManifest{
+		WakeWord: service.WakeWordManifest{
 			DefaultModelID: "hey-jute",
 			Phrase:         "Hey Jute",
 			Languages:      []string{"en"},
 			Sensitivity:    0.6,
-			Models: []voice.WakeWordModelManifest{{
+			Models: []service.WakeWordModelManifest{{
 				ID:          "hey-jute",
 				Path:        "models/hey-jute.tflite",
 				Phrase:      "Hey Jute",
@@ -1134,11 +1133,11 @@ func insertWakeProvider(
 	if err != nil {
 		t.Fatalf("marshal wake manifest: %v", err)
 	}
-	provider := voice.ProviderPackDB{
+	provider := repository.ProviderPackDB{
 		ID:            providerID,
 		Name:          "Test Wake",
 		Version:       "1.0.0",
-		Kind:          voice.ProviderKindWakeWord,
+		Kind:          service.ProviderKindWakeWord,
 		TransportType: transport.Type,
 		ManifestJSON:  string(manifestBytes),
 		HealthStatus:  health,
@@ -1189,7 +1188,7 @@ func TestDisplayCustomizationSeededFromBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HouseholdSettings() error = %v", err)
 	}
-	displayCfg := settings.Display.(homestate.DisplaySettings)
+	displayCfg := settings.Display.(model.DisplaySettings)
 	if displayCfg.WidgetChrome["default"] != "frosted" {
 		t.Fatalf("household settings did not include widget chrome: %+v", settings.Display)
 	}
@@ -1281,15 +1280,17 @@ func TestWidgetLayoutReturnsSeededWidgets(t *testing.T) {
 
 func TestWidgetCatalogReturnsBuiltIns(t *testing.T) {
 	catalog := WidgetCatalog()
-	if len(catalog) != 3 {
-		t.Fatalf("expected 3 built-in widgets, got %+v", catalog)
+	byKind := map[string]WidgetCatalogItem{}
+	for _, item := range catalog {
+		byKind[item.Kind] = item
 	}
 	want := []string{"date-time", "weather", "chat-history"}
-	for i, kind := range want {
-		if catalog[i].Kind != kind {
-			t.Fatalf("catalog item %d kind = %q, want %q", i, catalog[i].Kind, kind)
+	for _, kind := range want {
+		item, ok := byKind[kind]
+		if !ok {
+			t.Fatalf("catalog missing %q in %+v", kind, catalog)
 		}
-		if catalog[i].AllowMultiple {
+		if item.AllowMultiple {
 			t.Fatalf("%s should be single-instance in v1", kind)
 		}
 	}
@@ -1334,7 +1335,7 @@ func TestSaveWidgetLayoutPersistsVariants(t *testing.T) {
 	layout := DefaultWidgetLayout()
 	layout.Variants[0].Columns = 2
 	layout.Variants[0].Rows = 12
-	layout.Variants[0].Placements[layout.Widgets[0].ID] = dashboard.WidgetPlacement{
+	layout.Variants[0].Placements[layout.Widgets[0].ID] = model.WidgetPlacement{
 		X: 0,
 		Y: 1,
 		W: 2,
@@ -1349,8 +1350,8 @@ func TestSaveWidgetLayoutPersistsVariants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WidgetLayout() error = %v", err)
 	}
-	if reloaded.SchemaVersion != dashboard.LayoutSchemaVersion {
-		t.Fatalf("schemaVersion = %d, want %d", reloaded.SchemaVersion, dashboard.LayoutSchemaVersion)
+	if reloaded.SchemaVersion != repository.LayoutSchemaVersion {
+		t.Fatalf("schemaVersion = %d, want %d", reloaded.SchemaVersion, repository.LayoutSchemaVersion)
 	}
 	if len(reloaded.Variants) == 0 || reloaded.Variants[0].Columns != 2 || reloaded.Variants[0].Rows != 12 {
 		t.Fatalf("layout variants did not persist: %+v", reloaded.Variants)
@@ -1361,10 +1362,10 @@ func TestSaveWidgetLayoutPersistsVariants(t *testing.T) {
 }
 
 func TestWidgetLayoutMigratesV2LayoutToHomeScreen(t *testing.T) {
-	layout := dashboard.WidgetLayout{
+	layout := model.WidgetLayout{
 		ProfileID:     defaultLayoutProfileID,
 		SchemaVersion: 2,
-		Widgets: []dashboard.WidgetInstance{{
+		Widgets: []model.WidgetInstance{{
 			ID:       "clock",
 			Kind:     "date-time",
 			Title:    "Clock",
@@ -1380,11 +1381,11 @@ func TestWidgetLayoutMigratesV2LayoutToHomeScreen(t *testing.T) {
 			Visible:  true,
 		}},
 	}
-	normalized, err := dashboard.NormalizeWidgetLayout(layout, repository.WidgetCatalogForSeed())
+	normalized, err := repository.NormalizeWidgetLayout(layout, repository.WidgetCatalogForSeed())
 	if err != nil {
 		t.Fatalf("NormalizeWidgetLayout() error = %v", err)
 	}
-	if normalized.SchemaVersion != dashboard.LayoutSchemaVersion ||
+	if normalized.SchemaVersion != repository.LayoutSchemaVersion ||
 		normalized.DefaultScreen != "home" ||
 		normalized.ActiveScreen != "home" ||
 		len(normalized.Screens) != 1 ||
@@ -1401,10 +1402,10 @@ func TestSaveWidgetLayoutPersistsScreenIDsAndActiveScreen(t *testing.T) {
 	}
 
 	layout := DefaultWidgetLayout()
-	layout.Screens = append(layout.Screens, dashboard.DashboardScreen{
+	layout.Screens = append(layout.Screens, model.DashboardScreen{
 		ID:    "music",
 		Label: "Music",
-		Widgets: []dashboard.WidgetInstance{{
+		Widgets: []model.WidgetInstance{{
 			ScreenID:       "music",
 			ID:             "music-markets",
 			Kind:           "markets",
@@ -1451,15 +1452,15 @@ func TestSaveWidgetLayoutRejectsDuplicateWidgetIDsAcrossScreens(t *testing.T) {
 	layout := DefaultWidgetLayout()
 	duplicate := layout.Screens[0].Widgets[0]
 	duplicate.ScreenID = "other"
-	layout.Screens = append(layout.Screens, dashboard.DashboardScreen{
+	layout.Screens = append(layout.Screens, model.DashboardScreen{
 		ID:      "other",
 		Label:   "Other",
-		Widgets: []dashboard.WidgetInstance{duplicate},
+		Widgets: []model.WidgetInstance{duplicate},
 	})
-	if _, err := dashboard.NormalizeWidgetLayout(
+	if _, err := repository.NormalizeWidgetLayout(
 		layout,
 		repository.WidgetCatalogForSeed(),
-	); !errors.Is(err, dashboard.ErrInvalidLayout) {
+	); !errors.Is(err, model.ErrInvalidLayout) {
 		t.Fatalf("NormalizeWidgetLayout() error = %v, want ErrInvalidLayout", err)
 	}
 }
@@ -1469,15 +1470,15 @@ func TestSaveWidgetLayoutRejectsDuplicateSingleInstanceKindsAcrossScreens(t *tes
 	duplicate := layout.Screens[0].Widgets[0]
 	duplicate.ID += "-copy"
 	duplicate.ScreenID = "other"
-	layout.Screens = append(layout.Screens, dashboard.DashboardScreen{
+	layout.Screens = append(layout.Screens, model.DashboardScreen{
 		ID:      "other",
 		Label:   "Other",
-		Widgets: []dashboard.WidgetInstance{duplicate},
+		Widgets: []model.WidgetInstance{duplicate},
 	})
-	if _, err := dashboard.NormalizeWidgetLayout(
+	if _, err := repository.NormalizeWidgetLayout(
 		layout,
 		repository.WidgetCatalogForSeed(),
-	); !errors.Is(err, dashboard.ErrInvalidLayout) {
+	); !errors.Is(err, model.ErrInvalidLayout) {
 		t.Fatalf("NormalizeWidgetLayout() error = %v, want ErrInvalidLayout", err)
 	}
 }
@@ -1493,7 +1494,7 @@ func TestConfigExportsWidgetLayoutVariants(t *testing.T) {
 	layout.DefaultVariant = "desktop"
 	layout.Variants[3].Columns = 14
 	layout.Variants[3].Rows = 7
-	layout.Variants[3].Placements[layout.Widgets[0].ID] = dashboard.WidgetPlacement{
+	layout.Variants[3].Placements[layout.Widgets[0].ID] = model.WidgetPlacement{
 		X: 2,
 		Y: 1,
 		W: 4,
@@ -1507,7 +1508,7 @@ func TestConfigExportsWidgetLayoutVariants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Config() error = %v", err)
 	}
-	if cfg.Dashboard.SchemaVersion != dashboard.LayoutSchemaVersion ||
+	if cfg.Dashboard.SchemaVersion != repository.LayoutSchemaVersion ||
 		cfg.Dashboard.DefaultVariant != "desktop" {
 		t.Fatalf("layout metadata was not exported: %+v", cfg.Dashboard)
 	}

@@ -4,7 +4,7 @@ package mocks
 
 import (
 	context "context"
-	voice "jute-dash/apps/hub/internal/app/service/voice"
+	voice "jute-dash/apps/hub/internal/app/service"
 
 	mock "github.com/stretchr/testify/mock"
 )

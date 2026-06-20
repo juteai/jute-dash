@@ -4,7 +4,7 @@ package mocks
 
 import (
 	context "context"
-	voice "jute-dash/apps/hub/internal/app/service/voice"
+	service "jute-dash/apps/hub/internal/app/service"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -23,25 +23,25 @@ func (_m *STTProvider) EXPECT() *STTProvider_Expecter {
 }
 
 // Transcribe provides a mock function with given fields: ctx, utterance
-func (_m *STTProvider) Transcribe(ctx context.Context, utterance voice.CapturedUtterance) (voice.STTResult, error) {
+func (_m *STTProvider) Transcribe(ctx context.Context, utterance service.CapturedUtterance) (service.STTResult, error) {
 	ret := _m.Called(ctx, utterance)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Transcribe")
 	}
 
-	var r0 voice.STTResult
+	var r0 service.STTResult
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, voice.CapturedUtterance) (voice.STTResult, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, service.CapturedUtterance) (service.STTResult, error)); ok {
 		return rf(ctx, utterance)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, voice.CapturedUtterance) voice.STTResult); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, service.CapturedUtterance) service.STTResult); ok {
 		r0 = rf(ctx, utterance)
 	} else {
-		r0 = ret.Get(0).(voice.STTResult)
+		r0 = ret.Get(0).(service.STTResult)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, voice.CapturedUtterance) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, service.CapturedUtterance) error); ok {
 		r1 = rf(ctx, utterance)
 	} else {
 		r1 = ret.Error(1)
@@ -57,24 +57,24 @@ type STTProvider_Transcribe_Call struct {
 
 // Transcribe is a helper method to define mock.On call
 //   - ctx context.Context
-//   - utterance voice.CapturedUtterance
+//   - utterance service.CapturedUtterance
 func (_e *STTProvider_Expecter) Transcribe(ctx interface{}, utterance interface{}) *STTProvider_Transcribe_Call {
 	return &STTProvider_Transcribe_Call{Call: _e.mock.On("Transcribe", ctx, utterance)}
 }
 
-func (_c *STTProvider_Transcribe_Call) Run(run func(ctx context.Context, utterance voice.CapturedUtterance)) *STTProvider_Transcribe_Call {
+func (_c *STTProvider_Transcribe_Call) Run(run func(ctx context.Context, utterance service.CapturedUtterance)) *STTProvider_Transcribe_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(voice.CapturedUtterance))
+		run(args[0].(context.Context), args[1].(service.CapturedUtterance))
 	})
 	return _c
 }
 
-func (_c *STTProvider_Transcribe_Call) Return(_a0 voice.STTResult, _a1 error) *STTProvider_Transcribe_Call {
+func (_c *STTProvider_Transcribe_Call) Return(_a0 service.STTResult, _a1 error) *STTProvider_Transcribe_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *STTProvider_Transcribe_Call) RunAndReturn(run func(context.Context, voice.CapturedUtterance) (voice.STTResult, error)) *STTProvider_Transcribe_Call {
+func (_c *STTProvider_Transcribe_Call) RunAndReturn(run func(context.Context, service.CapturedUtterance) (service.STTResult, error)) *STTProvider_Transcribe_Call {
 	_c.Call.Return(run)
 	return _c
 }

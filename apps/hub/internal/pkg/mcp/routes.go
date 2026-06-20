@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"jute-dash/apps/hub/internal/app/service/agents"
+	"jute-dash/apps/hub/internal/app/model"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/pkg/widgetskills"
 )
@@ -62,7 +62,7 @@ func resource(uri, name, title, description string) map[string]any {
 
 type juteDashboardCurrentRoute struct{}
 
-func (juteDashboardCurrentRoute) Scope() string { return agents.MCPScopeDashboardRead }
+func (juteDashboardCurrentRoute) Scope() string { return model.MCPScopeDashboardRead }
 func (juteDashboardCurrentRoute) List(snapshot widgetskills.Snapshot) []map[string]any {
 	return []map[string]any{
 		resource(
@@ -80,7 +80,7 @@ func (juteDashboardCurrentRoute) Read(ctx RouteContext, uri string) (any, error)
 
 type juteHomeStateRoute struct{}
 
-func (juteHomeStateRoute) Scope() string { return agents.MCPScopeDashboardRead }
+func (juteHomeStateRoute) Scope() string { return model.MCPScopeDashboardRead }
 func (juteHomeStateRoute) List(snapshot widgetskills.Snapshot) []map[string]any {
 	return []map[string]any{
 		resource("jute://home/state", "home-state", "Home State", "Normalized non-secret home state summary."),
@@ -103,7 +103,7 @@ func (juteHomeStateRoute) Read(ctx RouteContext, uri string) (any, error) {
 
 type juteWidgetsVisibleRoute struct{}
 
-func (juteWidgetsVisibleRoute) Scope() string { return agents.MCPScopeWidgetsRead }
+func (juteWidgetsVisibleRoute) Scope() string { return model.MCPScopeWidgetsRead }
 func (juteWidgetsVisibleRoute) List(snapshot widgetskills.Snapshot) []map[string]any {
 	return []map[string]any{
 		resource(
@@ -121,7 +121,7 @@ func (juteWidgetsVisibleRoute) Read(ctx RouteContext, uri string) (any, error) {
 
 type juteSkillsRoute struct{}
 
-func (juteSkillsRoute) Scope() string { return agents.MCPScopeSkillsRead }
+func (juteSkillsRoute) Scope() string { return model.MCPScopeSkillsRead }
 func (juteSkillsRoute) List(snapshot widgetskills.Snapshot) []map[string]any {
 	return []map[string]any{
 		resource(
@@ -139,7 +139,7 @@ func (juteSkillsRoute) Read(ctx RouteContext, uri string) (any, error) {
 
 type juteSkillDetailRoute struct{}
 
-func (juteSkillDetailRoute) Scope() string { return agents.MCPScopeSkillsRead }
+func (juteSkillDetailRoute) Scope() string { return model.MCPScopeSkillsRead }
 func (juteSkillDetailRoute) List(snapshot widgetskills.Snapshot) []map[string]any {
 	resources := []map[string]any{}
 	for _, skill := range widgetskills.Available(snapshot) {
@@ -181,7 +181,7 @@ func (juteSkillDetailRoute) Read(ctx RouteContext, uri string) (any, error) {
 
 type juteWidgetSkillRoute struct{}
 
-func (juteWidgetSkillRoute) Scope() string { return agents.MCPScopeSkillsRead }
+func (juteWidgetSkillRoute) Scope() string { return model.MCPScopeSkillsRead }
 func (juteWidgetSkillRoute) List(snapshot widgetskills.Snapshot) []map[string]any {
 	resources := []map[string]any{}
 	for _, skill := range widgetskills.Available(snapshot) {
@@ -219,7 +219,7 @@ func (juteWidgetSkillRoute) Read(ctx RouteContext, uri string) (any, error) {
 
 type juteSkillContextRoute struct{}
 
-func (juteSkillContextRoute) Scope() string { return agents.MCPScopeSkillsContextRead }
+func (juteSkillContextRoute) Scope() string { return model.MCPScopeSkillsContextRead }
 func (juteSkillContextRoute) List(snapshot widgetskills.Snapshot) []map[string]any {
 	resources := []map[string]any{}
 	for _, skill := range widgetskills.Available(snapshot) {
@@ -242,7 +242,7 @@ func (juteSkillContextRoute) Read(ctx RouteContext, uri string) (any, error) {
 
 type juteWidgetContextRoute struct{}
 
-func (juteWidgetContextRoute) Scope() string { return agents.MCPScopeSkillsContextRead }
+func (juteWidgetContextRoute) Scope() string { return model.MCPScopeSkillsContextRead }
 func (juteWidgetContextRoute) List(snapshot widgetskills.Snapshot) []map[string]any {
 	resources := []map[string]any{}
 	for _, skill := range widgetskills.Available(snapshot) {
@@ -272,7 +272,7 @@ func (juteDashboardContextGetTool) Title() string { return "Get Dashboard Contex
 func (juteDashboardContextGetTool) Description() string {
 	return "Return safe current Jute dashboard context."
 }
-func (juteDashboardContextGetTool) Scope() string { return agents.MCPScopeDashboardRead }
+func (juteDashboardContextGetTool) Scope() string { return model.MCPScopeDashboardRead }
 func (juteDashboardContextGetTool) InputSchema() map[string]any {
 	return emptySchema()
 }
@@ -286,7 +286,7 @@ type juteSkillListTool struct{}
 func (juteSkillListTool) Name() string        { return "jute_skill_list" }
 func (juteSkillListTool) Title() string       { return "List Widget Skills" }
 func (juteSkillListTool) Description() string { return "List available Jute Widget Skills." }
-func (juteSkillListTool) Scope() string       { return agents.MCPScopeSkillsRead }
+func (juteSkillListTool) Scope() string       { return model.MCPScopeSkillsRead }
 func (juteSkillListTool) InputSchema() map[string]any {
 	return emptySchema()
 }
@@ -302,7 +302,7 @@ func (juteSkillReadContextTool) Title() string { return "Read Widget Skill Conte
 func (juteSkillReadContextTool) Description() string {
 	return "Read public context for an exact Widget Skill ID returned by jute_skill_list."
 }
-func (juteSkillReadContextTool) Scope() string { return agents.MCPScopeSkillsContextRead }
+func (juteSkillReadContextTool) Scope() string { return model.MCPScopeSkillsContextRead }
 func (juteSkillReadContextTool) InputSchema() map[string]any {
 	return objectSchema(map[string]any{
 		"skillId": map[string]any{
@@ -327,7 +327,7 @@ func (juteSkillInvokeActionTool) Title() string { return "Invoke Widget Skill Ac
 func (juteSkillInvokeActionTool) Description() string {
 	return "Invoke an exact declared Widget Skill action through the hub. Call jute_skill_list first; do not invent generic skill IDs such as music_player, stocks, shares, or market_prices."
 }
-func (juteSkillInvokeActionTool) Scope() string { return agents.MCPScopeSkillsActionInvoke }
+func (juteSkillInvokeActionTool) Scope() string { return model.MCPScopeSkillsActionInvoke }
 func (juteSkillInvokeActionTool) InputSchema() map[string]any {
 	return objectSchema(map[string]any{
 		"skillId": map[string]any{
@@ -403,7 +403,7 @@ func (juteSkillPromptGetTool) Title() string { return "Get Widget Skill Prompt" 
 func (juteSkillPromptGetTool) Description() string {
 	return "Get hub-approved prompt guidance for a Widget Skill."
 }
-func (juteSkillPromptGetTool) Scope() string { return agents.MCPScopeSkillsPromptRead }
+func (juteSkillPromptGetTool) Scope() string { return model.MCPScopeSkillsPromptRead }
 func (juteSkillPromptGetTool) InputSchema() map[string]any {
 	return objectSchema(map[string]any{
 		"skillId":  map[string]any{"type": "string"},
@@ -429,7 +429,7 @@ func (juteDisplayNotificationTool) Title() string { return "Display Notification
 func (juteDisplayNotificationTool) Description() string {
 	return "Show a short hub-sanitized notification on the Jute display."
 }
-func (juteDisplayNotificationTool) Scope() string { return agents.MCPScopeDisplayWrite }
+func (juteDisplayNotificationTool) Scope() string { return model.MCPScopeDisplayWrite }
 func (juteDisplayNotificationTool) InputSchema() map[string]any {
 	return objectSchema(map[string]any{
 		"message":  map[string]any{"type": "string"},
@@ -461,7 +461,7 @@ func (juteDisplayFocusWidgetTool) Title() string { return "Focus Widget" }
 func (juteDisplayFocusWidgetTool) Description() string {
 	return "Ask the Jute display to highlight a visible widget instance."
 }
-func (juteDisplayFocusWidgetTool) Scope() string { return agents.MCPScopeDisplayFocusWidget }
+func (juteDisplayFocusWidgetTool) Scope() string { return model.MCPScopeDisplayFocusWidget }
 func (juteDisplayFocusWidgetTool) InputSchema() map[string]any {
 	return objectSchema(map[string]any{
 		"widgetInstanceId": map[string]any{"type": "string"},
@@ -496,7 +496,7 @@ func (juteHomeAssistantGuidancePrompt) Title() string { return "Jute Home Assist
 func (juteHomeAssistantGuidancePrompt) Description() string {
 	return "Guidance for using Jute dashboard context and Widget Skills safely."
 }
-func (juteHomeAssistantGuidancePrompt) Scope() string { return agents.MCPScopeSkillsPromptRead }
+func (juteHomeAssistantGuidancePrompt) Scope() string { return model.MCPScopeSkillsPromptRead }
 func (juteHomeAssistantGuidancePrompt) Arguments() []map[string]any {
 	return nil
 }
@@ -511,7 +511,7 @@ func (juteWidgetSkillGuidancePrompt) Title() string { return "Jute Widget Skill 
 func (juteWidgetSkillGuidancePrompt) Description() string {
 	return "Guidance for using a specific Widget Skill prompt."
 }
-func (juteWidgetSkillGuidancePrompt) Scope() string { return agents.MCPScopeSkillsPromptRead }
+func (juteWidgetSkillGuidancePrompt) Scope() string { return model.MCPScopeSkillsPromptRead }
 func (juteWidgetSkillGuidancePrompt) Arguments() []map[string]any {
 	return []map[string]any{
 		{"name": "skillId", "description": "Widget Skill ID.", "required": true},

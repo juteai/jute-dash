@@ -4,7 +4,7 @@ package mocks
 
 import (
 	context "context"
-	dashboard "jute-dash/apps/hub/internal/app/service/dashboard"
+	model "jute-dash/apps/hub/internal/app/model"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -23,25 +23,25 @@ func (_m *ActionLayoutStore) EXPECT() *ActionLayoutStore_Expecter {
 }
 
 // SaveWidgetLayout provides a mock function with given fields: ctx, layout
-func (_m *ActionLayoutStore) SaveWidgetLayout(ctx context.Context, layout dashboard.WidgetLayout) (dashboard.WidgetLayout, error) {
+func (_m *ActionLayoutStore) SaveWidgetLayout(ctx context.Context, layout model.WidgetLayout) (model.WidgetLayout, error) {
 	ret := _m.Called(ctx, layout)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SaveWidgetLayout")
 	}
 
-	var r0 dashboard.WidgetLayout
+	var r0 model.WidgetLayout
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, dashboard.WidgetLayout) (dashboard.WidgetLayout, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, model.WidgetLayout) (model.WidgetLayout, error)); ok {
 		return rf(ctx, layout)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, dashboard.WidgetLayout) dashboard.WidgetLayout); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, model.WidgetLayout) model.WidgetLayout); ok {
 		r0 = rf(ctx, layout)
 	} else {
-		r0 = ret.Get(0).(dashboard.WidgetLayout)
+		r0 = ret.Get(0).(model.WidgetLayout)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, dashboard.WidgetLayout) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, model.WidgetLayout) error); ok {
 		r1 = rf(ctx, layout)
 	} else {
 		r1 = ret.Error(1)
@@ -57,45 +57,45 @@ type ActionLayoutStore_SaveWidgetLayout_Call struct {
 
 // SaveWidgetLayout is a helper method to define mock.On call
 //   - ctx context.Context
-//   - layout dashboard.WidgetLayout
+//   - layout model.WidgetLayout
 func (_e *ActionLayoutStore_Expecter) SaveWidgetLayout(ctx interface{}, layout interface{}) *ActionLayoutStore_SaveWidgetLayout_Call {
 	return &ActionLayoutStore_SaveWidgetLayout_Call{Call: _e.mock.On("SaveWidgetLayout", ctx, layout)}
 }
 
-func (_c *ActionLayoutStore_SaveWidgetLayout_Call) Run(run func(ctx context.Context, layout dashboard.WidgetLayout)) *ActionLayoutStore_SaveWidgetLayout_Call {
+func (_c *ActionLayoutStore_SaveWidgetLayout_Call) Run(run func(ctx context.Context, layout model.WidgetLayout)) *ActionLayoutStore_SaveWidgetLayout_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(dashboard.WidgetLayout))
+		run(args[0].(context.Context), args[1].(model.WidgetLayout))
 	})
 	return _c
 }
 
-func (_c *ActionLayoutStore_SaveWidgetLayout_Call) Return(_a0 dashboard.WidgetLayout, _a1 error) *ActionLayoutStore_SaveWidgetLayout_Call {
+func (_c *ActionLayoutStore_SaveWidgetLayout_Call) Return(_a0 model.WidgetLayout, _a1 error) *ActionLayoutStore_SaveWidgetLayout_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *ActionLayoutStore_SaveWidgetLayout_Call) RunAndReturn(run func(context.Context, dashboard.WidgetLayout) (dashboard.WidgetLayout, error)) *ActionLayoutStore_SaveWidgetLayout_Call {
+func (_c *ActionLayoutStore_SaveWidgetLayout_Call) RunAndReturn(run func(context.Context, model.WidgetLayout) (model.WidgetLayout, error)) *ActionLayoutStore_SaveWidgetLayout_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // WidgetLayout provides a mock function with given fields: ctx, profileID
-func (_m *ActionLayoutStore) WidgetLayout(ctx context.Context, profileID string) (dashboard.WidgetLayout, error) {
+func (_m *ActionLayoutStore) WidgetLayout(ctx context.Context, profileID string) (model.WidgetLayout, error) {
 	ret := _m.Called(ctx, profileID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for WidgetLayout")
 	}
 
-	var r0 dashboard.WidgetLayout
+	var r0 model.WidgetLayout
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (dashboard.WidgetLayout, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) (model.WidgetLayout, error)); ok {
 		return rf(ctx, profileID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) dashboard.WidgetLayout); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) model.WidgetLayout); ok {
 		r0 = rf(ctx, profileID)
 	} else {
-		r0 = ret.Get(0).(dashboard.WidgetLayout)
+		r0 = ret.Get(0).(model.WidgetLayout)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
@@ -126,12 +126,12 @@ func (_c *ActionLayoutStore_WidgetLayout_Call) Run(run func(ctx context.Context,
 	return _c
 }
 
-func (_c *ActionLayoutStore_WidgetLayout_Call) Return(_a0 dashboard.WidgetLayout, _a1 error) *ActionLayoutStore_WidgetLayout_Call {
+func (_c *ActionLayoutStore_WidgetLayout_Call) Return(_a0 model.WidgetLayout, _a1 error) *ActionLayoutStore_WidgetLayout_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *ActionLayoutStore_WidgetLayout_Call) RunAndReturn(run func(context.Context, string) (dashboard.WidgetLayout, error)) *ActionLayoutStore_WidgetLayout_Call {
+func (_c *ActionLayoutStore_WidgetLayout_Call) RunAndReturn(run func(context.Context, string) (model.WidgetLayout, error)) *ActionLayoutStore_WidgetLayout_Call {
 	_c.Call.Return(run)
 	return _c
 }

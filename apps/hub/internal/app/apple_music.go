@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"jute-dash/apps/hub/internal/app/service/homestate"
+	"jute-dash/apps/hub/internal/app/model"
 	"jute-dash/apps/hub/internal/pkg/httphelper"
 )
 
@@ -85,24 +85,24 @@ func (c *appleMusicController) appleMusicConnection(
 	ctx context.Context,
 	w http.ResponseWriter,
 	connectionID string,
-) (homestate.AdapterConnection, bool) {
+) (model.AdapterConnection, bool) {
 	connectionID = strings.TrimSpace(connectionID)
 	if connectionID == "" {
 		httphelper.WriteError(w, http.StatusBadRequest, "connectionId is required")
-		return homestate.AdapterConnection{}, false
+		return model.AdapterConnection{}, false
 	}
 	if c.server.settings == nil {
 		httphelper.WriteError(w, http.StatusServiceUnavailable, "settings storage is unavailable")
-		return homestate.AdapterConnection{}, false
+		return model.AdapterConnection{}, false
 	}
 	connection, err := c.server.settings.AdapterConnection(ctx, connectionID)
 	if err != nil {
 		httphelper.WriteError(w, http.StatusNotFound, "Apple Music connection was not found")
-		return homestate.AdapterConnection{}, false
+		return model.AdapterConnection{}, false
 	}
 	if connection.Kind != "apple-music" {
 		httphelper.WriteError(w, http.StatusBadRequest, "connection is not an Apple Music account")
-		return homestate.AdapterConnection{}, false
+		return model.AdapterConnection{}, false
 	}
 	if connection.SecretRefs == nil {
 		connection.SecretRefs = map[string]string{}

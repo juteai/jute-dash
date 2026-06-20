@@ -14,11 +14,9 @@ import (
 	v1 "jute-dash/apps/hub/api/hub/v1"
 	"jute-dash/apps/hub/internal/app/config"
 	"jute-dash/apps/hub/internal/app/controller"
-	"jute-dash/apps/hub/internal/app/service/agents"
-	"jute-dash/apps/hub/internal/app/service/dashboard"
-	"jute-dash/apps/hub/internal/app/service/homestate"
-	"jute-dash/apps/hub/internal/app/service/voice"
-	"jute-dash/apps/hub/internal/app/service/widgetactions"
+	"jute-dash/apps/hub/internal/app/model"
+	"jute-dash/apps/hub/internal/app/repository"
+	"jute-dash/apps/hub/internal/app/service"
 	a2aclient "jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/internal/pkg/filesync"
@@ -34,26 +32,26 @@ import (
 
 type Server struct {
 	cfg                config.Config
-	agentsManager      *agents.AgentManager
+	agentsManager      *service.AgentManager
 	messages           a2aclient.MessageSender
-	setup              homestate.SetupStatus
-	layout             dashboard.WidgetLayout
-	layoutStore        dashboard.LayoutStore
-	settings           homestate.SettingsStore
-	voice              voice.Config
-	voiceStore         voice.Store
-	voiceSpeaker       *voice.Speaker
-	voiceRuntime       *voice.ConversationRuntime
+	setup              model.SetupStatus
+	layout             model.WidgetLayout
+	layoutStore        controller.DashboardLayoutStore
+	settings           controller.HomeSettingsStore
+	voice              service.Config
+	voiceStore         controller.VoiceStore
+	voiceSpeaker       *service.Speaker
+	voiceRuntime       *service.ConversationRuntime
 	configPath         string
 	syncer             filesync.Syncer
 	display            *displayactions.Dispatcher
-	voiceDispatcher    *voice.Dispatcher
+	voiceDispatcher    *service.VoiceDispatcher
 	connectionResolver widgets.ConnectionResolver
 	secretStore        secretStore
-	actionDispatcher   *widgetactions.Dispatcher
+	actionDispatcher   *service.WidgetActionDispatcher
 	spotifyOAuth       *spotifyOAuthController
 	appleMusic         *appleMusicController
-	turnRunner         *agents.Runner
+	turnRunner         *service.Runner
 	handler            http.Handler
 	mu                 sync.Mutex
 	started            time.Time
@@ -67,15 +65,15 @@ type HealthResponse struct {
 }
 
 type StatusResponse struct {
-	Status      string                    `json:"status"`
-	Version     string                    `json:"version"`
-	StartedAt   time.Time                 `json:"startedAt"`
-	Setup       homestate.SetupStatus     `json:"setup"`
-	Config      ConfigStatus              `json:"config"`
-	EventStream EventStreamStatus         `json:"eventStream"`
-	MCP         mcpStatus                 `json:"mcp"`
-	Agents      agents.AgentStatusSummary `json:"agents"`
-	Voice       VoiceStatusSummary        `json:"voice"`
+	Status      string                     `json:"status"`
+	Version     string                     `json:"version"`
+	StartedAt   time.Time                  `json:"startedAt"`
+	Setup       model.SetupStatus          `json:"setup"`
+	Config      ConfigStatus               `json:"config"`
+	EventStream EventStreamStatus          `json:"eventStream"`
+	MCP         mcpStatus                  `json:"mcp"`
+	Agents      service.AgentStatusSummary `json:"agents"`
+	Voice       VoiceStatusSummary         `json:"voice"`
 }
 
 type ConfigStatus struct {
@@ -104,12 +102,12 @@ type VoiceStatusSummary struct {
 }
 
 func New(cfg config.Config, version string) http.Handler {
-	layout := dashboard.DefaultWidgetLayout()
+	layout := repository.DefaultWidgetLayout()
 	return newServer(
 		cfg,
 		version,
 		nil,
-		homestate.SetupStatus{Complete: true},
+		model.SetupStatus{Complete: true},
 		layout,
 		nil,
 		nil,
@@ -122,16 +120,16 @@ func New(cfg config.Config, version string) http.Handler {
 func NewWithSetupStatus(
 	cfg config.Config,
 	version string,
-	setup homestate.SetupStatus,
+	setup model.SetupStatus,
 ) http.Handler {
-	return NewWithSetupStatusAndLayout(cfg, version, setup, dashboard.DefaultWidgetLayout())
+	return NewWithSetupStatusAndLayout(cfg, version, setup, repository.DefaultWidgetLayout())
 }
 
 func NewWithSetupStatusAndLayout(
 	cfg config.Config,
 	version string,
-	setup homestate.SetupStatus,
-	layout dashboard.WidgetLayout,
+	setup model.SetupStatus,
+	layout model.WidgetLayout,
 ) http.Handler {
 	return newServer(cfg, version, nil, setup, layout, nil, nil, nil, "", nil)
 }
@@ -145,8 +143,8 @@ func NewWithMessageSender(
 		cfg,
 		version,
 		messageSender,
-		homestate.SetupStatus{Complete: true},
-		dashboard.DefaultWidgetLayout(),
+		model.SetupStatus{Complete: true},
+		repository.DefaultWidgetLayout(),
 		nil,
 		nil,
 		nil,
@@ -158,14 +156,14 @@ func NewWithMessageSender(
 func NewServer(
 	cfg config.Config,
 	version string,
-	setup homestate.SetupStatus,
-	layoutStore dashboard.LayoutStore,
-	settingsStore homestate.SettingsStore,
-	voiceStore voice.Store,
+	setup model.SetupStatus,
+	layoutStore controller.DashboardLayoutStore,
+	settingsStore controller.HomeSettingsStore,
+	voiceStore controller.VoiceStore,
 	configPath string,
 	display *displayactions.Dispatcher,
 ) *Server {
-	layout := dashboard.DefaultWidgetLayout()
+	layout := repository.DefaultWidgetLayout()
 	if layoutStore != nil {
 		if loaded, err := layoutStore.WidgetLayout(context.Background(), ""); err == nil {
 			layout = loaded
@@ -188,10 +186,10 @@ func NewServer(
 func NewServerWithSecrets(
 	cfg config.Config,
 	version string,
-	setup homestate.SetupStatus,
-	layoutStore dashboard.LayoutStore,
-	settingsStore homestate.SettingsStore,
-	voiceStore voice.Store,
+	setup model.SetupStatus,
+	layoutStore controller.DashboardLayoutStore,
+	settingsStore controller.HomeSettingsStore,
+	voiceStore controller.VoiceStore,
 	configPath string,
 	display *displayactions.Dispatcher,
 	secrets secretStore,
@@ -201,7 +199,7 @@ func NewServerWithSecrets(
 		version,
 		nil,
 		setup,
-		dashboard.DefaultWidgetLayout(),
+		repository.DefaultWidgetLayout(),
 		layoutStore,
 		settingsStore,
 		voiceStore,
@@ -215,11 +213,11 @@ func newServer(
 	cfg config.Config,
 	version string,
 	messageSender a2aclient.MessageSender,
-	setup homestate.SetupStatus,
-	layout dashboard.WidgetLayout,
-	layoutStore dashboard.LayoutStore,
-	settingsStore homestate.SettingsStore,
-	voiceStore voice.Store,
+	setup model.SetupStatus,
+	layout model.WidgetLayout,
+	layoutStore controller.DashboardLayoutStore,
+	settingsStore controller.HomeSettingsStore,
+	voiceStore controller.VoiceStore,
 	configPath string,
 	display *displayactions.Dispatcher,
 ) *Server {
@@ -242,11 +240,11 @@ func newServerWithSecrets(
 	cfg config.Config,
 	version string,
 	messageSender a2aclient.MessageSender,
-	setup homestate.SetupStatus,
-	layout dashboard.WidgetLayout,
-	layoutStore dashboard.LayoutStore,
-	settingsStore homestate.SettingsStore,
-	voiceStore voice.Store,
+	setup model.SetupStatus,
+	layout model.WidgetLayout,
+	layoutStore controller.DashboardLayoutStore,
+	settingsStore controller.HomeSettingsStore,
+	voiceStore controller.VoiceStore,
 	configPath string,
 	display *displayactions.Dispatcher,
 	secretStore secretStore,
@@ -257,17 +255,17 @@ func newServerWithSecrets(
 
 	activeLayoutStore := layoutStore
 	if activeLayoutStore == nil {
-		activeLayoutStore = dashboard.NewMemoryRepositoryWithLayout(layout)
+		activeLayoutStore = repository.NewMemoryDashboardRepositoryWithLayout(layout)
 	}
 
 	activeVoiceStore := voiceStore
 	if activeVoiceStore == nil {
-		activeVoiceStore = voice.NewMemoryRepositoryFromConfig(cfg.Voice)
+		activeVoiceStore = repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice)
 	}
 
 	activeSettingsStore := settingsStore
 	if activeSettingsStore == nil {
-		activeSettingsStore = homestate.NewMemoryRepository(setup)
+		activeSettingsStore = repository.NewMemoryHomeRepository(setup)
 	}
 
 	var dbStore filesync.ConfigStore
@@ -331,10 +329,10 @@ func newServerWithSecrets(
 		display = displayactions.NewDispatcher()
 	}
 
-	agentCards := agents.NewCardService(cfg.A2A)
-	agentsManager := agents.NewAgentManager(syncer, agentCards, configPath)
+	agentCards := service.NewCardService(cfg.A2A)
+	agentsManager := service.NewAgentManager(syncer, agentCards, configPath)
 
-	voiceDispatcher := voice.NewDispatcher()
+	voiceDispatcher := service.NewVoiceDispatcher()
 	connectionResolver := newConnectionResolver(activeSettingsStore, secretStore)
 
 	server := &Server{
@@ -347,7 +345,7 @@ func newServerWithSecrets(
 		settings:           activeSettingsStore,
 		voice:              cfg.Voice,
 		voiceStore:         activeVoiceStore,
-		voiceRuntime:       voice.NewConversationRuntime(),
+		voiceRuntime:       service.NewConversationRuntime(),
 		configPath:         configPath,
 		syncer:             syncer,
 		display:            display,
@@ -357,7 +355,7 @@ func newServerWithSecrets(
 		started:            time.Now().UTC(),
 		version:            version,
 	}
-	actionDispatcher := widgetactions.NewDispatcher(
+	actionDispatcher := service.NewWidgetActionDispatcher(
 		activeLayoutStore,
 		connectionResolver,
 		server.buildWidgetSkillsSnapshot,
@@ -366,16 +364,16 @@ func newServerWithSecrets(
 	server.spotifyOAuth = newSpotifyOAuthController(server)
 	server.appleMusic = newAppleMusicController(server)
 
-	agents.SetEnvReader(os.Getenv)
-	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
+	service.SetEnvReader(os.Getenv)
+	server.turnRunner = service.NewRunner(service.RunnerOptions{
 		GetRegistry: server.agentsManager.ActiveRegistry,
-		GetAgentConfig: func(agentID string) (agents.AgentConfig, bool) {
+		GetAgentConfig: func(agentID string) (service.AgentConfig, bool) {
 			return server.agentsManager.ConfiguredAgent(agentID)
 		},
-		GetAgentCardCache: func(ctx context.Context, agent registry.Agent) (agents.AgentCardCache, bool) {
+		GetAgentCardCache: func(ctx context.Context, agent registry.Agent) (service.AgentCardCache, bool) {
 			configured, _ := server.agentsManager.ConfiguredAgent(agent.ID)
 			cache := agentCards.Current(ctx, agent, configured)
-			return agents.AgentCardCache{
+			return service.AgentCardCache{
 				SelectedEndpointURL:       cache.SelectedEndpointURL,
 				SelectedProtocolBinding:   cache.SelectedProtocolBinding,
 				SelectedProtocolVersion:   cache.SelectedProtocolVersion,
@@ -390,9 +388,9 @@ func newServerWithSecrets(
 	})
 
 	if st, ok := activeLayoutStore.(interface {
-		SetCatalog([]dashboard.WidgetCatalogItem)
+		SetCatalog([]model.WidgetCatalogItem)
 	}); ok {
-		st.SetCatalog(dashboard.RegisteredCatalog())
+		st.SetCatalog(service.RegisteredCatalog())
 	}
 
 	mux := http.NewServeMux()
@@ -408,9 +406,9 @@ func newServerWithSecrets(
 	mux.HandleFunc("/api/v1/voice/transcripts/final", server.handleVoiceFinalTranscript)
 
 	// Registrations
-	homestate.NewController(
+	controller.NewHomeController(
 		server.settings,
-		func(saved homestate.HouseholdSettings) {
+		func(saved model.HouseholdSettings) {
 			server.mu.Lock()
 			server.setup = saved.Setup
 			server.mu.Unlock()
@@ -419,39 +417,39 @@ func newServerWithSecrets(
 		nil,
 	).RegisterRoutes(mux)
 
-	dashboard.NewControllerWithHydrator(
+	controller.NewDashboardControllerWithHydrator(
 		server.layoutStore,
-		dashboard.NewHydrator(server.connectionResolver),
-		func(saved dashboard.WidgetLayout) {
+		controller.NewHydrator(server.connectionResolver),
+		func(saved model.WidgetLayout) {
 			server.mu.Lock()
 			server.layout = saved
 			server.mu.Unlock()
 		},
 	).RegisterRoutes(mux)
 
-	dashboard.NewBackgroundsController(paths.BackgroundsDirPath()).RegisterRoutes(mux)
+	controller.NewBackgroundsController(paths.BackgroundsDirPath()).RegisterRoutes(mux)
 
-	var ttsProvider voice.TTSProvider
+	var ttsProvider service.TTSProvider
 	if providerStore, ok := server.voiceStore.(interface {
-		ActiveTTSProvider(context.Context, string) (voice.TTSProvider, error)
+		ActiveTTSProvider(context.Context, string) (service.TTSProvider, error)
 	}); ok {
 		provider, err := providerStore.ActiveTTSProvider(
 			context.Background(),
-			voice.DefaultDeviceProfileID,
+			service.DefaultDeviceProfileID,
 		)
 		if err == nil {
 			ttsProvider = provider
 		}
 	}
-	server.voiceSpeaker = voice.NewSpeaker(server.voiceStore, server.voiceDispatcher, ttsProvider)
-	voice.NewControllerWithSpeaker(
+	server.voiceSpeaker = service.NewSpeaker(server.voiceStore, server.voiceDispatcher, ttsProvider)
+	controller.NewVoiceControllerWithSpeaker(
 		server.voiceStore,
 		server.voiceDispatcher,
 		server.voiceRuntime.CancelAll,
 		server.voiceSpeaker,
 	).RegisterRoutes(mux)
 
-	agents.NewController(agents.ControllerOptions{
+	controller.NewAgentController(controller.AgentControllerOptions{
 		Manager:             server.agentsManager,
 		Messages:            server.messages,
 		TurnRunner:          server.turnRunner,
@@ -496,7 +494,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	voiceStatus, err := s.currentVoiceStatus(r.Context())
 	if err != nil {
-		voiceStatus = voice.StatusFromConfig(s.voice, time.Now().UTC())
+		voiceStatus = model.StatusFromConfig(s.voice, time.Now().UTC())
 	}
 	status := StatusResponse{
 		Status:      s.overallStatus(r.Context()),
@@ -525,7 +523,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 
 	// 1. Get Home and Display from settings store
 	serverSettings, err := s.settings.HouseholdSettings(ctx)
-	var home homestate.HomeConfig
+	var home model.HomeConfig
 	var display any
 	if err == nil {
 		home = serverSettings.Home
@@ -545,8 +543,8 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		tiles = s.cfg.Tiles
 	}
 
-	// Convert display to dashboard.DisplayConfig safely
-	var disp dashboard.DisplayConfig
+	// Convert display to model.DisplayConfig safely
+	var disp model.DisplayConfig
 	if display != nil {
 		dispBytes, err := json.Marshal(display)
 		if err == nil {
@@ -556,12 +554,12 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		disp = s.cfg.Display
 	}
 	// 3. Get Dashboard widgets from layout store
-	var dbConfig dashboard.DashboardConfig
+	var dbConfig model.DashboardConfig
 	layout, err := s.layoutStore.WidgetLayout(ctx, "")
 	if err == nil {
-		widgets := make([]dashboard.DashboardWidgetConfig, 0, len(layout.Widgets))
+		widgets := make([]model.DashboardWidgetConfig, 0, len(layout.Widgets))
 		for _, w := range layout.Widgets {
-			widgets = append(widgets, dashboard.DashboardWidgetConfig{
+			widgets = append(widgets, model.DashboardWidgetConfig{
 				ID:             w.ID,
 				Type:           w.Kind,
 				Title:          w.Title,
@@ -583,11 +581,11 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		dbConfig = s.cfg.Dashboard
 	}
 
-	// 4. Get active agents list and map to agents.PublicAgentConfig
+	// 4. Get active agents list and map to model.PublicAgentConfig
 	regAgents := s.agentsManager.List(ctx, false)
-	publicAgents := make([]agents.PublicAgentConfig, 0, len(regAgents))
+	publicAgents := make([]model.PublicAgentConfig, 0, len(regAgents))
 	for _, a := range regAgents {
-		publicAgents = append(publicAgents, agents.PublicAgentConfig{
+		publicAgents = append(publicAgents, model.PublicAgentConfig{
 			ID:              a.ID,
 			Name:            a.Name,
 			Description:     a.Description,
@@ -662,15 +660,15 @@ func (s *Server) mcpStatus() mcpStatus {
 	return status
 }
 
-func (s *Server) currentVoiceStatus(ctx context.Context) (voice.StatusResponse, error) {
+func (s *Server) currentVoiceStatus(ctx context.Context) (model.StatusResponse, error) {
 	settings, err := s.voiceStore.VoiceSettings(ctx, "")
 	if err != nil {
-		return voice.StatusResponse{}, err
+		return model.StatusResponse{}, err
 	}
-	return voice.StatusFromSettings(settings), nil
+	return model.StatusFromSettings(settings), nil
 }
 
-func (s *Server) agentStatusSummary(ctx context.Context) agents.AgentStatusSummary {
+func (s *Server) agentStatusSummary(ctx context.Context) service.AgentStatusSummary {
 	return s.agentsManager.StatusSummary(ctx)
 }
 
@@ -679,27 +677,27 @@ func (s *Server) dashboardContext(ctx context.Context) map[string]any {
 	if err != nil {
 		return map[string]any{}
 	}
-	home := homestate.HomeConfig{
+	home := model.HomeConfig{
 		Name: serverSettings.Home.Name,
 	}
 
 	rooms, err := s.settings.Rooms(ctx)
 	if err != nil {
-		rooms = []homestate.RoomConfig{}
+		rooms = []model.RoomConfig{}
 	}
 	tiles, err := s.settings.Tiles(ctx)
 	if err != nil {
-		tiles = []homestate.TileConfig{}
+		tiles = []model.TileConfig{}
 	}
 
-	state := homestate.FromConfig(home, rooms, tiles, time.Now())
+	state := service.FromConfig(home, rooms, tiles, time.Now())
 
 	layout, err := s.layoutStore.WidgetLayout(ctx, "")
 	if err != nil {
-		layout = dashboard.WidgetLayout{}
+		layout = model.WidgetLayout{}
 	}
 
-	snapshot := dashboard.Project(ctx, layout)
+	snapshot := service.Project(ctx, layout)
 	return map[string]any{
 		"home":      state,
 		"dashboard": snapshot,
@@ -745,9 +743,9 @@ func isLocalOrigin(origin string) bool {
 func syncOnLoad(
 	ctx context.Context,
 	syncer filesync.Syncer,
-	layoutStore dashboard.LayoutStore,
-	settingsStore homestate.SettingsStore,
-	_ voice.Store,
+	layoutStore controller.DashboardLayoutStore,
+	settingsStore controller.HomeSettingsStore,
+	_ controller.VoiceStore,
 ) error {
 	cfg, err := syncer.Load(ctx)
 	if err != nil {
@@ -755,7 +753,7 @@ func syncOnLoad(
 	}
 
 	// 1. Sync Household Settings
-	if _, err := settingsStore.SaveHouseholdSettings(ctx, homestate.HouseholdSettings{
+	if _, err := settingsStore.SaveHouseholdSettings(ctx, model.HouseholdSettings{
 		Home:    cfg.Home,
 		Display: cfg.Display,
 	}); err != nil {
@@ -773,12 +771,12 @@ func syncOnLoad(
 	}
 
 	// 4. Sync Widget Layout
-	catalog := dashboard.RegisteredCatalog()
-	catalogMap := make(map[string]dashboard.WidgetCatalogItem, len(catalog))
+	catalog := service.RegisteredCatalog()
+	catalogMap := make(map[string]model.WidgetCatalogItem, len(catalog))
 	for _, item := range catalog {
 		catalogMap[item.Kind] = item
 	}
-	layout, err := dashboard.WidgetLayoutFromDashboardConfig(cfg.Dashboard, catalogMap)
+	layout, err := repository.WidgetLayoutFromDashboardConfig(cfg.Dashboard, catalogMap)
 	if err == nil {
 		if _, err := layoutStore.SaveWidgetLayout(ctx, layout); err != nil {
 			return err
@@ -817,7 +815,7 @@ func (s *Server) handleWidgetAction(w http.ResponseWriter, r *http.Request) {
 	if req.Actor == "" {
 		req.Actor = "display"
 	}
-	result := s.actionDispatcher.Dispatch(r.Context(), widgetactions.Request{
+	result := s.actionDispatcher.Dispatch(r.Context(), service.WidgetActionRequest{
 		WidgetInstanceID: instanceID,
 		ActionID:         actionID,
 		Arguments:        req.Arguments,
@@ -866,7 +864,7 @@ func parseWidgetActionPath(path string) (string, string, bool) {
 
 func (s *Server) buildWidgetSkillsSnapshot(
 	ctx context.Context,
-	layout dashboard.WidgetLayout,
+	layout model.WidgetLayout,
 ) widgetskills.Snapshot {
 	cfg := s.cfg
 	if s.configPath != "" {
@@ -877,7 +875,7 @@ func (s *Server) buildWidgetSkillsSnapshot(
 		}
 	}
 
-	layout = dashboard.NewHydrator(s.connectionResolver).HydrateWidgetLayout(ctx, layout)
+	layout = controller.NewHydrator(s.connectionResolver).HydrateWidgetLayout(ctx, layout)
 
 	agentsList := []widgetskills.Agent{}
 	regAgents := s.agentsManager.List(ctx, false)
@@ -947,7 +945,7 @@ func (s *Server) buildWidgetSkillsSnapshot(
 
 	return widgetskills.Snapshot{
 		Config:      wsCfg,
-		Layout:      dashboard.WidgetSkillsLayout(layout),
+		Layout:      service.WidgetSkillsLayout(layout),
 		Agents:      agentsList,
 		GeneratedAt: time.Now().UTC(),
 	}

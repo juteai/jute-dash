@@ -4,7 +4,7 @@ package mocks
 
 import (
 	context "context"
-	voice "jute-dash/apps/hub/internal/app/service/voice"
+	service "jute-dash/apps/hub/internal/app/service"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -23,23 +23,23 @@ func (_m *AudioCapture) EXPECT() *AudioCapture_Expecter {
 }
 
 // Capture provides a mock function with given fields: ctx
-func (_m *AudioCapture) Capture(ctx context.Context) (<-chan voice.AudioFrame, <-chan error) {
+func (_m *AudioCapture) Capture(ctx context.Context) (<-chan service.AudioFrame, <-chan error) {
 	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Capture")
 	}
 
-	var r0 <-chan voice.AudioFrame
+	var r0 <-chan service.AudioFrame
 	var r1 <-chan error
-	if rf, ok := ret.Get(0).(func(context.Context) (<-chan voice.AudioFrame, <-chan error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context) (<-chan service.AudioFrame, <-chan error)); ok {
 		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context) <-chan voice.AudioFrame); ok {
+	if rf, ok := ret.Get(0).(func(context.Context) <-chan service.AudioFrame); ok {
 		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(<-chan voice.AudioFrame)
+			r0 = ret.Get(0).(<-chan service.AudioFrame)
 		}
 	}
 
@@ -72,12 +72,12 @@ func (_c *AudioCapture_Capture_Call) Run(run func(ctx context.Context)) *AudioCa
 	return _c
 }
 
-func (_c *AudioCapture_Capture_Call) Return(_a0 <-chan voice.AudioFrame, _a1 <-chan error) *AudioCapture_Capture_Call {
+func (_c *AudioCapture_Capture_Call) Return(_a0 <-chan service.AudioFrame, _a1 <-chan error) *AudioCapture_Capture_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AudioCapture_Capture_Call) RunAndReturn(run func(context.Context) (<-chan voice.AudioFrame, <-chan error)) *AudioCapture_Capture_Call {
+func (_c *AudioCapture_Capture_Call) RunAndReturn(run func(context.Context) (<-chan service.AudioFrame, <-chan error)) *AudioCapture_Capture_Call {
 	_c.Call.Return(run)
 	return _c
 }

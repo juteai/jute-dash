@@ -4,7 +4,7 @@ package mocks
 
 import (
 	context "context"
-	dashboard "jute-dash/apps/hub/internal/app/service/dashboard"
+	model "jute-dash/apps/hub/internal/app/model"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -25,7 +25,7 @@ func (_m *SnapshotBuilder) EXPECT() *SnapshotBuilder_Expecter {
 }
 
 // Execute provides a mock function with given fields: ctx, layout
-func (_m *SnapshotBuilder) Execute(ctx context.Context, layout dashboard.WidgetLayout) widgetskills.Snapshot {
+func (_m *SnapshotBuilder) Execute(ctx context.Context, layout model.WidgetLayout) widgetskills.Snapshot {
 	ret := _m.Called(ctx, layout)
 
 	if len(ret) == 0 {
@@ -33,7 +33,7 @@ func (_m *SnapshotBuilder) Execute(ctx context.Context, layout dashboard.WidgetL
 	}
 
 	var r0 widgetskills.Snapshot
-	if rf, ok := ret.Get(0).(func(context.Context, dashboard.WidgetLayout) widgetskills.Snapshot); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, model.WidgetLayout) widgetskills.Snapshot); ok {
 		r0 = rf(ctx, layout)
 	} else {
 		r0 = ret.Get(0).(widgetskills.Snapshot)
@@ -49,14 +49,14 @@ type SnapshotBuilder_Execute_Call struct {
 
 // Execute is a helper method to define mock.On call
 //   - ctx context.Context
-//   - layout dashboard.WidgetLayout
+//   - layout model.WidgetLayout
 func (_e *SnapshotBuilder_Expecter) Execute(ctx interface{}, layout interface{}) *SnapshotBuilder_Execute_Call {
 	return &SnapshotBuilder_Execute_Call{Call: _e.mock.On("Execute", ctx, layout)}
 }
 
-func (_c *SnapshotBuilder_Execute_Call) Run(run func(ctx context.Context, layout dashboard.WidgetLayout)) *SnapshotBuilder_Execute_Call {
+func (_c *SnapshotBuilder_Execute_Call) Run(run func(ctx context.Context, layout model.WidgetLayout)) *SnapshotBuilder_Execute_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(dashboard.WidgetLayout))
+		run(args[0].(context.Context), args[1].(model.WidgetLayout))
 	})
 	return _c
 }
@@ -66,7 +66,7 @@ func (_c *SnapshotBuilder_Execute_Call) Return(_a0 widgetskills.Snapshot) *Snaps
 	return _c
 }
 
-func (_c *SnapshotBuilder_Execute_Call) RunAndReturn(run func(context.Context, dashboard.WidgetLayout) widgetskills.Snapshot) *SnapshotBuilder_Execute_Call {
+func (_c *SnapshotBuilder_Execute_Call) RunAndReturn(run func(context.Context, model.WidgetLayout) widgetskills.Snapshot) *SnapshotBuilder_Execute_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"jute-dash/apps/hub/internal/app/config"
-	"jute-dash/apps/hub/internal/app/service/agents"
+	"jute-dash/apps/hub/internal/app/model"
 )
 
 type fileSyncer struct {
@@ -89,7 +89,7 @@ func (s *fileSyncer) Load(_ context.Context) (config.Config, error) {
 // AgentsConfig returns the current agent configurations from the YAML file.
 func (s *fileSyncer) AgentsConfig(
 	_ context.Context,
-) ([]agents.AgentConfig, error) {
+) ([]model.AgentConfig, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	cfg, err := config.LoadConfig(s.configPath)
@@ -101,7 +101,7 @@ func (s *fileSyncer) AgentsConfig(
 
 func (s *fileSyncer) SyncAgents(
 	ctx context.Context,
-	configs []agents.AgentConfig,
+	configs []model.AgentConfig,
 ) error {
 	return s.SyncWith(ctx, func(cfg *config.Config) error {
 		cfg.Agents = configs

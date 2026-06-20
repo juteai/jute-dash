@@ -12,7 +12,7 @@ import (
 	"os"
 	"strings"
 
-	"jute-dash/apps/hub/internal/app/service/agents"
+	"jute-dash/apps/hub/internal/app/model"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/pkg/widgetskills"
 )
@@ -388,7 +388,7 @@ func (h *Handler) callerForRequest(snapshot widgetskills.Snapshot, r *http.Reque
 	agentID := strings.TrimSpace(r.Header.Get(callerAgentHeader))
 	if agentID == "" {
 		if h.cfg.Auth.Mode == "none" {
-			return newCaller("", true, agents.DefaultMCPReadScopes()), nil
+			return newCaller("", true, model.DefaultMCPReadScopes()), nil
 		}
 		return caller{}, unauthorized("mcp caller identity is required")
 	}
@@ -406,7 +406,7 @@ func (h *Handler) callerForRequest(snapshot widgetskills.Snapshot, r *http.Reque
 
 func newCaller(agentID string, anonymous bool, scopes []string) caller {
 	if len(scopes) == 0 {
-		scopes = agents.DefaultMCPReadScopes()
+		scopes = model.DefaultMCPReadScopes()
 	}
 	scopeSet := make(map[string]struct{}, len(scopes))
 	for _, scope := range scopes {

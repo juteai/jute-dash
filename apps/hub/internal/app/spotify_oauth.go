@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"jute-dash/apps/hub/internal/app/service/homestate"
+	"jute-dash/apps/hub/internal/app/model"
 	"jute-dash/apps/hub/internal/pkg/httphelper"
 )
 
@@ -233,31 +233,31 @@ func (c *spotifyOAuthController) spotifyClientConfig(
 	ctx context.Context,
 	w http.ResponseWriter,
 	connectionID string,
-) (homestate.AdapterConnection, string, string, bool) {
+) (model.AdapterConnection, string, string, bool) {
 	connectionID = strings.TrimSpace(connectionID)
 	if connectionID == "" {
 		httphelper.WriteError(w, http.StatusBadRequest, "Spotify connection ID is required")
-		return homestate.AdapterConnection{}, "", "", false
+		return model.AdapterConnection{}, "", "", false
 	}
 	connection, err := c.server.settings.AdapterConnection(ctx, connectionID)
 	if err != nil {
 		httphelper.WriteError(w, http.StatusNotFound, "Spotify connection was not found")
-		return homestate.AdapterConnection{}, "", "", false
+		return model.AdapterConnection{}, "", "", false
 	}
 	if connection.Kind != "spotify" {
 		httphelper.WriteError(w, http.StatusBadRequest, "Connection is not a Spotify connection")
-		return homestate.AdapterConnection{}, "", "", false
+		return model.AdapterConnection{}, "", "", false
 	}
 	clientID := c.spotifyClientID(connection)
 	clientSecret := c.resolveSecretRef(ctx, connection.SecretRefs["client_secret"])
 	if clientID == "" {
 		httphelper.WriteError(w, http.StatusBadRequest, "Spotify Client ID is required")
-		return homestate.AdapterConnection{}, "", "", false
+		return model.AdapterConnection{}, "", "", false
 	}
 	return connection, clientID, clientSecret, true
 }
 
-func (c *spotifyOAuthController) spotifyClientID(connection homestate.AdapterConnection) string {
+func (c *spotifyOAuthController) spotifyClientID(connection model.AdapterConnection) string {
 	if value, _ := connection.Settings["client_id"].(string); strings.TrimSpace(value) != "" {
 		return strings.TrimSpace(value)
 	}
@@ -344,9 +344,9 @@ func (c *spotifyOAuthController) refreshAccessToken(
 
 func (c *spotifyOAuthController) saveTokenResponse(
 	ctx context.Context,
-	connection homestate.AdapterConnection,
+	connection model.AdapterConnection,
 	token spotifyTokenResponse,
-) (homestate.AdapterConnection, error) {
+) (model.AdapterConnection, error) {
 	if connection.Settings == nil {
 		connection.Settings = map[string]any{}
 	}
@@ -356,14 +356,14 @@ func (c *spotifyOAuthController) saveTokenResponse(
 	if token.AccessToken != "" {
 		accessID := "spotify/" + connection.ID + "/access_token"
 		if err := c.server.secretStore.Store(ctx, accessID, "spotify", token.AccessToken); err != nil {
-			return homestate.AdapterConnection{}, err
+			return model.AdapterConnection{}, err
 		}
 		connection.SecretRefs["access_token"] = "db:" + accessID
 	}
 	if token.RefreshToken != "" {
 		refreshID := "spotify/" + connection.ID + "/refresh_token"
 		if err := c.server.secretStore.Store(ctx, refreshID, "spotify", token.RefreshToken); err != nil {
-			return homestate.AdapterConnection{}, err
+			return model.AdapterConnection{}, err
 		}
 		connection.SecretRefs["refresh_token"] = "db:" + refreshID
 	}
@@ -373,7 +373,7 @@ func (c *spotifyOAuthController) saveTokenResponse(
 	return c.server.settings.SaveAdapterConnection(ctx, connection)
 }
 
-func (c *spotifyOAuthController) spotifyTokenExpired(connection homestate.AdapterConnection) bool {
+func (c *spotifyOAuthController) spotifyTokenExpired(connection model.AdapterConnection) bool {
 	expiresAt := int64(0)
 	switch v := connection.Settings["expires_at"].(type) {
 	case int64:

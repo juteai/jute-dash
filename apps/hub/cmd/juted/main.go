@@ -17,7 +17,7 @@ import (
 
 	"jute-dash/apps/hub/internal/app"
 	"jute-dash/apps/hub/internal/app/config"
-	"jute-dash/apps/hub/internal/app/service/dashboard"
+	"jute-dash/apps/hub/internal/app/service"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/internal/pkg/logging"
 	"jute-dash/apps/hub/internal/pkg/mcp"
@@ -243,7 +243,7 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 	if err != nil {
 		return widgetskills.Snapshot{}, err
 	}
-	layout = dashboard.HydrateWidgetLayout(ctx, layout)
+	layout = service.HydrateWidgetLayout(ctx, layout)
 	agentsList := []widgetskills.Agent{}
 	for _, agent := range cfg.Agents {
 		agentsList = append(agentsList, widgetskills.Agent{
@@ -302,7 +302,7 @@ func (p *mcpSnapshotProvider) Snapshot(ctx context.Context) (widgetskills.Snapsh
 
 	return widgetskills.Snapshot{
 		Config:      wsCfg,
-		Layout:      dashboard.WidgetSkillsLayout(layout),
+		Layout:      service.WidgetSkillsLayout(layout),
 		Agents:      agentsList,
 		GeneratedAt: time.Now().UTC(),
 	}, nil

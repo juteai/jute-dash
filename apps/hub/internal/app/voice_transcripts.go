@@ -9,8 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"jute-dash/apps/hub/internal/app/service/agents"
-	"jute-dash/apps/hub/internal/app/service/voice"
+	"jute-dash/apps/hub/internal/app/service"
 	"jute-dash/apps/hub/internal/pkg/httphelper"
 )
 
@@ -23,8 +22,8 @@ type VoiceFinalTranscriptRequest struct {
 }
 
 type VoiceFinalTranscriptResponse struct {
-	Conversation agents.ConversationDetail `json:"conversation"`
-	Followup     VoiceFollowupResponse     `json:"followup"`
+	Conversation service.ConversationDetail `json:"conversation"`
+	Followup     VoiceFollowupResponse      `json:"followup"`
 }
 
 type VoiceFollowupResponse struct {
@@ -56,9 +55,9 @@ func (s *Server) handleVoiceFinalTranscript(w http.ResponseWriter, r *http.Reque
 	s.handleFinalTranscriptRequest(w, r, req)
 }
 
-func (s *Server) activeSTTProvider(ctx context.Context, deviceProfileID string) (voice.STTProvider, error) {
+func (s *Server) activeSTTProvider(ctx context.Context, deviceProfileID string) (service.STTProvider, error) {
 	providerStore, ok := s.voiceStore.(interface {
-		ActiveSTTProvider(context.Context, string) (voice.STTProvider, error)
+		ActiveSTTProvider(context.Context, string) (service.STTProvider, error)
 	})
 	if !ok {
 		return nil, errors.New("STT provider store is unavailable")
@@ -77,9 +76,9 @@ func (s *Server) newLocalVoiceService(
 	ctx context.Context,
 	deviceProfileID string,
 	deviceID string,
-	capture voice.AudioCapture,
-	vad voice.VoiceActivityDetector,
-) (*voice.LocalVoiceService, error) {
+	capture service.AudioCapture,
+	vad service.VoiceActivityDetector,
+) (*service.LocalVoiceService, error) {
 	settings, err := s.voiceStore.VoiceSettings(ctx, deviceProfileID)
 	if err != nil {
 		return nil, err
@@ -94,17 +93,17 @@ func (s *Server) newLocalVoiceService(
 	if err != nil {
 		return nil, err
 	}
-	var wakeProvider voice.WakeProvider
+	var wakeProvider service.WakeProvider
 	if providerStore, ok := s.voiceStore.(interface {
-		ActiveWakeProvider(context.Context, string, string) (voice.WakeProvider, error)
+		ActiveWakeProvider(context.Context, string, string) (service.WakeProvider, error)
 	}); ok {
 		wakeProvider, err = providerStore.ActiveWakeProvider(ctx, deviceProfileID, deviceID)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return voice.NewLocalVoiceService(
-		voice.VoiceServiceConfig{
+	return service.NewLocalVoiceService(
+		service.VoiceServiceConfig{
 			Enabled:  settings.Enabled,
 			Muted:    settings.Muted,
 			DeviceID: deviceID,
@@ -113,10 +112,10 @@ func (s *Server) newLocalVoiceService(
 		vad,
 		wakeProvider,
 		s.voiceDispatcher,
-		func(utterance voice.CapturedUtterance) {
+		func(utterance service.CapturedUtterance) {
 			result, err := sttProvider.Transcribe(ctx, utterance)
 			if err == nil {
-				transcript, transcriptErr := voice.FinalTranscriptFromSTT(result, deviceProfileID, deviceID)
+				transcript, transcriptErr := service.FinalTranscriptFromSTT(result, deviceProfileID, deviceID)
 				if transcriptErr != nil {
 					err = transcriptErr
 				} else {
@@ -128,10 +127,10 @@ func (s *Server) newLocalVoiceService(
 				}
 			}
 			if err != nil && s.voiceDispatcher != nil {
-				s.voiceDispatcher.EmitVoiceStateChanged(deviceID, voice.VoiceStatePayload{
+				s.voiceDispatcher.EmitVoiceStateChanged(deviceID, service.VoiceStatePayload{
 					Enabled:       settings.Enabled,
 					Muted:         settings.Muted,
-					State:         voice.ServiceStateError,
+					State:         service.ServiceStateError,
 					ServiceStatus: "degraded",
 				})
 			}
@@ -189,9 +188,9 @@ func (s *Server) submitFinalTranscript(
 		deviceID(req),
 	)
 	if err != nil {
-		if errors.Is(err, voice.ErrFollowupExpired) {
+		if errors.Is(err, service.ErrFollowupExpired) {
 			s.voiceDispatcher.EmitConversationEvent(
-				voice.EventConversationEnded,
+				service.EventConversationEnded,
 				deviceID(req),
 				req.ConversationID,
 				map[string]any{"reason": "followup_expired"},
@@ -201,7 +200,7 @@ func (s *Server) submitFinalTranscript(
 				message: "voice follow-up window expired",
 			}
 		}
-		if errors.Is(err, voice.ErrFollowupSourceMismatch) {
+		if errors.Is(err, service.ErrFollowupSourceMismatch) {
 			return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
 				status:  http.StatusConflict,
 				message: "voice follow-up source mismatch",
@@ -217,14 +216,14 @@ func (s *Server) submitFinalTranscript(
 
 	if started {
 		s.voiceDispatcher.EmitConversationEvent(
-			voice.EventConversationStarted,
+			service.EventConversationStarted,
 			deviceID(req),
 			conversationID,
 			map[string]any{"agentId": agentID},
 		)
 	}
 	s.voiceDispatcher.EmitVoiceTranscript(
-		voice.EventVoiceTranscriptFinal,
+		service.EventVoiceTranscriptFinal,
 		deviceID(req),
 		conversationID,
 		req.Text,
@@ -233,7 +232,7 @@ func (s *Server) submitFinalTranscript(
 	detail, err := s.turnRunner.Run(
 		ctx,
 		conversationID,
-		agents.ConversationTurnRequest{
+		service.ConversationTurnRequest{
 			AgentID: agentID,
 			Text:    req.Text,
 		},
@@ -242,7 +241,7 @@ func (s *Server) submitFinalTranscript(
 	if err != nil {
 		s.voiceRuntime.End(conversationID)
 		s.voiceDispatcher.EmitConversationEvent(
-			voice.EventConversationEnded,
+			service.EventConversationEnded,
 			deviceID(req),
 			conversationID,
 			map[string]any{"reason": "agent_failure"},
@@ -254,16 +253,16 @@ func (s *Server) submitFinalTranscript(
 	}
 
 	session = s.voiceRuntime.CompleteTurn(conversationID, settings)
-	if voice.ConversationComplete(session) {
+	if service.ConversationComplete(session) {
 		s.voiceRuntime.End(conversationID)
 		s.voiceDispatcher.EmitConversationEvent(
-			voice.EventConversationEnded,
+			service.EventConversationEnded,
 			deviceID(req),
 			conversationID,
 			map[string]any{
 				"reason":   "followup_limit_reached",
 				"turns":    session.Turns,
-				"maxTurns": voice.MaxConversationTurns,
+				"maxTurns": service.MaxConversationTurns,
 			},
 		)
 		return VoiceFinalTranscriptResponse{
@@ -271,18 +270,18 @@ func (s *Server) submitFinalTranscript(
 			Followup: VoiceFollowupResponse{
 				Active:   false,
 				Turns:    session.Turns,
-				MaxTurns: voice.MaxConversationTurns,
+				MaxTurns: service.MaxConversationTurns,
 			},
 		}, nil
 	}
 	s.voiceDispatcher.EmitConversationEvent(
-		voice.EventConversationFollowupStarted,
+		service.EventConversationFollowupStarted,
 		deviceID(req),
 		conversationID,
 		map[string]any{
 			"expiresAt": session.ExpiresAt.Format(time.RFC3339Nano),
 			"turns":     session.Turns,
-			"maxTurns":  voice.MaxConversationTurns,
+			"maxTurns":  service.MaxConversationTurns,
 		},
 	)
 
@@ -292,7 +291,7 @@ func (s *Server) submitFinalTranscript(
 			Active:    true,
 			ExpiresAt: session.ExpiresAt.Format(time.RFC3339Nano),
 			Turns:     session.Turns,
-			MaxTurns:  voice.MaxConversationTurns,
+			MaxTurns:  service.MaxConversationTurns,
 		},
 	}, nil
 }
@@ -309,7 +308,7 @@ func decodeStrictJSON(r io.Reader, dst any) error {
 	return nil
 }
 
-func (s *Server) voiceAgentID(requested string, settings voice.Settings) string {
+func (s *Server) voiceAgentID(requested string, settings service.Settings) string {
 	if agentID := strings.TrimSpace(requested); agentID != "" {
 		return agentID
 	}
@@ -327,11 +326,11 @@ func (s *Server) voiceAgentID(requested string, settings voice.Settings) string 
 	return ""
 }
 
-func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) error {
+func (s *Server) voiceAgentEventCallback(deviceID string) func(service.Event) error {
 	var ttsBuffer strings.Builder
 	spokeFromDeltas := false
 
-	speakBuffered := func(ctx context.Context, event agents.Event, force bool) {
+	speakBuffered := func(ctx context.Context, event service.Event, force bool) {
 		text := strings.TrimSpace(ttsBuffer.String())
 		if text == "" {
 			return
@@ -344,11 +343,11 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) err
 		s.speakVoiceAssistantText(ctx, deviceID, event.ConversationID, event.TaskID, text)
 	}
 
-	return func(event agents.Event) error {
+	return func(event service.Event) error {
 		switch event.Kind {
-		case agents.EventTurnStarted:
+		case service.EventTurnStarted:
 			s.voiceDispatcher.EmitConversationEvent(
-				voice.EventConversationTurnStarted,
+				service.EventConversationTurnStarted,
 				deviceID,
 				event.ConversationID,
 				map[string]any{
@@ -356,7 +355,7 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) err
 					"status":  event.Status,
 				},
 			)
-		case agents.EventTurnCompleted:
+		case service.EventTurnCompleted:
 			payload := map[string]any{
 				"agentId": event.AgentID,
 				"status":  "completed",
@@ -371,7 +370,7 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) err
 				}
 			}
 			s.voiceDispatcher.EmitConversationEvent(
-				voice.EventConversationTurnCompleted,
+				service.EventConversationTurnCompleted,
 				deviceID,
 				event.ConversationID,
 				payload,
@@ -391,9 +390,9 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) err
 					assistantText,
 				)
 			}
-		case agents.EventStatusChanged:
+		case service.EventStatusChanged:
 			s.voiceDispatcher.EmitConversationEvent(
-				voice.EventConversationTurnStarted,
+				service.EventConversationTurnStarted,
 				deviceID,
 				event.ConversationID,
 				map[string]any{
@@ -402,9 +401,9 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) err
 					"status":  event.Status,
 				},
 			)
-		case agents.EventAssistantDelta:
+		case service.EventAssistantDelta:
 			s.voiceDispatcher.EmitConversationEvent(
-				voice.EventConversationAssistantDelta,
+				service.EventConversationAssistantDelta,
 				deviceID,
 				event.ConversationID,
 				map[string]any{
@@ -421,9 +420,9 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(agents.Event) err
 				ttsBuffer.WriteString(event.Text)
 				speakBuffered(context.Background(), event, false)
 			}
-		case agents.EventTurnFailed:
+		case service.EventTurnFailed:
 			s.voiceDispatcher.EmitConversationEvent(
-				voice.EventConversationTurnCompleted,
+				service.EventConversationTurnCompleted,
 				deviceID,
 				event.ConversationID,
 				map[string]any{
@@ -444,7 +443,7 @@ func (s *Server) speakVoiceAssistantText(
 	if text == "" || s.voiceSpeaker == nil {
 		return
 	}
-	settings, err := s.voiceStore.VoiceSettings(ctx, voice.DefaultDeviceProfileID)
+	settings, err := s.voiceStore.VoiceSettings(ctx, service.DefaultDeviceProfileID)
 	if err != nil ||
 		!settings.TTSEnabled ||
 		strings.TrimSpace(settings.TTSProviderID) == "" {
@@ -456,8 +455,8 @@ func (s *Server) speakVoiceAssistantText(
 		_, _ = s.voiceSpeaker.Speak(
 			ttsCtx,
 			deviceID,
-			voice.TTSActionSpeak,
-			voice.TTSRequest{
+			service.TTSActionSpeak,
+			service.TTSRequest{
 				Text:           text,
 				ConversationID: conversationID,
 				TurnID:         taskID,
@@ -479,7 +478,7 @@ func endsWithSentenceBoundary(text string) bool {
 	}
 }
 
-func latestAssistantMessageText(detail agents.ConversationDetail) string {
+func latestAssistantMessageText(detail service.ConversationDetail) string {
 	for i := len(detail.Messages) - 1; i >= 0; i-- {
 		message := detail.Messages[i]
 		if message.Role == "assistant" {
@@ -501,7 +500,7 @@ func deviceID(req VoiceFinalTranscriptRequest) string {
 	return "default-display"
 }
 
-func voiceSourceDeviceProfileID(req VoiceFinalTranscriptRequest, settings voice.Settings) string {
+func voiceSourceDeviceProfileID(req VoiceFinalTranscriptRequest, settings service.Settings) string {
 	if id := strings.TrimSpace(req.DeviceProfileID); id != "" {
 		return id
 	}

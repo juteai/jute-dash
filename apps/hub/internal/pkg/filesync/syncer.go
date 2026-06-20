@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"jute-dash/apps/hub/internal/app/config"
-	"jute-dash/apps/hub/internal/app/service/agents"
+	"jute-dash/apps/hub/internal/app/model"
 )
 
 // ConfigStore defines the database/runtime abstraction for querying
@@ -27,8 +27,8 @@ type Syncer interface {
 	SyncWith(ctx context.Context, fn func(cfg *config.Config) error) error
 
 	// SyncAgents persists agent configurations.
-	SyncAgents(ctx context.Context, configs []agents.AgentConfig) error
+	SyncAgents(ctx context.Context, configs []model.AgentConfig) error
 
 	// AgentsConfig returns the current agent configurations.
-	AgentsConfig(ctx context.Context) ([]agents.AgentConfig, error)
+	AgentsConfig(ctx context.Context) ([]model.AgentConfig, error)
 }

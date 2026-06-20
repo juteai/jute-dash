@@ -4,7 +4,7 @@ package mocks
 
 import (
 	context "context"
-	homestate "jute-dash/apps/hub/internal/app/service/homestate"
+	model "jute-dash/apps/hub/internal/app/model"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -23,22 +23,22 @@ func (_m *adapterConnectionStore) EXPECT() *adapterConnectionStore_Expecter {
 }
 
 // AdapterConnection provides a mock function with given fields: ctx, id
-func (_m *adapterConnectionStore) AdapterConnection(ctx context.Context, id string) (homestate.AdapterConnection, error) {
+func (_m *adapterConnectionStore) AdapterConnection(ctx context.Context, id string) (model.AdapterConnection, error) {
 	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AdapterConnection")
 	}
 
-	var r0 homestate.AdapterConnection
+	var r0 model.AdapterConnection
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (homestate.AdapterConnection, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) (model.AdapterConnection, error)); ok {
 		return rf(ctx, id)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) homestate.AdapterConnection); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) model.AdapterConnection); ok {
 		r0 = rf(ctx, id)
 	} else {
-		r0 = ret.Get(0).(homestate.AdapterConnection)
+		r0 = ret.Get(0).(model.AdapterConnection)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
@@ -69,12 +69,12 @@ func (_c *adapterConnectionStore_AdapterConnection_Call) Run(run func(ctx contex
 	return _c
 }
 
-func (_c *adapterConnectionStore_AdapterConnection_Call) Return(_a0 homestate.AdapterConnection, _a1 error) *adapterConnectionStore_AdapterConnection_Call {
+func (_c *adapterConnectionStore_AdapterConnection_Call) Return(_a0 model.AdapterConnection, _a1 error) *adapterConnectionStore_AdapterConnection_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *adapterConnectionStore_AdapterConnection_Call) RunAndReturn(run func(context.Context, string) (homestate.AdapterConnection, error)) *adapterConnectionStore_AdapterConnection_Call {
+func (_c *adapterConnectionStore_AdapterConnection_Call) RunAndReturn(run func(context.Context, string) (model.AdapterConnection, error)) *adapterConnectionStore_AdapterConnection_Call {
 	_c.Call.Return(run)
 	return _c
 }

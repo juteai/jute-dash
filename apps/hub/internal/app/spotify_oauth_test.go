@@ -8,7 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"jute-dash/apps/hub/internal/app/service/homestate"
+	"jute-dash/apps/hub/internal/app/model"
+	"jute-dash/apps/hub/internal/app/repository"
 )
 
 type memorySecretStore map[string]string
@@ -56,8 +57,8 @@ func TestSpotifyOAuthStoresTokensAsDBSecretRefs(t *testing.T) {
 	spotifyTokenURL = tokenServer.URL
 	spotifyAuthorizeURL = "https://accounts.spotify.test/authorize"
 
-	settings := homestate.NewMemoryRepository(homestate.SetupStatus{Complete: true})
-	_, err := settings.SaveAdapterConnection(context.Background(), homestate.AdapterConnection{
+	settings := repository.NewMemoryHomeRepository(model.SetupStatus{Complete: true})
+	_, err := settings.SaveAdapterConnection(context.Background(), model.AdapterConnection{
 		ID:         "spotify-main",
 		Kind:       "spotify",
 		Name:       "Spotify",
@@ -72,7 +73,7 @@ func TestSpotifyOAuthStoresTokensAsDBSecretRefs(t *testing.T) {
 	handler := NewServerWithSecrets(
 		testConfig(),
 		"test",
-		homestate.SetupStatus{Complete: true},
+		model.SetupStatus{Complete: true},
 		nil,
 		settings,
 		nil,
@@ -166,8 +167,8 @@ func TestSpotifyWebPlaybackTokenRefreshesExpiredAccessToken(t *testing.T) {
 	defer tokenServer.Close()
 	spotifyTokenURL = tokenServer.URL
 
-	settings := homestate.NewMemoryRepository(homestate.SetupStatus{Complete: true})
-	_, err := settings.SaveAdapterConnection(context.Background(), homestate.AdapterConnection{
+	settings := repository.NewMemoryHomeRepository(model.SetupStatus{Complete: true})
+	_, err := settings.SaveAdapterConnection(context.Background(), model.AdapterConnection{
 		ID:       "spotify-main",
 		Kind:     "spotify",
 		Name:     "Spotify",
@@ -188,7 +189,7 @@ func TestSpotifyWebPlaybackTokenRefreshesExpiredAccessToken(t *testing.T) {
 	handler := NewServerWithSecrets(
 		testConfig(),
 		"test",
-		homestate.SetupStatus{Complete: true},
+		model.SetupStatus{Complete: true},
 		nil,
 		settings,
 		nil,

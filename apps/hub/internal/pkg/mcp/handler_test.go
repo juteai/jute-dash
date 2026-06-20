@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"jute-dash/apps/hub/internal/app/service/agents"
+	"jute-dash/apps/hub/internal/app/model"
 	"jute-dash/apps/hub/pkg/widgetskills"
 
 	_ "jute-dash/widgets/spotify/hub"
@@ -255,9 +255,9 @@ func spotifyActionSnapshot() widgetskills.Snapshot {
 				ID:      "kronk-agent",
 				Enabled: true,
 				MCPScopes: []string{
-					agents.MCPScopeSkillsRead,
-					agents.MCPScopeSkillsContextRead,
-					agents.MCPScopeSkillsActionInvoke,
+					model.MCPScopeSkillsRead,
+					model.MCPScopeSkillsContextRead,
+					model.MCPScopeSkillsActionInvoke,
 				},
 			},
 		},

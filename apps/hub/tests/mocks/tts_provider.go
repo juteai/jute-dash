@@ -4,7 +4,7 @@ package mocks
 
 import (
 	context "context"
-	voice "jute-dash/apps/hub/internal/app/service/voice"
+	service "jute-dash/apps/hub/internal/app/service"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -23,25 +23,25 @@ func (_m *TTSProvider) EXPECT() *TTSProvider_Expecter {
 }
 
 // Synthesize provides a mock function with given fields: ctx, req
-func (_m *TTSProvider) Synthesize(ctx context.Context, req voice.TTSRequest) (voice.TTSAudioResult, error) {
+func (_m *TTSProvider) Synthesize(ctx context.Context, req service.TTSRequest) (service.TTSAudioResult, error) {
 	ret := _m.Called(ctx, req)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Synthesize")
 	}
 
-	var r0 voice.TTSAudioResult
+	var r0 service.TTSAudioResult
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, voice.TTSRequest) (voice.TTSAudioResult, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, service.TTSRequest) (service.TTSAudioResult, error)); ok {
 		return rf(ctx, req)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, voice.TTSRequest) voice.TTSAudioResult); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, service.TTSRequest) service.TTSAudioResult); ok {
 		r0 = rf(ctx, req)
 	} else {
-		r0 = ret.Get(0).(voice.TTSAudioResult)
+		r0 = ret.Get(0).(service.TTSAudioResult)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, voice.TTSRequest) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, service.TTSRequest) error); ok {
 		r1 = rf(ctx, req)
 	} else {
 		r1 = ret.Error(1)
@@ -57,24 +57,24 @@ type TTSProvider_Synthesize_Call struct {
 
 // Synthesize is a helper method to define mock.On call
 //   - ctx context.Context
-//   - req voice.TTSRequest
+//   - req service.TTSRequest
 func (_e *TTSProvider_Expecter) Synthesize(ctx interface{}, req interface{}) *TTSProvider_Synthesize_Call {
 	return &TTSProvider_Synthesize_Call{Call: _e.mock.On("Synthesize", ctx, req)}
 }
 
-func (_c *TTSProvider_Synthesize_Call) Run(run func(ctx context.Context, req voice.TTSRequest)) *TTSProvider_Synthesize_Call {
+func (_c *TTSProvider_Synthesize_Call) Run(run func(ctx context.Context, req service.TTSRequest)) *TTSProvider_Synthesize_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(voice.TTSRequest))
+		run(args[0].(context.Context), args[1].(service.TTSRequest))
 	})
 	return _c
 }
 
-func (_c *TTSProvider_Synthesize_Call) Return(_a0 voice.TTSAudioResult, _a1 error) *TTSProvider_Synthesize_Call {
+func (_c *TTSProvider_Synthesize_Call) Return(_a0 service.TTSAudioResult, _a1 error) *TTSProvider_Synthesize_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *TTSProvider_Synthesize_Call) RunAndReturn(run func(context.Context, voice.TTSRequest) (voice.TTSAudioResult, error)) *TTSProvider_Synthesize_Call {
+func (_c *TTSProvider_Synthesize_Call) RunAndReturn(run func(context.Context, service.TTSRequest) (service.TTSAudioResult, error)) *TTSProvider_Synthesize_Call {
 	_c.Call.Return(run)
 	return _c
 }

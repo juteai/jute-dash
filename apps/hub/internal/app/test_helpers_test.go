@@ -4,10 +4,9 @@ import (
 	"context"
 
 	"jute-dash/apps/hub/internal/app/config"
-	"jute-dash/apps/hub/internal/app/service/agents"
-	"jute-dash/apps/hub/internal/app/service/dashboard"
-	"jute-dash/apps/hub/internal/app/service/homestate"
-	"jute-dash/apps/hub/internal/app/service/voice"
+	"jute-dash/apps/hub/internal/app/model"
+	"jute-dash/apps/hub/internal/app/repository"
+	"jute-dash/apps/hub/internal/app/service"
 
 	_ "jute-dash/widgets/chathistory/hub"
 	_ "jute-dash/widgets/datetime/hub"
@@ -17,33 +16,33 @@ import (
 	_ "jute-dash/widgets/weather/hub"
 )
 
-type AgentConfig = agents.AgentConfig
-type SetupStatus = homestate.SetupStatus
-type WidgetLayout = dashboard.WidgetLayout
-type MessageResponse = agents.MessageResponse
-type Conversation = agents.Conversation
-type ConversationDetail = agents.ConversationDetail
-type HouseholdSettings = homestate.HouseholdSettings
-type RoomConfig = homestate.RoomConfig
-type TileConfig = homestate.TileConfig
-type AuthConfig = agents.AuthConfig
-type VoiceStatusResponse = voice.StatusResponse
-type VoiceProviderPack = voice.ProviderPack
-type TTSVoice = voice.TTSVoice
-type TTSActionResponse = voice.TTSActionResponse
-type WidgetInstance = dashboard.WidgetInstance
-type WidgetPlacement = dashboard.WidgetPlacement
-type WidgetCatalogItem = dashboard.WidgetCatalogItem
-type DashboardWidgetConfig = dashboard.DashboardWidgetConfig
-type DisplayBackground = dashboard.DisplayBackground
-type DisplayWidgetChrome = dashboard.DisplayWidgetChrome
+type AgentConfig = model.AgentConfig
+type SetupStatus = model.SetupStatus
+type WidgetLayout = model.WidgetLayout
+type MessageResponse = model.MessageResponse
+type Conversation = model.Conversation
+type ConversationDetail = model.ConversationDetail
+type HouseholdSettings = model.HouseholdSettings
+type RoomConfig = model.RoomConfig
+type TileConfig = model.TileConfig
+type AuthConfig = model.AuthConfig
+type VoiceStatusResponse = model.StatusResponse
+type VoiceProviderPack = model.ProviderPack
+type TTSVoice = model.TTSVoice
+type TTSActionResponse = service.TTSActionResponse
+type WidgetInstance = model.WidgetInstance
+type WidgetPlacement = model.WidgetPlacement
+type WidgetCatalogItem = model.WidgetCatalogItem
+type DashboardWidgetConfig = model.DashboardWidgetConfig
+type DisplayBackground = model.DisplayBackground
+type DisplayWidgetChrome = model.DisplayWidgetChrome
 
-const defaultLayoutProfileID = homestate.DefaultLayoutProfileID
+const defaultLayoutProfileID = model.DefaultLayoutProfileID
 
-var ErrInvalidLayout = dashboard.ErrInvalidLayout
+var ErrInvalidLayout = model.ErrInvalidLayout
 
 func DefaultWidgetLayout() WidgetLayout {
-	return dashboard.DefaultWidgetLayout()
+	return repository.DefaultWidgetLayout()
 }
 
 func DefaultConfig() config.Config {
@@ -58,8 +57,8 @@ func LoadConfig(path string) (config.Config, error) {
 	return config.LoadConfig(path)
 }
 
-func WidgetCatalog() []dashboard.WidgetCatalogItem {
-	return dashboard.WidgetCatalog()
+func WidgetCatalog() []model.WidgetCatalogItem {
+	return repository.WidgetCatalog()
 }
 
 func needsSeed(t interface{ Fatalf(string, ...any) }, st *Store) bool {

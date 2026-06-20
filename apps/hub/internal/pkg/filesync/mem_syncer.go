@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"jute-dash/apps/hub/internal/app/config"
-	"jute-dash/apps/hub/internal/app/service/agents"
+	"jute-dash/apps/hub/internal/app/model"
 )
 
 // InMemorySyncer is an in-memory Syncer adapter for testing.
@@ -56,7 +56,7 @@ func (s *InMemorySyncer) Load(_ context.Context) (config.Config, error) {
 // AgentsConfig returns the current agent configurations.
 func (s *InMemorySyncer) AgentsConfig(
 	_ context.Context,
-) ([]agents.AgentConfig, error) {
+) ([]model.AgentConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.config.Agents, nil
@@ -65,7 +65,7 @@ func (s *InMemorySyncer) AgentsConfig(
 // SyncAgents persists agent configurations in memory.
 func (s *InMemorySyncer) SyncAgents(
 	_ context.Context,
-	configs []agents.AgentConfig,
+	configs []model.AgentConfig,
 ) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

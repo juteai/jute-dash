@@ -12,9 +12,6 @@ import (
 	"time"
 
 	"jute-dash/apps/hub/internal/app/config"
-	"jute-dash/apps/hub/internal/app/service/dashboard"
-	"jute-dash/apps/hub/internal/app/service/homestate"
-	"jute-dash/apps/hub/internal/app/service/voice"
 	"jute-dash/apps/hub/internal/pkg/database"
 	"jute-dash/apps/hub/internal/pkg/filesync"
 
@@ -30,10 +27,10 @@ type Store struct {
 	riverClient   *river.Client[*sql.Tx]
 	logger        *slog.Logger
 	syncer        filesync.Syncer
-	DashboardRepo *dashboard.Repository
-	HomestateRepo *homestate.Repository
+	DashboardRepo *DashboardRepository
+	HomestateRepo *HomeRepository
 	SecretVault   *Vault
-	VoiceRepo     *voice.Repository
+	VoiceRepo     *VoiceRepository
 }
 
 func Open(dbPath string, log *slog.Logger) (*Store, error) {
@@ -42,18 +39,18 @@ func Open(dbPath string, log *slog.Logger) (*Store, error) {
 		return nil, err
 	}
 	s := &Store{db: db, logger: log}
-	s.DashboardRepo = dashboard.NewRepository(s.DB())
-	s.DashboardRepo.SetCatalog(dashboard.RegisteredCatalog())
+	s.DashboardRepo = NewDashboardRepository(s.DB())
+	s.DashboardRepo.SetCatalog(WidgetCatalog())
 	s.DashboardRepo.SetOnSave(s.triggerSync)
 	s.DashboardRepo.SetConfigStore(s)
-	s.HomestateRepo = homestate.NewRepository(s.DB())
+	s.HomestateRepo = NewHomeRepository(s.DB())
 	s.HomestateRepo.SetOnSave(s.triggerSync)
 	s.SecretVault = NewVault(s.DB(), NewKeyringMasterKeyProvider())
-	s.VoiceRepo = voice.NewRepository(s.DB())
+	s.VoiceRepo = NewVoiceRepository(s.DB())
 	return s, nil
 }
 
-func (s *Store) SetCatalog(items []dashboard.WidgetCatalogItem) {
+func (s *Store) SetCatalog(items []WidgetCatalogItem) {
 	if s == nil || s.DashboardRepo == nil {
 		return
 	}
@@ -120,34 +117,34 @@ func (s *Store) Initialize(
 	ctx context.Context,
 	bootstrap config.Config,
 	bootstrapProvided bool,
-) (homestate.InitResult, error) {
+) (InitResult, error) {
 	if err := s.Migrate(ctx); err != nil {
-		return homestate.InitResult{}, err
+		return InitResult{}, err
 	}
 
 	seeded, err := s.IsSeeded(ctx)
 	if err != nil {
-		return homestate.InitResult{}, err
+		return InitResult{}, err
 	}
 
-	result := homestate.InitResult{}
+	result := InitResult{}
 	if !seeded {
 		if err := s.seed(ctx, bootstrap, bootstrapProvided); err != nil {
-			return homestate.InitResult{}, err
+			return InitResult{}, err
 		}
 		result.Seeded = true
 	}
 	if err := s.ensureDefaultVoiceSettings(ctx, config.DefaultConfig().Voice); err != nil {
-		return homestate.InitResult{}, err
+		return InitResult{}, err
 	}
 
 	cfg, err := s.Config(ctx)
 	if err != nil {
-		return homestate.InitResult{}, err
+		return InitResult{}, err
 	}
 	status, err := s.SetupStatus(ctx)
 	if err != nil {
-		return homestate.InitResult{}, err
+		return InitResult{}, err
 	}
 	result.Config = cfg
 	result.Setup = status
@@ -166,19 +163,19 @@ const gridBaseColumnsMetaKey = "grid_base_columns"
 
 func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.db.Migrate(
-		&homestate.HouseholdSettingsDB{},
-		&homestate.DeviceProfileDB{},
-		&homestate.LayoutProfileDB{},
-		&homestate.RoomDB{},
-		&homestate.TileDB{},
-		&dashboard.WidgetPackDB{},
-		&dashboard.WidgetInstanceDB{},
-		&dashboard.WidgetPermissionDB{},
-		&voice.ProviderPackDB{},
-		&voice.SettingsDB{},
-		&homestate.AdapterConnectionDB{},
+		&HouseholdSettingsDB{},
+		&DeviceProfileDB{},
+		&LayoutProfileDB{},
+		&RoomDB{},
+		&TileDB{},
+		&WidgetPackDB{},
+		&WidgetInstanceDB{},
+		&WidgetPermissionDB{},
+		&ProviderPackDB{},
+		&SettingsDB{},
+		&AdapterConnectionDB{},
 		&SecretDB{},
-		&homestate.SettingAuditLogDB{},
+		&SettingAuditLogDB{},
 		&appMetaDB{},
 	); err != nil {
 		return err
@@ -214,15 +211,15 @@ func (s *Store) migrateGridToBaseColumns() error {
 	db := s.db.DB()
 	var meta appMetaDB
 	err := db.Where("key = ?", gridBaseColumnsMetaKey).First(&meta).Error
-	if err == nil && meta.Value == strconv.Itoa(dashboard.BaseColumns) {
+	if err == nil && meta.Value == strconv.Itoa(BaseColumns) {
 		return nil
 	}
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return fmt.Errorf("check grid migration marker: %w", err)
 	}
 
-	scale := dashboard.LegacyColumnScale
-	if updErr := db.Model(&dashboard.WidgetInstanceDB{}).
+	scale := LegacyColumnScale
+	if updErr := db.Model(&WidgetInstanceDB{}).
 		Where("1 = 1").
 		Updates(map[string]any{
 			"x":     gorm.Expr("x * ?", scale),
@@ -234,7 +231,7 @@ func (s *Store) migrateGridToBaseColumns() error {
 
 	marker := appMetaDB{
 		Key:   gridBaseColumnsMetaKey,
-		Value: strconv.Itoa(dashboard.BaseColumns),
+		Value: strconv.Itoa(BaseColumns),
 	}
 	if saveErr := db.Save(&marker).Error; saveErr != nil {
 		return fmt.Errorf("save grid migration marker: %w", saveErr)
@@ -243,11 +240,11 @@ func (s *Store) migrateGridToBaseColumns() error {
 }
 
 func (s *Store) IsSeeded(ctx context.Context) (bool, error) {
-	if !s.db.DB().Migrator().HasTable(&homestate.HouseholdSettingsDB{}) {
+	if !s.db.DB().Migrator().HasTable(&HouseholdSettingsDB{}) {
 		return false, nil
 	}
 	var count int64
-	if err := s.db.DB().WithContext(ctx).Model(&homestate.HouseholdSettingsDB{}).Count(&count).Error; err != nil {
+	if err := s.db.DB().WithContext(ctx).Model(&HouseholdSettingsDB{}).Count(&count).Error; err != nil {
 		return false, fmt.Errorf("check seeded store: %w", err)
 	}
 	return count > 0, nil
@@ -262,8 +259,8 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 	now := nowUTC()
 
 	return s.db.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		hs := homestate.HouseholdSettingsDB{
-			ID:                      homestate.DefaultHouseholdID,
+		hs := HouseholdSettingsDB{
+			ID:                      DefaultHouseholdID,
 			Name:                    cfg.Home.Name,
 			DisplayTheme:            cfg.Display.Theme,
 			DisplayAccentColor:      cfg.Display.AccentColor,
@@ -282,11 +279,11 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 			return fmt.Errorf("seed household settings: %w", err)
 		}
 
-		dp := homestate.DeviceProfileDB{
-			ID:              homestate.DefaultDeviceProfileID,
+		dp := DeviceProfileDB{
+			ID:              DefaultDeviceProfileID,
 			Name:            "Default Display",
 			InteractionMode: "touch",
-			LayoutProfileID: homestate.DefaultLayoutProfileID,
+			LayoutProfileID: DefaultLayoutProfileID,
 			SettingsJSON:    "{}",
 			CreatedAt:       now,
 			UpdatedAt:       now,
@@ -295,9 +292,9 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 			return fmt.Errorf("seed device profile: %w", err)
 		}
 
-		lp := homestate.LayoutProfileDB{
-			ID:              homestate.DefaultLayoutProfileID,
-			DeviceProfileID: homestate.DefaultDeviceProfileID,
+		lp := LayoutProfileDB{
+			ID:              DefaultLayoutProfileID,
+			DeviceProfileID: DefaultDeviceProfileID,
 			Name:            "Default Dashboard",
 			SettingsJSON:    "{}",
 			CreatedAt:       now,
@@ -308,7 +305,7 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 		}
 
 		for i, room := range cfg.Rooms {
-			rDB := homestate.RoomDB{
+			rDB := RoomDB{
 				ID:        room.ID,
 				Name:      room.Name,
 				Summary:   room.Summary,
@@ -323,7 +320,7 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 		}
 
 		for i, tile := range cfg.Tiles {
-			tDB := homestate.TileDB{
+			tDB := TileDB{
 				ID:        tile.ID,
 				Kind:      tile.Kind,
 				Label:     tile.Label,
@@ -338,7 +335,7 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 			}
 		}
 
-		layout, err := dashboard.WidgetLayoutFromDashboardConfig(
+		layout, err := WidgetLayoutFromDashboardConfig(
 			cfg.Dashboard,
 			WidgetCatalogForSeed(),
 		)
@@ -348,12 +345,12 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 
 		for i, widget := range layout.Widgets {
 			connectionRefsJSON := mustJSONString(widget.ConnectionRefs)
-			wDB := dashboard.WidgetInstanceDB{
+			wDB := WidgetInstanceDB{
 				ID:                 widget.ID,
 				ScreenID:           widget.ScreenID,
 				Kind:               widget.Kind,
 				Title:              widget.Title,
-				LayoutProfileID:    homestate.DefaultLayoutProfileID,
+				LayoutProfileID:    DefaultLayoutProfileID,
 				X:                  widget.X,
 				Y:                  widget.Y,
 				W:                  widget.W,
@@ -374,8 +371,8 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 			}
 		}
 
-		vDB := voice.SettingsDB{
-			DeviceProfileID:         homestate.DefaultDeviceProfileID,
+		vDB := SettingsDB{
+			DeviceProfileID:         DefaultDeviceProfileID,
 			Enabled:                 boolToInt(cfg.Voice.Enabled),
 			Muted:                   boolToInt(cfg.Voice.MutedByDefault),
 			WakeWordModelID:         cfg.Voice.WakeWordModelID,
@@ -406,13 +403,13 @@ func (s *Store) seed(ctx context.Context, cfg config.Config, bootstrapProvided b
 	})
 }
 
-func (s *Store) ensureDefaultVoiceSettings(ctx context.Context, voiceCfg voice.Config) error {
+func (s *Store) ensureDefaultVoiceSettings(ctx context.Context, voiceCfg Config) error {
 	now := nowUTC()
 	var count int64
 	if err := s.db.DB().
 		WithContext(ctx).
-		Model(&voice.SettingsDB{}).
-		Where("device_profile_id = ?", homestate.DefaultDeviceProfileID).
+		Model(&SettingsDB{}).
+		Where("device_profile_id = ?", DefaultDeviceProfileID).
 		Count(&count).
 		Error; err != nil {
 		return err
@@ -421,8 +418,8 @@ func (s *Store) ensureDefaultVoiceSettings(ctx context.Context, voiceCfg voice.C
 		return nil
 	}
 
-	vDB := voice.SettingsDB{
-		DeviceProfileID:         homestate.DefaultDeviceProfileID,
+	vDB := SettingsDB{
+		DeviceProfileID:         DefaultDeviceProfileID,
 		Enabled:                 boolToInt(voiceCfg.Enabled),
 		Muted:                   boolToInt(voiceCfg.MutedByDefault),
 		WakeWordModelID:         voiceCfg.WakeWordModelID,
@@ -451,8 +448,8 @@ func (s *Store) ensureDefaultVoiceSettings(ctx context.Context, voiceCfg voice.C
 func (s *Store) Config(ctx context.Context) (config.Config, error) {
 	cfg := config.DefaultConfig()
 
-	var hs homestate.HouseholdSettingsDB
-	if err := s.db.DB().WithContext(ctx).First(&hs, "id = ?", homestate.DefaultHouseholdID).Error; err != nil {
+	var hs HouseholdSettingsDB
+	if err := s.db.DB().WithContext(ctx).First(&hs, "id = ?", DefaultHouseholdID).Error; err != nil {
 		return config.Config{}, fmt.Errorf("load household settings: %w", err)
 	}
 	cfg.Home.Name = hs.Name
@@ -471,14 +468,14 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 		return config.Config{}, fmt.Errorf("decode display widget chrome: %w", err)
 	}
 
-	var vs voice.SettingsDB
+	var vs SettingsDB
 	if err := s.db.DB().
 		WithContext(ctx).
-		First(&vs, "device_profile_id = ?", homestate.DefaultDeviceProfileID).
+		First(&vs, "device_profile_id = ?", DefaultDeviceProfileID).
 		Error; err != nil {
 		return config.Config{}, fmt.Errorf("load voice settings: %w", err)
 	}
-	cfg.Voice = voice.Config{
+	cfg.Voice = Config{
 		Enabled:                 vs.Enabled == 1,
 		MutedByDefault:          vs.Muted == 1,
 		WakeWordModelID:         vs.WakeWordModelID,
@@ -501,13 +498,13 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 		MicrophoneProfile:       vs.MicrophoneProfile,
 	}
 
-	var dbRooms []homestate.RoomDB
+	var dbRooms []RoomDB
 	if err := s.db.DB().WithContext(ctx).Order("sort_order").Find(&dbRooms).Error; err != nil {
 		return config.Config{}, fmt.Errorf("load rooms: %w", err)
 	}
-	rooms := make([]homestate.RoomConfig, len(dbRooms))
+	rooms := make([]RoomConfig, len(dbRooms))
 	for i, r := range dbRooms {
-		rooms[i] = homestate.RoomConfig{
+		rooms[i] = RoomConfig{
 			ID:      r.ID,
 			Name:    r.Name,
 			Summary: r.Summary,
@@ -515,13 +512,13 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 		}
 	}
 
-	var dbTiles []homestate.TileDB
+	var dbTiles []TileDB
 	if err := s.db.DB().WithContext(ctx).Order("sort_order").Find(&dbTiles).Error; err != nil {
 		return config.Config{}, fmt.Errorf("load tiles: %w", err)
 	}
-	tiles := make([]homestate.TileConfig, len(dbTiles))
+	tiles := make([]TileConfig, len(dbTiles))
 	for i, t := range dbTiles {
-		tiles[i] = homestate.TileConfig{
+		tiles[i] = TileConfig{
 			ID:     t.ID,
 			Kind:   t.Kind,
 			Label:  t.Label,
@@ -538,9 +535,9 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 		cfg.Dashboard.DefaultVariant = layout.DefaultVariant
 		cfg.Dashboard.Variants = layout.Variants
 		cfg.Dashboard.Widgets = dashboardWidgetConfigs(layout.Widgets)
-		cfg.Dashboard.Screens = make([]dashboard.DashboardScreenConfig, 0, len(layout.Screens))
+		cfg.Dashboard.Screens = make([]DashboardScreenConfig, 0, len(layout.Screens))
 		for _, screen := range layout.Screens {
-			cfg.Dashboard.Screens = append(cfg.Dashboard.Screens, dashboard.DashboardScreenConfig{
+			cfg.Dashboard.Screens = append(cfg.Dashboard.Screens, DashboardScreenConfig{
 				ID:             screen.ID,
 				Label:          screen.Label,
 				DefaultVariant: screen.DefaultVariant,
@@ -560,21 +557,21 @@ func (s *Store) Config(ctx context.Context) (config.Config, error) {
 	return cfg, nil
 }
 
-func (s *Store) SetupStatus(ctx context.Context) (homestate.SetupStatus, error) {
+func (s *Store) SetupStatus(ctx context.Context) (SetupStatus, error) {
 	cfg, err := s.Config(ctx)
 	if err != nil {
-		return homestate.SetupStatus{}, err
+		return SetupStatus{}, err
 	}
-	var hs homestate.HouseholdSettingsDB
-	if err := s.db.DB().WithContext(ctx).First(&hs, "id = ?", homestate.DefaultHouseholdID).Error; err != nil {
-		return homestate.SetupStatus{}, fmt.Errorf("load setup status: %w", err)
+	var hs HouseholdSettingsDB
+	if err := s.db.DB().WithContext(ctx).First(&hs, "id = ?", DefaultHouseholdID).Error; err != nil {
+		return SetupStatus{}, fmt.Errorf("load setup status: %w", err)
 	}
 
-	missing := missingSetupFields(cfg, hs.SetupCompleted == 1)
+	missing := missingConfigSetupFields(cfg, hs.SetupCompleted == 1)
 	if missing == nil {
 		missing = []string{}
 	}
-	return homestate.SetupStatus{
+	return SetupStatus{
 		Complete: hs.SetupCompleted == 1 && len(missing) == 0,
 		Missing:  missing,
 	}, nil
@@ -582,22 +579,22 @@ func (s *Store) SetupStatus(ctx context.Context) (homestate.SetupStatus, error) 
 
 // Helpers
 
-func WidgetCatalogForSeed() map[string]dashboard.WidgetCatalogItem {
-	items := dashboard.RegisteredCatalog()
+func WidgetCatalogForSeed() map[string]WidgetCatalogItem {
+	items := WidgetCatalog()
 	if len(items) == 0 {
-		items = dashboard.WidgetCatalog()
+		items = WidgetCatalog()
 	}
-	catalog := make(map[string]dashboard.WidgetCatalogItem, len(items))
+	catalog := make(map[string]WidgetCatalogItem, len(items))
 	for _, item := range items {
 		catalog[item.Kind] = item
 	}
 	return catalog
 }
 
-func dashboardWidgetConfigs(widgets []dashboard.WidgetInstance) []dashboard.DashboardWidgetConfig {
-	result := make([]dashboard.DashboardWidgetConfig, 0, len(widgets))
+func dashboardWidgetConfigs(widgets []WidgetInstance) []DashboardWidgetConfig {
+	result := make([]DashboardWidgetConfig, 0, len(widgets))
 	for _, w := range widgets {
-		result = append(result, dashboard.DashboardWidgetConfig{
+		result = append(result, DashboardWidgetConfig{
 			ID:             w.ID,
 			Type:           w.Kind,
 			Title:          w.Title,
@@ -617,18 +614,18 @@ func dashboardWidgetConfigs(widgets []dashboard.WidgetInstance) []dashboard.Dash
 	return result
 }
 
-func setupStatusForSeed(cfg config.Config, bootstrapProvided bool) homestate.SetupStatus {
-	missing := missingSetupFields(cfg, bootstrapProvided)
+func setupStatusForSeed(cfg config.Config, bootstrapProvided bool) SetupStatus {
+	missing := missingConfigSetupFields(cfg, bootstrapProvided)
 	if missing == nil {
 		missing = []string{}
 	}
-	return homestate.SetupStatus{
+	return SetupStatus{
 		Complete: bootstrapProvided && len(missing) == 0,
 		Missing:  missing,
 	}
 }
 
-func missingSetupFields(cfg config.Config, confirmed bool) []string {
+func missingConfigSetupFields(cfg config.Config, confirmed bool) []string {
 	if !confirmed {
 		return []string{"home.name"}
 	}
@@ -640,30 +637,12 @@ func missingSetupFields(cfg config.Config, confirmed bool) []string {
 	return missing
 }
 
-func decodeJSONSetting(raw string, target any) error {
-	if strings.TrimSpace(raw) == "" {
-		return nil
-	}
-	return json.Unmarshal([]byte(raw), target)
-}
-
 func mustJSONString(value any) string {
 	bytes, err := json.Marshal(value)
 	if err != nil {
 		return "{}"
 	}
 	return string(bytes)
-}
-
-func boolToInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
-}
-
-func nowUTC() string {
-	return time.Now().UTC().Format(time.RFC3339Nano)
 }
 
 func (s *Store) StartQueue(syncer filesync.Syncer) error {

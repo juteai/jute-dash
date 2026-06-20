@@ -5,19 +5,19 @@ import (
 	"errors"
 	"testing"
 
-	"jute-dash/apps/hub/internal/app/service/homestate"
+	"jute-dash/apps/hub/internal/app/model"
 	"jute-dash/widgets"
 )
 
-type fakeAdapterConnectionStore map[string]homestate.AdapterConnection
+type fakeAdapterConnectionStore map[string]model.AdapterConnection
 
 func (s fakeAdapterConnectionStore) AdapterConnection(
 	_ context.Context,
 	id string,
-) (homestate.AdapterConnection, error) {
+) (model.AdapterConnection, error) {
 	connection, ok := s[id]
 	if !ok {
-		return homestate.AdapterConnection{}, errors.New("not found")
+		return model.AdapterConnection{}, errors.New("not found")
 	}
 	return connection, nil
 }

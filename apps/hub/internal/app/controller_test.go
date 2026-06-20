@@ -19,9 +19,8 @@ import (
 	"time"
 
 	"jute-dash/apps/hub/internal/app/config"
-	"jute-dash/apps/hub/internal/app/service/agents"
-	"jute-dash/apps/hub/internal/app/service/dashboard"
-	"jute-dash/apps/hub/internal/app/service/voice"
+	"jute-dash/apps/hub/internal/app/repository"
+	"jute-dash/apps/hub/internal/app/service"
 	a2a "jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/displayactions"
 	"jute-dash/apps/hub/internal/pkg/filesync"
@@ -553,13 +552,13 @@ func TestServerStartupPersistsNormalizedLayoutVariantsToYAMLConfig(t *testing.T)
 	)
 
 	reloaded := waitForConfig(t, configPath, func(cfg config.Config) bool {
-		return cfg.Dashboard.SchemaVersion == dashboard.LayoutSchemaVersion &&
+		return cfg.Dashboard.SchemaVersion == repository.LayoutSchemaVersion &&
 			cfg.Dashboard.DefaultScreen != "" &&
 			len(cfg.Dashboard.Screens) > 0 &&
 			cfg.Dashboard.Screens[0].DefaultVariant != "" &&
 			len(cfg.Dashboard.Screens[0].Variants) > 0
 	})
-	if reloaded.Dashboard.SchemaVersion != dashboard.LayoutSchemaVersion {
+	if reloaded.Dashboard.SchemaVersion != repository.LayoutSchemaVersion {
 		t.Fatalf("schema version was not persisted: %+v", reloaded.Dashboard)
 	}
 	if reloaded.Dashboard.DefaultScreen == "" || len(reloaded.Dashboard.Screens) == 0 {
@@ -1037,7 +1036,7 @@ func TestTTSVoicesEndpointReturnsSelectedProviderVoices(t *testing.T) {
 	selectedLocale := "cy-GB"
 	selectedSpeed := 0.9
 	selectedVolume := 0.4
-	if err := runtimeStore.DB().Create(&voice.SettingsDB{
+	if err := runtimeStore.DB().Create(&repository.SettingsDB{
 		DeviceProfileID: deviceProfileID,
 		TTSProviderID:   cfg.Voice.TTSProviderID,
 		TTSVoiceID:      selectedVoice,
@@ -1335,7 +1334,7 @@ func TestVoiceFinalTranscriptStartsHubOwnedAgentTurn(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !body.Followup.Active || body.Followup.Turns != 1 || body.Followup.MaxTurns != voice.MaxConversationTurns {
+	if !body.Followup.Active || body.Followup.Turns != 1 || body.Followup.MaxTurns != service.MaxConversationTurns {
 		t.Fatalf("unexpected follow-up response: %+v", body.Followup)
 	}
 	if len(client.SentMessages) != 1 {
@@ -1364,22 +1363,22 @@ func TestVoiceFinalTranscriptEmitsDisplayEventsInOrder(t *testing.T) {
 		}, nil
 	}
 	syncer := filesync.NewInMemorySyncer(cfg)
-	cards := agents.NewCardService()
-	manager := agents.NewAgentManager(syncer, cards, "")
-	dispatcher := voice.NewDispatcher()
+	cards := service.NewCardService()
+	manager := service.NewAgentManager(syncer, cards, "")
+	dispatcher := service.NewVoiceDispatcher()
 	server := &Server{
 		cfg:             cfg,
 		agentsManager:   manager,
 		messages:        client,
-		voiceStore:      voice.NewMemoryRepositoryFromConfig(cfg.Voice),
+		voiceStore:      repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice),
 		voiceDispatcher: dispatcher,
-		voiceRuntime:    voice.NewConversationRuntime(),
+		voiceRuntime:    service.NewConversationRuntime(),
 	}
-	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
+	server.turnRunner = service.NewRunner(service.RunnerOptions{
 		GetRegistry:    manager.ActiveRegistry,
 		GetAgentConfig: manager.ConfiguredAgent,
-		GetAgentCardCache: func(context.Context, registry.Agent) (agents.AgentCardCache, bool) {
-			return agents.AgentCardCache{
+		GetAgentCardCache: func(context.Context, registry.Agent) (service.AgentCardCache, bool) {
+			return service.AgentCardCache{
 				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
 				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
 			}, true
@@ -1401,18 +1400,18 @@ func TestVoiceFinalTranscriptEmitsDisplayEventsInOrder(t *testing.T) {
 		t.Fatalf("submitFinalTranscript() error = %v", err)
 	}
 	expected := []string{
-		voice.EventConversationStarted,
-		voice.EventVoiceTranscriptFinal,
-		voice.EventConversationTurnStarted,
-		voice.EventConversationTurnCompleted,
-		voice.EventConversationFollowupStarted,
+		service.EventConversationStarted,
+		service.EventVoiceTranscriptFinal,
+		service.EventConversationTurnStarted,
+		service.EventConversationTurnCompleted,
+		service.EventConversationFollowupStarted,
 	}
 	got := make([]string, 0, len(expected))
 	conversationID := client.SentMessages[0].ConversationID
 	for len(got) < len(expected) {
 		select {
 		case event := <-events:
-			voiceEvent, ok := event.Data.(voice.VoiceEvent)
+			voiceEvent, ok := event.Data.(service.VoiceEvent)
 			if !ok {
 				t.Fatalf("unexpected event data: %+v", event.Data)
 			}
@@ -1445,24 +1444,24 @@ func TestVoiceFinalTranscriptTriggersTTSEvents(t *testing.T) {
 		}, nil
 	}
 	syncer := filesync.NewInMemorySyncer(cfg)
-	cards := agents.NewCardService()
-	manager := agents.NewAgentManager(syncer, cards, "")
-	dispatcher := voice.NewDispatcher()
-	store := voice.NewMemoryRepositoryFromConfig(cfg.Voice)
+	cards := service.NewCardService()
+	manager := service.NewAgentManager(syncer, cards, "")
+	dispatcher := service.NewVoiceDispatcher()
+	store := repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice)
 	server := &Server{
 		cfg:             cfg,
 		agentsManager:   manager,
 		messages:        client,
 		voiceStore:      store,
 		voiceDispatcher: dispatcher,
-		voiceRuntime:    voice.NewConversationRuntime(),
+		voiceRuntime:    service.NewConversationRuntime(),
 	}
-	server.voiceSpeaker = voice.NewSpeaker(store, dispatcher, nil)
-	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
+	server.voiceSpeaker = service.NewSpeaker(store, dispatcher, nil)
+	server.turnRunner = service.NewRunner(service.RunnerOptions{
 		GetRegistry:    manager.ActiveRegistry,
 		GetAgentConfig: manager.ConfiguredAgent,
-		GetAgentCardCache: func(context.Context, registry.Agent) (agents.AgentCardCache, bool) {
-			return agents.AgentCardCache{
+		GetAgentCardCache: func(context.Context, registry.Agent) (service.AgentCardCache, bool) {
+			return service.AgentCardCache{
 				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
 				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
 			}, true
@@ -1488,18 +1487,18 @@ func TestVoiceFinalTranscriptTriggersTTSEvents(t *testing.T) {
 	for !sawStarted || !sawCompleted {
 		select {
 		case event := <-events:
-			voiceEvent, ok := event.Data.(voice.VoiceEvent)
+			voiceEvent, ok := event.Data.(service.VoiceEvent)
 			if !ok {
 				t.Fatalf("unexpected event data: %+v", event.Data)
 			}
 			switch event.Type {
-			case voice.EventTTSStarted:
+			case service.EventTTSStarted:
 				sawStarted = true
 				if voiceEvent.DeviceID != "kitchen-display" ||
 					voiceEvent.ConversationID == "" {
 					t.Fatalf("TTS started lost voice routing context: %+v", voiceEvent)
 				}
-			case voice.EventTTSCompleted:
+			case service.EventTTSCompleted:
 				sawCompleted = true
 			}
 		case <-ctx.Done():
@@ -1604,12 +1603,12 @@ func TestLocalVoiceServiceBuilderRoutesCapturedUtteranceThroughSTT(t *testing.T)
 		}, nil
 	}
 	syncer := filesync.NewInMemorySyncer(cfg)
-	cards := agents.NewCardService()
-	manager := agents.NewAgentManager(syncer, cards, "")
+	cards := service.NewCardService()
+	manager := service.NewAgentManager(syncer, cards, "")
 	store := &fixtureActiveSTTVoiceStore{
-		MemoryRepository: voice.NewMemoryRepositoryFromConfig(cfg.Voice),
+		MemoryVoiceRepository: repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice),
 		provider: &fixtureAppSTTProvider{
-			result: voice.STTResult{
+			result: service.STTResult{
 				Text:       "turn on the kitchen lights",
 				ProviderID: "local-stt",
 				ModelID:    "tiny-en",
@@ -1623,14 +1622,14 @@ func TestLocalVoiceServiceBuilderRoutesCapturedUtteranceThroughSTT(t *testing.T)
 		agentsManager:   manager,
 		messages:        client,
 		voiceStore:      store,
-		voiceDispatcher: voice.NewDispatcher(),
-		voiceRuntime:    voice.NewConversationRuntime(),
+		voiceDispatcher: service.NewVoiceDispatcher(),
+		voiceRuntime:    service.NewConversationRuntime(),
 	}
-	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
+	server.turnRunner = service.NewRunner(service.RunnerOptions{
 		GetRegistry:    manager.ActiveRegistry,
 		GetAgentConfig: manager.ConfiguredAgent,
-		GetAgentCardCache: func(context.Context, registry.Agent) (agents.AgentCardCache, bool) {
-			return agents.AgentCardCache{
+		GetAgentCardCache: func(context.Context, registry.Agent) (service.AgentCardCache, bool) {
+			return service.AgentCardCache{
 				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
 				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
 			}, true
@@ -1641,11 +1640,11 @@ func TestLocalVoiceServiceBuilderRoutesCapturedUtteranceThroughSTT(t *testing.T)
 		Messages: client,
 	})
 	start := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
-	service, err := server.newLocalVoiceService(
+	voiceSvc, err := server.newLocalVoiceService(
 		context.Background(),
 		"",
 		"kitchen-display",
-		fixtureAppCapture{frames: []voice.AudioFrame{
+		fixtureAppCapture{frames: []service.AudioFrame{
 			fixtureAppFrame(start, 0, 0),
 			fixtureAppFrame(start, 100*time.Millisecond, 42),
 			fixtureAppFrame(start, 200*time.Millisecond, 0),
@@ -1657,7 +1656,7 @@ func TestLocalVoiceServiceBuilderRoutesCapturedUtteranceThroughSTT(t *testing.T)
 		t.Fatalf("newLocalVoiceService() error = %v", err)
 	}
 
-	if err := service.Start(context.Background()); err != nil {
+	if err := voiceSvc.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 	waitForSentMessages(t, client, 1)
@@ -1675,11 +1674,11 @@ func TestLocalVoiceServiceBuilderEmitsRecoverableErrorWhenSTTFails(t *testing.T)
 	cfg.Voice.PreferredAgentID = "house"
 	client := a2a.NewInMemoryClient()
 	syncer := filesync.NewInMemorySyncer(cfg)
-	cards := agents.NewCardService()
-	manager := agents.NewAgentManager(syncer, cards, "")
-	dispatcher := voice.NewDispatcher()
+	cards := service.NewCardService()
+	manager := service.NewAgentManager(syncer, cards, "")
+	dispatcher := service.NewVoiceDispatcher()
 	store := &fixtureActiveSTTVoiceStore{
-		MemoryRepository: voice.NewMemoryRepositoryFromConfig(cfg.Voice),
+		MemoryVoiceRepository: repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice),
 		provider: &fixtureAppSTTProvider{
 			err: errors.New("dial tcp 127.0.0.1:10300: token=secret unavailable"),
 		},
@@ -1690,17 +1689,17 @@ func TestLocalVoiceServiceBuilderEmitsRecoverableErrorWhenSTTFails(t *testing.T)
 		messages:        client,
 		voiceStore:      store,
 		voiceDispatcher: dispatcher,
-		voiceRuntime:    voice.NewConversationRuntime(),
+		voiceRuntime:    service.NewConversationRuntime(),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	events := dispatcher.Subscribe(ctx)
 	start := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
-	service, err := server.newLocalVoiceService(
+	voiceSvc, err := server.newLocalVoiceService(
 		context.Background(),
 		"",
 		"kitchen-display",
-		fixtureAppCapture{frames: []voice.AudioFrame{
+		fixtureAppCapture{frames: []service.AudioFrame{
 			fixtureAppFrame(start, 0, 42),
 			fixtureAppFrame(start, 100*time.Millisecond, 0),
 			fixtureAppFrame(start, 200*time.Millisecond, 0),
@@ -1711,16 +1710,16 @@ func TestLocalVoiceServiceBuilderEmitsRecoverableErrorWhenSTTFails(t *testing.T)
 		t.Fatalf("newLocalVoiceService() error = %v", err)
 	}
 
-	if err := service.Start(context.Background()); err != nil {
+	if err := voiceSvc.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
-	event := waitForVoiceStateEvent(t, events, voice.ServiceStateError)
+	event := waitForVoiceStateEvent(t, events, service.ServiceStateError)
 	recovered := waitForVoiceStateEvent(t, events, "wake_listening")
 
 	if len(client.SentMessages) != 0 {
 		t.Fatalf("STT failure should not send A2A messages: %+v", client.SentMessages)
 	}
-	payload, ok := event.Data.(voice.VoiceEvent)
+	payload, ok := event.Data.(service.VoiceEvent)
 	if !ok {
 		t.Fatalf("unexpected event data: %+v", event.Data)
 	}
@@ -1733,11 +1732,11 @@ func TestLocalVoiceServiceBuilderEmitsRecoverableErrorWhenSTTFails(t *testing.T)
 		strings.Contains(string(raw), "dial tcp") {
 		t.Fatalf("voice error event leaked provider details: %s", raw)
 	}
-	recoveredPayload, ok := recovered.Data.(voice.VoiceEvent)
+	recoveredPayload, ok := recovered.Data.(service.VoiceEvent)
 	if !ok {
 		t.Fatalf("unexpected recovery event data: %+v", recovered.Data)
 	}
-	state, ok := recoveredPayload.Payload.(voice.VoiceStatePayload)
+	state, ok := recoveredPayload.Payload.(service.VoiceStatePayload)
 	if !ok || state.State != "wake_listening" || state.ServiceStatus != "ready" {
 		t.Fatalf("unexpected recovery state after STT failure: %+v", recoveredPayload.Payload)
 	}
@@ -1804,22 +1803,22 @@ func TestVoiceFinalTranscriptEndsFollowupAfterMaxTurns(t *testing.T) {
 		}, nil
 	}
 	syncer := filesync.NewInMemorySyncer(cfg)
-	cards := agents.NewCardService()
-	manager := agents.NewAgentManager(syncer, cards, "")
-	dispatcher := voice.NewDispatcher()
+	cards := service.NewCardService()
+	manager := service.NewAgentManager(syncer, cards, "")
+	dispatcher := service.NewVoiceDispatcher()
 	server := &Server{
 		cfg:             cfg,
 		agentsManager:   manager,
 		messages:        client,
-		voiceStore:      voice.NewMemoryRepositoryFromConfig(cfg.Voice),
+		voiceStore:      repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice),
 		voiceDispatcher: dispatcher,
-		voiceRuntime:    voice.NewConversationRuntime(),
+		voiceRuntime:    service.NewConversationRuntime(),
 	}
-	server.turnRunner = agents.NewRunner(agents.RunnerOptions{
+	server.turnRunner = service.NewRunner(service.RunnerOptions{
 		GetRegistry:    manager.ActiveRegistry,
 		GetAgentConfig: manager.ConfiguredAgent,
-		GetAgentCardCache: func(context.Context, registry.Agent) (agents.AgentCardCache, bool) {
-			return agents.AgentCardCache{
+		GetAgentCardCache: func(context.Context, registry.Agent) (service.AgentCardCache, bool) {
+			return service.AgentCardCache{
 				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
 				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
 			}, true
@@ -1832,7 +1831,7 @@ func TestVoiceFinalTranscriptEndsFollowupAfterMaxTurns(t *testing.T) {
 
 	var response VoiceFinalTranscriptResponse
 	conversationID := ""
-	for i := range voice.MaxConversationTurns {
+	for i := range service.MaxConversationTurns {
 		req := VoiceFinalTranscriptRequest{
 			Text:           "turn",
 			ConversationID: conversationID,
@@ -1849,13 +1848,13 @@ func TestVoiceFinalTranscriptEndsFollowupAfterMaxTurns(t *testing.T) {
 	}
 
 	if response.Followup.Active ||
-		response.Followup.Turns != voice.MaxConversationTurns ||
-		response.Followup.MaxTurns != voice.MaxConversationTurns ||
+		response.Followup.Turns != service.MaxConversationTurns ||
+		response.Followup.MaxTurns != service.MaxConversationTurns ||
 		response.Followup.ExpiresAt != "" {
 		t.Fatalf("expected inactive follow-up at max turns, got %+v", response.Followup)
 	}
-	if len(client.SentMessages) != voice.MaxConversationTurns {
-		t.Fatalf("expected %d A2A sends, got %d", voice.MaxConversationTurns, len(client.SentMessages))
+	if len(client.SentMessages) != service.MaxConversationTurns {
+		t.Fatalf("expected %d A2A sends, got %d", service.MaxConversationTurns, len(client.SentMessages))
 	}
 
 	_, err := server.submitFinalTranscript(context.Background(), VoiceFinalTranscriptRequest{
@@ -1868,7 +1867,7 @@ func TestVoiceFinalTranscriptEndsFollowupAfterMaxTurns(t *testing.T) {
 	if !ok || transcriptErr.status != http.StatusConflict {
 		t.Fatalf("expected follow-up conflict after max turns, got %T %v", err, err)
 	}
-	if len(client.SentMessages) != voice.MaxConversationTurns {
+	if len(client.SentMessages) != service.MaxConversationTurns {
 		t.Fatalf("follow-up limit should block extra A2A send, got %d sends", len(client.SentMessages))
 	}
 }
@@ -2644,7 +2643,7 @@ func TestAgentProxyEndpoint(t *testing.T) {
 	defer agentServer.Close()
 
 	cfg := testConfig()
-	cfg.Agents = []agents.AgentConfig{
+	cfg.Agents = []service.AgentConfig{
 		{
 			ID:              "house-proxy-test",
 			Name:            "Concierge Proxy Test",
@@ -2652,7 +2651,7 @@ func TestAgentProxyEndpoint(t *testing.T) {
 			EndpointURL:     agentServer.URL + "/api/v1/rpc",
 			ProtocolBinding: a2a.ProtocolJSONRPC,
 			Enabled:         true,
-			Auth: &agents.AuthConfig{
+			Auth: &service.AuthConfig{
 				Type:     "bearer",
 				EnvToken: "HOUSE_PROXY_TEST_TOKEN",
 			},
@@ -2715,7 +2714,7 @@ func TestAgentProxyReturnsSafeBadGatewayWhenUpstreamIsUnavailable(t *testing.T) 
 	agentServer.Close()
 
 	cfg := testConfig()
-	cfg.Agents = []agents.AgentConfig{
+	cfg.Agents = []service.AgentConfig{
 		{
 			ID:              "offline-proxy",
 			Name:            "Offline Proxy",
@@ -2723,7 +2722,7 @@ func TestAgentProxyReturnsSafeBadGatewayWhenUpstreamIsUnavailable(t *testing.T) 
 			EndpointURL:     endpointURL,
 			ProtocolBinding: a2a.ProtocolJSONRPC,
 			Enabled:         true,
-			Auth: &agents.AuthConfig{
+			Auth: &service.AuthConfig{
 				Type:     "bearer",
 				EnvToken: "OFFLINE_PROXY_TOKEN",
 			},
@@ -2760,7 +2759,7 @@ func TestAgentProxyDoesNotAcceptBrowserSuppliedAuthorization(t *testing.T) {
 	defer agentServer.Close()
 
 	cfg := testConfig()
-	cfg.Agents = []agents.AgentConfig{
+	cfg.Agents = []service.AgentConfig{
 		{
 			ID:              "no-auth-proxy",
 			Name:            "No Auth Proxy",
@@ -2798,7 +2797,7 @@ func TestAgentProxyRejectsUnknownAndDisabledAgents(t *testing.T) {
 	defer agentServer.Close()
 
 	cfg := testConfig()
-	cfg.Agents = []agents.AgentConfig{
+	cfg.Agents = []service.AgentConfig{
 		{
 			ID:              "disabled-proxy",
 			Name:            "Disabled Proxy",
@@ -2849,7 +2848,7 @@ func TestAgentProxyDoesNotFallBackToBrowserAuthWhenHubCredentialIsMissing(t *tes
 	defer agentServer.Close()
 
 	cfg := testConfig()
-	cfg.Agents = []agents.AgentConfig{
+	cfg.Agents = []service.AgentConfig{
 		{
 			ID:              "missing-token-proxy",
 			Name:            "Missing Token Proxy",
@@ -2857,7 +2856,7 @@ func TestAgentProxyDoesNotFallBackToBrowserAuthWhenHubCredentialIsMissing(t *tes
 			EndpointURL:     agentServer.URL + "/invoke",
 			ProtocolBinding: a2a.ProtocolJSONRPC,
 			Enabled:         true,
-			Auth: &agents.AuthConfig{
+			Auth: &service.AuthConfig{
 				Type:     "bearer",
 				EnvToken: "MISSING_PROXY_TOKEN",
 			},
@@ -2919,7 +2918,7 @@ func TestAgentProxyUsesDiscoveredEndpoint(t *testing.T) {
 	defer cardServer.Close()
 
 	cfg := testConfig()
-	cfg.Agents = []agents.AgentConfig{
+	cfg.Agents = []service.AgentConfig{
 		{
 			ID:              "discovered-proxy",
 			Name:            "Discovered Proxy Agent",
@@ -2971,7 +2970,7 @@ func TestAgentProxyEndpoint_EmptySubpath(t *testing.T) {
 	defer agentServer.Close()
 
 	cfg := testConfig()
-	cfg.Agents = []agents.AgentConfig{
+	cfg.Agents = []service.AgentConfig{
 		{
 			ID:              "house-proxy-empty",
 			Name:            "Empty Subpath Proxy Test",
@@ -3336,7 +3335,7 @@ func TestAgentSubroutesValidateRequests(t *testing.T) {
 
 func testConfig() config.Config {
 	cfg := config.DefaultConfig()
-	cfg.Agents = []agents.AgentConfig{
+	cfg.Agents = []service.AgentConfig{
 		{
 			ID:              "house",
 			Name:            "House Concierge",
@@ -3375,38 +3374,38 @@ func openInitializedServerStore(t *testing.T) *Store {
 }
 
 type fixtureActiveSTTVoiceStore struct {
-	*voice.MemoryRepository
+	*repository.MemoryVoiceRepository
 
-	provider voice.STTProvider
+	provider service.STTProvider
 }
 
-func (s *fixtureActiveSTTVoiceStore) ActiveSTTProvider(context.Context, string) (voice.STTProvider, error) {
+func (s *fixtureActiveSTTVoiceStore) ActiveSTTProvider(context.Context, string) (service.STTProvider, error) {
 	return s.provider, nil
 }
 
 type fixtureAppSTTProvider struct {
-	result voice.STTResult
+	result service.STTResult
 	err    error
-	seen   voice.CapturedUtterance
+	seen   service.CapturedUtterance
 }
 
 func (p *fixtureAppSTTProvider) Transcribe(
 	_ context.Context,
-	utterance voice.CapturedUtterance,
-) (voice.STTResult, error) {
+	utterance service.CapturedUtterance,
+) (service.STTResult, error) {
 	p.seen = utterance
 	if p.err != nil {
-		return voice.STTResult{}, p.err
+		return service.STTResult{}, p.err
 	}
 	return p.result, nil
 }
 
 type fixtureAppCapture struct {
-	frames []voice.AudioFrame
+	frames []service.AudioFrame
 }
 
-func (c fixtureAppCapture) Capture(ctx context.Context) (<-chan voice.AudioFrame, <-chan error) {
-	frames := make(chan voice.AudioFrame)
+func (c fixtureAppCapture) Capture(ctx context.Context) (<-chan service.AudioFrame, <-chan error) {
+	frames := make(chan service.AudioFrame)
 	errs := make(chan error)
 	go func() {
 		defer close(frames)
@@ -3426,7 +3425,7 @@ type fixtureAppVAD struct {
 	threshold byte
 }
 
-func (v fixtureAppVAD) Speech(frame voice.AudioFrame) bool {
+func (v fixtureAppVAD) Speech(frame service.AudioFrame) bool {
 	for _, sample := range frame.PCM {
 		if sample >= v.threshold {
 			return true
@@ -3435,8 +3434,8 @@ func (v fixtureAppVAD) Speech(frame voice.AudioFrame) bool {
 	return false
 }
 
-func fixtureAppFrame(start time.Time, offset time.Duration, sample byte) voice.AudioFrame {
-	return voice.AudioFrame{
+func fixtureAppFrame(start time.Time, offset time.Duration, sample byte) service.AudioFrame {
+	return service.AudioFrame{
 		PCM:         []byte{sample},
 		SampleRate:  16000,
 		SampleWidth: 2,
@@ -3471,14 +3470,14 @@ func waitForVoiceStateEvent(
 			if !ok {
 				t.Fatalf("event stream closed before voice state %q", state)
 			}
-			if event.Type != voice.EventVoiceStateChanged {
+			if event.Type != service.EventVoiceStateChanged {
 				continue
 			}
-			voiceEvent, ok := event.Data.(voice.VoiceEvent)
+			voiceEvent, ok := event.Data.(service.VoiceEvent)
 			if !ok {
 				t.Fatalf("unexpected voice state event data: %+v", event.Data)
 			}
-			payload, ok := voiceEvent.Payload.(voice.VoiceStatePayload)
+			payload, ok := voiceEvent.Payload.(service.VoiceStatePayload)
 			if !ok {
 				t.Fatalf("unexpected voice state payload: %+v", voiceEvent.Payload)
 			}

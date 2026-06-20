@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	voice "jute-dash/apps/hub/internal/app/service/voice"
+	service "jute-dash/apps/hub/internal/app/service"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -22,18 +22,18 @@ func (_m *WakeEventEmitter) EXPECT() *WakeEventEmitter_Expecter {
 }
 
 // EmitVoiceStateChanged provides a mock function with given fields: deviceID, payload
-func (_m *WakeEventEmitter) EmitVoiceStateChanged(deviceID string, payload voice.VoiceStatePayload) voice.VoiceEvent {
+func (_m *WakeEventEmitter) EmitVoiceStateChanged(deviceID string, payload service.VoiceStatePayload) service.VoiceEvent {
 	ret := _m.Called(deviceID, payload)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EmitVoiceStateChanged")
 	}
 
-	var r0 voice.VoiceEvent
-	if rf, ok := ret.Get(0).(func(string, voice.VoiceStatePayload) voice.VoiceEvent); ok {
+	var r0 service.VoiceEvent
+	if rf, ok := ret.Get(0).(func(string, service.VoiceStatePayload) service.VoiceEvent); ok {
 		r0 = rf(deviceID, payload)
 	} else {
-		r0 = ret.Get(0).(voice.VoiceEvent)
+		r0 = ret.Get(0).(service.VoiceEvent)
 	}
 
 	return r0
@@ -46,41 +46,41 @@ type WakeEventEmitter_EmitVoiceStateChanged_Call struct {
 
 // EmitVoiceStateChanged is a helper method to define mock.On call
 //   - deviceID string
-//   - payload voice.VoiceStatePayload
+//   - payload service.VoiceStatePayload
 func (_e *WakeEventEmitter_Expecter) EmitVoiceStateChanged(deviceID interface{}, payload interface{}) *WakeEventEmitter_EmitVoiceStateChanged_Call {
 	return &WakeEventEmitter_EmitVoiceStateChanged_Call{Call: _e.mock.On("EmitVoiceStateChanged", deviceID, payload)}
 }
 
-func (_c *WakeEventEmitter_EmitVoiceStateChanged_Call) Run(run func(deviceID string, payload voice.VoiceStatePayload)) *WakeEventEmitter_EmitVoiceStateChanged_Call {
+func (_c *WakeEventEmitter_EmitVoiceStateChanged_Call) Run(run func(deviceID string, payload service.VoiceStatePayload)) *WakeEventEmitter_EmitVoiceStateChanged_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(voice.VoiceStatePayload))
+		run(args[0].(string), args[1].(service.VoiceStatePayload))
 	})
 	return _c
 }
 
-func (_c *WakeEventEmitter_EmitVoiceStateChanged_Call) Return(_a0 voice.VoiceEvent) *WakeEventEmitter_EmitVoiceStateChanged_Call {
+func (_c *WakeEventEmitter_EmitVoiceStateChanged_Call) Return(_a0 service.VoiceEvent) *WakeEventEmitter_EmitVoiceStateChanged_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *WakeEventEmitter_EmitVoiceStateChanged_Call) RunAndReturn(run func(string, voice.VoiceStatePayload) voice.VoiceEvent) *WakeEventEmitter_EmitVoiceStateChanged_Call {
+func (_c *WakeEventEmitter_EmitVoiceStateChanged_Call) RunAndReturn(run func(string, service.VoiceStatePayload) service.VoiceEvent) *WakeEventEmitter_EmitVoiceStateChanged_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // EmitVoiceWakeDetected provides a mock function with given fields: deviceID, conversationID
-func (_m *WakeEventEmitter) EmitVoiceWakeDetected(deviceID string, conversationID string) voice.VoiceEvent {
+func (_m *WakeEventEmitter) EmitVoiceWakeDetected(deviceID string, conversationID string) service.VoiceEvent {
 	ret := _m.Called(deviceID, conversationID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EmitVoiceWakeDetected")
 	}
 
-	var r0 voice.VoiceEvent
-	if rf, ok := ret.Get(0).(func(string, string) voice.VoiceEvent); ok {
+	var r0 service.VoiceEvent
+	if rf, ok := ret.Get(0).(func(string, string) service.VoiceEvent); ok {
 		r0 = rf(deviceID, conversationID)
 	} else {
-		r0 = ret.Get(0).(voice.VoiceEvent)
+		r0 = ret.Get(0).(service.VoiceEvent)
 	}
 
 	return r0
@@ -105,12 +105,12 @@ func (_c *WakeEventEmitter_EmitVoiceWakeDetected_Call) Run(run func(deviceID str
 	return _c
 }
 
-func (_c *WakeEventEmitter_EmitVoiceWakeDetected_Call) Return(_a0 voice.VoiceEvent) *WakeEventEmitter_EmitVoiceWakeDetected_Call {
+func (_c *WakeEventEmitter_EmitVoiceWakeDetected_Call) Return(_a0 service.VoiceEvent) *WakeEventEmitter_EmitVoiceWakeDetected_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *WakeEventEmitter_EmitVoiceWakeDetected_Call) RunAndReturn(run func(string, string) voice.VoiceEvent) *WakeEventEmitter_EmitVoiceWakeDetected_Call {
+func (_c *WakeEventEmitter_EmitVoiceWakeDetected_Call) RunAndReturn(run func(string, string) service.VoiceEvent) *WakeEventEmitter_EmitVoiceWakeDetected_Call {
 	_c.Call.Return(run)
 	return _c
 }

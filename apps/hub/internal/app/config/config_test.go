@@ -6,8 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"jute-dash/apps/hub/internal/app/service/agents"
-	"jute-dash/apps/hub/internal/app/service/dashboard"
+	"jute-dash/apps/hub/internal/app/model"
 )
 
 func TestLoadAppliesDefaults(t *testing.T) {
@@ -187,7 +186,7 @@ tiles: []
 }
 
 func TestSupportedThemeIDs(t *testing.T) {
-	for _, themeID := range dashboard.SupportedThemeIDs() {
+	for _, themeID := range model.SupportedThemeIDs() {
 		cfg := DefaultConfig()
 		cfg.Display.ThemeID = themeID
 		if err := ValidateConfig(cfg); err != nil {
@@ -582,7 +581,7 @@ func TestAgentMCPScopesDefaultToReadOnly(t *testing.T) {
 		cfg.Agents[0].MCPScopes,
 		",",
 	), strings.Join(
-		agents.DefaultMCPReadScopes(),
+		model.DefaultMCPReadScopes(),
 		",",
 	); got != want {
 		t.Fatalf("unexpected default scopes: got %s want %s", got, want)
@@ -591,7 +590,7 @@ func TestAgentMCPScopesDefaultToReadOnly(t *testing.T) {
 
 func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.Agents = []agents.AgentConfig{
+	cfg.Agents = []model.AgentConfig{
 		{
 			ID:              "house",
 			Name:            "House",
@@ -599,8 +598,8 @@ func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 			EndpointURL:     "https://agent.example.com/a2a/v1",
 			ProtocolBinding: "JSONRPC",
 			Enabled:         true,
-			MCPScopes:       []string{agents.MCPScopeDashboardRead},
-			Auth:            &agents.AuthConfig{Type: "bearer", EnvToken: "SECRET_TOKEN"},
+			MCPScopes:       []string{model.MCPScopeDashboardRead},
+			Auth:            &model.AuthConfig{Type: "bearer", EnvToken: "SECRET_TOKEN"},
 		},
 	}
 
@@ -611,7 +610,7 @@ func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 	if !public.Agents[0].AuthConfigured {
 		t.Fatal("expected authConfigured to be true")
 	}
-	if strings.Join(public.Agents[0].MCPScopes, ",") != agents.MCPScopeDashboardRead {
+	if strings.Join(public.Agents[0].MCPScopes, ",") != model.MCPScopeDashboardRead {
 		t.Fatalf("unexpected public MCP scopes: %+v", public.Agents[0].MCPScopes)
 	}
 }
@@ -699,25 +698,25 @@ func assertDevHarnessWidgets(t *testing.T, cfg Config) {
 	var want []widgetExpectation
 	if cfg.Home.Name == "Jute Local Dev" || cfg.Home.Name == "Jute Kronk A2A Dev" {
 		want = []widgetExpectation{
-			widget("date-time-widget", "date-time", "small", 0, 0, 4, 2, 3, 1, dashboard.WidgetModeUI),
-			widget("weather-widget", "weather", "small", 4, 0, 4, 2, 3, 1, dashboard.WidgetModeUI),
-			widget("assistant-chat", "chat-history", "large", 0, 4, 4, 3, 3, 1, dashboard.WidgetModeUI),
-			widget("hacker-news", "rss", "large", 6, 3, 4, 3, 3, 1, dashboard.WidgetModeUI),
-			widget("stocks-watchlist", "markets", "large", 8, 0, 4, 3, 3, 1, dashboard.WidgetModeUI),
-			widget("spotify", "spotify", "medium", 0, 2, 6, 2, 4, 2, dashboard.WidgetModeUI),
-			hiddenWidget("apple-music", "apple-music", "medium", 0, 0, 6, 2, 4, 2, dashboard.WidgetModeUI),
-			widget("zigbee2mqtt", "zigbee2mqtt", "medium", 0, 0, 6, 2, 4, 2, dashboard.WidgetModeUI),
-			widget("philips-hue", "philips-hue", "medium", 0, 2, 6, 2, 4, 2, dashboard.WidgetModeUI),
-			widget("timers-alarms", "timers-alarms", "medium", 4, 6, 6, 2, 3, 2, dashboard.WidgetModeHeadless),
-			widget("calendar", "calendar", "medium", 4, 6, 6, 2, 3, 2, dashboard.WidgetModeHeadless),
+			widget("date-time-widget", "date-time", "small", 0, 0, 4, 2, 3, 1, model.WidgetModeUI),
+			widget("weather-widget", "weather", "small", 4, 0, 4, 2, 3, 1, model.WidgetModeUI),
+			widget("assistant-chat", "chat-history", "large", 0, 4, 4, 3, 3, 1, model.WidgetModeUI),
+			widget("hacker-news", "rss", "large", 6, 3, 4, 3, 3, 1, model.WidgetModeUI),
+			widget("stocks-watchlist", "markets", "large", 8, 0, 4, 3, 3, 1, model.WidgetModeUI),
+			widget("spotify", "spotify", "medium", 0, 2, 6, 2, 4, 2, model.WidgetModeUI),
+			hiddenWidget("apple-music", "apple-music", "medium", 0, 0, 6, 2, 4, 2, model.WidgetModeUI),
+			widget("zigbee2mqtt", "zigbee2mqtt", "medium", 0, 0, 6, 2, 4, 2, model.WidgetModeUI),
+			widget("philips-hue", "philips-hue", "medium", 0, 2, 6, 2, 4, 2, model.WidgetModeUI),
+			widget("timers-alarms", "timers-alarms", "medium", 4, 6, 6, 2, 3, 2, model.WidgetModeHeadless),
+			widget("calendar", "calendar", "medium", 4, 6, 6, 2, 3, 2, model.WidgetModeHeadless),
 		}
 	} else {
 		want = []widgetExpectation{
-			widget("date-time-widget", "date-time", "wide", 0, 0, 6, 1, 3, 1, dashboard.WidgetModeUI),
-			widget("weather-widget", "weather", "wide", 6, 0, 6, 1, 3, 1, dashboard.WidgetModeUI),
-			widget("assistant-chat", "chat-history", "medium", 0, 1, 6, 2, 3, 1, dashboard.WidgetModeUI),
-			widget("hacker-news", "rss", "medium", 6, 1, 6, 2, 3, 1, dashboard.WidgetModeUI),
-			widget("stocks-watchlist", "markets", "medium", 0, 3, 6, 2, 3, 1, dashboard.WidgetModeUI),
+			widget("date-time-widget", "date-time", "wide", 0, 0, 6, 1, 3, 1, model.WidgetModeUI),
+			widget("weather-widget", "weather", "wide", 6, 0, 6, 1, 3, 1, model.WidgetModeUI),
+			widget("assistant-chat", "chat-history", "medium", 0, 1, 6, 2, 3, 1, model.WidgetModeUI),
+			widget("hacker-news", "rss", "medium", 6, 1, 6, 2, 3, 1, model.WidgetModeUI),
+			widget("stocks-watchlist", "markets", "medium", 0, 3, 6, 2, 3, 1, model.WidgetModeUI),
 		}
 	}
 	if len(cfg.Dashboard.Widgets) != len(want) {

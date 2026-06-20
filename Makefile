@@ -47,7 +47,7 @@ codegen:
 
 generate-mocks:
 	go tool mockery --config=.mockery.yaml
-	go tool mockery --config=/dev/null --name=Syncer --srcpkg=jute-dash/apps/hub/internal/app/service/agents --output=apps/hub/internal/app/service/agents --filename=agent_syncer_mock_test.go --structname=AgentSyncer --with-expecter --inpackage --testonly
+	go tool mockery --config=/dev/null --name=Syncer --srcpkg=jute-dash/apps/hub/internal/app/service --output=apps/hub/internal/app/service --filename=agent_syncer_mock_test.go --structname=AgentSyncer --with-expecter --inpackage --testonly
 
 integration-test-local:
 	JUTE_HUB_INTEGRATION=1 go tool ginkgo --label-filter=SMOKE ./apps/hub/tests/integration/specs

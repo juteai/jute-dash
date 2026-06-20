@@ -4,7 +4,7 @@ package mocks
 
 import (
 	context "context"
-	voice "jute-dash/apps/hub/internal/app/service/voice"
+	service "jute-dash/apps/hub/internal/app/service"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -23,25 +23,25 @@ func (_m *WakeProvider) EXPECT() *WakeProvider_Expecter {
 }
 
 // DetectWake provides a mock function with given fields: ctx, utterance
-func (_m *WakeProvider) DetectWake(ctx context.Context, utterance voice.CapturedUtterance) (voice.WakeDetection, error) {
+func (_m *WakeProvider) DetectWake(ctx context.Context, utterance service.CapturedUtterance) (service.WakeDetection, error) {
 	ret := _m.Called(ctx, utterance)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DetectWake")
 	}
 
-	var r0 voice.WakeDetection
+	var r0 service.WakeDetection
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, voice.CapturedUtterance) (voice.WakeDetection, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, service.CapturedUtterance) (service.WakeDetection, error)); ok {
 		return rf(ctx, utterance)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, voice.CapturedUtterance) voice.WakeDetection); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, service.CapturedUtterance) service.WakeDetection); ok {
 		r0 = rf(ctx, utterance)
 	} else {
-		r0 = ret.Get(0).(voice.WakeDetection)
+		r0 = ret.Get(0).(service.WakeDetection)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, voice.CapturedUtterance) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, service.CapturedUtterance) error); ok {
 		r1 = rf(ctx, utterance)
 	} else {
 		r1 = ret.Error(1)
@@ -57,24 +57,24 @@ type WakeProvider_DetectWake_Call struct {
 
 // DetectWake is a helper method to define mock.On call
 //   - ctx context.Context
-//   - utterance voice.CapturedUtterance
+//   - utterance service.CapturedUtterance
 func (_e *WakeProvider_Expecter) DetectWake(ctx interface{}, utterance interface{}) *WakeProvider_DetectWake_Call {
 	return &WakeProvider_DetectWake_Call{Call: _e.mock.On("DetectWake", ctx, utterance)}
 }
 
-func (_c *WakeProvider_DetectWake_Call) Run(run func(ctx context.Context, utterance voice.CapturedUtterance)) *WakeProvider_DetectWake_Call {
+func (_c *WakeProvider_DetectWake_Call) Run(run func(ctx context.Context, utterance service.CapturedUtterance)) *WakeProvider_DetectWake_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(voice.CapturedUtterance))
+		run(args[0].(context.Context), args[1].(service.CapturedUtterance))
 	})
 	return _c
 }
 
-func (_c *WakeProvider_DetectWake_Call) Return(_a0 voice.WakeDetection, _a1 error) *WakeProvider_DetectWake_Call {
+func (_c *WakeProvider_DetectWake_Call) Return(_a0 service.WakeDetection, _a1 error) *WakeProvider_DetectWake_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *WakeProvider_DetectWake_Call) RunAndReturn(run func(context.Context, voice.CapturedUtterance) (voice.WakeDetection, error)) *WakeProvider_DetectWake_Call {
+func (_c *WakeProvider_DetectWake_Call) RunAndReturn(run func(context.Context, service.CapturedUtterance) (service.WakeDetection, error)) *WakeProvider_DetectWake_Call {
 	_c.Call.Return(run)
 	return _c
 }

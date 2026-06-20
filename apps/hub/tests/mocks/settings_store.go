@@ -4,7 +4,7 @@ package mocks
 
 import (
 	context "context"
-	homestate "jute-dash/apps/hub/internal/app/service/homestate"
+	homestate "jute-dash/apps/hub/internal/app/model"
 
 	mock "github.com/stretchr/testify/mock"
 )

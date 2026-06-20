@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	voice "jute-dash/apps/hub/internal/app/service/voice"
+	service "jute-dash/apps/hub/internal/app/service"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -22,7 +22,7 @@ func (_m *VoiceActivityDetector) EXPECT() *VoiceActivityDetector_Expecter {
 }
 
 // Speech provides a mock function with given fields: frame
-func (_m *VoiceActivityDetector) Speech(frame voice.AudioFrame) bool {
+func (_m *VoiceActivityDetector) Speech(frame service.AudioFrame) bool {
 	ret := _m.Called(frame)
 
 	if len(ret) == 0 {
@@ -30,7 +30,7 @@ func (_m *VoiceActivityDetector) Speech(frame voice.AudioFrame) bool {
 	}
 
 	var r0 bool
-	if rf, ok := ret.Get(0).(func(voice.AudioFrame) bool); ok {
+	if rf, ok := ret.Get(0).(func(service.AudioFrame) bool); ok {
 		r0 = rf(frame)
 	} else {
 		r0 = ret.Get(0).(bool)
@@ -45,14 +45,14 @@ type VoiceActivityDetector_Speech_Call struct {
 }
 
 // Speech is a helper method to define mock.On call
-//   - frame voice.AudioFrame
+//   - frame service.AudioFrame
 func (_e *VoiceActivityDetector_Expecter) Speech(frame interface{}) *VoiceActivityDetector_Speech_Call {
 	return &VoiceActivityDetector_Speech_Call{Call: _e.mock.On("Speech", frame)}
 }
 
-func (_c *VoiceActivityDetector_Speech_Call) Run(run func(frame voice.AudioFrame)) *VoiceActivityDetector_Speech_Call {
+func (_c *VoiceActivityDetector_Speech_Call) Run(run func(frame service.AudioFrame)) *VoiceActivityDetector_Speech_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(voice.AudioFrame))
+		run(args[0].(service.AudioFrame))
 	})
 	return _c
 }
@@ -62,7 +62,7 @@ func (_c *VoiceActivityDetector_Speech_Call) Return(_a0 bool) *VoiceActivityDete
 	return _c
 }
 
-func (_c *VoiceActivityDetector_Speech_Call) RunAndReturn(run func(voice.AudioFrame) bool) *VoiceActivityDetector_Speech_Call {
+func (_c *VoiceActivityDetector_Speech_Call) RunAndReturn(run func(service.AudioFrame) bool) *VoiceActivityDetector_Speech_Call {
 	_c.Call.Return(run)
 	return _c
 }

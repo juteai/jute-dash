@@ -9,10 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"jute-dash/apps/hub/internal/app/service/agents"
-	"jute-dash/apps/hub/internal/app/service/dashboard"
-	"jute-dash/apps/hub/internal/app/service/homestate"
-	"jute-dash/apps/hub/internal/app/service/voice"
+	"jute-dash/apps/hub/internal/app/model"
 	"jute-dash/apps/hub/internal/pkg/a2a"
 	"jute-dash/apps/hub/internal/pkg/mcp"
 
@@ -20,17 +17,17 @@ import (
 )
 
 type Config struct {
-	Home      homestate.HomeConfig      `json:"home"      yaml:"home"`
-	Server    ServerConfig              `json:"server"    yaml:"server"`
-	Log       LogConfig                 `json:"log"       yaml:"log"`
-	MCP       mcp.Config                `json:"mcp"       yaml:"mcp"`
-	A2A       a2a.AgentCardURLPolicy    `json:"a2a"       yaml:"a2a"`
-	Display   dashboard.DisplayConfig   `json:"display"   yaml:"display"`
-	Voice     voice.Config              `json:"voice"     yaml:"voice"`
-	Dashboard dashboard.DashboardConfig `json:"dashboard" yaml:"dashboard"`
-	Agents    []agents.AgentConfig      `json:"agents"    yaml:"agents"`
-	Rooms     []homestate.RoomConfig    `json:"rooms"     yaml:"rooms"`
-	Tiles     []homestate.TileConfig    `json:"tiles"     yaml:"tiles"`
+	Home      model.HomeConfig       `json:"home"      yaml:"home"`
+	Server    ServerConfig           `json:"server"    yaml:"server"`
+	Log       LogConfig              `json:"log"       yaml:"log"`
+	MCP       mcp.Config             `json:"mcp"       yaml:"mcp"`
+	A2A       a2a.AgentCardURLPolicy `json:"a2a"       yaml:"a2a"`
+	Display   model.DisplayConfig    `json:"display"   yaml:"display"`
+	Voice     model.Config           `json:"voice"     yaml:"voice"`
+	Dashboard model.DashboardConfig  `json:"dashboard" yaml:"dashboard"`
+	Agents    []model.AgentConfig    `json:"agents"    yaml:"agents"`
+	Rooms     []model.RoomConfig     `json:"rooms"     yaml:"rooms"`
+	Tiles     []model.TileConfig     `json:"tiles"     yaml:"tiles"`
 }
 
 type ServerConfig struct {
@@ -47,17 +44,17 @@ type LogConfig struct {
 }
 
 type PublicConfig struct {
-	Home      homestate.HomeConfig       `json:"home"      yaml:"home"`
-	Display   dashboard.DisplayConfig    `json:"display"   yaml:"display"`
-	Dashboard dashboard.DashboardConfig  `json:"dashboard" yaml:"dashboard"`
-	Agents    []agents.PublicAgentConfig `json:"agents"    yaml:"agents"`
-	Rooms     []homestate.RoomConfig     `json:"rooms"     yaml:"rooms"`
-	Tiles     []homestate.TileConfig     `json:"tiles"     yaml:"tiles"`
+	Home      model.HomeConfig          `json:"home"      yaml:"home"`
+	Display   model.DisplayConfig       `json:"display"   yaml:"display"`
+	Dashboard model.DashboardConfig     `json:"dashboard" yaml:"dashboard"`
+	Agents    []model.PublicAgentConfig `json:"agents"    yaml:"agents"`
+	Rooms     []model.RoomConfig        `json:"rooms"     yaml:"rooms"`
+	Tiles     []model.TileConfig        `json:"tiles"     yaml:"tiles"`
 }
 
 func DefaultConfig() Config {
 	return Config{
-		Home: homestate.DefaultHomeConfig(),
+		Home: model.DefaultHomeConfig(),
 		Server: ServerConfig{
 			ListenAddress: "127.0.0.1:8787",
 		},
@@ -71,8 +68,8 @@ func DefaultConfig() Config {
 		},
 		MCP:     mcp.DefaultConfig(),
 		A2A:     a2a.DefaultAgentCardURLPolicy(),
-		Display: dashboard.DefaultDisplayConfig(),
-		Voice:   voice.DefaultConfig(),
+		Display: model.DefaultDisplayConfig(),
+		Voice:   model.DefaultConfig(),
 	}
 }
 
@@ -117,7 +114,7 @@ func decodeConfig(file *os.File, path string, cfg *Config) error {
 func ValidateConfig(cfg Config) error {
 	var problems []string
 
-	problems = append(problems, homestate.ValidateHome(cfg.Home)...)
+	problems = append(problems, model.ValidateHome(cfg.Home)...)
 
 	if strings.TrimSpace(cfg.Server.ListenAddress) == "" {
 		problems = append(problems, "server.listenAddress is required")
@@ -125,8 +122,8 @@ func ValidateConfig(cfg Config) error {
 
 	problems = append(problems, mcp.Validate(cfg.MCP)...)
 	problems = append(problems, a2a.ValidateAgentCardURLPolicy(cfg.A2A)...)
-	problems = append(problems, dashboard.ValidateDisplay(cfg.Display)...)
-	problems = append(problems, voice.Validate(cfg.Voice)...)
+	problems = append(problems, model.ValidateDisplay(cfg.Display)...)
+	problems = append(problems, model.Validate(cfg.Voice)...)
 
 	seenAgents := map[string]struct{}{}
 	for i, agent := range cfg.Agents {
@@ -166,7 +163,7 @@ func ValidateConfig(cfg Config) error {
 				problems = append(problems, scopeLocation+" is required")
 				continue
 			}
-			if !agents.IsKnownMCPScope(scope) {
+			if !model.IsKnownMCPScope(scope) {
 				problems = append(problems, scopeLocation+" is not supported")
 			}
 			if _, exists := seenScopes[scope]; exists {
@@ -179,13 +176,13 @@ func ValidateConfig(cfg Config) error {
 	validateUniqueIDs(
 		"rooms",
 		cfg.Rooms,
-		func(room homestate.RoomConfig) string { return room.ID },
+		func(room model.RoomConfig) string { return room.ID },
 		&problems,
 	)
 	validateUniqueIDs(
 		"tiles",
 		cfg.Tiles,
-		func(tile homestate.TileConfig) string { return tile.ID },
+		func(tile model.TileConfig) string { return tile.ID },
 		&problems,
 	)
 
@@ -196,9 +193,9 @@ func ValidateConfig(cfg Config) error {
 }
 
 func (cfg Config) Public() PublicConfig {
-	publicAgents := make([]agents.PublicAgentConfig, 0, len(cfg.Agents))
+	publicAgents := make([]model.PublicAgentConfig, 0, len(cfg.Agents))
 	for _, agent := range cfg.Agents {
-		publicAgents = append(publicAgents, agents.PublicAgentConfig{
+		publicAgents = append(publicAgents, model.PublicAgentConfig{
 			ID:              agent.ID,
 			Name:            agent.Name,
 			Description:     agent.Description,
@@ -217,13 +214,13 @@ func (cfg Config) Public() PublicConfig {
 		Display:   cfg.Display,
 		Dashboard: cfg.Dashboard,
 		Agents:    publicAgents,
-		Rooms:     append([]homestate.RoomConfig(nil), cfg.Rooms...),
-		Tiles:     append([]homestate.TileConfig(nil), cfg.Tiles...),
+		Rooms:     append([]model.RoomConfig(nil), cfg.Rooms...),
+		Tiles:     append([]model.TileConfig(nil), cfg.Tiles...),
 	}
 }
 
 func ApplyDefaults(cfg *Config) {
-	homestate.ApplyHomeDefaults(&cfg.Home)
+	model.ApplyHomeDefaults(&cfg.Home)
 	if strings.TrimSpace(cfg.Server.ListenAddress) == "" {
 		cfg.Server.ListenAddress = "127.0.0.1:8787"
 	}
@@ -244,11 +241,11 @@ func ApplyDefaults(cfg *Config) {
 		allowLoopback := true
 		cfg.A2A.Loopback = &allowLoopback
 	}
-	dashboard.ApplyDisplayDefaults(&cfg.Display)
-	voice.ApplyDefaults(&cfg.Voice)
+	model.ApplyDisplayDefaults(&cfg.Display)
+	model.ApplyDefaults(&cfg.Voice)
 
 	if len(cfg.Dashboard.Widgets) == 0 {
-		cfg.Dashboard.Widgets = []dashboard.DashboardWidgetConfig{
+		cfg.Dashboard.Widgets = []model.DashboardWidgetConfig{
 			{
 				ID:      "date-time",
 				Type:    "date-time",
@@ -308,7 +305,7 @@ func ApplyDefaults(cfg *Config) {
 			cfg.Agents[i].ProtocolBinding = a2a.ProtocolJSONRPC
 		}
 		if len(cfg.Agents[i].MCPScopes) == 0 {
-			cfg.Agents[i].MCPScopes = agents.DefaultMCPReadScopes()
+			cfg.Agents[i].MCPScopes = model.DefaultMCPReadScopes()
 		}
 	}
 }

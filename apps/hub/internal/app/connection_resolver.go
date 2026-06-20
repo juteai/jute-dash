@@ -5,12 +5,12 @@ import (
 	"os"
 	"strings"
 
-	"jute-dash/apps/hub/internal/app/service/homestate"
+	"jute-dash/apps/hub/internal/app/model"
 	"jute-dash/widgets"
 )
 
 type adapterConnectionStore interface {
-	AdapterConnection(ctx context.Context, id string) (homestate.AdapterConnection, error)
+	AdapterConnection(ctx context.Context, id string) (model.AdapterConnection, error)
 }
 
 type secretResolver interface {
@@ -123,7 +123,7 @@ func requiredConnectionSecretFields(req widgets.ConnectionRequirement) map[strin
 
 func validateRequiredConnectionFields(
 	req widgets.ConnectionRequirement,
-	connection homestate.AdapterConnection,
+	connection model.AdapterConnection,
 ) *widgets.RuntimePayload {
 	for _, field := range req.Fields {
 		if !field.Required {
