@@ -99,9 +99,13 @@ func expectJSON(
 ) map[string]any {
 	var reader io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
-		Expect(err).NotTo(HaveOccurred())
-		reader = bytes.NewReader(raw)
+		if raw, ok := body.(string); ok {
+			reader = strings.NewReader(raw)
+		} else {
+			raw, err := json.Marshal(body)
+			Expect(err).NotTo(HaveOccurred())
+			reader = bytes.NewReader(raw)
+		}
 	}
 	req, err := http.NewRequestWithContext(ctx, method, bootstrap.BaseURL()+path, reader)
 	Expect(err).NotTo(HaveOccurred())
