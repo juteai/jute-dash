@@ -5,13 +5,14 @@ The hub follows a CLEAN-style layout. Keep dependencies pointing inward and keep
 ## Layers
 
 - `apps/hub/api/hub/v1`: OpenAPI contract, codegen config, and generated Echo server types.
-- `apps/hub/internal/app`: composition root only. It wires config, repositories, services, controllers, event streams, and runtime dependencies.
+- `apps/hub/internal/app`: layer namespace only. Do not put Go files directly in this directory.
+- `apps/hub/internal/pkg/app`: executable hub wiring. It wires config, repositories, services, controllers, event streams, and runtime dependencies.
 - `apps/hub/internal/app/config`: config defaults, loading, import/export validation, and bootstrap mapping.
 - `apps/hub/internal/app/model`: shared domain models that do not import HTTP, Echo, GORM, SQLite, or generated OpenAPI packages.
 - `apps/hub/internal/app/repository`: SQLite lifecycle, migrations, persistence implementations, secret storage, and provider manifest persistence.
 - `apps/hub/internal/app/service`: business workflows such as agents, dashboard, home/settings, widgets, integrations, voice, STT, TTS, and wake-word runtime orchestration.
 - `apps/hub/internal/app/controller`: Echo/HTTP handlers, SSE broker, generated API implementation, request/response mapping, and HTTP error handling.
-- `apps/hub/internal/pkg`: support plumbing only, such as A2A transport helpers, database setup, request middleware, file sync, logging, paths, MCP transport helpers, registries, and display action event plumbing.
+- `apps/hub/internal/pkg`: support plumbing, such as executable hub wiring, A2A transport helpers, database setup, request middleware, file sync, logging, paths, MCP transport helpers, registries, and display action event plumbing.
 - `apps/hub/tests/mocks`: mockery-generated test doubles.
 - `apps/hub/tests/integration`: black-box Ginkgo specs and bootstrap utilities for a running hub.
 

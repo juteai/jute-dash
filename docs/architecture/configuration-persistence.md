@@ -22,7 +22,7 @@ Use SQLite WAL mode for normal runtime. [SQLite WAL](https://www.sqlite.org/wal.
 
 Runtime rules:
 
-- open the database through the `apps/hub/internal/pkg/database` and `apps/hub/internal/app/store.go` persistence modules;
+- open the database through the `apps/hub/internal/pkg/database` and `apps/hub/internal/pkg/app/store.go` persistence modules;
 - run migrations before serving APIs;
 - enable WAL mode for normal local filesystems;
 - do not place the runtime database on a network filesystem;
@@ -123,7 +123,7 @@ Production first-run should not include fake remote agents or call remote servic
 
 ## Runtime Store Model
 
-Jute uses `apps/hub/internal/pkg/database` for database connection pragmas, and `apps/hub/internal/app/store.go` as the runtime persistence wrapper, built on [GORM](https://gorm.io/) and SQLite (`gorm.io/driver/sqlite`).
+Jute uses `apps/hub/internal/pkg/database` for database connection pragmas, and `apps/hub/internal/pkg/app/store.go` as the runtime persistence wrapper, built on [GORM](https://gorm.io/) and SQLite (`gorm.io/driver/sqlite`).
 
 The store owns:
 
