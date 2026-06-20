@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,8 @@ type VoiceFollowupResponse struct {
 	MaxTurns  int    `json:"maxTurns"`
 }
 
+const maxVoiceAudioBytes = 2 * 1024 * 1024
+
 type voiceTranscriptError struct {
 	status  int
 	message string
@@ -53,6 +56,48 @@ func (s *Server) handleVoiceFinalTranscript(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	s.handleFinalTranscriptRequest(w, r, req)
+}
+
+func (s *Server) handleVoiceAudio(w http.ResponseWriter, r *http.Request) {
+	if !httphelper.RequireMethod(w, r, http.MethodPost) {
+		return
+	}
+	pcm, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxVoiceAudioBytes))
+	if err != nil {
+		httphelper.WriteError(w, http.StatusRequestEntityTooLarge, "voice audio is too large")
+		return
+	}
+	if len(pcm) == 0 || len(pcm)%service.DefaultSampleWidth != 0 {
+		httphelper.WriteError(w, http.StatusBadRequest, "voice audio PCM is required")
+		return
+	}
+	sampleRate := headerInt(r, "X-Jute-Sample-Rate", service.DefaultSampleRate)
+	channels := headerInt(r, "X-Jute-Channels", service.DefaultChannels)
+	if sampleRate < 8000 || sampleRate > 48000 || channels != service.DefaultChannels {
+		httphelper.WriteError(w, http.StatusBadRequest, "unsupported voice audio format")
+		return
+	}
+	utterance := service.UtteranceFromPCM(pcm, sampleRate, channels, time.Now().UTC(), 20*time.Millisecond)
+	if !utteranceHasSpeech(utterance, service.EnergyVAD{Threshold: s.cfg.Voice.VADThreshold}) {
+		httphelper.WriteError(w, http.StatusBadRequest, "speech is required")
+		return
+	}
+	response, err := s.submitVoiceUtterance(r.Context(), VoiceFinalTranscriptRequest{
+		DeviceProfileID: strings.TrimSpace(r.Header.Get("X-Jute-Device-Profile-Id")),
+		DeviceID:        strings.TrimSpace(r.Header.Get("X-Jute-Device-Id")),
+		ConversationID:  strings.TrimSpace(r.Header.Get("X-Jute-Conversation-Id")),
+		AgentID:         strings.TrimSpace(r.Header.Get("X-Jute-Agent-Id")),
+	}, utterance)
+	if err != nil {
+		var transcriptErr voiceTranscriptError
+		if errors.As(err, &transcriptErr) {
+			httphelper.WriteError(w, transcriptErr.status, transcriptErr.message)
+			return
+		}
+		httphelper.WriteError(w, http.StatusInternalServerError, "voice audio could not be processed")
+		return
+	}
+	httphelper.WriteJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) activeSTTProvider(ctx context.Context, deviceProfileID string) (service.STTProvider, error) {
@@ -89,8 +134,7 @@ func (s *Server) newLocalVoiceService(
 	if deviceID == "" {
 		deviceID = deviceProfileID
 	}
-	sttProvider, err := s.activeSTTProvider(ctx, deviceProfileID)
-	if err != nil {
+	if _, err := s.activeSTTProvider(ctx, deviceProfileID); err != nil {
 		return nil, err
 	}
 	var wakeProvider service.WakeProvider
@@ -113,19 +157,10 @@ func (s *Server) newLocalVoiceService(
 		wakeProvider,
 		s.voiceDispatcher,
 		func(utterance service.CapturedUtterance) {
-			result, err := sttProvider.Transcribe(ctx, utterance)
-			if err == nil {
-				transcript, transcriptErr := service.FinalTranscriptFromSTT(result, deviceProfileID, deviceID)
-				if transcriptErr != nil {
-					err = transcriptErr
-				} else {
-					_, err = s.submitFinalTranscript(ctx, VoiceFinalTranscriptRequest{
-						Text:            transcript.Text,
-						DeviceProfileID: transcript.DeviceProfileID,
-						DeviceID:        transcript.DeviceID,
-					})
-				}
-			}
+			_, err := s.submitVoiceUtterance(ctx, VoiceFinalTranscriptRequest{
+				DeviceProfileID: deviceProfileID,
+				DeviceID:        deviceID,
+			}, utterance)
 			if err != nil && s.voiceDispatcher != nil {
 				s.voiceDispatcher.EmitVoiceStateChanged(deviceID, service.VoiceStatePayload{
 					Enabled:       settings.Enabled,
@@ -136,6 +171,29 @@ func (s *Server) newLocalVoiceService(
 			}
 		},
 	), nil
+}
+
+func (s *Server) submitVoiceUtterance(
+	ctx context.Context,
+	req VoiceFinalTranscriptRequest,
+	utterance service.CapturedUtterance,
+) (VoiceFinalTranscriptResponse, error) {
+	sttProvider, err := s.activeSTTProvider(ctx, req.DeviceProfileID)
+	if err != nil {
+		return VoiceFinalTranscriptResponse{}, err
+	}
+	result, err := sttProvider.Transcribe(ctx, utterance)
+	if err != nil {
+		return VoiceFinalTranscriptResponse{}, err
+	}
+	transcript, err := service.FinalTranscriptFromSTT(result, req.DeviceProfileID, req.DeviceID)
+	if err != nil {
+		return VoiceFinalTranscriptResponse{}, err
+	}
+	req.Text = transcript.Text
+	req.DeviceProfileID = transcript.DeviceProfileID
+	req.DeviceID = transcript.DeviceID
+	return s.submitFinalTranscript(ctx, req)
 }
 
 func (s *Server) handleFinalTranscriptRequest(
@@ -154,6 +212,27 @@ func (s *Server) handleFinalTranscriptRequest(
 		return
 	}
 	httphelper.WriteJSON(w, http.StatusOK, response)
+}
+
+func headerInt(r *http.Request, name string, fallback int) int {
+	value := strings.TrimSpace(r.Header.Get(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func utteranceHasSpeech(utterance service.CapturedUtterance, vad service.VoiceActivityDetector) bool {
+	for _, frame := range utterance.Frames {
+		if vad.Speech(frame) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) submitFinalTranscript(

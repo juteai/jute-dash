@@ -21,33 +21,36 @@ func (s *Server) serve(ctx echo.Context) error {
 	return nil
 }
 
-func (s *Server) GetAgents(ctx echo.Context) error                     { return s.serve(ctx) }
-func (s *Server) PostAgentConversation(ctx echo.Context) error         { return s.serve(ctx) }
-func (s *Server) GetBackgrounds(ctx echo.Context) error                { return s.serve(ctx) }
-func (s *Server) PostBackground(ctx echo.Context) error                { return s.serve(ctx) }
-func (s *Server) GetConfig(ctx echo.Context) error                     { return s.serve(ctx) }
-func (s *Server) GetEvents(ctx echo.Context) error                     { return s.serve(ctx) }
-func (s *Server) GetHome(ctx echo.Context) error                       { return s.serve(ctx) }
-func (s *Server) GetConnectionKinds(ctx echo.Context) error            { return s.serve(ctx) }
-func (s *Server) GetConnections(ctx echo.Context) error                { return s.serve(ctx) }
-func (s *Server) PostConnection(ctx echo.Context) error                { return s.serve(ctx) }
-func (s *Server) GetHouseholdSettings(ctx echo.Context) error          { return s.serve(ctx) }
-func (s *Server) PatchHouseholdSettings(ctx echo.Context) error        { return s.serve(ctx) }
-func (s *Server) GetRooms(ctx echo.Context) error                      { return s.serve(ctx) }
-func (s *Server) PutRooms(ctx echo.Context) error                      { return s.serve(ctx) }
-func (s *Server) GetTiles(ctx echo.Context) error                      { return s.serve(ctx) }
-func (s *Server) PutTiles(ctx echo.Context) error                      { return s.serve(ctx) }
-func (s *Server) GetSetupStatus(ctx echo.Context) error                { return s.serve(ctx) }
-func (s *Server) GetStatus(ctx echo.Context) error                     { return s.serve(ctx) }
-func (s *Server) PostTTSSpeak(ctx echo.Context) error                  { return s.serve(ctx) }
-func (s *Server) PostTTSStop(ctx echo.Context) error                   { return s.serve(ctx) }
-func (s *Server) PostVoiceCancel(ctx echo.Context) error               { return s.serve(ctx) }
-func (s *Server) PostVoiceMute(ctx echo.Context) error                 { return s.serve(ctx) }
-func (s *Server) GetVoiceProviders(ctx echo.Context) error             { return s.serve(ctx) }
-func (s *Server) PatchVoiceSettings(ctx echo.Context) error            { return s.serve(ctx) }
-func (s *Server) GetVoiceStatus(ctx echo.Context) error                { return s.serve(ctx) }
-func (s *Server) PostVoiceFinalTranscript(ctx echo.Context) error      { return s.serve(ctx) }
-func (s *Server) PostVoiceUnmute(ctx echo.Context) error               { return s.serve(ctx) }
+func (s *Server) GetAgents(ctx echo.Context) error                { return s.serve(ctx) }
+func (s *Server) PostAgentConversation(ctx echo.Context) error    { return s.serve(ctx) }
+func (s *Server) GetBackgrounds(ctx echo.Context) error           { return s.serve(ctx) }
+func (s *Server) PostBackground(ctx echo.Context) error           { return s.serve(ctx) }
+func (s *Server) GetConfig(ctx echo.Context) error                { return s.serve(ctx) }
+func (s *Server) GetEvents(ctx echo.Context) error                { return s.serve(ctx) }
+func (s *Server) GetHome(ctx echo.Context) error                  { return s.serve(ctx) }
+func (s *Server) GetConnectionKinds(ctx echo.Context) error       { return s.serve(ctx) }
+func (s *Server) GetConnections(ctx echo.Context) error           { return s.serve(ctx) }
+func (s *Server) PostConnection(ctx echo.Context) error           { return s.serve(ctx) }
+func (s *Server) GetHouseholdSettings(ctx echo.Context) error     { return s.serve(ctx) }
+func (s *Server) PatchHouseholdSettings(ctx echo.Context) error   { return s.serve(ctx) }
+func (s *Server) GetRooms(ctx echo.Context) error                 { return s.serve(ctx) }
+func (s *Server) PutRooms(ctx echo.Context) error                 { return s.serve(ctx) }
+func (s *Server) GetTiles(ctx echo.Context) error                 { return s.serve(ctx) }
+func (s *Server) PutTiles(ctx echo.Context) error                 { return s.serve(ctx) }
+func (s *Server) GetSetupStatus(ctx echo.Context) error           { return s.serve(ctx) }
+func (s *Server) GetStatus(ctx echo.Context) error                { return s.serve(ctx) }
+func (s *Server) PostTTSSpeak(ctx echo.Context) error             { return s.serve(ctx) }
+func (s *Server) PostTTSStop(ctx echo.Context) error              { return s.serve(ctx) }
+func (s *Server) PostVoiceCancel(ctx echo.Context) error          { return s.serve(ctx) }
+func (s *Server) PostVoiceMute(ctx echo.Context) error            { return s.serve(ctx) }
+func (s *Server) GetVoiceProviders(ctx echo.Context) error        { return s.serve(ctx) }
+func (s *Server) PatchVoiceSettings(ctx echo.Context) error       { return s.serve(ctx) }
+func (s *Server) GetVoiceStatus(ctx echo.Context) error           { return s.serve(ctx) }
+func (s *Server) PostVoiceFinalTranscript(ctx echo.Context) error { return s.serve(ctx) }
+func (s *Server) PostVoiceUnmute(ctx echo.Context) error          { return s.serve(ctx) }
+func (s *Server) PostVoiceAudio(ctx echo.Context, _ v1.PostVoiceAudioParams) error {
+	return s.serve(ctx)
+}
 func (s *Server) GetWidgetCatalog(ctx echo.Context) error              { return s.serve(ctx) }
 func (s *Server) PutWidgetLayout(ctx echo.Context) error               { return s.serve(ctx) }
 func (s *Server) PatchWidgetLayoutActiveScreen(ctx echo.Context) error { return s.serve(ctx) }

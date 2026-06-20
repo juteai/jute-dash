@@ -404,6 +404,7 @@ func newServerWithSecrets(
 	mux.HandleFunc("/api/v1/integrations/apple-music/music-kit-token", server.appleMusic.handleMusicKitToken)
 	mux.HandleFunc("/api/v1/integrations/apple-music/user-token", server.appleMusic.handleUserToken)
 	mux.HandleFunc("/api/v1/widgets/", server.handleWidgetAction)
+	mux.HandleFunc("/api/v1/voice/audio", server.handleVoiceAudio)
 	mux.HandleFunc("/api/v1/voice/transcripts/final", server.handleVoiceFinalTranscript)
 
 	// Registrations

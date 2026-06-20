@@ -11,7 +11,7 @@ import {
   spotifyCallbackParams,
   spotifyOAuthRedirectURI,
   spotifyAuthURL,
-  submitVoiceFinalTranscript
+  submitVoiceAudio
 } from './hubClient';
 
 describe('fallback dashboard', () => {
@@ -36,7 +36,7 @@ describe('fallback dashboard', () => {
     expect(initial.issue).toBeUndefined();
   });
 
-  it('posts final browser spike transcripts to the hub voice API', async () => {
+  it('posts browser microphone PCM to the hub voice audio API', async () => {
     const fetcher = async (url: string | URL | Request, init?: RequestInit) => {
       void url;
       void init;
@@ -61,20 +61,25 @@ describe('fallback dashboard', () => {
       return fetcher(url, init);
     }) as typeof fetch;
 
-    const response = await submitVoiceFinalTranscript(recordingFetcher, {
-      text: 'turn the kitchen lights on',
-      deviceProfileId: 'browser-spike',
-      deviceId: 'browser-spike-display'
-    });
+    const response = await submitVoiceAudio(
+      recordingFetcher,
+      new Blob(['pcm']),
+      {
+        sampleRate: 16000,
+        channels: 1,
+        deviceProfileId: 'browser-display',
+        conversationId: 'conversation-1'
+      }
+    );
 
     expect(response.followup.active).toBe(true);
-    expect(String(calls[0].url)).toContain('/api/v1/voice/transcripts/final');
+    expect(String(calls[0].url)).toContain('/api/v1/voice/audio');
     expect(calls[0].init?.method).toBe('POST');
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
-      text: 'turn the kitchen lights on',
-      deviceProfileId: 'browser-spike',
-      deviceId: 'browser-spike-display'
-    });
+    const headers = calls[0].init?.headers as Headers;
+    expect(headers.get('X-Jute-Sample-Rate')).toBe('16000');
+    expect(headers.get('X-Jute-Channels')).toBe('1');
+    expect(headers.get('X-Jute-Device-Profile-Id')).toBe('browser-display');
+    expect(headers.get('X-Jute-Conversation-Id')).toBe('conversation-1');
   });
 
   it('reads safe voice provider projections from the hub', async () => {

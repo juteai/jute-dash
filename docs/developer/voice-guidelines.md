@@ -114,6 +114,7 @@ Voice Provider Packs are distinct from widgets and A2A agents. A voice provider 
 
 - Keep microphone capture behind the `AudioCapture` interface so hub-owned platform drivers can change without changing conversation logic.
 - For v1, command capture is the small local driver path: configure `voice.capture-command` to stream signed 16-bit little-endian mono PCM to stdout. Keep the command local and explicitly configured.
+- Browser capture may post mono signed 16-bit PCM to `/api/v1/voice/audio`; the browser must not run STT or send final transcript text directly from local recognition.
 - Keep VAD behind the `VoiceActivityDetector` interface and run it before STT provider calls.
 - Maintain a time-windowed pre-roll buffer in memory only.
 - Unit and integration tests should use synthetic PCM fixture frames, not real microphones.

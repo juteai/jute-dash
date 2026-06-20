@@ -217,6 +217,11 @@ streams signed 16-bit little-endian mono PCM to stdout; the hub frames it, runs 
 utterance through wake/STT. If STT processing fails, the hub emits a safe degraded
 `voice.state_changed` error state and does not create an A2A turn.
 
+For display/browser microphone input, the display only captures PCM after browser permission is
+granted and posts the utterance to `POST /api/v1/voice/audio`. The hub validates the PCM format,
+runs VAD and the selected STT provider, then submits the sanitized final transcript through the same
+A2A text path. Browser `SpeechRecognition` remains out of scope.
+
 TTS providers:
 
 - optional in v1;

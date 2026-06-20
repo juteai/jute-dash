@@ -202,6 +202,15 @@ async function handleAPI(
   if (path === '/api/v1/voice/cancel' && method === 'POST') {
     return json(route, state.voice);
   }
+  if (path === '/api/v1/voice/audio' && method === 'POST') {
+    if (!state.voice.enabled || state.voice.muted) {
+      return json(route, { error: 'voice is not listening' }, 409);
+    }
+    return json(route, {
+      conversation: { id: 'browser-voice-audio-test' },
+      followup: { active: false, turns: 1, maxTurns: 5 }
+    });
+  }
   if (path === '/api/v1/voice/transcripts/final' && method === 'POST') {
     if (!state.voice.enabled || state.voice.muted) {
       return json(route, { error: 'voice is not listening' }, 409);

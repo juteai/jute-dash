@@ -65,6 +65,16 @@ type GetTTSVoicesParams struct {
 	DeviceProfileId *string `form:"deviceProfileId,omitempty" json:"deviceProfileId,omitempty"`
 }
 
+// PostVoiceAudioParams defines parameters for PostVoiceAudio.
+type PostVoiceAudioParams struct {
+	XJuteSampleRate      *int    `json:"X-Jute-Sample-Rate,omitempty"`
+	XJuteChannels        *int    `json:"X-Jute-Channels,omitempty"`
+	XJuteDeviceProfileId *string `json:"X-Jute-Device-Profile-Id,omitempty"`
+	XJuteDeviceId        *string `json:"X-Jute-Device-Id,omitempty"`
+	XJuteConversationId  *string `json:"X-Jute-Conversation-Id,omitempty"`
+	XJuteAgentId         *string `json:"X-Jute-Agent-Id,omitempty"`
+}
+
 // PatchVoiceSettingsJSONBody defines parameters for PatchVoiceSettings.
 type PatchVoiceSettingsJSONBody map[string]interface{}
 
@@ -196,6 +206,9 @@ type ServerInterface interface {
 
 	// (GET /api/v1/tts/voices)
 	GetTTSVoices(ctx echo.Context, params GetTTSVoicesParams) error
+
+	// (POST /api/v1/voice/audio)
+	PostVoiceAudio(ctx echo.Context, params PostVoiceAudioParams) error
 
 	// (POST /api/v1/voice/cancel)
 	PostVoiceCancel(ctx echo.Context) error
@@ -447,6 +460,110 @@ func (w *ServerInterfaceWrapper) GetTTSVoices(ctx echo.Context) error {
 	return err
 }
 
+// PostVoiceAudio converts echo context to params.
+func (w *ServerInterfaceWrapper) PostVoiceAudio(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostVoiceAudioParams
+
+	headers := ctx.Request().Header
+	// ------------- Optional header parameter "X-Jute-Sample-Rate" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Jute-Sample-Rate")]; found {
+		var XJuteSampleRate int
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for X-Jute-Sample-Rate, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Jute-Sample-Rate", valueList[0], &XJuteSampleRate, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter X-Jute-Sample-Rate: %s", err))
+		}
+
+		params.XJuteSampleRate = &XJuteSampleRate
+	}
+	// ------------- Optional header parameter "X-Jute-Channels" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Jute-Channels")]; found {
+		var XJuteChannels int
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for X-Jute-Channels, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Jute-Channels", valueList[0], &XJuteChannels, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter X-Jute-Channels: %s", err))
+		}
+
+		params.XJuteChannels = &XJuteChannels
+	}
+	// ------------- Optional header parameter "X-Jute-Device-Profile-Id" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Jute-Device-Profile-Id")]; found {
+		var XJuteDeviceProfileId string
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for X-Jute-Device-Profile-Id, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Jute-Device-Profile-Id", valueList[0], &XJuteDeviceProfileId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter X-Jute-Device-Profile-Id: %s", err))
+		}
+
+		params.XJuteDeviceProfileId = &XJuteDeviceProfileId
+	}
+	// ------------- Optional header parameter "X-Jute-Device-Id" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Jute-Device-Id")]; found {
+		var XJuteDeviceId string
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for X-Jute-Device-Id, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Jute-Device-Id", valueList[0], &XJuteDeviceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter X-Jute-Device-Id: %s", err))
+		}
+
+		params.XJuteDeviceId = &XJuteDeviceId
+	}
+	// ------------- Optional header parameter "X-Jute-Conversation-Id" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Jute-Conversation-Id")]; found {
+		var XJuteConversationId string
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for X-Jute-Conversation-Id, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Jute-Conversation-Id", valueList[0], &XJuteConversationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter X-Jute-Conversation-Id: %s", err))
+		}
+
+		params.XJuteConversationId = &XJuteConversationId
+	}
+	// ------------- Optional header parameter "X-Jute-Agent-Id" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Jute-Agent-Id")]; found {
+		var XJuteAgentId string
+		n := len(valueList)
+		if n != 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Expected one value for X-Jute-Agent-Id, got %d", n))
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Jute-Agent-Id", valueList[0], &XJuteAgentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter X-Jute-Agent-Id: %s", err))
+		}
+
+		params.XJuteAgentId = &XJuteAgentId
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.PostVoiceAudio(ctx, params)
+	return err
+}
+
 // PostVoiceCancel converts echo context to params.
 func (w *ServerInterfaceWrapper) PostVoiceCancel(ctx echo.Context) error {
 	var err error
@@ -650,6 +767,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.POST(options.BaseURL+"/api/v1/tts/speak", wrapper.PostTTSSpeak, options.OperationMiddlewares["postTTSSpeak"]...)
 	router.POST(options.BaseURL+"/api/v1/tts/stop", wrapper.PostTTSStop, options.OperationMiddlewares["postTTSStop"]...)
 	router.GET(options.BaseURL+"/api/v1/tts/voices", wrapper.GetTTSVoices, options.OperationMiddlewares["getTTSVoices"]...)
+	router.POST(options.BaseURL+"/api/v1/voice/audio", wrapper.PostVoiceAudio, options.OperationMiddlewares["postVoiceAudio"]...)
 	router.POST(options.BaseURL+"/api/v1/voice/cancel", wrapper.PostVoiceCancel, options.OperationMiddlewares["postVoiceCancel"]...)
 	router.POST(options.BaseURL+"/api/v1/voice/mute", wrapper.PostVoiceMute, options.OperationMiddlewares["postVoiceMute"]...)
 	router.GET(options.BaseURL+"/api/v1/voice/providers", wrapper.GetVoiceProviders, options.OperationMiddlewares["getVoiceProviders"]...)

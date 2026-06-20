@@ -1667,6 +1667,73 @@ func TestLocalVoiceServiceBuilderRoutesCapturedUtteranceThroughSTT(t *testing.T)
 	}
 }
 
+func TestVoiceAudioRoutesBrowserPCMThroughHubSTT(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-browser-voice-1",
+			Status:         "completed",
+			Text:           "Done.",
+		}, nil
+	}
+	syncer := filesync.NewInMemorySyncer(cfg)
+	cards := service.NewCardService()
+	manager := service.NewAgentManager(syncer, cards, "")
+	stt := &fixtureAppSTTProvider{
+		result: service.STTResult{
+			Text:       "open the blinds",
+			ProviderID: "local-stt",
+			Duration:   40 * time.Millisecond,
+		},
+	}
+	server := &Server{
+		cfg:           cfg,
+		agentsManager: manager,
+		messages:      client,
+		voiceStore: &fixtureActiveSTTVoiceStore{
+			MemoryVoiceRepository: repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice),
+			provider:              stt,
+		},
+		voiceDispatcher: service.NewVoiceDispatcher(),
+		voiceRuntime:    service.NewConversationRuntime(),
+	}
+	server.turnRunner = service.NewRunner(service.RunnerOptions{
+		GetRegistry:    manager.ActiveRegistry,
+		GetAgentConfig: manager.ConfiguredAgent,
+		GetAgentCardCache: func(context.Context, registry.Agent) (service.AgentCardCache, bool) {
+			return service.AgentCardCache{
+				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
+				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
+			}, true
+		},
+		GetDashboardContext: func(context.Context) map[string]any { return map[string]any{} },
+		Messages:            client,
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/audio", bytes.NewReader([]byte{0xff, 0x7f, 0xff, 0x7f}))
+	req.Header.Set("X-Jute-Sample-Rate", "16000")
+	req.Header.Set("X-Jute-Channels", "1")
+	req.Header.Set("X-Jute-Device-Id", "browser-display")
+	rec := httptest.NewRecorder()
+
+	server.handleVoiceAudio(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if client.SentMessages[0].Text != "open the blinds" {
+		t.Fatalf("unexpected sent voice message: %+v", client.SentMessages[0])
+	}
+	if len(stt.seen.Frames) == 0 {
+		t.Fatalf("STT did not receive browser utterance frames: %+v", stt.seen)
+	}
+}
+
 func TestLocalVoiceServiceBuilderEmitsRecoverableErrorWhenSTTFails(t *testing.T) {
 	cfg := testConfig()
 	cfg.Voice.Enabled = true

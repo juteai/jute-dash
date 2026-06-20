@@ -5,7 +5,8 @@ import {
   muteVoice,
   unmuteVoice,
   cancelVoice,
-  getDashboard
+  getDashboard,
+  submitVoiceAudio
 } from '$lib/hubClient';
 import { logger } from '$lib/logger';
 import { navigationStore } from '$lib/navigationStore';
@@ -929,6 +930,56 @@ function createHubStreamStore() {
           { cause: err }
         );
       }
+    },
+    beginBrowserVoiceCapture: () => {
+      update((s) => ({
+        ...s,
+        voiceOrbState: 'listening',
+        voiceTranscript: '',
+        voiceError: '',
+        showVoiceOverlay: true
+      }));
+    },
+    submitBrowserVoiceAudio: async (
+      recording: { audio: Blob; sampleRate: number; channels: number },
+      fetcher: typeof fetch = window.fetch
+    ) => {
+      let voice: VoiceStatus = initialStub.voice;
+      let conversationId = '';
+      let agentId = '';
+      update((s) => {
+        voice = s.dashboard.voice;
+        conversationId = s.voiceConversationId;
+        agentId =
+          s.voiceAgentId ||
+          voice.preferredAgentId ||
+          s.dashboard.agents.find((agent) => agent.enabled)?.id ||
+          '';
+        return {
+          ...s,
+          voiceAgentId: agentId,
+          voiceOrbState: 'thinking',
+          voiceTranscript: '',
+          voiceError: '',
+          showVoiceOverlay: true
+        };
+      });
+      await submitVoiceAudio(fetcher, recording.audio, {
+        sampleRate: recording.sampleRate,
+        channels: recording.channels,
+        deviceProfileId: voice.deviceProfileId,
+        deviceId: voice.deviceProfileId,
+        conversationId,
+        agentId
+      });
+    },
+    failBrowserVoiceCapture: (reason: string) => {
+      update((s) => ({
+        ...s,
+        voiceOrbState: 'error',
+        voiceError: reason,
+        showVoiceOverlay: true
+      }));
     },
     cancelVoiceSession: async (fetcher: typeof fetch = window.fetch) => {
       try {

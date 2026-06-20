@@ -408,6 +408,42 @@ export async function submitVoiceFinalTranscript(
   return response.json() as Promise<VoiceFinalTranscriptResponse>;
 }
 
+export async function submitVoiceAudio(
+  fetcher: typeof fetch,
+  audio: Blob,
+  options: {
+    sampleRate: number;
+    channels: number;
+    deviceProfileId?: string;
+    deviceId?: string;
+    conversationId?: string;
+    agentId?: string;
+  }
+): Promise<VoiceFinalTranscriptResponse> {
+  const headers = new Headers({
+    'Content-Type': 'application/octet-stream',
+    'X-Jute-Sample-Rate': String(options.sampleRate),
+    'X-Jute-Channels': String(options.channels)
+  });
+  for (const [name, value] of [
+    ['X-Jute-Device-Profile-Id', options.deviceProfileId],
+    ['X-Jute-Device-Id', options.deviceId],
+    ['X-Jute-Conversation-Id', options.conversationId],
+    ['X-Jute-Agent-Id', options.agentId]
+  ] as const) {
+    if (value) headers.set(name, value);
+  }
+  const response = await fetcher(`${API_BASE}/api/v1/voice/audio`, {
+    method: 'POST',
+    headers,
+    body: audio
+  });
+  if (!response.ok) {
+    throw await hubError(response, 'Jute API request failed');
+  }
+  return response.json() as Promise<VoiceFinalTranscriptResponse>;
+}
+
 export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {
   const config: PublicConfig = {
     home: {

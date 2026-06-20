@@ -1220,6 +1220,53 @@ func (_c *ServerInterface_PostTTSStop_Call) RunAndReturn(run func(echo.Context) 
 	return _c
 }
 
+// PostVoiceAudio provides a mock function with given fields: ctx, params
+func (_m *ServerInterface) PostVoiceAudio(ctx echo.Context, params v1.PostVoiceAudioParams) error {
+	ret := _m.Called(ctx, params)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PostVoiceAudio")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(echo.Context, v1.PostVoiceAudioParams) error); ok {
+		r0 = rf(ctx, params)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ServerInterface_PostVoiceAudio_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PostVoiceAudio'
+type ServerInterface_PostVoiceAudio_Call struct {
+	*mock.Call
+}
+
+// PostVoiceAudio is a helper method to define mock.On call
+//   - ctx echo.Context
+//   - params v1.PostVoiceAudioParams
+func (_e *ServerInterface_Expecter) PostVoiceAudio(ctx interface{}, params interface{}) *ServerInterface_PostVoiceAudio_Call {
+	return &ServerInterface_PostVoiceAudio_Call{Call: _e.mock.On("PostVoiceAudio", ctx, params)}
+}
+
+func (_c *ServerInterface_PostVoiceAudio_Call) Run(run func(ctx echo.Context, params v1.PostVoiceAudioParams)) *ServerInterface_PostVoiceAudio_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(echo.Context), args[1].(v1.PostVoiceAudioParams))
+	})
+	return _c
+}
+
+func (_c *ServerInterface_PostVoiceAudio_Call) Return(_a0 error) *ServerInterface_PostVoiceAudio_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ServerInterface_PostVoiceAudio_Call) RunAndReturn(run func(echo.Context, v1.PostVoiceAudioParams) error) *ServerInterface_PostVoiceAudio_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // PostVoiceCancel provides a mock function with given fields: ctx
 func (_m *ServerInterface) PostVoiceCancel(ctx echo.Context) error {
 	ret := _m.Called(ctx)

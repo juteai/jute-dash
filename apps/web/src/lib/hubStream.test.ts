@@ -10,7 +10,8 @@ vi.mock('$lib/hubClient', () => ({
   getDashboard: vi.fn(),
   muteVoice: vi.fn(),
   unmuteVoice: vi.fn(),
-  cancelVoice: vi.fn()
+  cancelVoice: vi.fn(),
+  submitVoiceAudio: vi.fn()
 }));
 
 vi.mock('$lib/logger', () => ({

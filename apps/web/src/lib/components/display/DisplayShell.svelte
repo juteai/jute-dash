@@ -35,6 +35,7 @@
   import { chatStore } from '$lib/chatStore';
   import { settingsStore } from '$lib/settingsStore';
   import { navigationStore } from '$lib/navigationStore';
+  import { captureBrowserVoicePCM } from '$lib/browserVoiceCapture';
 
   export let data: DashboardData;
 
@@ -57,6 +58,7 @@
   let slideshowIndex = 0;
   let slideshowTimer: number | undefined;
   let lastVoiceChatSyncKey = '';
+  let browserVoiceCapturing = false;
 
   /* eslint-disable no-useless-assignment */
   let lastData: DashboardData | undefined;
@@ -383,6 +385,25 @@
     }
   }
 
+  async function startChatVoiceCapture() {
+    if (!browser || browserVoiceCapturing) return;
+    browserVoiceCapturing = true;
+    hubStream.beginBrowserVoiceCapture();
+    try {
+      if ($hubStream.dashboard.voice.muted) {
+        await hubStream.toggleVoiceMute(fetch);
+      }
+      const recording = await captureBrowserVoicePCM();
+      await hubStream.submitBrowserVoiceAudio(recording, fetch);
+    } catch (err) {
+      hubStream.failBrowserVoiceCapture(
+        err instanceof Error ? err.message : 'Browser microphone failed.'
+      );
+    } finally {
+      browserVoiceCapturing = false;
+    }
+  }
+
   async function cancelVoiceSession() {
     await hubStream.cancelVoiceSession(fetch);
   }
@@ -522,6 +543,7 @@
           status={$hubStream.dashboard.status}
           timerProgress={$chatStore.timerProgress}
           showTimer={$chatStore.showTimer}
+          voiceCapturing={browserVoiceCapturing}
           onAgentChange={(agentId) => {
             chatStore.setAgentId(agentId);
             void chatStore.loadHistory(
@@ -548,6 +570,7 @@
           onClose={closeChat}
           onCancel={chatStore.cancel}
           onToggleVoiceMute={toggleVoiceMute}
+          onStartVoiceCapture={startChatVoiceCapture}
         />
       </div>
     {/if}

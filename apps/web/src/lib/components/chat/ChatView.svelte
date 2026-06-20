@@ -29,6 +29,7 @@
   export let status: AppStatus | undefined;
   export let timerProgress = 0;
   export let showTimer = false;
+  export let voiceCapturing = false;
   export let onAgentChange: (agentId: string) => void = () => {};
   export let onConversationSelect: (
     conversationId: string
@@ -43,6 +44,7 @@
   export let onClose: () => void = () => {};
   export let onCancel: () => void = () => {};
   export let onToggleVoiceMute: () => Promise<void> | void = () => {};
+  export let onStartVoiceCapture: () => Promise<void> | void = () => {};
 
   let showDiagnostics = false;
   let showHistory = false;
@@ -235,9 +237,10 @@
         {state}
         disabled={composerDisabled}
         {voice}
+        {voiceCapturing}
         {onSubmit}
         {onCancel}
-        onVoiceClick={onToggleVoiceMute}
+        onVoiceClick={onStartVoiceCapture}
       />
     </div>
 

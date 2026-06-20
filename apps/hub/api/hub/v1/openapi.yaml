@@ -416,6 +416,49 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+  /api/v1/voice/audio:
+    post:
+      operationId: postVoiceAudio
+      parameters:
+        - in: header
+          name: X-Jute-Sample-Rate
+          schema:
+            type: integer
+        - in: header
+          name: X-Jute-Channels
+          schema:
+            type: integer
+        - in: header
+          name: X-Jute-Device-Profile-Id
+          schema:
+            type: string
+        - in: header
+          name: X-Jute-Device-Id
+          schema:
+            type: string
+        - in: header
+          name: X-Jute-Conversation-Id
+          schema:
+            type: string
+        - in: header
+          name: X-Jute-Agent-Id
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Voice conversation response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
   /api/v1/voice/transcripts/final:
     post:
       operationId: postVoiceFinalTranscript
