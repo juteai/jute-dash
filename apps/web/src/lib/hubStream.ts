@@ -974,10 +974,11 @@ function createHubStreamStore() {
       });
     },
     failBrowserVoiceCapture: (reason: string) => {
+      const known = safeVoiceError(reason);
       update((s) => ({
         ...s,
         voiceOrbState: 'error',
-        voiceError: reason
+        voiceError: known === 'Voice session ended.' ? reason : known
       }));
     },
     cancelVoiceSession: async (fetcher: typeof fetch = window.fetch) => {

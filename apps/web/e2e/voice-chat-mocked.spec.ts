@@ -53,6 +53,23 @@ test('voice mute button is plain when listening and colored when muted', async (
   ).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('dashboard wake opens chat before transcription completes', async ({
+  page
+}) => {
+  const hub = await createMockHub(page);
+  await page.goto('/');
+  await hub.waitForEventStream();
+
+  await hub.emit('voice.wake_detected', {
+    id: 'wake-before-stt',
+    payload: {}
+  });
+
+  await expect(
+    page.getByRole('region', { name: 'Agent conversation' })
+  ).toBeVisible();
+});
+
 test('chat mic asks the browser for microphone access', async ({ page }) => {
   await page.addInitScript(() => {
     (

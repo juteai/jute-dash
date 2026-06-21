@@ -100,6 +100,15 @@ func (s *Server) handleVoiceAudio(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.wakeDetected = true
+		if s.voiceDispatcher != nil {
+			s.voiceDispatcher.EmitVoiceWakeDetected(deviceID(req), "")
+			s.voiceDispatcher.EmitVoiceStateChanged(deviceID(req), service.VoiceStatePayload{
+				Enabled:       true,
+				Muted:         false,
+				State:         service.WakeStateDetected,
+				ServiceStatus: "ready",
+			})
+		}
 	}
 	response, err := s.submitVoiceUtterance(r.Context(), req, utterance)
 	if err != nil {
@@ -220,7 +229,10 @@ func (s *Server) submitVoiceUtterance(
 	}
 	result, err := sttProvider.Transcribe(ctx, utterance)
 	if err != nil {
-		return VoiceFinalTranscriptResponse{}, err
+		return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+			status:  http.StatusServiceUnavailable,
+			message: "transcription_failed",
+		}
 	}
 	transcript, err := service.FinalTranscriptFromSTT(result, req.DeviceProfileID, req.DeviceID)
 	if err != nil {

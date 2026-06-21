@@ -293,7 +293,10 @@
       state
     );
   }
-  $: if (mounted && $hubStream.voiceConversationId) {
+  $: if (
+    mounted &&
+    ($hubStream.voiceConversationId || $hubStream.voiceOrbState === 'listening')
+  ) {
     navigationStore.openChat();
   }
 

@@ -1734,6 +1734,41 @@ func TestVoiceAudioRoutesBrowserPCMThroughHubSTT(t *testing.T) {
 	}
 }
 
+func TestVoiceAudioReportsSTTFailure(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	dispatcher := service.NewVoiceDispatcher()
+	events := dispatcher.Subscribe(t.Context())
+	server := &Server{
+		cfg: cfg,
+		voiceStore: &fixtureActiveWakeSTTVoiceStore{
+			fixtureActiveSTTVoiceStore: &fixtureActiveSTTVoiceStore{
+				MemoryVoiceRepository: repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice),
+				provider:              &fixtureAppSTTProvider{err: errors.New("stt failed")},
+			},
+			wake: &fixtureAppWakeProvider{detected: true},
+		},
+		voiceDispatcher: dispatcher,
+		voiceRuntime:    service.NewConversationRuntime(),
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/voice/audio?wake=true",
+		bytes.NewReader([]byte{0xff, 0x7f, 0xff, 0x7f}),
+	)
+	rec := httptest.NewRecorder()
+
+	server.handleVoiceAudio(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable ||
+		!strings.Contains(rec.Body.String(), "transcription_failed") {
+		t.Fatalf("expected transcription failure, got %d: %s", rec.Code, rec.Body.String())
+	}
+	assertNextDisplayEvent(t, events, service.EventVoiceWakeDetected)
+}
+
 func TestVoiceAudioCanRequireWakeBeforeSTT(t *testing.T) {
 	cfg := testConfig()
 	cfg.Voice.Enabled = true
@@ -3609,6 +3644,22 @@ func waitForSentMessages(t *testing.T, client *a2a.InMemoryClient, count int) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %d sent message(s), got %d", count, len(client.SentMessages))
+}
+
+func assertNextDisplayEvent(
+	t *testing.T,
+	events <-chan displayactions.Event,
+	eventType string,
+) {
+	t.Helper()
+	select {
+	case event := <-events:
+		if event.Type != eventType {
+			t.Fatalf("expected event %q, got %q", eventType, event.Type)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for event %q", eventType)
+	}
 }
 
 func waitForVoiceStateEvent(
