@@ -69,6 +69,25 @@ Each target starts the local Jute stack and launches the respective agent module
   make run-kronk-whisper JUTE_WHISPER_MODEL=tiny.en
   ```
 
+  Real local wake, STT, and TTS:
+  ```sh
+  make run-kronk-local-voice
+  ```
+
+  `run-kronk-local-voice` selects `local-openwakeword`, `local-whisper-stt`, and `local-piper-tts`, using `.jute/local-voice-dev` as its data directory. It expects `openwakeword`, `gowhisper`, and `piper` on `PATH`, or set absolute binary paths:
+  ```sh
+  JUTE_OPENWAKEWORD_BIN=/absolute/path/to/openwakeword \
+  JUTE_GO_WHISPER_BIN=/absolute/path/to/gowhisper \
+  JUTE_PIPER_BIN=/absolute/path/to/piper \
+  JUTE_PIPER_MODEL=/absolute/path/to/voice.onnx \
+  make run-kronk-local-voice
+  ```
+
+  If your openWakeWord install needs a model path rather than the model ID:
+  ```sh
+  JUTE_OPENWAKEWORD_MODEL=/absolute/path/to/hey-jute.onnx make run-kronk-local-voice
+  ```
+
   Plain `make run-kronk` does not fake natural STT.
 
 * **Ollama Agent**: Local LLM assistant using `Ollama`

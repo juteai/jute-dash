@@ -135,6 +135,42 @@ voice-provider-packs:
             - audio/wav;rate=16000
       credentials: []
       health-status: available
+    - id: local-openwakeword
+      name: Local openWakeWord
+      version: dev
+      kind: wake-word
+      transport:
+        type: command
+        command: /bin/sh
+        args:
+            - ../../examples/config/local/openwakeword-wake.sh
+            - --model
+            - '{modelId}'
+            - --input
+            - '{inputPath}'
+      capabilities:
+        streaming: false
+        partial-transcripts: false
+        offline: true
+        languages:
+            - en
+        input-formats:
+            - audio/wav;rate=16000
+      credentials: []
+      wake-word:
+        default-model-id: openwakeword-hey-jute
+        phrase: Hey Jute
+        languages:
+            - en
+        sensitivity: 0.5
+        models:
+            - id: openwakeword-hey-jute
+              path: models/openwakeword-hey-jute.onnx
+              phrase: Hey Jute
+              languages:
+                - en
+              sensitivity: 0.5
+      health-status: available
     - id: local-whisper-stt
       name: Local Whisper STT
       version: dev
@@ -161,6 +197,39 @@ voice-provider-packs:
         input-formats:
             - audio/wav;rate=16000
       credentials: []
+      health-status: available
+    - id: local-piper-tts
+      name: Local Piper TTS
+      version: dev
+      kind: tts
+      transport:
+        type: command
+        command: /bin/sh
+        args:
+            - ../../examples/config/local/piper-tts.sh
+            - --voice
+            - '{modelId}'
+            - --language
+            - '{language}'
+      capabilities:
+        streaming: false
+        partial-transcripts: false
+        offline: true
+        languages:
+            - en
+            - en-GB
+            - en-US
+        input-formats:
+            - text/plain
+      credentials: []
+      tts:
+        default-voice-id: piper-default
+        default-model-id: piper-default
+        voices:
+            - id: piper-default
+              label: Piper default
+              locale: en
+              model-id: piper-default
       health-status: available
     - id: local-dev-tts
       name: Local Dev TTS

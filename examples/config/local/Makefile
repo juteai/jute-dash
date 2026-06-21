@@ -6,8 +6,9 @@ JUTE_DATA_DIR ?= ../../../.jute/local-dev
 JUTE_CONFIG ?= ../../examples/config/local/config.yaml
 JUTE_VOICE_SMOKE_TEXT ?= hello from jute voice
 JUTE_WHISPER_MODEL ?= tiny.en
+JUTE_WAKE_MODEL ?= openwakeword-hey-jute
 
-.PHONY: run run-http run-mock run-kronk run-kronk-voice-smoke run-kronk-whisper run-ollama run-gemini clean
+.PHONY: run run-http run-mock run-kronk run-kronk-voice-smoke run-kronk-whisper run-kronk-local-voice run-ollama run-gemini clean
 
 # 1. Run Jute Hub + Svelte Web Dashboard standalone (without launching an agent)
 run:
@@ -52,7 +53,20 @@ run-kronk-whisper:
 	trap 'rm -f "$$tmp"' EXIT; \
 	JUTE_CONFIG="$$tmp" JUTE_DATA_DIR="../../../.jute/local-whisper-dev" $(MAKE) run-kronk
 
-# 7. Run Jute Dashboard along with the Ollama Agent
+# 7. Run Jute + Kronk with openWakeWord, go-whisper, and Piper selected
+run-kronk-local-voice:
+	@tmp=$$(mktemp -t jute-local-voice-config.XXXXXX.yaml); \
+	sed \
+		-e 's/wake-word-model-id: hey-jute/wake-word-model-id: $(JUTE_WAKE_MODEL)/' \
+		-e 's/stt-provider-id: local-dev-stt/stt-provider-id: local-whisper-stt/' \
+		-e 's/stt-model-id: dev-transcript/stt-model-id: $(JUTE_WHISPER_MODEL)/' \
+		-e 's/tts-provider-id: local-dev-tts/tts-provider-id: local-piper-tts/' \
+		-e 's/tts-voice-id: amy/tts-voice-id: piper-default/' \
+		config.yaml > "$$tmp"; \
+	trap 'rm -f "$$tmp"' EXIT; \
+	JUTE_CONFIG="$$tmp" JUTE_DATA_DIR="../../../.jute/local-voice-dev" $(MAKE) run-kronk
+
+# 8. Run Jute Dashboard along with the Ollama Agent
 run-ollama:
 	@echo "Starting Jute Stack + Ollama Agent..."
 	@trap 'kill 0' SIGINT; \
@@ -60,7 +74,7 @@ run-ollama:
 	$(MAKE) run & \
 	wait
 
-# 8. Run Jute Dashboard along with the Gemini Agent
+# 9. Run Jute Dashboard along with the Gemini Agent
 run-gemini:
 	@echo "Starting Jute Stack + Gemini Agent..."
 	@trap 'kill 0' SIGINT; \
@@ -68,6 +82,6 @@ run-gemini:
 	$(MAKE) run & \
 	wait
 
-# 9. Reset local development databases and caches
+# 10. Reset local development databases and caches
 clean:
-	rm -rf ../../../.jute/local-dev ../../../.jute/local-whisper-dev ../../../.jute/dev-mock-a2a ../../../.jute/dev-kronk-a2a
+	rm -rf ../../../.jute/local-dev ../../../.jute/local-whisper-dev ../../../.jute/local-voice-dev ../../../.jute/dev-mock-a2a ../../../.jute/dev-kronk-a2a
