@@ -133,7 +133,7 @@ Voice Provider Packs are distinct from widgets and A2A agents. A voice provider 
 
 ## Conversation UI Rules
 
-- Render a bottom or side conversation sheet over the dashboard.
+- Render voice turns in the existing chat surface.
 - Keep mute and cancel controls visible while voice is active.
 - Show transcript bubbles for user and assistant turns.
 - Show compact task progress while the agent is working.

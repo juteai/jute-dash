@@ -6,7 +6,15 @@ test('chat renders hub-owned voice transcript events as speech bubbles', async (
 }) => {
   const hub = await createMockHub(page);
   await page.goto('/');
-  await page.getByRole('button', { name: 'Open chat' }).click();
+  await hub.waitForEventStream();
+  await hub.emit('voice.wake_detected', {
+    id: 'wake-1',
+    conversationId: 'conversation-1',
+    payload: {}
+  });
+  await expect(
+    page.getByRole('region', { name: 'Agent conversation' })
+  ).toBeVisible();
 
   await hub.emit('voice.transcript.partial', {
     id: 'partial-1',
@@ -66,7 +74,14 @@ test('chat mic asks the browser for microphone access', async ({ page }) => {
   await createMockHub(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Open chat' }).click();
-  await page.getByRole('button', { name: 'Start voice input' }).click();
+  await page.evaluate(() => {
+    (
+      window as Window & typeof globalThis & { __juteMicRequested?: boolean }
+    ).__juteMicRequested = false;
+  });
+  await page
+    .getByRole('button', { name: 'Start voice input' })
+    .click({ force: true });
 
   await expect
     .poll(() =>

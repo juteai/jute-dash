@@ -28,6 +28,7 @@ type MockSSEWindow = Window &
     __juteMockSSE: {
       emit(type: string, data: unknown): void;
       error(): void;
+      sourceCount(): number;
     };
   };
 
@@ -78,6 +79,9 @@ export async function createMockHub(page: Page, options: MockHubOptions = {}) {
           source.dispatchEvent(event);
           (source as EventSource).onerror?.(event);
         }
+      },
+      sourceCount() {
+        return sources.length;
       }
     };
   });
@@ -98,6 +102,14 @@ export async function createMockHub(page: Page, options: MockHubOptions = {}) {
       ),
     eventStreamError: () =>
       page.evaluate(() => (window as MockSSEWindow).__juteMockSSE.error()),
+    waitForEventStream: async () =>
+      expect
+        .poll(() =>
+          page.evaluate(() =>
+            (window as MockSSEWindow).__juteMockSSE.sourceCount()
+          )
+        )
+        .toBeGreaterThan(0),
     expectWrite: async (method: string, path: string) =>
       expect
         .poll(() => writes.some((w) => w.method === method && w.path === path))

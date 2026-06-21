@@ -38,7 +38,7 @@ flowchart LR
   policy["Speech policy\nredaction + sensitivity"]
   provider["Selected TTS Provider Pack"]
   voice["Jute Voice Service\nplayback owner"]
-  ui["Jute Display\nconversation sheet"]
+  ui["Jute Display\nchat surface"]
   events["/api/v1/events"]
 
   agent --> hub

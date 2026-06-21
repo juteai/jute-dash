@@ -381,9 +381,8 @@ The Svelte app does not call agents directly. Chat sends turns to the hub and re
 
 ## Voice And Chat
 
-Voice UI uses the same hub event stream primitives as chat, but it renders as a transient voice
-conversation sheet over the dashboard rather than taking over the durable chat view. The sheet is a
-bottom overlay on phones and small tablets, and a side sheet on large displays.
+Voice UI uses the same hub event stream primitives as chat and opens the durable chat view for wake
+word or microphone input. It does not render a separate voice surface.
 
 Voice-specific requirements:
 

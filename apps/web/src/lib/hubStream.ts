@@ -40,7 +40,6 @@ export interface HubStreamState {
   assistantSpeech: string;
   voiceError: string;
   voiceFollowupExpiresAt: string;
-  showVoiceOverlay: boolean;
   retrying: boolean;
 }
 
@@ -146,7 +145,6 @@ const initialState: HubStreamState = {
   assistantSpeech: '',
   voiceError: '',
   voiceFollowupExpiresAt: '',
-  showVoiceOverlay: false,
   retrying: false
 };
 
@@ -482,8 +480,7 @@ function createHubStreamStore() {
           voiceTranscript: '',
           assistantSpeech: '',
           voiceError: '',
-          voiceFollowupExpiresAt: '',
-          showVoiceOverlay: true
+          voiceFollowupExpiresAt: ''
         }));
       });
 
@@ -515,8 +512,7 @@ function createHubStreamStore() {
                 })
               : s.voiceMessages,
           voiceOrbState: 'listening',
-          voiceError: '',
-          showVoiceOverlay: true
+          voiceError: ''
         }));
       });
 
@@ -548,8 +544,7 @@ function createHubStreamStore() {
                 })
               : s.voiceMessages,
           voiceOrbState: 'listening',
-          voiceError: '',
-          showVoiceOverlay: true
+          voiceError: ''
         }));
       });
 
@@ -567,8 +562,7 @@ function createHubStreamStore() {
             typeof e?.payload?.agentId === 'string'
               ? e.payload.agentId
               : s.voiceAgentId,
-          voiceError: '',
-          showVoiceOverlay: true
+          voiceError: ''
         }));
       });
 
@@ -587,8 +581,7 @@ function createHubStreamStore() {
               ? e.payload.agentId
               : s.voiceAgentId,
           voiceOrbState: 'thinking',
-          voiceError: '',
-          showVoiceOverlay: true
+          voiceError: ''
         }));
       });
 
@@ -635,8 +628,7 @@ function createHubStreamStore() {
               })
             : s.voiceMessages,
           voiceOrbState: 'speaking',
-          voiceError: '',
-          showVoiceOverlay: true
+          voiceError: ''
         }));
       });
 
@@ -686,8 +678,7 @@ function createHubStreamStore() {
                 )
               : s.voiceMessages,
           voiceOrbState: 'speaking',
-          voiceError: '',
-          showVoiceOverlay: true
+          voiceError: ''
         }));
       });
 
@@ -707,8 +698,7 @@ function createHubStreamStore() {
             typeof e?.payload?.expiresAt === 'string'
               ? e.payload.expiresAt
               : s.voiceFollowupExpiresAt,
-          voiceError: '',
-          showVoiceOverlay: true
+          voiceError: ''
         }));
       });
 
@@ -723,8 +713,7 @@ function createHubStreamStore() {
           voiceConversationId:
             eventConversationID(e ?? {}) || s.voiceConversationId,
           voiceOrbState: 'speaking',
-          voiceError: '',
-          showVoiceOverlay: true
+          voiceError: ''
         }));
       });
 
@@ -738,8 +727,7 @@ function createHubStreamStore() {
           voiceConversationId:
             eventConversationID(e ?? {}) || s.voiceConversationId,
           voiceOrbState: 'followup',
-          voiceError: '',
-          showVoiceOverlay: true
+          voiceError: ''
         }));
       });
 
@@ -763,8 +751,7 @@ function createHubStreamStore() {
           voiceError:
             reason === 'barge_in'
               ? 'Speech stopped. Listening for your follow-up.'
-              : policyMessage,
-          showVoiceOverlay: true
+              : policyMessage
         }));
       });
 
@@ -779,8 +766,7 @@ function createHubStreamStore() {
           voiceConversationId:
             eventConversationID(e ?? {}) || s.voiceConversationId,
           voiceOrbState: 'error',
-          voiceError: safeVoiceError(e?.payload?.reason || 'tts_failure'),
-          showVoiceOverlay: true
+          voiceError: safeVoiceError(e?.payload?.reason || 'tts_failure')
         }));
       });
 
@@ -796,8 +782,7 @@ function createHubStreamStore() {
           voiceConversationId:
             eventConversationID(e ?? {}) || s.voiceConversationId,
           voiceOrbState: error ? 'error' : 'idle',
-          voiceError: error,
-          showVoiceOverlay: Boolean(error) || s.showVoiceOverlay
+          voiceError: error
         }));
         if (voiceEndedTimeout) {
           window.clearTimeout(voiceEndedTimeout);
@@ -807,7 +792,6 @@ function createHubStreamStore() {
             if (s.voiceOrbState === 'idle' || s.voiceOrbState === 'error') {
               return {
                 ...s,
-                showVoiceOverlay: false,
                 voiceConversationId: '',
                 voiceAgentId: '',
                 voiceMessages: [],
@@ -936,8 +920,7 @@ function createHubStreamStore() {
         ...s,
         voiceOrbState: 'listening',
         voiceTranscript: '',
-        voiceError: '',
-        showVoiceOverlay: true
+        voiceError: ''
       }));
     },
     submitBrowserVoiceAudio: async (
@@ -960,8 +943,7 @@ function createHubStreamStore() {
           voiceAgentId: agentId,
           voiceOrbState: 'thinking',
           voiceTranscript: '',
-          voiceError: '',
-          showVoiceOverlay: true
+          voiceError: ''
         };
       });
       await submitVoiceAudio(fetcher, recording.audio, {
@@ -995,8 +977,7 @@ function createHubStreamStore() {
       update((s) => ({
         ...s,
         voiceOrbState: 'error',
-        voiceError: reason,
-        showVoiceOverlay: true
+        voiceError: reason
       }));
     },
     cancelVoiceSession: async (fetcher: typeof fetch = window.fetch) => {
@@ -1011,8 +992,7 @@ function createHubStreamStore() {
           voiceTranscript: '',
           assistantSpeech: '',
           voiceError: '',
-          voiceFollowupExpiresAt: '',
-          showVoiceOverlay: false
+          voiceFollowupExpiresAt: ''
         }));
       } catch (err) {
         console.error('Failed to cancel voice session:', err);

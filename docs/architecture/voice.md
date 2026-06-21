@@ -310,14 +310,12 @@ The display should use an Echo Show-style conversation flow that transitions fro
 
 UI requirements:
 
-- bottom sheet on wide and tablet layouts;
-- side sheet on large wall displays when it leaves widgets more visible;
-- large listening orb or ring for `wake_detected`, `capturing_utterance`, and `followup_listening`;
+- reuse the display chat surface on every layout;
+- visually mark `wake_detected`, `capturing_utterance`, and `followup_listening`;
 - transcript bubbles for user and assistant turns;
 - compact task progress states while the agent is thinking;
 - always-visible mute and cancel controls while voice is active;
 - clear visual distinction between wake listening and follow-up listening;
-- ambient mode shows only listening/responding status by default, not full transcripts.
 
 The conversation UI consumes hub events. It should not infer conversation state only from local browser state.
 

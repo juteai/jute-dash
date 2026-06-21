@@ -62,7 +62,7 @@ describe('hubStream voice events', () => {
     });
   });
 
-  it('builds voice conversation sheet state from hub events without logging transcript text', async () => {
+  it('builds voice conversation state from hub events without logging transcript text', async () => {
     const { hubStream } = await import('./hubStream');
     const { logger } = await import('$lib/logger');
 
@@ -105,7 +105,6 @@ describe('hubStream voice events', () => {
     });
 
     const state = get(hubStream);
-    expect(state.showVoiceOverlay).toBe(true);
     expect(state.voiceConversationId).toBe('conversation-1');
     expect(state.voiceOrbState).toBe('followup');
     expect(state.voiceFollowupExpiresAt).toBe('2026-06-15T10:00:09Z');
@@ -130,7 +129,7 @@ describe('hubStream voice events', () => {
     expect(logCalls).not.toContain('The kitchen lights are on.');
   });
 
-  it('maps provider and playback failures to safe recoverable overlay errors', async () => {
+  it('maps provider and playback failures to safe recoverable voice errors', async () => {
     const { hubStream } = await import('./hubStream');
 
     hubStream.connect(vi.fn() as unknown as typeof fetch);
@@ -143,7 +142,6 @@ describe('hubStream voice events', () => {
     });
 
     expect(get(hubStream)).toMatchObject({
-      showVoiceOverlay: true,
       voiceOrbState: 'error',
       voiceError:
         'Speech playback is unavailable. The visual response is still available.'
@@ -156,13 +154,12 @@ describe('hubStream voice events', () => {
     });
 
     expect(get(hubStream)).toMatchObject({
-      showVoiceOverlay: true,
       voiceOrbState: 'error',
       voiceError: 'The agent could not complete that voice turn.'
     });
   });
 
-  it('maps sensitive TTS policy stops to visual-only overlay status without transcript text', async () => {
+  it('maps sensitive TTS policy stops to visual-only voice status without transcript text', async () => {
     const { hubStream } = await import('./hubStream');
 
     hubStream.connect(vi.fn() as unknown as typeof fetch);
@@ -180,7 +177,6 @@ describe('hubStream voice events', () => {
 
     const state = get(hubStream);
     expect(state).toMatchObject({
-      showVoiceOverlay: true,
       voiceConversationId: 'conversation-1',
       voiceOrbState: 'followup',
       voiceError: 'Sensitive response is visual-only.'
@@ -207,7 +203,6 @@ describe('hubStream voice events', () => {
     });
 
     expect(get(hubStream)).toMatchObject({
-      showVoiceOverlay: true,
       voiceConversationId: 'conversation-1',
       voiceOrbState: 'idle',
       voiceError: ''

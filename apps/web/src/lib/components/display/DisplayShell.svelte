@@ -4,7 +4,6 @@
   import ChatView from '$lib/components/chat/ChatView.svelte';
   import DashboardView from '$lib/components/display/DashboardView.svelte';
   import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
-  import VoiceOverlay from '$lib/components/display/VoiceOverlay.svelte';
   import AlarmFocusOverlay from '$lib/components/alarms/AlarmFocusOverlay.svelte';
   import OfflineState from '$lib/components/display/OfflineState.svelte';
   import StatusRibbon from '$lib/components/display/StatusRibbon.svelte';
@@ -295,11 +294,7 @@
       state
     );
   }
-  $: if (
-    mounted &&
-    ($hubStream.voiceConversationId ||
-      ($hubStream.showVoiceOverlay && $hubStream.voiceOrbState === 'listening'))
-  ) {
+  $: if (mounted && $hubStream.voiceConversationId) {
     navigationStore.openChat();
   }
 
@@ -457,6 +452,13 @@
     await hubStream.cancelVoiceSession(fetch);
   }
 
+  async function cancelActiveSession() {
+    chatStore.cancel();
+    if ($hubStream.voiceConversationId) {
+      await cancelVoiceSession();
+    }
+  }
+
   async function retryDashboard() {
     try {
       const fresh = await hubStream.retryDashboard(fetch);
@@ -593,6 +595,7 @@
           timerProgress={$chatStore.timerProgress}
           showTimer={$chatStore.showTimer}
           voiceCapturing={browserVoiceCapturing}
+          voiceError={$hubStream.voiceError}
           onAgentChange={(agentId) => {
             chatStore.setAgentId(agentId);
             void chatStore.loadHistory(
@@ -617,26 +620,11 @@
           onRetry={(msg) =>
             chatStore.retry(msg, $hubStream.dashboard.agents, fetch)}
           onClose={closeChat}
-          onCancel={chatStore.cancel}
+          onCancel={cancelActiveSession}
           onToggleVoiceMute={toggleVoiceMute}
           onStartVoiceCapture={startChatVoiceCapture}
         />
       </div>
-    {/if}
-
-    {#if $hubStream.showVoiceOverlay}
-      <VoiceOverlay
-        voice={$hubStream.dashboard.voice}
-        voiceOrbState={$hubStream.voiceOrbState}
-        voiceMessages={$hubStream.voiceMessages}
-        voiceTranscript={$hubStream.voiceTranscript}
-        assistantSpeech={$hubStream.assistantSpeech}
-        voiceError={$hubStream.voiceError}
-        followupExpiresAt={$hubStream.voiceFollowupExpiresAt}
-        showConversationText
-        on:toggleMute={toggleVoiceMute}
-        on:cancel={cancelVoiceSession}
-      />
     {/if}
 
     <AlarmFocusOverlay data={$hubStream.dashboard} />

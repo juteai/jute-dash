@@ -53,7 +53,7 @@
 ## Phase 3: Voice And Presence
 
 - Extend the existing conversation pipeline with voice-specific SSE events and follow-up listening.
-- Add Echo Show-style voice conversation UI refinements to the display.
+- Add Echo Show-style voice refinements inside the display chat surface.
 - Add local display-device voice service with VAD, openWakeWord, and pre-roll buffering.
 - Add Voice Provider Pack manifest validation and discovery.
 - Add speech-to-text provider selection with Wyoming local/LAN as the first practical path.

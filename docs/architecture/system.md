@@ -70,7 +70,7 @@ flowchart LR
 ## Display Responsibilities
 
 - Render the dashboard, ambient mode, settings, widget grid, and agent interaction surface.
-- Render the voice conversation sheet, listening states, mute/cancel controls, and transcript bubbles from hub events.
+- Render voice turns inside the chat surface, including listening states, mute/cancel controls, and transcript bubbles from hub events.
 - Follow the clean-slate display UX. The current `apps/web` UI is POC work, not canonical.
 - Host widgets as native Svelte components inside Jute's monorepo widgets library.
 - Maintain local-only transient UI state such as open menus and drag state.
