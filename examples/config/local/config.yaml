@@ -44,14 +44,14 @@ display:
 voice:
     enabled: true
     muted-by-default: false
-    wake-word-model-id: hey-jute
-    wake-word-phrase: Hey Jute
+    wake-word-model-id: hey_jarvis
+    wake-word-phrase: hey jarvis
     wake-sensitivity: 0.5
-    stt-provider-id: local-dev-stt
-    tts-provider-id: local-dev-tts
-    stt-model-id: dev-transcript
-    tts-model-id: ""
-    tts-voice-id: amy
+    stt-provider-id: local-whisper-stt
+    tts-provider-id: local-piper-tts
+    stt-model-id: tiny.en
+    tts-model-id: piper-default
+    tts-voice-id: piper-default
     tts-enabled: true
     tts-locale: en
     tts-speed: 1

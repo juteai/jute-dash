@@ -645,10 +645,10 @@ func assertDevVoice(t *testing.T, cfg Config) {
 	t.Helper()
 	if !cfg.Voice.Enabled ||
 		cfg.Voice.MutedByDefault ||
-		cfg.Voice.WakeWordModelID != "hey-jute" ||
-		cfg.Voice.STTProviderID != "local-dev-stt" ||
-		cfg.Voice.TTSProviderID != "local-dev-tts" ||
-		cfg.Voice.TTSVoiceID != "amy" ||
+		cfg.Voice.WakeWordModelID != "hey_jarvis" ||
+		cfg.Voice.STTProviderID != "local-whisper-stt" ||
+		cfg.Voice.TTSProviderID != "local-piper-tts" ||
+		cfg.Voice.TTSVoiceID != "piper-default" ||
 		!cfg.Voice.CommandProvidersEnabled {
 		t.Fatalf("unexpected dev voice config: %+v", cfg.Voice)
 	}

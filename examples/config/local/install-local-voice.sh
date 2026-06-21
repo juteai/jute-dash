@@ -125,5 +125,5 @@ export JUTE_PIPER_MODEL="$PIPER_MODEL"
 EOF
 
 echo "Local voice tools installed under $TOOLS_DIR"
-echo "Run: source $ENV_FILE"
-echo "Then: cd examples/config/local && make run-kronk-local-voice"
+echo "Make targets in examples/config/local source $ENV_FILE automatically."
+echo "Run: cd examples/config/local && make run-kronk"

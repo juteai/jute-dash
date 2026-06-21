@@ -11,13 +11,12 @@ From the repo root:
 
 ```sh
 cd examples/config/local
-make install-local-voice
-source ../../../.jute/local-voice-tools/local-voice.env
+make setup
 ```
 
 The installer creates `.jute/local-voice-tools`, installs Python command tools in a local virtualenv, downloads a Piper voice, writes a small `openwakeword` CLI wrapper, and attempts to install `gowhisper` into the same tool directory.
 
-It does not start a wake/STT/TTS server. The hub invokes each tool as a command provider for one request.
+It does not start a wake/STT/TTS server. The hub invokes each tool as a command provider for one request. The local Makefile automatically sources `.jute/local-voice-tools/local-voice.env` when it runs the hub.
 
 ## Run Modes
 
@@ -27,30 +26,21 @@ Deterministic pipeline smoke:
 make run-kronk-voice-smoke
 ```
 
-Real local STT only:
-
-```sh
-source ../../../.jute/local-voice-tools/local-voice.env
-make run-kronk-whisper
-```
-
 Real local wake, STT, and TTS:
 
 ```sh
-source ../../../.jute/local-voice-tools/local-voice.env
-make run-kronk-local-voice
+make run-kronk
 ```
 
-By default, `run-kronk-local-voice` uses openWakeWord's built-in `hey jarvis` model because this repo does not yet ship a trained "Hey Jute" wake model. Say "hey jarvis" for local real-wake testing.
+By default, the local examples use openWakeWord's built-in `hey jarvis` model because this repo does not yet ship a trained "Hey Jute" wake model. Say "hey jarvis" for local real-wake testing.
 
 To use a trained Hey Jute model:
 
 ```sh
-JUTE_OPENWAKEWORD_MODEL=/absolute/path/to/hey-jute.onnx \
-JUTE_WAKE_MODEL=openwakeword-hey-jute \
-JUTE_WAKE_PHRASE="Hey Jute" \
-make run-kronk-local-voice
+JUTE_OPENWAKEWORD_MODEL=/absolute/path/to/hey-jute.onnx make run-kronk
 ```
+
+Then select the `openwakeword-hey-jute` wake model in Voice settings, or set `voice.wake-word-model-id` to `openwakeword-hey-jute` in `examples/config/local/config.yaml` before the local database is seeded.
 
 ## Overrides
 
@@ -64,19 +54,19 @@ JUTE_PIPER_BIN=/absolute/path/to/piper
 JUTE_PIPER_MODEL=/absolute/path/to/voice.onnx
 ```
 
-Use these to choose model IDs passed into provider config:
+Use Voice settings, or these YAML fields before the local database is seeded, to choose model IDs:
 
-```sh
-JUTE_WAKE_MODEL=hey_jarvis
-JUTE_WAKE_PHRASE="hey jarvis"
-JUTE_WHISPER_MODEL=tiny.en
+```yaml
+voice:
+    wake-word-model-id: hey_jarvis
+    stt-model-id: tiny.en
+    tts-model-id: piper-default
 ```
 
 ## Notes
 
-- `make run-kronk` does not fake natural STT.
+- `make run-kronk` uses real local command providers after `make setup`.
 - `make run-kronk-voice-smoke` is still the fastest routing check.
-- `make run-kronk-local-voice` uses `.jute/local-voice-dev`, so old SQLite voice settings from `.jute/local-dev` cannot hide provider changes.
 - If provider selections look stale, run `make clean` in `examples/config/local`.
 
 References:
