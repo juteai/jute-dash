@@ -1738,24 +1738,19 @@ func TestVoiceAudioReportsSTTFailure(t *testing.T) {
 	cfg := testConfig()
 	cfg.Voice.Enabled = true
 	cfg.Voice.MutedByDefault = false
-	dispatcher := service.NewVoiceDispatcher()
-	events := dispatcher.Subscribe(t.Context())
 	server := &Server{
 		cfg: cfg,
-		voiceStore: &fixtureActiveWakeSTTVoiceStore{
-			fixtureActiveSTTVoiceStore: &fixtureActiveSTTVoiceStore{
-				MemoryVoiceRepository: repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice),
-				provider:              &fixtureAppSTTProvider{err: errors.New("stt failed")},
-			},
-			wake: &fixtureAppWakeProvider{detected: true},
+		voiceStore: &fixtureActiveSTTVoiceStore{
+			MemoryVoiceRepository: repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice),
+			provider:              &fixtureAppSTTProvider{err: errors.New("stt failed")},
 		},
-		voiceDispatcher: dispatcher,
+		voiceDispatcher: service.NewVoiceDispatcher(),
 		voiceRuntime:    service.NewConversationRuntime(),
 	}
 
 	req := httptest.NewRequest(
 		http.MethodPost,
-		"/api/v1/voice/audio?wake=true",
+		"/api/v1/voice/audio",
 		bytes.NewReader([]byte{0xff, 0x7f, 0xff, 0x7f}),
 	)
 	rec := httptest.NewRecorder()
@@ -1766,55 +1761,36 @@ func TestVoiceAudioReportsSTTFailure(t *testing.T) {
 		!strings.Contains(rec.Body.String(), "transcription_failed") {
 		t.Fatalf("expected transcription failure, got %d: %s", rec.Code, rec.Body.String())
 	}
-	assertNextDisplayEvent(t, events, service.EventVoiceWakeDetected)
 }
 
-func TestVoiceAudioCanRequireWakeBeforeSTT(t *testing.T) {
+func TestVoiceAudioWakeRequestStartsConversationWithoutSTT(t *testing.T) {
 	cfg := testConfig()
 	cfg.Voice.Enabled = true
 	cfg.Voice.MutedByDefault = false
 	cfg.Voice.PreferredAgentID = "house"
-	client := a2a.NewInMemoryClient()
-	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
-		return a2a.SendMessageResult{
-			ConversationID: req.ConversationID,
-			TaskID:         "task-browser-wake-1",
-			Status:         "completed",
-			Text:           "Done.",
-		}, nil
-	}
 	syncer := filesync.NewInMemorySyncer(cfg)
 	cards := service.NewCardService()
 	manager := service.NewAgentManager(syncer, cards, "")
+	stt := &fixtureAppSTTProvider{
+		result: service.STTResult{Text: "turn on the lights", ProviderID: "local-stt"},
+	}
+	dispatcher := service.NewVoiceDispatcher()
+	events := dispatcher.Subscribe(t.Context())
 	store := &fixtureActiveWakeSTTVoiceStore{
 		fixtureActiveSTTVoiceStore: &fixtureActiveSTTVoiceStore{
 			MemoryVoiceRepository: repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice),
-			provider: &fixtureAppSTTProvider{
-				result: service.STTResult{Text: "turn on the lights", ProviderID: "local-stt"},
-			},
+			provider:              stt,
 		},
 		wake: &fixtureAppWakeProvider{detected: true},
 	}
 	server := &Server{
 		cfg:             cfg,
 		agentsManager:   manager,
-		messages:        client,
+		messages:        a2a.NewInMemoryClient(),
 		voiceStore:      store,
-		voiceDispatcher: service.NewVoiceDispatcher(),
+		voiceDispatcher: dispatcher,
 		voiceRuntime:    service.NewConversationRuntime(),
 	}
-	server.turnRunner = service.NewRunner(service.RunnerOptions{
-		GetRegistry:    manager.ActiveRegistry,
-		GetAgentConfig: manager.ConfiguredAgent,
-		GetAgentCardCache: func(context.Context, registry.Agent) (service.AgentCardCache, bool) {
-			return service.AgentCardCache{
-				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
-				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
-			}, true
-		},
-		GetDashboardContext: func(context.Context) map[string]any { return map[string]any{} },
-		Messages:            client,
-	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/audio?wake=true", bytes.NewReader([]byte{0xff, 0x7f}))
 	rec := httptest.NewRecorder()
@@ -1824,8 +1800,23 @@ func TestVoiceAudioCanRequireWakeBeforeSTT(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if !store.wake.seen || client.SentMessages[0].Text != "turn on the lights" {
-		t.Fatalf("wake-gated audio did not reach STT/A2A: wake=%v sent=%+v", store.wake.seen, client.SentMessages)
+	if !store.wake.seen {
+		t.Fatal("wake provider was not called")
+	}
+	if stt.calls != 0 {
+		t.Fatalf("wake audio should not be transcribed, STT calls=%d", stt.calls)
+	}
+	select {
+	case event := <-events:
+		if event.Type != service.EventVoiceWakeDetected {
+			t.Fatalf("expected wake event, got %q", event.Type)
+		}
+		voiceEvent, ok := event.Data.(service.VoiceEvent)
+		if !ok || voiceEvent.ConversationID == "" {
+			t.Fatalf("wake event did not include conversation id: %+v", event.Data)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for wake event")
 	}
 }
 
@@ -3563,12 +3554,14 @@ type fixtureAppSTTProvider struct {
 	result service.STTResult
 	err    error
 	seen   service.CapturedUtterance
+	calls  int
 }
 
 func (p *fixtureAppSTTProvider) Transcribe(
 	_ context.Context,
 	utterance service.CapturedUtterance,
 ) (service.STTResult, error) {
+	p.calls++
 	p.seen = utterance
 	if p.err != nil {
 		return service.STTResult{}, p.err

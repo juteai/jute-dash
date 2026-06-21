@@ -70,6 +70,63 @@ test('dashboard wake opens chat before transcription completes', async ({
   ).toBeVisible();
 });
 
+test('dashboard wake starts command capture in chat', async ({ page }) => {
+  await page.addInitScript(() => {
+    (
+      window as Window & typeof globalThis & { __juteMicRequested?: boolean }
+    ).__juteMicRequested = false;
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: async () => {
+          (
+            window as Window &
+              typeof globalThis & { __juteMicRequested?: boolean }
+          ).__juteMicRequested = true;
+          throw new Error('Microphone permission denied.');
+        }
+      }
+    });
+  });
+  const hub = await createMockHub(page);
+  await page.goto('/');
+  await hub.waitForEventStream();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as Window &
+              typeof globalThis & { __juteMicRequested?: boolean }
+          ).__juteMicRequested
+      )
+    )
+    .toBe(true);
+  await page.evaluate(() => {
+    (
+      window as Window & typeof globalThis & { __juteMicRequested?: boolean }
+    ).__juteMicRequested = false;
+  });
+
+  await hub.emit('voice.wake_detected', {
+    id: 'wake-command-capture',
+    conversationId: 'conversation-wake-command',
+    payload: {}
+  });
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as Window &
+              typeof globalThis & { __juteMicRequested?: boolean }
+          ).__juteMicRequested
+      )
+    )
+    .toBe(true);
+});
+
 test('chat mic asks the browser for microphone access', async ({ page }) => {
   await page.addInitScript(() => {
     (

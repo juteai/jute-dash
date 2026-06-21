@@ -60,6 +60,7 @@
   let browserVoiceCapturing = false;
   let browserWakeListening = false;
   let browserWakeBlocked = false;
+  let lastWakeCaptureConversationId = '';
 
   /* eslint-disable no-useless-assignment */
   let lastData: DashboardData | undefined;
@@ -298,6 +299,18 @@
     ($hubStream.voiceConversationId || $hubStream.voiceOrbState === 'listening')
   ) {
     navigationStore.openChat();
+  }
+  $: if (
+    mounted &&
+    browser &&
+    $hubStream.voiceConversationId &&
+    $hubStream.voiceOrbState === 'listening' &&
+    $hubStream.voiceMessages.length === 0 &&
+    lastWakeCaptureConversationId !== $hubStream.voiceConversationId &&
+    !browserVoiceCapturing
+  ) {
+    lastWakeCaptureConversationId = $hubStream.voiceConversationId;
+    void startChatVoiceCapture();
   }
 
   function openSettings(section: typeof activeSettingsSection = 'household') {

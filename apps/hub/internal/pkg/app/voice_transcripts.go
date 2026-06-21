@@ -99,16 +99,18 @@ func (s *Server) handleVoiceAudio(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		req.wakeDetected = true
-		if s.voiceDispatcher != nil {
-			s.voiceDispatcher.EmitVoiceWakeDetected(deviceID(req), "")
-			s.voiceDispatcher.EmitVoiceStateChanged(deviceID(req), service.VoiceStatePayload{
-				Enabled:       true,
-				Muted:         false,
-				State:         service.WakeStateDetected,
-				ServiceStatus: "ready",
-			})
+		response, err := s.beginWakeConversation(r.Context(), req)
+		if err != nil {
+			var transcriptErr voiceTranscriptError
+			if errors.As(err, &transcriptErr) {
+				httphelper.WriteError(w, transcriptErr.status, transcriptErr.message)
+				return
+			}
+			httphelper.WriteError(w, http.StatusInternalServerError, "voice conversation is unavailable")
+			return
 		}
+		httphelper.WriteJSON(w, http.StatusOK, response)
+		return
 	}
 	response, err := s.submitVoiceUtterance(r.Context(), req, utterance)
 	if err != nil {
@@ -121,6 +123,70 @@ func (s *Server) handleVoiceAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httphelper.WriteJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) beginWakeConversation(
+	ctx context.Context,
+	req VoiceFinalTranscriptRequest,
+) (VoiceFinalTranscriptResponse, error) {
+	settings, err := s.voiceStore.VoiceSettings(ctx, req.DeviceProfileID)
+	if err != nil {
+		return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+			status:  http.StatusInternalServerError,
+			message: "voice settings are unavailable",
+		}
+	}
+	if !settings.Enabled || settings.Muted {
+		return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+			status:  http.StatusConflict,
+			message: "voice is not listening",
+		}
+	}
+	session, started, err := s.voiceRuntime.BeginTurn(
+		req.ConversationID,
+		settings,
+		voiceSourceDeviceProfileID(req, settings),
+		deviceID(req),
+	)
+	if err != nil {
+		if errors.Is(err, service.ErrFollowupSourceMismatch) {
+			return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+				status:  http.StatusConflict,
+				message: "voice follow-up source mismatch",
+			}
+		}
+		return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+			status:  http.StatusConflict,
+			message: "voice follow-up window expired",
+		}
+	}
+	agentID := s.voiceAgentID(req.AgentID, settings)
+	conversationID := session.ConversationID
+	if s.voiceDispatcher != nil {
+		s.voiceDispatcher.EmitVoiceWakeDetected(deviceID(req), conversationID)
+		s.voiceDispatcher.EmitVoiceStateChanged(deviceID(req), service.VoiceStatePayload{
+			Enabled:       true,
+			Muted:         false,
+			State:         service.WakeStateDetected,
+			ServiceStatus: "ready",
+		})
+		if started {
+			s.voiceDispatcher.EmitConversationEvent(
+				service.EventConversationStarted,
+				deviceID(req),
+				conversationID,
+				map[string]any{"agentId": agentID},
+			)
+		}
+	}
+	return VoiceFinalTranscriptResponse{
+		Followup: VoiceFollowupResponse{
+			Active:    true,
+			ExpiresAt: session.ExpiresAt.Format(time.RFC3339Nano),
+			Turns:     session.Turns,
+			MaxTurns:  service.MaxConversationTurns,
+		},
+	}, nil
 }
 
 func (s *Server) detectWake(
