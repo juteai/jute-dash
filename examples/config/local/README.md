@@ -54,7 +54,22 @@ Each target starts the local Jute stack and launches the respective agent module
   make run-kronk-voice-smoke JUTE_VOICE_SMOKE_TEXT="turn on the kitchen lights"
   ```
 
-  Natural spoken transcription requires replacing `local-dev-stt` with a real local STT command provider. Plain `make run-kronk` does not fake STT.
+  Real local STT with a go-whisper command:
+  ```sh
+  make run-kronk-whisper
+  ```
+
+  `run-kronk-whisper` selects the `local-whisper-stt` command provider and uses a separate `.jute/local-whisper-dev` data directory so existing local settings do not hide the config change. It expects `gowhisper` on `PATH`, or set:
+  ```sh
+  JUTE_GO_WHISPER_BIN=/absolute/path/to/gowhisper make run-kronk-whisper
+  ```
+
+  To choose the Whisper model ID passed to go-whisper:
+  ```sh
+  make run-kronk-whisper JUTE_WHISPER_MODEL=tiny.en
+  ```
+
+  Plain `make run-kronk` does not fake natural STT.
 
 * **Ollama Agent**: Local LLM assistant using `Ollama`
   ```sh

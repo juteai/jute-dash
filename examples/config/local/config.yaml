@@ -135,6 +135,33 @@ voice-provider-packs:
             - audio/wav;rate=16000
       credentials: []
       health-status: available
+    - id: local-whisper-stt
+      name: Local Whisper STT
+      version: dev
+      kind: stt
+      transport:
+        type: command
+        command: /bin/sh
+        args:
+            - ../../examples/config/local/go-whisper-stt.sh
+            - --model
+            - '{modelId}'
+            - --input
+            - '{inputPath}'
+            - --language
+            - '{language}'
+      capabilities:
+        streaming: false
+        partial-transcripts: false
+        offline: true
+        languages:
+            - en
+            - en-GB
+            - en-US
+        input-formats:
+            - audio/wav;rate=16000
+      credentials: []
+      health-status: available
     - id: local-dev-tts
       name: Local Dev TTS
       version: dev

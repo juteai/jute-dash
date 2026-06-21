@@ -652,8 +652,8 @@ func assertDevVoice(t *testing.T, cfg Config) {
 		!cfg.Voice.CommandProvidersEnabled {
 		t.Fatalf("unexpected dev voice config: %+v", cfg.Voice)
 	}
-	if len(cfg.ProviderPacks) != 3 {
-		t.Fatalf("expected 3 dev voice provider packs, got %d", len(cfg.ProviderPacks))
+	if len(cfg.ProviderPacks) != 4 {
+		t.Fatalf("expected 4 dev voice provider packs, got %d", len(cfg.ProviderPacks))
 	}
 }
 
