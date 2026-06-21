@@ -3,8 +3,9 @@ JUTE_MCP_URL ?= http://127.0.0.1:8790/mcp
 JUTE_WEB_URL ?= https://localhost:5173
 JUTE_WEB_SCRIPT ?= dev:https
 JUTE_DATA_DIR ?= ../../../.jute/local-dev
+JUTE_VOICE_SMOKE_TEXT ?= hello from jute voice
 
-.PHONY: run run-http run-mock run-kronk run-ollama run-gemini clean
+.PHONY: run run-http run-mock run-kronk run-kronk-voice-smoke run-ollama run-gemini clean
 
 # 1. Run Jute Hub + Svelte Web Dashboard standalone (without launching an agent)
 run:
@@ -35,7 +36,11 @@ run-kronk:
 	$(MAKE) run & \
 	wait
 
-# 5. Run Jute Dashboard along with the Ollama Agent
+# 5. Run Jute + Kronk with deterministic dev STT for voice routing smoke tests
+run-kronk-voice-smoke:
+	@JUTE_DEV_STT_TEXT="$(JUTE_VOICE_SMOKE_TEXT)" $(MAKE) run-kronk
+
+# 6. Run Jute Dashboard along with the Ollama Agent
 run-ollama:
 	@echo "Starting Jute Stack + Ollama Agent..."
 	@trap 'kill 0' SIGINT; \
@@ -43,7 +48,7 @@ run-ollama:
 	$(MAKE) run & \
 	wait
 
-# 6. Run Jute Dashboard along with the Gemini Agent
+# 7. Run Jute Dashboard along with the Gemini Agent
 run-gemini:
 	@echo "Starting Jute Stack + Gemini Agent..."
 	@trap 'kill 0' SIGINT; \
@@ -51,6 +56,6 @@ run-gemini:
 	$(MAKE) run & \
 	wait
 
-# 7. Reset local development databases and caches
+# 8. Reset local development databases and caches
 clean:
 	rm -rf ../../../.jute/local-dev ../../../.jute/dev-mock-a2a ../../../.jute/dev-kronk-a2a

@@ -44,6 +44,18 @@ Each target starts the local Jute stack and launches the respective agent module
   make run-kronk
   ```
 
+  Voice routing smoke test with deterministic dev STT:
+  ```sh
+  make run-kronk-voice-smoke
+  ```
+
+  To choose the transcript used by the dev STT shim:
+  ```sh
+  make run-kronk-voice-smoke JUTE_VOICE_SMOKE_TEXT="turn on the kitchen lights"
+  ```
+
+  Natural spoken transcription requires replacing `local-dev-stt` with a real local STT command provider. Plain `make run-kronk` does not fake STT.
+
 * **Ollama Agent**: Local LLM assistant using `Ollama`
   ```sh
   make run-ollama
