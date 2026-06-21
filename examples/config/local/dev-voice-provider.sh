@@ -23,7 +23,13 @@ case "$mode" in
     printf '{"detected":true,"providerId":"local-dev-wake","modelId":"hey-jute","confidence":0.9}\n'
     ;;
   stt)
-    printf '{"text":"turn on the kitchen lights","providerId":"local-dev-stt","modelId":"dev-transcript","language":"en","durationMs":500}\n'
+    text=$(printf '%s' "${JUTE_DEV_STT_TEXT:-}" | tr '\r\n' '  ')
+    if [ -z "$text" ]; then
+      echo "JUTE_DEV_STT_TEXT is required for the dev STT shim" >&2
+      exit 1
+    fi
+    escaped_text=$(printf '%s' "$text" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    printf '{"text":"%s","providerId":"local-dev-stt","modelId":"dev-transcript","language":"en","durationMs":500}\n' "$escaped_text"
     ;;
   tts)
     text="$(cat)"
