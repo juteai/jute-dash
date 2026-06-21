@@ -31,6 +31,15 @@ make run-http
 
 `make run` uses a repo-local data directory at `.jute/local-dev` and seeds local voice provider packs for wake, STT, and TTS. The providers are command-backed dev shims, so the Voice settings screen starts with provider choices selected without requiring a microphone model, Whisper install, or TTS engine. The dev STT shim only returns text when `JUTE_DEV_STT_TEXT` is set; otherwise it fails instead of pretending to transcribe. On macOS, the dev TTS shim uses `say` for audible local playback; elsewhere it returns metadata only.
 
+Install real local voice tools:
+
+```sh
+make install-local-voice
+source ../../../.jute/local-voice-tools/local-voice.env
+```
+
+See [Local Voice Development](../../../docs/developer/local-voice-dev.md) for real wake/STT/TTS setup.
+
 ### Running with a Specific Agent
 Each target starts the local Jute stack and launches the respective agent module from `examples/agents/` in parallel:
 
@@ -74,7 +83,7 @@ Each target starts the local Jute stack and launches the respective agent module
   make run-kronk-local-voice
   ```
 
-  `run-kronk-local-voice` selects `local-openwakeword`, `local-whisper-stt`, and `local-piper-tts`, using `.jute/local-voice-dev` as its data directory. It expects `openwakeword`, `gowhisper`, and `piper` on `PATH`, or set absolute binary paths:
+  `run-kronk-local-voice` selects `local-openwakeword`, `local-whisper-stt`, and `local-piper-tts`, using `.jute/local-voice-dev` as its data directory. By default it uses openWakeWord's built-in `hey jarvis` model; say "hey jarvis" for local real-wake testing. It expects `openwakeword`, `gowhisper`, and `piper` on `PATH`, or set absolute binary paths:
   ```sh
   JUTE_OPENWAKEWORD_BIN=/absolute/path/to/openwakeword \
   JUTE_GO_WHISPER_BIN=/absolute/path/to/gowhisper \

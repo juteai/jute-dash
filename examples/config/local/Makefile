@@ -6,9 +6,13 @@ JUTE_DATA_DIR ?= ../../../.jute/local-dev
 JUTE_CONFIG ?= ../../examples/config/local/config.yaml
 JUTE_VOICE_SMOKE_TEXT ?= hello from jute voice
 JUTE_WHISPER_MODEL ?= tiny.en
-JUTE_WAKE_MODEL ?= openwakeword-hey-jute
+JUTE_WAKE_MODEL ?= hey_jarvis
+JUTE_WAKE_PHRASE ?= hey jarvis
 
-.PHONY: run run-http run-mock run-kronk run-kronk-voice-smoke run-kronk-whisper run-kronk-local-voice run-ollama run-gemini clean
+.PHONY: install-local-voice run run-http run-mock run-kronk run-kronk-voice-smoke run-kronk-whisper run-kronk-local-voice run-ollama run-gemini clean
+
+install-local-voice:
+	@./install-local-voice.sh
 
 # 1. Run Jute Hub + Svelte Web Dashboard standalone (without launching an agent)
 run:
@@ -58,6 +62,7 @@ run-kronk-local-voice:
 	@tmp=$$(mktemp -t jute-local-voice-config.XXXXXX.yaml); \
 	sed \
 		-e 's/wake-word-model-id: hey-jute/wake-word-model-id: $(JUTE_WAKE_MODEL)/' \
+		-e 's/wake-word-phrase: Hey Jute/wake-word-phrase: $(JUTE_WAKE_PHRASE)/' \
 		-e 's/stt-provider-id: local-dev-stt/stt-provider-id: local-whisper-stt/' \
 		-e 's/stt-model-id: dev-transcript/stt-model-id: $(JUTE_WHISPER_MODEL)/' \
 		-e 's/tts-provider-id: local-dev-tts/tts-provider-id: local-piper-tts/' \

@@ -164,6 +164,12 @@ voice-provider-packs:
             - en
         sensitivity: 0.5
         models:
+            - id: hey_jarvis
+              path: models/hey_jarvis.tflite
+              phrase: hey jarvis
+              languages:
+                - en
+              sensitivity: 0.5
             - id: openwakeword-hey-jute
               path: models/openwakeword-hey-jute.onnx
               phrase: Hey Jute
