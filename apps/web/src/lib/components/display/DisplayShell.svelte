@@ -135,7 +135,6 @@
     !browserWakeListening &&
     !browserWakeBlocked &&
     !browserVoiceCapturing &&
-    $navigationStore.mode !== 'chat' &&
     $hubStream.dashboard.voice.enabled &&
     $hubStream.dashboard.voice.serviceStatus === 'ready' &&
     !$hubStream.dashboard.voice.muted;
@@ -442,7 +441,6 @@
       mounted &&
       !browserWakeBlocked &&
       !browserVoiceCapturing &&
-      $navigationStore.mode !== 'chat' &&
       $hubStream.dashboard.voice.serviceStatus === 'ready' &&
       !$hubStream.dashboard.voice.muted
     );

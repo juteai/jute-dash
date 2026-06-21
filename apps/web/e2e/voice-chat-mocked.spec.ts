@@ -132,3 +132,38 @@ test('dashboard wake listening asks the browser for microphone access', async ({
     )
     .toBe(true);
 });
+
+test('chat keeps wake listening active', async ({ page }) => {
+  await page.addInitScript(() => {
+    (
+      window as Window & typeof globalThis & { __juteMicRequested?: boolean }
+    ).__juteMicRequested = false;
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: async () => {
+          (
+            window as Window &
+              typeof globalThis & { __juteMicRequested?: boolean }
+          ).__juteMicRequested = true;
+          throw new Error('Microphone permission denied.');
+        }
+      }
+    });
+  });
+  await createMockHub(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open chat' }).click();
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as Window &
+              typeof globalThis & { __juteMicRequested?: boolean }
+          ).__juteMicRequested
+      )
+    )
+    .toBe(true);
+});
