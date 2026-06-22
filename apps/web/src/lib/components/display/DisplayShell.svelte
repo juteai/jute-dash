@@ -224,10 +224,24 @@
     void layoutStore.initCatalog(fetch);
     hubStream.connect(fetch);
     void retryDashboard();
+    const unsubscribeWakeCapture = hubStream.subscribe((state) => {
+      const conversationId = state.voiceConversationId;
+      if (
+        conversationId &&
+        state.voiceOrbState === 'listening' &&
+        state.voiceMessages.length === 0 &&
+        lastWakeCaptureConversationId !== conversationId &&
+        !browserVoiceCapturing
+      ) {
+        lastWakeCaptureConversationId = conversationId;
+        window.setTimeout(() => void startChatVoiceCapture(), 0);
+      }
+    });
 
     return () => {
       mounted = false;
       query.removeEventListener('change', updateTheme);
+      unsubscribeWakeCapture();
       clearLongPress();
       hubStream.disconnect();
       if (slideshowTimer) {
@@ -299,18 +313,6 @@
     ($hubStream.voiceConversationId || $hubStream.voiceOrbState === 'listening')
   ) {
     navigationStore.openChat();
-  }
-  $: if (
-    mounted &&
-    browser &&
-    $hubStream.voiceConversationId &&
-    $hubStream.voiceOrbState === 'listening' &&
-    $hubStream.voiceMessages.length === 0 &&
-    lastWakeCaptureConversationId !== $hubStream.voiceConversationId &&
-    !browserVoiceCapturing
-  ) {
-    lastWakeCaptureConversationId = $hubStream.voiceConversationId;
-    void startChatVoiceCapture();
   }
 
   function openSettings(section: typeof activeSettingsSection = 'household') {
