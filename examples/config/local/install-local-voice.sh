@@ -8,7 +8,7 @@ Usage: ./install-local-voice.sh [--check]
 Installs local voice command tools into .jute/local-voice-tools:
   - openWakeWord Python package plus a Jute-compatible CLI wrapper
   - Piper TTS Python package plus a default Amy voice model
-  - gowhisper CLI when Go is available
+  - gowhisper CLI from the upstream release binary
 
 Options:
   --check   Print detected tool paths and exit without installing.
@@ -26,6 +26,7 @@ PIPER_BASE_URL="${JUTE_PIPER_VOICE_BASE_URL:-https://huggingface.co/rhasspy/pipe
 PIPER_MODEL="$MODEL_DIR/$PIPER_VOICE.onnx"
 PIPER_CONFIG="$PIPER_MODEL.json"
 ENV_FILE="$TOOLS_DIR/local-voice.env"
+GOWHISPER_VERSION="${JUTE_GOWHISPER_VERSION:-v0.0.39}"
 
 case "${1:-}" in
   --help|-h)
@@ -34,7 +35,9 @@ case "${1:-}" in
     ;;
   --check)
     for bin in openwakeword gowhisper piper; do
-      if command -v "$bin" >/dev/null 2>&1; then
+      if [ -x "$BIN_DIR/$bin" ]; then
+        printf '%s: %s\n' "$bin" "$BIN_DIR/$bin"
+      elif command -v "$bin" >/dev/null 2>&1; then
         printf '%s: %s\n' "$bin" "$(command -v "$bin")"
       else
         printf '%s: missing\n' "$bin"
@@ -67,6 +70,45 @@ download() {
   fi
   echo "Downloading $(basename "$out")..."
   curl -L --fail "$url" -o "$out"
+}
+
+gowhisper_asset() {
+  os=$(uname -s | tr '[:upper:]' '[:lower:]')
+  arch=$(uname -m)
+  case "$os" in
+    darwin) os=darwin ;;
+    linux) os=linux ;;
+    *) return 1 ;;
+  esac
+  case "$arch" in
+    arm64|aarch64) arch=arm64 ;;
+    x86_64|amd64) arch=amd64 ;;
+    *) return 1 ;;
+  esac
+  printf 'gowhisper-%s-%s' "$os" "$arch"
+}
+
+install_gowhisper() {
+  if [ -x "$BIN_DIR/gowhisper" ]; then
+    return
+  fi
+  asset=$(gowhisper_asset) || {
+    echo "No gowhisper release binary for this platform; set JUTE_GO_WHISPER_BIN" >&2
+    return
+  }
+  url="https://github.com/mutablelogic/go-whisper/releases/download/$GOWHISPER_VERSION/$asset"
+  tmp="$BIN_DIR/gowhisper.tmp"
+  echo "Downloading gowhisper $GOWHISPER_VERSION..."
+  if curl -L --fail "$url" -o "$tmp"; then
+    mv "$tmp" "$BIN_DIR/gowhisper"
+    chmod +x "$BIN_DIR/gowhisper"
+    if command -v xattr >/dev/null 2>&1; then
+      xattr -d com.apple.quarantine "$BIN_DIR/gowhisper" >/dev/null 2>&1 || true
+    fi
+    return
+  fi
+  rm -f "$tmp"
+  echo "gowhisper download failed; set JUTE_GO_WHISPER_BIN or install it manually" >&2
 }
 
 need curl
@@ -105,12 +147,7 @@ if [ ! -x "$BIN_DIR/piper" ] && [ -x "$VENV_DIR/bin/piper" ]; then
   ln -sf "$VENV_DIR/bin/piper" "$BIN_DIR/piper"
 fi
 
-if command -v go >/dev/null 2>&1 && [ ! -x "$BIN_DIR/gowhisper" ]; then
-  echo "Installing gowhisper..."
-  GOBIN="$BIN_DIR" go install github.com/mutablelogic/go-whisper/cmd/gowhisper@latest || {
-    echo "gowhisper install failed; install it manually or set JUTE_GO_WHISPER_BIN" >&2
-  }
-fi
+install_gowhisper
 
 download "$PIPER_BASE_URL/$PIPER_VOICE.onnx" "$PIPER_MODEL"
 download "$PIPER_BASE_URL/$PIPER_VOICE.onnx.json" "$PIPER_CONFIG"

@@ -14,7 +14,7 @@ cd examples/config/local
 make setup
 ```
 
-The installer creates `.jute/local-voice-tools`, installs Python command tools in a local virtualenv, downloads a Piper voice, writes a small `openwakeword` CLI wrapper, and attempts to install `gowhisper` into the same tool directory.
+The installer creates `.jute/local-voice-tools`, installs Python command tools in a local virtualenv, downloads a Piper voice, writes a small `openwakeword` CLI wrapper, and downloads the upstream `gowhisper` CLI binary into the same tool directory.
 
 It does not start a wake/STT/TTS server. The hub invokes each tool as a command provider for one request. The local Makefile automatically sources `.jute/local-voice-tools/local-voice.env` when it runs the hub.
 
@@ -50,6 +50,7 @@ Use these when tools are already installed elsewhere:
 JUTE_OPENWAKEWORD_BIN=/absolute/path/to/openwakeword
 JUTE_OPENWAKEWORD_MODEL=/absolute/path/to/hey-jute.onnx
 JUTE_GO_WHISPER_BIN=/absolute/path/to/gowhisper
+JUTE_GOWHISPER_VERSION=v0.0.39
 JUTE_PIPER_BIN=/absolute/path/to/piper
 JUTE_PIPER_MODEL=/absolute/path/to/voice.onnx
 ```
