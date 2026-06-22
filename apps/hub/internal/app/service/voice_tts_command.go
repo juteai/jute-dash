@@ -1,10 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -45,10 +47,44 @@ func (p CommandTTSProvider) Synthesize(ctx context.Context, req TTSRequest) (TTS
 	//nolint:gosec // command providers require explicit opt-in and absolute manifest commands.
 	cmd := exec.CommandContext(commandCtx, p.Command, args...)
 	cmd.Stdin = strings.NewReader(req.Text)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	started := time.Now()
+	slog.Default().DebugContext(ctx, "voice tts command started",
+		"command", p.Command,
+		"provider_id", p.ProviderID,
+		"voice_id", voiceFirstNonEmpty(req.VoiceID, p.VoiceID),
+		"locale", voiceFirstNonEmpty(req.Locale, p.Locale),
+		"text_bytes", len(req.Text),
+	)
 	output, err := cmd.Output()
-	if commandCtx.Err() != nil || err != nil {
+	duration := time.Since(started)
+	if commandCtx.Err() != nil {
+		slog.Default().WarnContext(ctx, "voice tts command timed out",
+			"command", p.Command,
+			"provider_id", p.ProviderID,
+			"duration_ms", duration.Milliseconds(),
+			"error", commandCtx.Err(),
+			"stderr", voiceLogText(stderr.String()),
+		)
 		return TTSAudioResult{}, errCommandTTSProviderUnavailable
 	}
+	if err != nil {
+		slog.Default().WarnContext(ctx, "voice tts command failed",
+			"command", p.Command,
+			"provider_id", p.ProviderID,
+			"duration_ms", duration.Milliseconds(),
+			"error", err,
+			"stderr", voiceLogText(stderr.String()),
+		)
+		return TTSAudioResult{}, errCommandTTSProviderUnavailable
+	}
+	slog.Default().DebugContext(ctx, "voice tts command completed",
+		"command", p.Command,
+		"provider_id", p.ProviderID,
+		"duration_ms", duration.Milliseconds(),
+		"stdout_bytes", len(output),
+	)
 	return decodeCommandTTSOutput(output, p, req)
 }
 

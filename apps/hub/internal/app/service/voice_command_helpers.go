@@ -1,7 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -55,10 +57,45 @@ func runAudioCommand(
 	defer cancel()
 	//nolint:gosec // command providers require explicit settings opt-in and absolute manifest commands.
 	cmd := exec.CommandContext(commandCtx, command, commandArgs(args, tempPath, modelID, language)...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	started := time.Now()
+	slog.Default().DebugContext(ctx, "voice command started",
+		"command", command,
+		"model_id", modelID,
+		"language", language,
+		"frames", len(utterance.Frames),
+		"audio_ms", utteranceDuration(utterance).Milliseconds(),
+		"pcm_bytes", len(flattenUtterancePCM(utterance)),
+	)
 	output, err := cmd.Output()
+	duration := time.Since(started)
 	if commandCtx.Err() != nil {
+		slog.Default().WarnContext(ctx, "voice command timed out",
+			"command", command,
+			"model_id", modelID,
+			"duration_ms", duration.Milliseconds(),
+			"error", commandCtx.Err(),
+			"stderr", voiceLogText(stderr.String()),
+		)
 		return nil, commandCtx.Err()
 	}
+	if err != nil {
+		slog.Default().WarnContext(ctx, "voice command failed",
+			"command", command,
+			"model_id", modelID,
+			"duration_ms", duration.Milliseconds(),
+			"error", err,
+			"stderr", voiceLogText(stderr.String()),
+		)
+		return output, err
+	}
+	slog.Default().DebugContext(ctx, "voice command completed",
+		"command", command,
+		"model_id", modelID,
+		"duration_ms", duration.Milliseconds(),
+		"stdout_bytes", len(output),
+	)
 	return output, err
 }
 
@@ -71,4 +108,23 @@ func commandArgs(args []string, inputPath string, modelID string, language strin
 		out = append(out, arg)
 	}
 	return out
+}
+
+func utteranceDuration(utterance CapturedUtterance) time.Duration {
+	if !utterance.StartedAt.IsZero() && !utterance.EndedAt.IsZero() {
+		return utterance.EndedAt.Sub(utterance.StartedAt)
+	}
+	var total time.Duration
+	for _, frame := range utterance.Frames {
+		total += frame.Duration
+	}
+	return total
+}
+
+func voiceLogText(value string) string {
+	value = sanitizeText(strings.TrimSpace(value))
+	if len(value) > 500 {
+		return value[:500] + "..."
+	}
+	return value
 }

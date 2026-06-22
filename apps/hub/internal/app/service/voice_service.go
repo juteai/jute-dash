@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -86,10 +87,12 @@ func NewLocalVoiceService(
 
 func (s *LocalVoiceService) Start(ctx context.Context) error {
 	if s.capture == nil {
+		slog.Default().WarnContext(ctx, "voice runtime cannot start", "reason", "audio capture unavailable")
 		s.setError("audio capture is unavailable")
 		return errors.New("audio capture is unavailable")
 	}
 	if s.vad == nil {
+		slog.Default().WarnContext(ctx, "voice runtime cannot start", "reason", "voice activity detector unavailable")
 		s.setError("voice activity detector is unavailable")
 		return errors.New("voice activity detector is unavailable")
 	}
@@ -114,6 +117,7 @@ func (s *LocalVoiceService) Start(ctx context.Context) error {
 	s.mu.Unlock()
 
 	frames, errs := s.capture.Capture(runCtx)
+	slog.Default().InfoContext(ctx, "voice runtime started", "device_id", s.deviceID())
 	s.emitState(VoiceState(enabled, muted))
 	go s.run(runCtx, frames, errs, reset)
 	return nil
@@ -131,6 +135,7 @@ func (s *LocalVoiceService) Stop() {
 	if finished != nil {
 		<-finished
 	}
+	slog.Default().Info("voice runtime stopped", "device_id", s.deviceID())
 }
 
 func (s *LocalVoiceService) Mute() {
@@ -214,6 +219,7 @@ func (s *LocalVoiceService) run(
 			close(done)
 		case err, ok := <-errs:
 			if ok && err != nil {
+				slog.Default().WarnContext(ctx, "voice audio capture failed", "error", voiceLogText(err.Error()))
 				s.setError("audio capture failed")
 				return
 			}
@@ -222,6 +228,8 @@ func (s *LocalVoiceService) run(
 				select {
 				case err, ok := <-errs:
 					if ok && err != nil {
+						slog.Default().
+							WarnContext(ctx, "voice audio capture failed", "error", voiceLogText(err.Error()))
 						s.setError("audio capture failed")
 						return
 					}
@@ -292,10 +300,34 @@ func (s *LocalVoiceService) finishUtterance(frames []AudioFrame) {
 	}
 	if s.wake != nil {
 		detection, err := s.wake.DetectWake(context.Background(), utterance)
-		if err != nil || !detection.Detected {
+		if err != nil {
+			slog.Default().Warn("voice wake detection failed",
+				"device_id", s.deviceID(),
+				"frames", len(utterance.Frames),
+				"audio_ms", utteranceDuration(utterance).Milliseconds(),
+				"error", err,
+			)
 			s.emitStateIfDifferent(VoiceState(true, false))
 			return
 		}
+		if !detection.Detected {
+			slog.Default().Debug("voice wake not detected",
+				"device_id", s.deviceID(),
+				"provider_id", detection.ProviderID,
+				"model_id", detection.ModelID,
+				"confidence", detection.Confidence,
+				"frames", len(utterance.Frames),
+				"audio_ms", utteranceDuration(utterance).Milliseconds(),
+			)
+			s.emitStateIfDifferent(VoiceState(true, false))
+			return
+		}
+		slog.Default().Info("voice wake detected",
+			"device_id", s.deviceID(),
+			"provider_id", detection.ProviderID,
+			"model_id", detection.ModelID,
+			"confidence", detection.Confidence,
+		)
 		if s.emitter != nil {
 			conversationID := newID("voice-conversation")
 			s.emitter.EmitVoiceWakeDetected(s.deviceID(), conversationID)

@@ -33,7 +33,4 @@ fi
 
 model_arg="${JUTE_OPENWAKEWORD_MODEL:-$model}"
 output=$("$bin" --model "$model_arg" --input "$input" --output-format json)
-case "$output" in
-  *'"detected":true'*|*true*) printf '{"detected":true,"providerId":"local-openwakeword","modelId":"%s","confidence":1}\n' "$model" ;;
-  *) printf '{"detected":false,"providerId":"local-openwakeword","modelId":"%s","confidence":0}\n' "$model" ;;
-esac
+printf '%s\n' "$output"
