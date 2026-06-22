@@ -15,6 +15,11 @@ make setup
 ```
 
 The installer creates `.jute/local-voice-tools`, installs Python command tools in a local virtualenv, downloads a Piper voice, writes a small `openwakeword` CLI wrapper, and downloads the upstream `gowhisper` CLI binary into the same tool directory.
+`make setup` fails if a required real local voice tool is missing. Re-check an existing install with:
+
+```sh
+make voice-check
+```
 
 It does not start a wake/STT/TTS server. The hub invokes each tool as a command provider for one request. The local Makefile automatically sources `.jute/local-voice-tools/local-voice.env` when it runs the hub.
 
@@ -68,7 +73,8 @@ voice:
 
 - `make run-kronk` uses real local command providers after `make setup`.
 - `make run-kronk-voice-smoke` is still the fastest routing check.
-- If provider selections look stale, run `make clean` in `examples/config/local`.
+- Browser microphone capture requires user permission. Open the dashboard, use the chat microphone button once, and grant microphone access; hands-free browser wake cannot start before the browser grants mic access.
+- If provider selections look stale, run `make clean` in `examples/config/local`. Voice provider settings are seeded into the local SQLite database, so YAML changes do not overwrite an existing `.jute/local-dev` database.
 
 References:
 

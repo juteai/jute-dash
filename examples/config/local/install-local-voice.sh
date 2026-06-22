@@ -11,7 +11,7 @@ Installs local voice command tools into .jute/local-voice-tools:
   - gowhisper CLI from the upstream release binary
 
 Options:
-  --check   Print detected tool paths and exit without installing.
+  --check   Verify detected local voice tools and exit without installing.
   --help    Show this help.
 EOF
 }
@@ -34,16 +34,31 @@ case "${1:-}" in
     exit 0
     ;;
   --check)
+    ok=1
     for bin in openwakeword gowhisper piper; do
       if [ -x "$BIN_DIR/$bin" ]; then
-        printf '%s: %s\n' "$bin" "$BIN_DIR/$bin"
+        path="$BIN_DIR/$bin"
       elif command -v "$bin" >/dev/null 2>&1; then
-        printf '%s: %s\n' "$bin" "$(command -v "$bin")"
+        path="$(command -v "$bin")"
       else
         printf '%s: missing\n' "$bin"
+        ok=0
+        continue
+      fi
+      if "$path" --help >/dev/null 2>&1; then
+        printf '%s: %s\n' "$bin" "$path"
+      else
+        printf '%s: broken (%s --help failed)\n' "$bin" "$path"
+        ok=0
       fi
     done
-    exit 0
+    if [ -f "$PIPER_MODEL" ] && [ -f "$PIPER_CONFIG" ]; then
+      printf 'piper-model: %s\n' "$PIPER_MODEL"
+    else
+      printf 'piper-model: missing (%s and %s)\n' "$PIPER_MODEL" "$PIPER_CONFIG"
+      ok=0
+    fi
+    exit $((1 - ok))
     ;;
   "")
     ;;
@@ -94,7 +109,7 @@ install_gowhisper() {
   fi
   asset=$(gowhisper_asset) || {
     echo "No gowhisper release binary for this platform; set JUTE_GO_WHISPER_BIN" >&2
-    return
+    exit 1
   }
   url="https://github.com/mutablelogic/go-whisper/releases/download/$GOWHISPER_VERSION/$asset"
   tmp="$BIN_DIR/gowhisper.tmp"
@@ -109,6 +124,7 @@ install_gowhisper() {
   fi
   rm -f "$tmp"
   echo "gowhisper download failed; set JUTE_GO_WHISPER_BIN or install it manually" >&2
+  exit 1
 }
 
 need curl
@@ -121,8 +137,9 @@ fi
 "$VENV_DIR/bin/python" -m pip install --upgrade pip
 "$VENV_DIR/bin/python" -m pip install openwakeword piper-tts
 
-cat > "$BIN_DIR/openwakeword" <<'PY'
-#!/usr/bin/env python3
+{
+printf '#!%s\n' "$VENV_DIR/bin/python"
+cat <<'PY'
 import argparse
 import json
 from openwakeword.model import Model
@@ -141,6 +158,7 @@ scores = predictions if isinstance(predictions, dict) else {}
 confidence = max([float(v) for v in scores.values()] or [0.0])
 print(json.dumps({"detected": confidence >= 0.5, "confidence": confidence}))
 PY
+} > "$BIN_DIR/openwakeword"
 chmod +x "$BIN_DIR/openwakeword"
 
 if [ ! -x "$BIN_DIR/piper" ] && [ -x "$VENV_DIR/bin/piper" ]; then

@@ -17,6 +17,12 @@ Install local voice tools first:
 make setup
 ```
 
+Verify the installed tools later with:
+
+```sh
+make voice-check
+```
+
 Then run the Hub and the web dashboard without starting any agent:
 
 ```sh
@@ -35,7 +41,7 @@ The browser may ask you to accept the local self-signed certificate the first ti
 make run-http
 ```
 
-`make run` uses `.jute/local-dev` and seeds local voice provider packs for wake, STT, and TTS. By default, the local examples select command-backed local providers: openWakeWord wake, go-whisper STT, and Piper TTS. The Makefile automatically sources `.jute/local-voice-tools/local-voice.env` when it exists, so `make setup` is enough for normal local runs.
+`make run` uses `.jute/local-dev` and seeds local voice provider packs for wake, STT, and TTS. By default, the local examples select command-backed local providers: openWakeWord wake, go-whisper STT, and Piper TTS. The Makefile automatically sources `.jute/local-voice-tools/local-voice.env` when it exists, so `make setup` is enough for normal local runs. Real local wake uses openWakeWord's built-in `hey jarvis` model unless you provide a trained Hey Jute model.
 
 See [Local Voice Development](../../../docs/developer/local-voice-dev.md) for real wake/STT/TTS setup.
 

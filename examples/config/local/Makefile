@@ -7,12 +7,16 @@ JUTE_CONFIG ?= ../../examples/config/local/config.yaml
 JUTE_VOICE_ENV ?= ../../../.jute/local-voice-tools/local-voice.env
 JUTE_VOICE_SMOKE_TEXT ?= hello from jute voice
 
-.PHONY: setup install-local-voice run run-http run-mock run-kronk run-kronk-voice-smoke run-kronk-whisper run-kronk-local-voice run-ollama run-gemini clean
+.PHONY: setup install-local-voice voice-check run run-http run-mock run-kronk run-kronk-voice-smoke run-kronk-whisper run-kronk-local-voice run-ollama run-gemini clean
 
-setup: install-local-voice
+setup: install-local-voice voice-check
 
 install-local-voice:
 	@./install-local-voice.sh
+
+voice-check:
+	@if [ -f "$(JUTE_VOICE_ENV)" ]; then source "$(JUTE_VOICE_ENV)"; fi; \
+	./install-local-voice.sh --check
 
 # 1. Run Jute Hub + Svelte Web Dashboard standalone (without launching an agent)
 run:
