@@ -120,6 +120,16 @@ func run() error {
 	// Redirect standard library log package output to slog
 	log.SetFlags(0)
 	log.SetOutput(slog.NewLogLogger(logHandler, slog.LevelInfo).Writer())
+	logger.Info("jute hub initialized",
+		"version", version,
+		"data_dir", dataDir,
+		"config_path", strings.TrimSpace(*configPath),
+		"config_provided", configProvided,
+		"store_seeded", result.Seeded,
+		"setup_complete", result.Setup.Complete,
+		"voice_enabled", cfg.Voice.Enabled,
+		"mcp_enabled", cfg.MCP.Enabled,
+	)
 
 	displayActions := displayactions.NewDispatcher()
 	handler := app.NewServerWithSecrets(
@@ -133,8 +143,6 @@ func run() error {
 		displayActions,
 		runtimeStore.SecretVault,
 	)
-	logger.Info("jute data directory", "path", dataDir)
-
 	baseCtx, cancelBase := context.WithCancel(context.Background())
 	defer cancelBase()
 

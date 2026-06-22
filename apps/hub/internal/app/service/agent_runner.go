@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -116,6 +117,14 @@ func (runner *Runner) Run(
 	if err != nil {
 		return ConversationDetail{}, err
 	}
+	started := time.Now()
+	slog.Default().InfoContext(ctx, "agent turn started",
+		"conversation_id", conversationID,
+		"agent_id", turn.agent.ID,
+		"streaming", turn.streaming,
+		"protocol", turn.sendRequest.ProtocolBinding,
+		"text_bytes", len(turn.sendRequest.Text),
+	)
 
 	if callback != nil {
 		_ = callback(Event{
@@ -201,17 +210,45 @@ func (runner *Runner) Run(
 						Detail:         &detail,
 					})
 				}
+				slog.Default().InfoContext(ctx, "agent turn completed",
+					"conversation_id", activeConversationID,
+					"agent_id", turn.agent.ID,
+					"task_id", taskID,
+					"streaming", true,
+					"status", status,
+					"duration_ms", time.Since(started).Milliseconds(),
+					"assistant_text_bytes", streamText.Len(),
+				)
 				return detail, nil
 			}
 
 			if streamedDelta {
+				slog.Default().WarnContext(ctx, "agent streaming turn failed after delta",
+					"conversation_id", activeConversationID,
+					"agent_id", turn.agent.ID,
+					"task_id", taskID,
+					"duration_ms", time.Since(started).Milliseconds(),
+					"error", err,
+				)
 				return ConversationDetail{}, err
 			}
+			slog.Default().DebugContext(ctx, "agent streaming turn fell back to non-streaming",
+				"conversation_id", conversationID,
+				"agent_id", turn.agent.ID,
+				"error", err,
+			)
 		}
 	}
 
 	result, err := runner.opts.Messages.SendMessage(ctx, turn.sendRequest)
 	if err != nil {
+		slog.Default().WarnContext(ctx, "agent turn failed",
+			"conversation_id", conversationID,
+			"agent_id", turn.agent.ID,
+			"streaming", false,
+			"duration_ms", time.Since(started).Milliseconds(),
+			"error", err,
+		)
 		return ConversationDetail{}, err
 	}
 
@@ -234,6 +271,15 @@ func (runner *Runner) Run(
 			Detail:         &detail,
 		})
 	}
+	slog.Default().InfoContext(ctx, "agent turn completed",
+		"conversation_id", result.ConversationID,
+		"agent_id", turn.agent.ID,
+		"task_id", result.TaskID,
+		"streaming", false,
+		"status", result.Status,
+		"duration_ms", time.Since(started).Milliseconds(),
+		"assistant_text_bytes", len(result.Text),
+	)
 	return detail, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -78,8 +79,23 @@ func (s *Server) handleVoiceAudio(w http.ResponseWriter, r *http.Request) {
 		httphelper.WriteError(w, http.StatusBadRequest, "unsupported voice audio format")
 		return
 	}
+	requireWake := r.URL.Query().Get("wake") == "true"
+	slog.Default().DebugContext(r.Context(), "voice audio received",
+		"bytes", len(pcm),
+		"sample_rate", sampleRate,
+		"channels", channels,
+		"wake_required", requireWake,
+		"device_profile_id", strings.TrimSpace(r.Header.Get("X-Jute-Device-Profile-Id")),
+		"device_id", strings.TrimSpace(r.Header.Get("X-Jute-Device-Id")),
+		"conversation_id", strings.TrimSpace(r.Header.Get("X-Jute-Conversation-Id")),
+	)
 	utterance := service.UtteranceFromPCM(pcm, sampleRate, channels, time.Now().UTC(), 20*time.Millisecond)
 	if !utteranceHasSpeech(utterance, service.EnergyVAD{Threshold: s.cfg.Voice.VADThreshold}) {
+		slog.Default().DebugContext(r.Context(), "voice audio rejected without speech",
+			"bytes", len(pcm),
+			"sample_rate", sampleRate,
+			"vad_threshold", s.cfg.Voice.VADThreshold,
+		)
 		httphelper.WriteError(w, http.StatusBadRequest, "speech is required")
 		return
 	}
@@ -89,13 +105,22 @@ func (s *Server) handleVoiceAudio(w http.ResponseWriter, r *http.Request) {
 		ConversationID:  strings.TrimSpace(r.Header.Get("X-Jute-Conversation-Id")),
 		AgentID:         strings.TrimSpace(r.Header.Get("X-Jute-Agent-Id")),
 	}
-	if r.URL.Query().Get("wake") == "true" {
+	if requireWake {
 		detected, err := s.detectWake(r.Context(), req, utterance)
 		if err != nil {
+			slog.Default().WarnContext(r.Context(), "voice audio wake detection unavailable",
+				"device_profile_id", req.DeviceProfileID,
+				"device_id", req.DeviceID,
+				"error", err,
+			)
 			httphelper.WriteError(w, http.StatusInternalServerError, "wake detection is unavailable")
 			return
 		}
 		if !detected {
+			slog.Default().DebugContext(r.Context(), "voice audio wake not detected",
+				"device_profile_id", req.DeviceProfileID,
+				"device_id", req.DeviceID,
+			)
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -162,6 +187,13 @@ func (s *Server) beginWakeConversation(
 	}
 	agentID := s.voiceAgentID(req.AgentID, settings)
 	conversationID := session.ConversationID
+	slog.Default().InfoContext(ctx, "voice wake conversation started",
+		"conversation_id", conversationID,
+		"agent_id", agentID,
+		"device_profile_id", voiceSourceDeviceProfileID(req, settings),
+		"device_id", deviceID(req),
+		"new_session", started,
+	)
 	if s.voiceDispatcher != nil {
 		s.voiceDispatcher.EmitVoiceWakeDetected(deviceID(req), conversationID)
 		s.voiceDispatcher.EmitVoiceStateChanged(deviceID(req), service.VoiceStatePayload{
@@ -205,9 +237,26 @@ func (s *Server) detectWake(
 		return false, err
 	}
 	detection, err := wake.DetectWake(ctx, utterance)
-	if err != nil || !detection.Detected {
+	if err != nil {
 		return false, err
 	}
+	if !detection.Detected {
+		slog.Default().DebugContext(ctx, "voice wake not detected",
+			"device_profile_id", req.DeviceProfileID,
+			"device_id", req.DeviceID,
+			"provider_id", detection.ProviderID,
+			"model_id", detection.ModelID,
+			"confidence", detection.Confidence,
+		)
+		return false, nil
+	}
+	slog.Default().InfoContext(ctx, "voice wake detected",
+		"device_profile_id", req.DeviceProfileID,
+		"device_id", req.DeviceID,
+		"provider_id", detection.ProviderID,
+		"model_id", detection.ModelID,
+		"confidence", detection.Confidence,
+	)
 	return true, nil
 }
 
@@ -293,13 +342,35 @@ func (s *Server) submitVoiceUtterance(
 	if err != nil {
 		return VoiceFinalTranscriptResponse{}, err
 	}
+	started := time.Now()
+	slog.Default().DebugContext(ctx, "voice stt started",
+		"device_profile_id", req.DeviceProfileID,
+		"device_id", req.DeviceID,
+		"frames", len(utterance.Frames),
+		"audio_ms", utterance.EndedAt.Sub(utterance.StartedAt).Milliseconds(),
+	)
 	result, err := sttProvider.Transcribe(ctx, utterance)
 	if err != nil {
+		slog.Default().WarnContext(ctx, "voice stt failed",
+			"device_profile_id", req.DeviceProfileID,
+			"device_id", req.DeviceID,
+			"duration_ms", time.Since(started).Milliseconds(),
+			"error", err,
+		)
 		return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
 			status:  http.StatusServiceUnavailable,
 			message: "transcription_failed",
 		}
 	}
+	slog.Default().InfoContext(ctx, "voice stt completed",
+		"device_profile_id", req.DeviceProfileID,
+		"device_id", req.DeviceID,
+		"provider_id", result.ProviderID,
+		"model_id", result.ModelID,
+		"language", result.Language,
+		"duration_ms", time.Since(started).Milliseconds(),
+		"transcript_bytes", len(result.Text),
+	)
 	transcript, err := service.FinalTranscriptFromSTT(result, req.DeviceProfileID, req.DeviceID)
 	if err != nil {
 		return VoiceFinalTranscriptResponse{}, err
@@ -406,6 +477,14 @@ func (s *Server) submitFinalTranscript(
 	}
 	conversationID := session.ConversationID
 	agentID := s.voiceAgentID(req.AgentID, settings)
+	slog.Default().InfoContext(ctx, "voice final transcript routed",
+		"conversation_id", conversationID,
+		"agent_id", agentID,
+		"device_profile_id", voiceSourceDeviceProfileID(req, settings),
+		"device_id", deviceID(req),
+		"new_session", started,
+		"text_bytes", len(req.Text),
+	)
 
 	if req.wakeDetected {
 		s.voiceDispatcher.EmitVoiceWakeDetected(deviceID(req), conversationID)
@@ -441,6 +520,12 @@ func (s *Server) submitFinalTranscript(
 		s.voiceAgentEventCallback(deviceID(req)),
 	)
 	if err != nil {
+		slog.Default().WarnContext(ctx, "voice agent turn failed",
+			"conversation_id", conversationID,
+			"agent_id", agentID,
+			"device_id", deviceID(req),
+			"error", err,
+		)
 		s.voiceRuntime.End(conversationID)
 		s.voiceDispatcher.EmitConversationEvent(
 			service.EventConversationEnded,
@@ -456,6 +541,13 @@ func (s *Server) submitFinalTranscript(
 
 	session = s.voiceRuntime.CompleteTurn(conversationID, settings)
 	if service.ConversationComplete(session) {
+		slog.Default().InfoContext(ctx, "voice conversation completed",
+			"conversation_id", conversationID,
+			"agent_id", agentID,
+			"device_id", deviceID(req),
+			"turns", session.Turns,
+			"reason", "followup_limit_reached",
+		)
 		s.voiceRuntime.End(conversationID)
 		s.voiceDispatcher.EmitConversationEvent(
 			service.EventConversationEnded,
@@ -485,6 +577,13 @@ func (s *Server) submitFinalTranscript(
 			"turns":     session.Turns,
 			"maxTurns":  service.MaxConversationTurns,
 		},
+	)
+	slog.Default().InfoContext(ctx, "voice follow-up listening",
+		"conversation_id", conversationID,
+		"agent_id", agentID,
+		"device_id", deviceID(req),
+		"turns", session.Turns,
+		"expires_at", session.ExpiresAt.Format(time.RFC3339Nano),
 	)
 
 	return VoiceFinalTranscriptResponse{

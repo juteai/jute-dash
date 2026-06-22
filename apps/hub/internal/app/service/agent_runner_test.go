@@ -1,7 +1,11 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 
 	a2aclient "jute-dash/apps/hub/internal/pkg/a2a"
@@ -66,6 +70,48 @@ func TestRunnerRunSendsTrimmedTextAndEmitsTurnEvents(t *testing.T) {
 	}
 	if len(events) != 2 || events[0].Kind != EventTurnStarted || events[1].Kind != EventTurnCompleted {
 		t.Fatalf("unexpected events: %+v", events)
+	}
+}
+
+func TestRunnerRunLogsAgentFailure(t *testing.T) {
+	client := a2aclient.NewInMemoryClient()
+	client.StubSendMessage(a2aclient.SendMessageResult{}, errors.New("agent down"))
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	runner := NewRunner(RunnerOptions{
+		GetRegistry: func() registry.Registry {
+			return registry.New([]registry.AgentConfig{{
+				ID:              "agent-1",
+				Name:            "Agent One",
+				EndpointURL:     "http://agent.example/a2a",
+				ProtocolBinding: a2aclient.ProtocolJSONRPC,
+				Enabled:         true,
+			}})
+		},
+		GetAgentConfig: func(id string) (AgentConfig, bool) {
+			return AgentConfig{ID: id, Name: "Agent One"}, true
+		},
+		GetAgentCardCache: func(_ context.Context, _ registry.Agent) (AgentCardCache, bool) {
+			return AgentCardCache{}, false
+		},
+		GetDashboardContext: func(_ context.Context) map[string]any { return nil },
+		Messages:            client,
+	})
+
+	_, err := runner.Run(t.Context(), "ctx-1", ConversationTurnRequest{
+		AgentID: "agent-1",
+		Text:    "hello",
+	}, nil)
+	if err == nil {
+		t.Fatal("expected agent error")
+	}
+	if got := logs.String(); !strings.Contains(got, "agent turn failed") ||
+		!strings.Contains(got, "agent-1") ||
+		strings.Contains(got, "hello") {
+		t.Fatalf("unexpected logs:\n%s", got)
 	}
 }
 
