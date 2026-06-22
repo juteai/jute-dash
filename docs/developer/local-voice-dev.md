@@ -29,6 +29,7 @@ make run-kronk
 ```
 
 By default, the local examples use openWakeWord's built-in `hey jarvis` model because this repo does not yet ship a trained "Hey Jute" wake model. Say "hey jarvis" for local real-wake testing.
+The local config starts with a `0.35` wake threshold so browser microphone chunks are less brittle during development. Override `JUTE_OPENWAKEWORD_THRESHOLD` when you need to tune local detection without editing the provider pack.
 
 To use a trained Hey Jute model:
 
@@ -45,6 +46,7 @@ Use these when tools are already installed elsewhere:
 ```sh
 JUTE_OPENWAKEWORD_BIN=/absolute/path/to/openwakeword
 JUTE_OPENWAKEWORD_MODEL=/absolute/path/to/hey-jute.onnx
+JUTE_OPENWAKEWORD_THRESHOLD=0.35
 JUTE_GO_WHISPER_BIN=/absolute/path/to/gowhisper
 JUTE_GOWHISPER_VERSION=v0.0.39
 JUTE_PIPER_BIN=/absolute/path/to/piper

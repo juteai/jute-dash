@@ -46,7 +46,7 @@ voice:
     muted-by-default: false
     wake-word-model-id: hey_jarvis
     wake-word-phrase: hey jarvis
-    wake-sensitivity: 0.5
+    wake-sensitivity: 0.35
     stt-provider-id: local-whisper-stt
     tts-provider-id: local-piper-tts
     stt-model-id: tiny.en
@@ -145,6 +145,8 @@ voice-provider-packs:
             - '{modelId}'
             - --input
             - '{inputPath}'
+            - --threshold
+            - "0.35"
       capabilities:
         streaming: false
         partial-transcripts: false
@@ -155,18 +157,18 @@ voice-provider-packs:
             - audio/wav;rate=16000
       credentials: []
       wake-word:
-        default-model-id: openwakeword-hey-jute
-        phrase: Hey Jute
+        default-model-id: hey_jarvis
+        phrase: hey jarvis
         languages:
             - en
-        sensitivity: 0.5
+        sensitivity: 0.35
         models:
             - id: hey_jarvis
               path: models/hey_jarvis.tflite
               phrase: hey jarvis
               languages:
                 - en
-              sensitivity: 0.5
+              sensitivity: 0.35
             - id: openwakeword-hey-jute
               path: models/openwakeword-hey-jute.onnx
               phrase: Hey Jute

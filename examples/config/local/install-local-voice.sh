@@ -48,10 +48,10 @@ case "${1:-}" in
       fi
       case "$bin" in
         openwakeword)
-          if "$path" --model hey_jarvis --check >/dev/null 2>&1; then
+          if "$path" --model hey_jarvis --threshold 0.35 --check >/dev/null 2>&1; then
             printf '%s: %s\n' "$bin" "$path"
           else
-            printf '%s: broken (%s --model hey_jarvis --check failed)\n' "$bin" "$path"
+            printf '%s: broken (%s --model hey_jarvis --threshold 0.35 --check failed)\n' "$bin" "$path"
             ok=0
           fi
           ;;
@@ -171,6 +171,7 @@ from openwakeword.model import Model
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", required=True)
 parser.add_argument("--input", default="")
+parser.add_argument("--threshold", type=float, default=0.5)
 parser.add_argument("--check", action="store_true")
 parser.add_argument("--output-format", default="json")
 args = parser.parse_args()
@@ -186,7 +187,7 @@ if not args.input:
 predictions = model.predict_clip(args.input)
 scores = predictions if isinstance(predictions, dict) else {}
 confidence = max([float(v) for v in scores.values()] or [0.0])
-print(json.dumps({"detected": confidence >= 0.5, "confidence": confidence}))
+print(json.dumps({"detected": confidence >= args.threshold, "confidence": confidence}))
 PY
 } > "$BIN_DIR/openwakeword"
 chmod +x "$BIN_DIR/openwakeword"
@@ -204,6 +205,7 @@ cat > "$ENV_FILE" <<EOF
 export PATH="$BIN_DIR:\$PATH"
 export JUTE_OPENWAKEWORD_BIN="$BIN_DIR/openwakeword"
 export JUTE_OPENWAKEWORD_MODEL="\${JUTE_OPENWAKEWORD_MODEL:-hey jarvis}"
+export JUTE_OPENWAKEWORD_THRESHOLD="\${JUTE_OPENWAKEWORD_THRESHOLD:-0.35}"
 export JUTE_GO_WHISPER_BIN="\${JUTE_GO_WHISPER_BIN:-$BIN_DIR/gowhisper}"
 export JUTE_PIPER_BIN="$BIN_DIR/piper"
 export JUTE_PIPER_MODEL="$PIPER_MODEL"

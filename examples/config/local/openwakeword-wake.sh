@@ -3,6 +3,7 @@ set -eu
 
 model=""
 input=""
+threshold="${JUTE_OPENWAKEWORD_THRESHOLD:-0.35}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -12,6 +13,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --input)
       input="${2:-}"
+      shift 2
+      ;;
+    --threshold)
+      threshold="${2:-}"
       shift 2
       ;;
     *)
@@ -32,5 +37,5 @@ if ! command -v "$bin" >/dev/null 2>&1; then
 fi
 
 model_arg="${JUTE_OPENWAKEWORD_MODEL:-$model}"
-output=$("$bin" --model "$model_arg" --input "$input" --output-format json)
+output=$("$bin" --model "$model_arg" --input "$input" --threshold "$threshold" --output-format json)
 printf '%s\n' "$output"
