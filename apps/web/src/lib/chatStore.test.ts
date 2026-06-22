@@ -64,6 +64,24 @@ describe('chatStore unit tests', () => {
     expect(state!.chatState).toBe('idle');
   });
 
+  it('opens chat without creating a conversation', async () => {
+    const fetcher = vi.fn();
+
+    await chatStore.openChat([createMockAgent()]);
+
+    let state: ChatStoreState | undefined;
+    const unsubscribe = chatStore.subscribe((s) => {
+      state = s;
+    });
+    unsubscribe();
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(state!.selectedAgentId).toBe('agent-1');
+    expect(state!.selectedConversationId).toBe('');
+    expect(state!.messages).toEqual([]);
+    expect(state!.chatState).toBe('idle');
+  });
+
   it('queues messages when chatState is thinking', async () => {
     // Manually force store into thinking state
     // (Simulating an active sendConversationTurn call)

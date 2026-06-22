@@ -62,12 +62,44 @@ test('dashboard wake opens chat before transcription completes', async ({
 
   await hub.emit('voice.wake_detected', {
     id: 'wake-before-stt',
+    conversationId: 'conversation-before-stt',
     payload: {}
   });
 
   await expect(
     page.getByRole('region', { name: 'Agent conversation' })
   ).toBeVisible();
+});
+
+test('wake listening without a conversation does not open chat', async ({
+  page
+}) => {
+  const hub = await createMockHub(page);
+  await page.goto('/');
+  await hub.waitForEventStream();
+
+  await hub.emit('voice.wake_detected', {
+    id: 'wake-without-conversation',
+    payload: {}
+  });
+
+  await expect(
+    page.getByRole('region', { name: 'Agent conversation' })
+  ).toHaveCount(0);
+});
+
+test('manual chat open does not create a conversation bubble', async ({
+  page
+}) => {
+  await createMockHub(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open chat' }).click();
+
+  await expect(
+    page.getByRole('region', { name: 'Agent conversation' })
+  ).toBeVisible();
+  await expect(page.getByText('Ready to start with')).toBeVisible();
+  await expect(page.getByText('New Conversation')).toHaveCount(0);
 });
 
 test('dashboard wake starts command capture in chat', async ({ page }) => {

@@ -597,11 +597,7 @@ function createChatStore() {
         assistantStatusText: ''
       }));
     },
-    openChat: async (
-      agents: Agent[],
-      agent?: Agent,
-      fetcher: typeof fetch = window.fetch
-    ) => {
+    openChat: async (agents: Agent[], agent?: Agent) => {
       let targetAgentId = '';
       let preserveCurrentConversation = false;
       update((s) => {
@@ -641,18 +637,14 @@ function createChatStore() {
         return;
       }
 
-      try {
-        const detail = await createConversation(fetcher, selectedAgent.id);
-        applyConversationDetail(detail);
-        resetDismissTimer();
-      } catch {
-        update((s) => ({
-          ...s,
-          messages: [
-            systemMessage('Jute could not start a new saved conversation.')
-          ]
-        }));
-      }
+      update((s) => ({
+        ...s,
+        selectedConversationId: '',
+        messages: [],
+        chatState: 'idle',
+        assistantStatusText: ''
+      }));
+      resetDismissTimer();
     },
     closeChat: () => {
       stopDismissTimer();

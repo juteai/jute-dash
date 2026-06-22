@@ -257,7 +257,7 @@
 
   async function openChat(agent?: Agent) {
     navigationStore.openChat();
-    await chatStore.openChat($hubStream.dashboard.agents, agent, fetch);
+    await chatStore.openChat($hubStream.dashboard.agents, agent);
   }
 
   function closeChat() {
@@ -308,10 +308,7 @@
       state
     );
   }
-  $: if (
-    mounted &&
-    ($hubStream.voiceConversationId || $hubStream.voiceOrbState === 'listening')
-  ) {
+  $: if (mounted && $hubStream.voiceConversationId) {
     navigationStore.openChat();
   }
 
