@@ -27,6 +27,7 @@ PIPER_MODEL="$MODEL_DIR/$PIPER_VOICE.onnx"
 PIPER_CONFIG="$PIPER_MODEL.json"
 ENV_FILE="$TOOLS_DIR/local-voice.env"
 GOWHISPER_VERSION="${JUTE_GOWHISPER_VERSION:-v0.0.39}"
+OPENWAKEWORD_MODEL_VERSION="${JUTE_OPENWAKEWORD_MODEL_VERSION:-v0.5.1}"
 
 case "${1:-}" in
   --help|-h)
@@ -45,12 +46,24 @@ case "${1:-}" in
         ok=0
         continue
       fi
-      if "$path" --help >/dev/null 2>&1; then
-        printf '%s: %s\n' "$bin" "$path"
-      else
-        printf '%s: broken (%s --help failed)\n' "$bin" "$path"
-        ok=0
-      fi
+      case "$bin" in
+        openwakeword)
+          if "$path" --model hey_jarvis --check >/dev/null 2>&1; then
+            printf '%s: %s\n' "$bin" "$path"
+          else
+            printf '%s: broken (%s --model hey_jarvis --check failed)\n' "$bin" "$path"
+            ok=0
+          fi
+          ;;
+        *)
+          if "$path" --help >/dev/null 2>&1; then
+            printf '%s: %s\n' "$bin" "$path"
+          else
+            printf '%s: broken (%s --help failed)\n' "$bin" "$path"
+            ok=0
+          fi
+          ;;
+      esac
     done
     if [ -f "$PIPER_MODEL" ] && [ -f "$PIPER_CONFIG" ]; then
       printf 'piper-model: %s\n' "$PIPER_MODEL"
@@ -135,7 +148,18 @@ if [ ! -x "$VENV_DIR/bin/python" ]; then
 fi
 
 "$VENV_DIR/bin/python" -m pip install --upgrade pip
-"$VENV_DIR/bin/python" -m pip install openwakeword piper-tts
+"$VENV_DIR/bin/python" -m pip install openwakeword onnxruntime piper-tts
+OPENWAKEWORD_MODEL_DIR=$("$VENV_DIR/bin/python" - <<'PY'
+import os
+import openwakeword
+print(os.path.join(os.path.dirname(os.path.abspath(openwakeword.__file__)), "resources", "models"))
+PY
+)
+mkdir -p "$OPENWAKEWORD_MODEL_DIR"
+for model in embedding_model.onnx melspectrogram.onnx hey_jarvis_v0.1.onnx; do
+  download "https://github.com/dscripka/openWakeWord/releases/download/$OPENWAKEWORD_MODEL_VERSION/$model" \
+    "$OPENWAKEWORD_MODEL_DIR/$model"
+done
 
 {
 printf '#!%s\n' "$VENV_DIR/bin/python"
@@ -146,13 +170,19 @@ from openwakeword.model import Model
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", required=True)
-parser.add_argument("--input", required=True)
+parser.add_argument("--input", default="")
+parser.add_argument("--check", action="store_true")
 parser.add_argument("--output-format", default="json")
 args = parser.parse_args()
 
 model_arg = args.model
 wakeword_models = [model_arg] if model_arg.endswith((".onnx", ".tflite")) else [model_arg.replace("_", " ")]
-model = Model(wakeword_models=wakeword_models)
+model = Model(wakeword_models=wakeword_models, inference_framework="onnx")
+if args.check:
+    print(json.dumps({"ok": True}))
+    raise SystemExit(0)
+if not args.input:
+    raise SystemExit("--input is required unless --check is used")
 predictions = model.predict_clip(args.input)
 scores = predictions if isinstance(predictions, dict) else {}
 confidence = max([float(v) for v in scores.values()] or [0.0])

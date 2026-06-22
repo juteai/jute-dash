@@ -135,7 +135,11 @@ func (s *Store) Initialize(
 		}
 		result.Seeded = true
 	}
-	if err := s.ensureDefaultVoiceSettings(ctx, config.DefaultConfig().Voice); err != nil {
+	if bootstrapProvided {
+		if err := s.reconcileVoiceBootstrap(ctx, bootstrap.Voice, bootstrap.ProviderPacks); err != nil {
+			return InitResult{}, err
+		}
+	} else if err := s.ensureDefaultVoiceSettings(ctx, config.DefaultConfig().Voice); err != nil {
 		return InitResult{}, err
 	}
 
@@ -423,6 +427,62 @@ func seedProviderPacks(
 		}
 	}
 	return nil
+}
+
+func (s *Store) reconcileVoiceBootstrap(
+	ctx context.Context,
+	voiceCfg Config,
+	packs []model.ProviderPackConfig,
+) error {
+	now := nowUTC()
+	return s.db.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		settings := SettingsDB{
+			DeviceProfileID:         DefaultDeviceProfileID,
+			Enabled:                 boolToInt(voiceCfg.Enabled),
+			Muted:                   boolToInt(voiceCfg.MutedByDefault),
+			WakeWordModelID:         voiceCfg.WakeWordModelID,
+			WakeWordPhrase:          voiceCfg.WakeWordPhrase,
+			WakeSensitivity:         voiceCfg.WakeSensitivity,
+			STTProviderID:           voiceCfg.STTProviderID,
+			TTSProviderID:           voiceCfg.TTSProviderID,
+			STTModelID:              voiceCfg.STTModelID,
+			TTSModelID:              voiceCfg.TTSModelID,
+			TTSVoiceID:              voiceCfg.TTSVoiceID,
+			TTSEnabled:              boolToInt(voiceCfg.TTSEnabled),
+			TTSLocale:               voiceCfg.TTSLocale,
+			TTSSpeed:                voiceCfg.TTSSpeed,
+			TTSVolume:               voiceCfg.TTSVolume,
+			PreferredAgentID:        voiceCfg.PreferredAgentID,
+			CloudOptIn:              boolToInt(voiceCfg.CloudOptIn),
+			CommandProvidersEnabled: boolToInt(voiceCfg.CommandProvidersEnabled),
+			SensitiveOutputPolicy:   voiceCfg.SensitiveOutputPolicy,
+			FollowupWindowSeconds:   voiceCfg.FollowupWindowSeconds,
+			MicrophoneProfile:       voiceCfg.MicrophoneProfile,
+			UpdatedAt:               now,
+		}
+		if err := tx.Save(&settings).Error; err != nil {
+			return fmt.Errorf("reconcile voice settings: %w", err)
+		}
+		for _, pack := range packs {
+			provider, err := providerPackDBFromConfig(pack, now)
+			if err != nil {
+				return err
+			}
+			var existing ProviderPackDB
+			err = tx.First(&existing, "id = ?", provider.ID).Error
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("load voice provider %s: %w", provider.ID, err)
+			}
+			if err == nil {
+				provider.InstalledAt = existing.InstalledAt
+				provider.LastActivationAt = existing.LastActivationAt
+			}
+			if err := tx.Save(&provider).Error; err != nil {
+				return fmt.Errorf("reconcile voice provider %s: %w", provider.ID, err)
+			}
+		}
+		return nil
+	})
 }
 
 func providerPackDBFromConfig(pack model.ProviderPackConfig, now string) (ProviderPackDB, error) {

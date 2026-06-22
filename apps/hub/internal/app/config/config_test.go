@@ -717,16 +717,16 @@ func assertDevHarnessWidgets(t *testing.T, cfg Config) {
 	if cfg.Home.Name == "Jute Local Dev" || cfg.Home.Name == "Jute Kronk A2A Dev" {
 		want = []widgetExpectation{
 			widget("date-time-widget", "date-time", "small", 0, 0, 4, 2, 3, 1, model.WidgetModeUI),
-			widget("weather-widget", "weather", "small", 4, 0, 4, 2, 3, 1, model.WidgetModeUI),
-			widget("assistant-chat", "chat-history", "large", 0, 4, 4, 3, 3, 1, model.WidgetModeUI),
-			widget("hacker-news", "rss", "large", 6, 3, 4, 3, 3, 1, model.WidgetModeUI),
-			widget("stocks-watchlist", "markets", "large", 8, 0, 4, 3, 3, 1, model.WidgetModeUI),
-			widget("spotify", "spotify", "medium", 0, 2, 6, 2, 4, 2, model.WidgetModeUI),
+			widget("weather-widget", "weather", "small", 8, 0, 4, 2, 3, 1, model.WidgetModeUI),
+			widget("assistant-chat", "chat-history", "large", 8, 6, 4, 3, 3, 1, model.WidgetModeUI),
+			widget("hacker-news", "rss", "large", 4, 6, 4, 3, 3, 1, model.WidgetModeUI),
+			widget("stocks-watchlist", "markets", "large", 0, 6, 4, 3, 3, 1, model.WidgetModeUI),
+			widget("spotify", "spotify", "medium", 0, 4, 6, 2, 4, 2, model.WidgetModeUI),
+			widget("timers-alarms", "timers-alarms", "medium", 4, 6, 6, 2, 3, 2, model.WidgetModeHeadless),
+			widget("calendar", "calendar", "medium", 4, 6, 6, 2, 3, 2, model.WidgetModeHeadless),
 			hiddenWidget("apple-music", "apple-music", "medium", 0, 0, 6, 2, 4, 2, model.WidgetModeUI),
 			widget("zigbee2mqtt", "zigbee2mqtt", "medium", 0, 0, 6, 2, 4, 2, model.WidgetModeUI),
 			widget("philips-hue", "philips-hue", "medium", 0, 2, 6, 2, 4, 2, model.WidgetModeUI),
-			widget("timers-alarms", "timers-alarms", "medium", 4, 6, 6, 2, 3, 2, model.WidgetModeHeadless),
-			widget("calendar", "calendar", "medium", 4, 6, 6, 2, 3, 2, model.WidgetModeHeadless),
 		}
 	} else {
 		want = []widgetExpectation{

@@ -204,6 +204,66 @@ func TestVoiceSettingsSeededFromBootstrap(t *testing.T) {
 	}
 }
 
+func TestBootstrapVoiceConfigReconcilesExistingStore(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+
+	first := DefaultConfig()
+	first.Voice.Enabled = true
+	first.Voice.STTProviderID = "local-dev-stt"
+	first.Voice.STTModelID = "dev-transcript"
+	first.ProviderPacks = []model.ProviderPackConfig{{
+		ID:      "local-stt",
+		Name:    "Old STT",
+		Version: "dev",
+		Kind:    service.ProviderKindSTT,
+		Transport: model.ProviderTransport{
+			Type:    "command",
+			Command: "/bin/sh",
+			Args:    []string{"stt.sh", "{inputPath}", "{modelId}"},
+		},
+		Caps: model.ProviderCapabilities{Offline: true, Languages: []string{"en"}},
+	}}
+	if _, err := st.Initialize(context.Background(), first, true); err != nil {
+		t.Fatalf("Initialize(first) error = %v", err)
+	}
+
+	second := first
+	second.Voice.STTProviderID = "local-whisper-stt"
+	second.Voice.STTModelID = "tiny.en"
+	second.Voice.TTSProviderID = "local-piper-tts"
+	second.Voice.TTSModelID = "piper-default"
+	second.Voice.TTSVoiceID = "piper-default"
+	second.ProviderPacks[0].Name = "New STT"
+	second.ProviderPacks[0].Version = "v2"
+
+	result, err := st.Initialize(context.Background(), second, true)
+	if err != nil {
+		t.Fatalf("Initialize(second) error = %v", err)
+	}
+	if result.Seeded {
+		t.Fatal("expected existing store not to be reseeded")
+	}
+	settings, err := st.VoiceRepo.VoiceSettings(context.Background(), "")
+	if err != nil {
+		t.Fatalf("VoiceSettings() error = %v", err)
+	}
+	if settings.STTProviderID != "local-whisper-stt" ||
+		settings.STTModelID != "tiny.en" ||
+		settings.TTSProviderID != "local-piper-tts" ||
+		settings.TTSModelID != "piper-default" ||
+		settings.TTSVoiceID != "piper-default" {
+		t.Fatalf("voice config did not reconcile stale DB settings: %+v", settings)
+	}
+	providers, err := st.VoiceRepo.VoiceProviders(context.Background())
+	if err != nil {
+		t.Fatalf("VoiceProviders() error = %v", err)
+	}
+	if len(providers) != 1 || providers[0].Name != "New STT" || providers[0].Version != "v2" {
+		t.Fatalf("provider config did not reconcile stale DB manifest: %+v", providers)
+	}
+}
+
 func TestVoiceMuteAndCancelUpdateState(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()

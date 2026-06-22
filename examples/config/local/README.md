@@ -11,7 +11,7 @@ cd examples/config/local
 ```
 
 ### Standalone Jute Dash
-Install local voice tools first:
+Install local voice tools explicitly when you want to preflight downloads:
 
 ```sh
 make setup
@@ -41,7 +41,7 @@ The browser may ask you to accept the local self-signed certificate the first ti
 make run-http
 ```
 
-`make run` uses `.jute/local-dev` and seeds local voice provider packs for wake, STT, and TTS. By default, the local examples select command-backed local providers: openWakeWord wake, go-whisper STT, and Piper TTS. The Makefile automatically sources `.jute/local-voice-tools/local-voice.env` when it exists, so `make setup` is enough for normal local runs. Real local wake uses openWakeWord's built-in `hey jarvis` model unless you provide a trained Hey Jute model.
+`make run` uses `.jute/local-dev` and wires local voice provider packs for wake, STT, and TTS. The normal run targets install or verify the local tools automatically, source `.jute/local-voice-tools/local-voice.env`, and select openWakeWord wake, go-whisper STT, and Piper TTS. Real local wake uses openWakeWord's built-in `hey jarvis` model unless you provide a trained Hey Jute model.
 
 See [Local Voice Development](../../../docs/developer/local-voice-dev.md) for real wake/STT/TTS setup.
 
@@ -58,17 +58,7 @@ Each target starts the local Jute stack and launches the respective agent module
   make run-kronk
   ```
 
-  Voice routing smoke test with deterministic dev STT:
-  ```sh
-  make run-kronk-voice-smoke
-  ```
-
-  To choose the transcript used by the dev STT shim:
-  ```sh
-  make run-kronk-voice-smoke JUTE_VOICE_SMOKE_TEXT="turn on the kitchen lights"
-  ```
-
-  Plain `make run-kronk` uses the real local voice providers after `make setup`. `make run-kronk-voice-smoke` is the deterministic no-engine routing check.
+  This uses the same real local wake, STT, and TTS providers as the other example targets.
 
 * **Ollama Agent**: Local LLM assistant using `Ollama`
   ```sh

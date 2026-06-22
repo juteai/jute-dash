@@ -1,9 +1,6 @@
 # Local Voice Development
 
-Jute has two local voice paths:
-
-- smoke test: deterministic STT text for checking wake/audio/A2A/TTS routing;
-- real local voice: openWakeWord, go-whisper, and Piper invoked as hub-owned command providers.
+Jute local examples use openWakeWord, go-whisper, and Piper as hub-owned command providers.
 
 ## Install Local Voice Tools
 
@@ -14,8 +11,8 @@ cd examples/config/local
 make setup
 ```
 
-The installer creates `.jute/local-voice-tools`, installs Python command tools in a local virtualenv, downloads a Piper voice, writes a small `openwakeword` CLI wrapper, and downloads the upstream `gowhisper` CLI binary into the same tool directory.
-`make setup` fails if a required real local voice tool is missing. Re-check an existing install with:
+The installer creates `.jute/local-voice-tools`, installs Python command tools in a local virtualenv, downloads ONNX wake assets and a Piper voice, writes a small `openwakeword` CLI wrapper, and downloads the upstream `gowhisper` CLI binary into the same tool directory.
+The normal `make run`, `make run-mock`, `make run-kronk`, `make run-ollama`, and `make run-gemini` targets install or verify these tools automatically. Re-check an existing install with:
 
 ```sh
 make voice-check
@@ -24,12 +21,6 @@ make voice-check
 It does not start a wake/STT/TTS server. The hub invokes each tool as a command provider for one request. The local Makefile automatically sources `.jute/local-voice-tools/local-voice.env` when it runs the hub.
 
 ## Run Modes
-
-Deterministic pipeline smoke:
-
-```sh
-make run-kronk-voice-smoke
-```
 
 Real local wake, STT, and TTS:
 
@@ -45,7 +36,7 @@ To use a trained Hey Jute model:
 JUTE_OPENWAKEWORD_MODEL=/absolute/path/to/hey-jute.onnx make run-kronk
 ```
 
-Then select the `openwakeword-hey-jute` wake model in Voice settings, or set `voice.wake-word-model-id` to `openwakeword-hey-jute` in `examples/config/local/config.yaml` before the local database is seeded.
+Then select the `openwakeword-hey-jute` wake model in Voice settings, or set `voice.wake-word-model-id` to `openwakeword-hey-jute` in `examples/config/local/config.yaml` and restart the local stack.
 
 ## Overrides
 
@@ -60,7 +51,7 @@ JUTE_PIPER_BIN=/absolute/path/to/piper
 JUTE_PIPER_MODEL=/absolute/path/to/voice.onnx
 ```
 
-Use Voice settings, or these YAML fields before the local database is seeded, to choose model IDs:
+Use Voice settings, or these YAML fields before startup, to choose model IDs:
 
 ```yaml
 voice:
@@ -71,10 +62,9 @@ voice:
 
 ## Notes
 
-- `make run-kronk` uses real local command providers after `make setup`.
-- `make run-kronk-voice-smoke` is still the fastest routing check.
+- The local example targets use real local command providers by default.
 - Browser microphone capture requires user permission. Open the dashboard, use the chat microphone button once, and grant microphone access; hands-free browser wake cannot start before the browser grants mic access.
-- If provider selections look stale, run `make clean` in `examples/config/local`. Voice provider settings are seeded into the local SQLite database, so YAML changes do not overwrite an existing `.jute/local-dev` database.
+- If provider selections look stale, restart the local stack with `-config`/the local Makefile target. Explicit bootstrap config reconciles voice provider settings into the local SQLite database on startup.
 
 References:
 

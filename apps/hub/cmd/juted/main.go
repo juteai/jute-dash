@@ -72,14 +72,6 @@ func run() error {
 		}
 	}()
 
-	needsSeed, err := runtimeStore.IsSeeded(ctx)
-	if err != nil {
-		return fmt.Errorf("inspect store: %w", err)
-	}
-	// needsSeed is true if count == 0, wait, runtimeStore.IsSeeded returns true ifCount > 0, so needsSeed should be !seeded
-	seeded := needsSeed
-	needsSeed = !seeded
-
 	bootstrap := config.DefaultConfig()
 	configProvided := strings.TrimSpace(*configPath) != ""
 	if configProvided {
@@ -88,7 +80,7 @@ func run() error {
 			return fmt.Errorf("load config: %w", err)
 		}
 	}
-	bootstrapProvided := configProvided && needsSeed
+	bootstrapProvided := configProvided
 
 	result, err := runtimeStore.Initialize(ctx, bootstrap, bootstrapProvided)
 	if err != nil {
