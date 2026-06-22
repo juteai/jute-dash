@@ -30,14 +30,21 @@ func EncodeWAV(utterance CapturedUtterance) ([]byte, error) {
 		return nil, errors.New("WAV requires positive sample rate and mono audio")
 	}
 	pcm := flattenUtterancePCM(utterance)
-	byteRateInt := sampleRate * channels * DefaultSampleWidth
-	if len(pcm) > math.MaxUint32 || sampleRate > math.MaxUint32 || byteRateInt > math.MaxUint32 {
+	blockAlignInt := channels * DefaultSampleWidth
+	byteRateInt := sampleRate * blockAlignInt
+	if len(pcm) > math.MaxUint32 ||
+		sampleRate > math.MaxUint32 ||
+		channels > math.MaxUint16 ||
+		blockAlignInt > math.MaxUint16 ||
+		byteRateInt > math.MaxUint32 {
 		return nil, errors.New("WAV is too large")
 	}
 
 	var buf bytes.Buffer
 	dataSize := uint32(len(pcm)) //nolint:gosec // bounds checked above before writing the WAV header.
 	sampleRate32 := uint32(sampleRate)
+	channels16 := uint16(channels)
+	blockAlign := uint16(blockAlignInt)
 	byteRate := uint32(byteRateInt) //nolint:gosec // bounds checked above before writing the WAV header.
 	buf.WriteString("RIFF")
 	_ = binary.Write(&buf, binary.LittleEndian, uint32(36)+dataSize)
@@ -45,10 +52,10 @@ func EncodeWAV(utterance CapturedUtterance) ([]byte, error) {
 	buf.WriteString("fmt ")
 	_ = binary.Write(&buf, binary.LittleEndian, uint32(16))
 	_ = binary.Write(&buf, binary.LittleEndian, uint16(1))
-	_ = binary.Write(&buf, binary.LittleEndian, uint16(channels))
+	_ = binary.Write(&buf, binary.LittleEndian, channels16)
 	_ = binary.Write(&buf, binary.LittleEndian, sampleRate32)
 	_ = binary.Write(&buf, binary.LittleEndian, byteRate)
-	_ = binary.Write(&buf, binary.LittleEndian, uint16(channels*DefaultSampleWidth))
+	_ = binary.Write(&buf, binary.LittleEndian, blockAlign)
 	_ = binary.Write(&buf, binary.LittleEndian, uint16(16))
 	buf.WriteString("data")
 	_ = binary.Write(&buf, binary.LittleEndian, dataSize)

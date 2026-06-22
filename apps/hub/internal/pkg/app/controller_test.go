@@ -3639,22 +3639,6 @@ func waitForSentMessages(t *testing.T, client *a2a.InMemoryClient, count int) {
 	t.Fatalf("timed out waiting for %d sent message(s), got %d", count, len(client.SentMessages))
 }
 
-func assertNextDisplayEvent(
-	t *testing.T,
-	events <-chan displayactions.Event,
-	eventType string,
-) {
-	t.Helper()
-	select {
-	case event := <-events:
-		if event.Type != eventType {
-			t.Fatalf("expected event %q, got %q", eventType, event.Type)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatalf("timed out waiting for event %q", eventType)
-	}
-}
-
 func waitForVoiceStateEvent(
 	t *testing.T,
 	events <-chan displayactions.Event,
