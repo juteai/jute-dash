@@ -71,6 +71,33 @@ test('dashboard wake opens chat before transcription completes', async ({
   ).toBeVisible();
 });
 
+test('dismissed voice chat does not reopen for the same conversation', async ({
+  page
+}) => {
+  const hub = await createMockHub(page);
+  await page.goto('/');
+  await hub.waitForEventStream();
+
+  await hub.emit('voice.wake_detected', {
+    id: 'wake-dismissed-chat',
+    conversationId: 'conversation-dismissed-chat',
+    payload: {}
+  });
+
+  const chat = page.getByRole('region', { name: 'Agent conversation' });
+  await expect(chat).toBeVisible();
+  await page.getByRole('button', { name: 'Close chat' }).click();
+  await expect(chat).toHaveCount(0);
+
+  await hub.emit('voice.transcript.partial', {
+    id: 'partial-dismissed-chat',
+    conversationId: 'conversation-dismissed-chat',
+    payload: { text: 'still speaking' }
+  });
+
+  await expect(chat).toHaveCount(0);
+});
+
 test('wake listening without a conversation does not open chat', async ({
   page
 }) => {

@@ -61,6 +61,7 @@
   let browserWakeListening = false;
   let browserWakeBlocked = false;
   let lastWakeCaptureConversationId = '';
+  const autoOpenedVoiceConversationIds: string[] = [];
 
   /* eslint-disable no-useless-assignment */
   let lastData: DashboardData | undefined;
@@ -308,7 +309,12 @@
       state
     );
   }
-  $: if (mounted && $hubStream.voiceConversationId) {
+  $: if (
+    mounted &&
+    $hubStream.voiceConversationId &&
+    !autoOpenedVoiceConversationIds.includes($hubStream.voiceConversationId)
+  ) {
+    autoOpenedVoiceConversationIds.push($hubStream.voiceConversationId);
     navigationStore.openChat();
   }
 
