@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -74,6 +75,32 @@ func TestSpeakerSpeakUsesProviderAndEmitsLifecycle(t *testing.T) {
 	}
 	if len(display.types) != 2 || display.types[0] != EventTTSStarted || display.types[1] != EventTTSCompleted {
 		t.Fatalf("unexpected events: %+v", display.types)
+	}
+}
+
+func TestSpeakerSpeakSanitizesMarkdownBeforeProvider(t *testing.T) {
+	provider := &testTTSProvider{}
+	speaker := NewSpeaker(testVoiceStore{settings: Settings{
+		TTSEnabled:    true,
+		TTSProviderID: "local",
+	}}, nil, provider)
+	text := strings.Join([]string{
+		"## Weather",
+		"",
+		"- **Cloudy** with `22 C`.",
+		"- [More detail](https://example.com)",
+		"",
+		"```json",
+		`{"raw":true}`,
+		"```",
+	}, "\n")
+
+	_, err := speaker.Speak(t.Context(), "display-1", TTSActionSpeak, TTSRequest{Text: text})
+	if err != nil {
+		t.Fatalf("Speak() error = %v", err)
+	}
+	if provider.req.Text != "Weather Cloudy with 22 C. More detail Code omitted." {
+		t.Fatalf("unexpected speech text: %q", provider.req.Text)
 	}
 }
 

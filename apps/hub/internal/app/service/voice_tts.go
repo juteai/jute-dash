@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,17 @@ const (
 	TTSStateCompleted    = "completed"
 	TTSStateVisualOnly   = "visual_only"
 	TTSStateFailed       = "failed"
+)
+
+var (
+	ttsFencePattern        = regexp.MustCompile("(?s)```.*?```")
+	ttsImagePattern        = regexp.MustCompile(`!\[([^\]]*)\]\([^)]+\)`)
+	ttsLinkPattern         = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
+	ttsInlineCodePattern   = regexp.MustCompile("`([^`]*)`")
+	ttsListMarkerPattern   = regexp.MustCompile(`(?m)^\s*(?:[-*+]\s+|\d+[.)]\s+)`)
+	ttsHeadingQuotePattern = regexp.MustCompile(`(?m)^\s{0,3}(?:#{1,6}\s*|>\s*)`)
+	ttsWhitespacePattern   = regexp.MustCompile(`\s+`)
+	ttsURLPattern          = regexp.MustCompile(`https?://\S+`)
 )
 
 type TTSRequest struct {
@@ -93,6 +105,30 @@ func effectiveTTSRequest(req TTSRequest, settings Settings) TTSRequest {
 		req.Locale = settings.TTSLocale
 	}
 	return req
+}
+
+// ponytail: regex scrub, swap for a markdown AST only if speech needs full CommonMark fidelity.
+func speechText(value string) string {
+	value = ttsFencePattern.ReplaceAllString(value, " Code omitted. ")
+	value = ttsImagePattern.ReplaceAllString(value, "$1")
+	value = ttsLinkPattern.ReplaceAllString(value, "$1")
+	value = ttsInlineCodePattern.ReplaceAllString(value, "$1")
+	value = ttsURLPattern.ReplaceAllString(value, " link ")
+	value = ttsHeadingQuotePattern.ReplaceAllString(value, "")
+	value = ttsListMarkerPattern.ReplaceAllString(value, "")
+	value = strings.NewReplacer(
+		"**", "",
+		"__", "",
+		"*", "",
+		"_", "",
+		"~~", "",
+		"`", "",
+		"|", " ",
+		"[ ]", "",
+		"[x]", "",
+		"[X]", "",
+	).Replace(value)
+	return strings.TrimSpace(ttsWhitespacePattern.ReplaceAllString(value, " "))
 }
 
 type TTSActionResponse struct {

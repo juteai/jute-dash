@@ -120,6 +120,8 @@ When an A2A agent streams assistant text, the hub chunks approved assistant delt
 boundaries or a bounded text size and invokes the selected TTS provider for each chunk in FIFO order.
 The display queues returned `audioUrl` values and plays them sequentially. Non-streaming A2A agents
 produce a single TTS action after the final assistant response is available.
+Before synthesis, the hub converts markdown-shaped assistant text into speech text so providers do
+not read formatting, code fences, or raw links literally.
 
 At runtime, the hub resolves the selected TTS Provider Pack from SQLite and attaches a provider only
 when the manifest is local/offline, command providers are enabled, provider health is `available` or
