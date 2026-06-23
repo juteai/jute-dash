@@ -313,6 +313,7 @@
       voiceOrbState === 'error'
         ? 'error'
         : voiceOrbState === 'thinking' ||
+            voiceOrbState === 'speaking' ||
             (voiceOrbState === 'listening' &&
               !voiceMessages.some((message) => message.role === 'assistant'))
           ? 'thinking'

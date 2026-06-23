@@ -180,4 +180,32 @@ describe('chatStore unit tests', () => {
     unsubscribe();
     closeSpy.mockRestore();
   });
+
+  it('does not start the dismiss timer for active voice work', () => {
+    let state: ChatStoreState | undefined;
+    const unsubscribe = chatStore.subscribe((s) => {
+      state = s;
+    });
+
+    chatStore.applyVoiceConversation(
+      'voice-conversation-1',
+      'agent-1',
+      [
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          text: 'Checking that now.',
+          createdAt: new Date().toISOString(),
+          status: 'speaking'
+        }
+      ],
+      'thinking'
+    );
+    chatStore.resetTimer();
+
+    expect(state!.chatState).toBe('thinking');
+    expect(state!.showTimer).toBe(false);
+    expect(state!.timerProgress).toBe(0);
+    unsubscribe();
+  });
 });

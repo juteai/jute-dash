@@ -231,6 +231,7 @@ function createHubStreamStore() {
   let ttsPendingActions = 0;
   let ttsAudioPlaying = false;
   let ttsPlaybackFailed = false;
+  let pendingVoiceFollowupExpiresAt = '';
   const ttsAudioQueue: string[] = [];
 
   async function playTTSAudio(audioUrl: string) {
@@ -272,8 +273,11 @@ function createHubStreamStore() {
     update((s) => ({
       ...s,
       voiceOrbState: 'followup',
+      voiceFollowupExpiresAt:
+        pendingVoiceFollowupExpiresAt || s.voiceFollowupExpiresAt,
       voiceError: failed ? safeVoiceError('tts_failure') : ''
     }));
+    pendingVoiceFollowupExpiresAt = '';
   }
 
   async function drainTTSAudioQueue() {
@@ -760,16 +764,20 @@ function createHubStreamStore() {
           payload?: { expiresAt?: string };
         }>((event as MessageEvent).data);
         logger.sse(event.type);
+        const expiresAt =
+          typeof e?.payload?.expiresAt === 'string' ? e.payload.expiresAt : '';
+        if (ttsPlaybackPending && expiresAt) {
+          pendingVoiceFollowupExpiresAt = expiresAt;
+        }
         update((s) => ({
           ...s,
           voiceConversationId:
             eventConversationID(e ?? {}) || s.voiceConversationId,
           voiceOrbState: ttsPlaybackPending ? 'speaking' : 'followup',
           voiceTranscript: '',
-          voiceFollowupExpiresAt:
-            typeof e?.payload?.expiresAt === 'string'
-              ? e.payload.expiresAt
-              : s.voiceFollowupExpiresAt,
+          voiceFollowupExpiresAt: ttsPlaybackPending
+            ? ''
+            : expiresAt || s.voiceFollowupExpiresAt,
           voiceError: ''
         }));
       });
@@ -785,13 +793,19 @@ function createHubStreamStore() {
         }
         ttsPlaybackPending = true;
         ttsPendingActions += 1;
-        update((s) => ({
-          ...s,
-          voiceConversationId:
-            eventConversationID(e ?? {}) || s.voiceConversationId,
-          voiceOrbState: 'speaking',
-          voiceError: ''
-        }));
+        update((s) => {
+          if (s.voiceFollowupExpiresAt) {
+            pendingVoiceFollowupExpiresAt = s.voiceFollowupExpiresAt;
+          }
+          return {
+            ...s,
+            voiceConversationId:
+              eventConversationID(e ?? {}) || s.voiceConversationId,
+            voiceOrbState: 'speaking',
+            voiceFollowupExpiresAt: '',
+            voiceError: ''
+          };
+        });
       });
 
       eventSource.addEventListener('tts.completed', (event) => {
@@ -831,6 +845,7 @@ function createHubStreamStore() {
         ttsPendingActions = 0;
         ttsAudioQueue.length = 0;
         ttsPlaybackFailed = false;
+        pendingVoiceFollowupExpiresAt = '';
         const policyMessage =
           reason === 'sensitive_output_visual_only' ||
           reason === 'sensitive_output_requires_confirmation'
@@ -878,6 +893,7 @@ function createHubStreamStore() {
         ttsPendingActions = 0;
         ttsAudioQueue.length = 0;
         ttsPlaybackFailed = false;
+        pendingVoiceFollowupExpiresAt = '';
         update((s) => ({
           ...s,
           voiceConversationId:

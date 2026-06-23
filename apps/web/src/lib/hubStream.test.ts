@@ -313,6 +313,54 @@ describe('hubStream voice events', () => {
     expect(get(hubStream)).toMatchObject({
       voiceConversationId: 'conversation-1',
       voiceOrbState: 'speaking',
+      voiceFollowupExpiresAt: ''
+    });
+
+    source.emit('tts.completed', {
+      id: 'tts-1',
+      conversationId: 'conversation-1',
+      payload: {}
+    });
+
+    expect(get(hubStream)).toMatchObject({
+      voiceConversationId: 'conversation-1',
+      voiceOrbState: 'followup',
+      voiceFollowupExpiresAt: '2026-06-15T10:00:09Z'
+    });
+  });
+
+  it('hides visible follow-up expiry if TTS starts late', async () => {
+    const { hubStream } = await import('./hubStream');
+
+    hubStream.connect(vi.fn() as unknown as typeof fetch);
+    const source = FakeEventSource.instances[0];
+    source.emit('conversation.followup_started', {
+      id: 'followup-1',
+      conversationId: 'conversation-1',
+      payload: { expiresAt: '2026-06-15T10:00:09Z' }
+    });
+    expect(get(hubStream)).toMatchObject({
+      voiceOrbState: 'followup',
+      voiceFollowupExpiresAt: '2026-06-15T10:00:09Z'
+    });
+
+    source.emit('tts.started', {
+      id: 'tts-1',
+      conversationId: 'conversation-1',
+      payload: {}
+    });
+    expect(get(hubStream)).toMatchObject({
+      voiceOrbState: 'speaking',
+      voiceFollowupExpiresAt: ''
+    });
+
+    source.emit('tts.completed', {
+      id: 'tts-1',
+      conversationId: 'conversation-1',
+      payload: {}
+    });
+    expect(get(hubStream)).toMatchObject({
+      voiceOrbState: 'followup',
       voiceFollowupExpiresAt: '2026-06-15T10:00:09Z'
     });
   });
