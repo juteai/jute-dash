@@ -4,29 +4,23 @@ This directory provides the unified local configuration and a helper `Makefile` 
 
 ## Quick Start
 
-All commands should be run from this directory:
-
-```sh
-cd examples/config/local
-```
-
 ### Standalone Jute Dash
 From the repo root, setup prepares this local harness, including voice tools. It does not start dev servers:
 
 ```sh
-cd ../../..
 make setup
 ```
 
-From this directory, install or refresh only the local example voice tools:
+To install or refresh only the local example voice tools:
 
 ```sh
-make setup
+make setup-local-examples
 ```
 
 Verify the installed tools later with:
 
 ```sh
+cd examples/config/local
 make voice-check
 ```
 
@@ -84,5 +78,6 @@ Press `Ctrl-C` to stop all running processes.
 To clear local SQLite databases and development store directories:
 
 ```sh
+cd examples/config/local
 make clean
 ```

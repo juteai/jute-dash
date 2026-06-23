@@ -140,10 +140,9 @@ Setup dev environment (npm, pre-commit, optional system dependencies, and local 
 make setup
 ```
 
-Run self-contained local A2A dev stacks from the config directory:
+Run self-contained local A2A dev stacks:
 
 ```sh
-cd examples/config/local
 make run-mock
 
 make run-kronk

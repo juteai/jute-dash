@@ -12,11 +12,10 @@ make setup
 
 This prepares dependencies and local voice tools only. Dev servers start from the example `make run-*` targets.
 
-Or from the local example directory:
+To install or refresh only the local example tools:
 
 ```sh
-cd examples/config/local
-make setup
+make setup-local-examples
 ```
 
 The installer creates `.jute/local-voice-tools`, installs Python command tools in a local virtualenv, downloads ONNX wake assets and a Piper voice, and writes small `openwakeword` and `jute-faster-whisper` CLI wrappers into the same tool directory.
