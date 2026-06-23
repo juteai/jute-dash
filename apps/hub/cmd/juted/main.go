@@ -92,6 +92,7 @@ func run() error {
 		return fmt.Errorf("unexpected config type: %T", result.Config)
 	}
 	cfg.Server = bootstrap.Server
+	cfg.Log = bootstrap.Log
 	cfg.MCP = bootstrap.MCP
 	if configProvided {
 		cfg.Agents = bootstrap.Agents
