@@ -31,6 +31,9 @@ func sanitizeDisplayText(text string) string {
 	for len(paragraphs) > 1 && looksLikeReasoningParagraph(paragraphs[0]) {
 		paragraphs = paragraphs[1:]
 	}
+	if len(paragraphs) == 1 && looksLikeReasoningParagraph(paragraphs[0]) {
+		return ""
+	}
 	return strings.TrimSpace(strings.Join(paragraphs, "\n\n"))
 }
 

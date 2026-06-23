@@ -76,6 +76,12 @@ describe('displaySanitizer unit tests', () => {
         'Okay, the user wants me to calculate 2+2.\n\nI should call the calculate tool.\n\nThe final answer is 4.';
       expect(sanitizeDisplayText(text)).toBe('The final answer is 4.');
     });
+
+    it('removes standalone reasoning when no final answer has arrived', () => {
+      const text =
+        'Okay, the user is asking for the weather today. I need to check the available Widget Skills first. Let me call jute_skill_list to see which skills are available.';
+      expect(sanitizeDisplayText(text)).toBe('');
+    });
   });
 
   describe('getPartText', () => {
