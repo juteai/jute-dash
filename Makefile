@@ -3,7 +3,7 @@ SHELL := /bin/bash
 WEB_DIR := apps/web
 NPM ?= npm
 
-.PHONY: setup setup-local-examples run run-http run-mock run-kronk run-kronk-whisper run-kronk-local-voice run-ollama run-gemini pre-commit-install lint test test-coverage codegen generate-mocks integration-test-local web-lint web-format-check web-check web-test web-test-coverage web-build check reset
+.PHONY: setup setup-local-examples install-local-voice voice-check run run-http run-mock run-kronk run-kronk-whisper run-kronk-local-voice run-ollama run-gemini pre-commit-install lint test test-coverage codegen generate-mocks integration-test-local web-lint web-format-check web-check web-test web-test-coverage web-build check reset
 
 setup:
 	@echo "Checking for Homebrew dependencies..."
@@ -22,6 +22,9 @@ setup:
 setup-local-examples:
 	@echo "Setting up local example harness..."
 	$(MAKE) -C examples/config/local setup
+
+install-local-voice voice-check:
+	$(MAKE) -C examples/config/local $@
 
 run run-http run-mock run-kronk run-kronk-whisper run-kronk-local-voice run-ollama run-gemini:
 	$(MAKE) -C examples/config/local $@

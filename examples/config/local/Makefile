@@ -12,10 +12,15 @@ JUTE_VOICE_ENV ?= $(ROOT_DIR)/.jute/local-voice-tools/local-voice.env
 setup: install-local-voice voice-check
 
 ensure-local-voice:
-	@if [ -f "$(JUTE_VOICE_ENV)" ]; then source "$(JUTE_VOICE_ENV)"; fi; \
+	@if [ -f "$(JUTE_VOICE_ENV)" ]; then \
+		source "$(JUTE_VOICE_ENV)"; \
+	else \
+		echo "WARN: local voice env not found at $(JUTE_VOICE_ENV); running local voice setup"; \
+	fi; \
 	if ./install-local-voice.sh --check >/dev/null 2>&1; then \
 		./install-local-voice.sh --check; \
 	else \
+		echo "WARN: local voice tools are missing or failing; installing local voice tools"; \
 		./install-local-voice.sh; \
 	fi
 
@@ -23,7 +28,11 @@ install-local-voice:
 	@./install-local-voice.sh
 
 voice-check:
-	@if [ -f "$(JUTE_VOICE_ENV)" ]; then source "$(JUTE_VOICE_ENV)"; fi; \
+	@if [ -f "$(JUTE_VOICE_ENV)" ]; then \
+		source "$(JUTE_VOICE_ENV)"; \
+	else \
+		echo "WARN: local voice env not found at $(JUTE_VOICE_ENV); run make setup or make setup-local-examples"; \
+	fi; \
 	./install-local-voice.sh --check
 
 # 1. Run Jute Hub + Svelte Web Dashboard standalone (without launching an agent)
@@ -31,7 +40,11 @@ run: ensure-local-voice
 	@echo "Starting Jute Hub + HTTPS Web Dashboard (standalone)..."
 	@echo "Open $(JUTE_WEB_URL)"
 	@trap 'kill 0' SIGINT; \
-	if [ -f "$(JUTE_VOICE_ENV)" ]; then source "$(JUTE_VOICE_ENV)"; fi; \
+	if [ -f "$(JUTE_VOICE_ENV)" ]; then \
+		source "$(JUTE_VOICE_ENV)"; \
+	else \
+		echo "WARN: local voice env not found at $(JUTE_VOICE_ENV); voice providers may be unavailable"; \
+	fi; \
 	(cd "$(ROOT_DIR)/apps/hub" && go run ./cmd/juted -config "$(JUTE_CONFIG)" -data-dir "$(JUTE_DATA_DIR)") & \
 	(cd "$(ROOT_DIR)/apps/web" && npm run $(JUTE_WEB_SCRIPT)) & \
 	wait

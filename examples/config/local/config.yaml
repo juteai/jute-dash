@@ -3,7 +3,7 @@ home:
 server:
     listen-address: 127.0.0.1:8787
 log:
-    level: info
+    level: debug
     file-path: ""
     max-size: 10
     max-backups: 5

@@ -20,7 +20,6 @@ make setup-local-examples
 Verify the installed tools later with:
 
 ```sh
-cd examples/config/local
 make voice-check
 ```
 
@@ -42,7 +41,9 @@ The browser may ask you to accept the local self-signed certificate the first ti
 make run-http
 ```
 
-`make run` uses `.jute/local-dev` and wires local voice provider packs for wake, STT, and TTS. The normal run targets install or verify the local tools automatically, source `.jute/local-voice-tools/local-voice.env`, and select openWakeWord wake, faster-whisper STT, and Piper TTS. Real local wake uses openWakeWord's built-in `hey jarvis` model unless you provide a trained Hey Jute model.
+`make run` uses `.jute/local-dev` and wires local voice provider packs for wake, STT, and TTS. The normal run targets install or verify the local tools automatically, source `.jute/local-voice-tools/local-voice.env`, and select openWakeWord wake, faster-whisper STT, and Piper TTS. If the generated env or tools are missing, the target logs a warning before repairing them. Real local wake uses openWakeWord's built-in `hey jarvis` model unless you provide a trained Hey Jute model.
+
+The local config uses debug hub logging by default so wake misses, wake confidence, STT subprocess boundaries, and TTS subprocess boundaries are visible while developing voice.
 
 See [Local Voice Development](../../../docs/developer/local-voice-dev.md) for real wake/STT/TTS setup.
 

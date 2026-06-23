@@ -28,6 +28,7 @@ make voice-check
 `voice-check` verifies the binaries and runs a short Piper-to-STT smoke test so broken STT command paths fail before you open the dashboard.
 
 It does not start a wake/STT/TTS server. The hub invokes each tool as a command provider for one request. The local Makefile automatically sources `.jute/local-voice-tools/local-voice.env` when it runs the hub.
+If the generated env file or tools are missing, the local run targets log a warning and run the setup path instead of silently falling back to unconfigured providers.
 
 ## Run Modes
 
@@ -39,6 +40,7 @@ make run-kronk
 
 By default, the local examples use openWakeWord's built-in `hey jarvis` model because this repo does not yet ship a trained "Hey Jute" wake model. Say "hey jarvis" for local real-wake testing.
 The local config starts with a `0.35` wake threshold so browser microphone chunks are less brittle during development. Override `JUTE_OPENWAKEWORD_THRESHOLD` when you need to tune local detection without editing the provider pack.
+The local config also sets hub logging to debug so wake misses include provider, model, and confidence in `.jute/local-dev/jute.log`.
 
 To use a trained Hey Jute model:
 
