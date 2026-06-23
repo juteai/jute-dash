@@ -1008,7 +1008,8 @@ function createHubStreamStore() {
         deviceProfileId: voice.deviceProfileId,
         deviceId: voice.deviceProfileId,
         conversationId,
-        agentId
+        agentId,
+        requireWake: false
       });
     },
     submitBrowserWakeAudio: async (
