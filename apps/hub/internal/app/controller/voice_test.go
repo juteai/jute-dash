@@ -99,6 +99,23 @@ func TestTTSSpeakUsesProviderAndReturnsSafePlaybackMetadata(t *testing.T) {
 	assertJSONOmits(t, emitter.ttsEvents, "AQIDBA", string([]byte{1, 2, 3, 4}), "rawAudio")
 }
 
+func TestTTSAudioReturnsNotFoundForMissingID(t *testing.T) {
+	controller := NewVoiceControllerWithTTSProvider(
+		repository.NewMemoryVoiceRepositoryFromConfig(model.Config{}),
+		nil,
+		nil,
+		&fixtureControllerTTSProvider{},
+	)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tts/audio/missing", nil)
+	rr := httptest.NewRecorder()
+
+	controller.handleTTSAudio(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestTTSSpeakResolvesActiveProviderAtRequestTime(t *testing.T) {
 	active := &fixtureControllerTTSProvider{
 		result: service.TTSAudioResult{

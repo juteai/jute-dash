@@ -7,10 +7,31 @@ async function installReusableMicStub(page: Page) {
       typeof globalThis & {
         __juteMicRequestCount?: number;
         __juteMicStopCount?: number;
+        __juteEmitVoiceFrame?: (level: number, advanceMs?: number) => void;
       };
     const w = window as MicWindow;
     w.__juteMicRequestCount = 0;
     w.__juteMicStopCount = 0;
+    let now = 0;
+    Object.defineProperty(performance, 'now', {
+      configurable: true,
+      value: () => now
+    });
+    const processors: Array<{
+      onaudioprocess:
+        | ((event: {
+            inputBuffer: { getChannelData: () => Float32Array };
+          }) => void)
+        | null;
+    }> = [];
+    w.__juteEmitVoiceFrame = (level: number, advanceMs = 0) => {
+      now += advanceMs;
+      const samples = new Float32Array(4096).fill(level);
+      const event = { inputBuffer: { getChannelData: () => samples } };
+      for (const processor of processors) {
+        processor.onaudioprocess?.(event);
+      }
+    };
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
       value: {
@@ -36,7 +57,13 @@ async function installReusableMicStub(page: Page) {
         return { connect() {}, disconnect() {} };
       }
       createScriptProcessor() {
-        return { connect() {}, disconnect() {}, onaudioprocess: null };
+        const processor = {
+          connect() {},
+          disconnect() {},
+          onaudioprocess: null
+        };
+        processors.push(processor);
+        return processor;
       }
       createGain() {
         return { gain: { value: 1 }, connect() {}, disconnect() {} };
@@ -66,6 +93,33 @@ function micStopCount(page: Page) {
   );
 }
 
+async function emitVoiceUtterance(page: Page) {
+  await page.evaluate(() =>
+    (
+      window as Window &
+        typeof globalThis & {
+          __juteEmitVoiceFrame?: (level: number, advanceMs?: number) => void;
+        }
+    ).__juteEmitVoiceFrame?.(0.08, 10)
+  );
+  await page.evaluate(() =>
+    (
+      window as Window &
+        typeof globalThis & {
+          __juteEmitVoiceFrame?: (level: number, advanceMs?: number) => void;
+        }
+    ).__juteEmitVoiceFrame?.(0, 1300)
+  );
+  await page.evaluate(() =>
+    (
+      window as Window &
+        typeof globalThis & {
+          __juteEmitVoiceFrame?: (level: number, advanceMs?: number) => void;
+        }
+    ).__juteEmitVoiceFrame?.(0, 1300)
+  );
+}
+
 async function installAudioPlaybackStub(page: Page) {
   await page.addInitScript(() => {
     type AudioWindow = Window &
@@ -84,6 +138,40 @@ async function installAudioPlaybackStub(page: Page) {
     }
     w.Audio = FakeAudio as unknown as typeof Audio;
   });
+}
+
+async function installControlledAudioPlaybackStub(page: Page) {
+  await page.addInitScript(() => {
+    type AudioWindow = Window &
+      typeof globalThis & {
+        __jutePlayedAudioSrcs?: string[];
+        __juteResolveAudio?: () => void;
+      };
+    const w = window as AudioWindow;
+    w.__jutePlayedAudioSrcs = [];
+    class FakeAudio {
+      constructor(public src: string) {}
+      addEventListener() {}
+      play() {
+        w.__jutePlayedAudioSrcs?.push(this.src);
+        return new Promise<void>((resolve) => {
+          w.__juteResolveAudio = resolve;
+        });
+      }
+    }
+    w.Audio = FakeAudio as unknown as typeof Audio;
+  });
+}
+
+function resolvePlayedAudio(page: Page) {
+  return page.evaluate(() =>
+    (
+      window as Window &
+        typeof globalThis & {
+          __juteResolveAudio?: () => void;
+        }
+    ).__juteResolveAudio?.()
+  );
 }
 
 function playedAudioCount(page: Page) {
@@ -355,4 +443,61 @@ test('tts completed event plays browser audio from the hub', async ({
   });
 
   await expect.poll(() => playedAudioCount(page)).toBe(1);
+});
+
+test('follow-up capture waits for browser TTS and reuses the active conversation', async ({
+  page
+}) => {
+  await installReusableMicStub(page);
+  await installControlledAudioPlaybackStub(page);
+  const hub = await createMockHub(page);
+  await page.goto('/');
+  await hub.waitForEventStream();
+  await expect.poll(() => micRequestCount(page)).toBe(1);
+
+  await hub.emit('voice.transcript.final', {
+    id: 'voice-final-followup',
+    conversationId: 'conversation-followup',
+    payload: { text: 'turn on the kitchen lights' }
+  });
+  await hub.emit('tts.started', {
+    id: 'tts-started-followup',
+    conversationId: 'conversation-followup',
+    payload: {}
+  });
+  await hub.emit('conversation.followup_started', {
+    id: 'followup-started',
+    conversationId: 'conversation-followup',
+    payload: { expiresAt: '2026-06-15T10:00:09Z' }
+  });
+
+  await page.waitForTimeout(50);
+  expect(
+    hub.writes.filter((w) => w.path === '/api/v1/voice/audio')
+  ).toHaveLength(0);
+
+  await hub.emit('tts.completed', {
+    id: 'tts-completed-followup',
+    conversationId: 'conversation-followup',
+    payload: { audioUrl: '/api/v1/tts/audio/tts-completed-followup' }
+  });
+  await expect.poll(() => playedAudioCount(page)).toBe(1);
+  await page.waitForTimeout(50);
+  expect(
+    hub.writes.filter((w) => w.path === '/api/v1/voice/audio')
+  ).toHaveLength(0);
+
+  await resolvePlayedAudio(page);
+  await page.waitForTimeout(50);
+  await emitVoiceUtterance(page);
+
+  await expect
+    .poll(
+      () =>
+        hub.writes.find(
+          (w) => w.path === '/api/v1/voice/audio' && w.search === ''
+        )?.headers['x-jute-conversation-id']
+    )
+    .toBe('conversation-followup');
+  await expect.poll(() => micRequestCount(page)).toBe(1);
 });

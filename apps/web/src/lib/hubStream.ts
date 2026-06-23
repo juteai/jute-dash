@@ -227,6 +227,7 @@ function createHubStreamStore() {
   let voiceEndedTimeout: number | undefined;
   let hasConnected = false;
   let isMounted = false;
+  let ttsPlaybackPending = false;
 
   async function playTTSAudio(audioUrl: string) {
     if (!browser || typeof Audio === 'undefined' || !audioUrl) return;
@@ -239,7 +240,12 @@ function createHubStreamStore() {
     const cleanup = () => URL.revokeObjectURL(objectUrl);
     audio.addEventListener('ended', cleanup, { once: true });
     audio.addEventListener('error', cleanup, { once: true });
-    await audio.play();
+    try {
+      await audio.play();
+    } catch (err) {
+      cleanup();
+      throw err;
+    }
   }
 
   function markConnected() {
@@ -706,7 +712,7 @@ function createHubStreamStore() {
           ...s,
           voiceConversationId:
             eventConversationID(e ?? {}) || s.voiceConversationId,
-          voiceOrbState: 'followup',
+          voiceOrbState: ttsPlaybackPending ? 'speaking' : 'followup',
           voiceTranscript: '',
           voiceFollowupExpiresAt:
             typeof e?.payload?.expiresAt === 'string'
@@ -722,6 +728,7 @@ function createHubStreamStore() {
           payload?: { state?: string };
         }>((event as MessageEvent).data);
         logger.sse(event.type, e?.payload?.state);
+        ttsPlaybackPending = true;
         update((s) => ({
           ...s,
           voiceConversationId:
@@ -737,22 +744,42 @@ function createHubStreamStore() {
           payload?: { audioUrl?: string };
         }>((event as MessageEvent).data);
         logger.sse(event.type);
-        update((s) => ({
-          ...s,
-          voiceConversationId:
-            eventConversationID(e ?? {}) || s.voiceConversationId,
-          voiceOrbState: 'followup',
-          voiceError: ''
-        }));
         const audioUrl = e?.payload?.audioUrl;
         if (typeof audioUrl === 'string' && audioUrl) {
-          void playTTSAudio(audioUrl).catch(() => {
-            update((s) => ({
-              ...s,
-              voiceOrbState: 'followup',
-              voiceError: safeVoiceError('tts_failure')
-            }));
-          });
+          update((s) => ({
+            ...s,
+            voiceConversationId:
+              eventConversationID(e ?? {}) || s.voiceConversationId,
+            voiceOrbState: 'speaking',
+            voiceError: ''
+          }));
+          void playTTSAudio(audioUrl).then(
+            () => {
+              ttsPlaybackPending = false;
+              update((s) => ({
+                ...s,
+                voiceOrbState: 'followup',
+                voiceError: ''
+              }));
+            },
+            () => {
+              ttsPlaybackPending = false;
+              update((s) => ({
+                ...s,
+                voiceOrbState: 'followup',
+                voiceError: safeVoiceError('tts_failure')
+              }));
+            }
+          );
+        } else {
+          ttsPlaybackPending = false;
+          update((s) => ({
+            ...s,
+            voiceConversationId:
+              eventConversationID(e ?? {}) || s.voiceConversationId,
+            voiceOrbState: 'followup',
+            voiceError: ''
+          }));
         }
       });
 
@@ -762,6 +789,7 @@ function createHubStreamStore() {
           payload?: { reason?: string; state?: string };
         }>((event as MessageEvent).data);
         const reason = e?.payload?.reason;
+        ttsPlaybackPending = false;
         const policyMessage =
           reason === 'sensitive_output_visual_only' ||
           reason === 'sensitive_output_requires_confirmation'
@@ -786,6 +814,7 @@ function createHubStreamStore() {
           payload?: { reason?: string };
         }>((event as MessageEvent).data);
         logger.sse(event.type);
+        ttsPlaybackPending = false;
         update((s) => ({
           ...s,
           voiceConversationId:
@@ -802,6 +831,7 @@ function createHubStreamStore() {
         }>((event as MessageEvent).data);
         const error = safeVoiceError(e?.payload?.reason);
         logger.sse(event.type);
+        ttsPlaybackPending = false;
         update((s) => ({
           ...s,
           voiceConversationId:
@@ -847,6 +877,7 @@ function createHubStreamStore() {
     },
     disconnect: () => {
       isMounted = false;
+      ttsPlaybackPending = false;
       eventSource?.close();
       eventSource = undefined;
 
@@ -1009,6 +1040,7 @@ function createHubStreamStore() {
     cancelVoiceSession: async (fetcher: typeof fetch = window.fetch) => {
       try {
         await cancelVoice(fetcher);
+        ttsPlaybackPending = false;
         update((s) => ({
           ...s,
           voiceOrbState: 'idle',

@@ -193,10 +193,35 @@ describe('hubStream voice events', () => {
 
     expect(fetchAudio).toHaveBeenCalledWith('/api/v1/tts/audio/tts-1');
     expect(play).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(get(hubStream)).toMatchObject({
+        voiceConversationId: 'conversation-1',
+        voiceOrbState: 'followup',
+        voiceError: ''
+      });
+    });
+  });
+
+  it('keeps follow-up capture paused while TTS is pending', async () => {
+    const { hubStream } = await import('./hubStream');
+
+    hubStream.connect(vi.fn() as unknown as typeof fetch);
+    const source = FakeEventSource.instances[0];
+    source.emit('tts.started', {
+      id: 'tts-1',
+      conversationId: 'conversation-1',
+      payload: {}
+    });
+    source.emit('conversation.followup_started', {
+      id: 'followup-1',
+      conversationId: 'conversation-1',
+      payload: { expiresAt: '2026-06-15T10:00:09Z' }
+    });
+
     expect(get(hubStream)).toMatchObject({
       voiceConversationId: 'conversation-1',
-      voiceOrbState: 'followup',
-      voiceError: ''
+      voiceOrbState: 'speaking',
+      voiceFollowupExpiresAt: '2026-06-15T10:00:09Z'
     });
   });
 

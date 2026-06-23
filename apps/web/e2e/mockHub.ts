@@ -20,6 +20,8 @@ type MockHubOptions = {
 type WriteRecord = {
   method: string;
   path: string;
+  search: string;
+  headers: Record<string, string>;
   body: unknown;
 };
 
@@ -143,6 +145,8 @@ async function handleAPI(
     writes.push({
       method,
       path,
+      search: url.search,
+      headers: request.headers(),
       body: await safeBody(request)
     });
   }
