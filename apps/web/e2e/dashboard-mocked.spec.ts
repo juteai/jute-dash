@@ -57,7 +57,11 @@ test('SSE events drive degraded, notification, focus, and voice states', async (
     page.locator('[data-widget-id="weather"] .widget-frame--focused')
   ).toBeVisible();
 
-  await hub.emit('voice.wake_detected', {});
+  await hub.emit('voice.wake_detected', {
+    id: 'wake-dashboard',
+    conversationId: 'conversation-1',
+    payload: {}
+  });
   const chat = page.getByLabel('Agent conversation');
   await expect(chat).toBeVisible();
   await hub.emit('voice.transcript.partial', {

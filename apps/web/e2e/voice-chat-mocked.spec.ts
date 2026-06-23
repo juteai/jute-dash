@@ -150,12 +150,21 @@ async function installControlledAudioPlaybackStub(page: Page) {
     const w = window as AudioWindow;
     w.__jutePlayedAudioSrcs = [];
     class FakeAudio {
+      private ended: (() => void) | undefined;
+
       constructor(public src: string) {}
-      addEventListener() {}
+      addEventListener(type: string, listener: () => void) {
+        if (type === 'ended') {
+          this.ended = listener;
+        }
+      }
       play() {
         w.__jutePlayedAudioSrcs?.push(this.src);
         return new Promise<void>((resolve) => {
-          w.__juteResolveAudio = resolve;
+          w.__juteResolveAudio = () => {
+            this.ended?.();
+            resolve();
+          };
         });
       }
     }
