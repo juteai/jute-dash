@@ -34,7 +34,10 @@
   import { chatStore } from '$lib/chatStore';
   import { settingsStore } from '$lib/settingsStore';
   import { navigationStore } from '$lib/navigationStore';
-  import { captureBrowserVoicePCM } from '$lib/browserVoiceCapture';
+  import {
+    createBrowserVoiceCaptureSession,
+    type BrowserVoiceCaptureSession
+  } from '$lib/browserVoiceCapture';
 
   export let data: DashboardData;
 
@@ -58,8 +61,14 @@
   let slideshowTimer: number | undefined;
   let lastVoiceChatSyncKey = '';
   let browserVoiceCapturing = false;
-  let browserWakeListening = false;
-  let browserWakeBlocked = false;
+  const browserVoice = {
+    wakeListening: false,
+    wakeBlocked: false,
+    starting: false,
+    started: false,
+    session: undefined as BrowserVoiceCaptureSession | undefined,
+    wakeAbort: undefined as AbortController | undefined
+  };
   let lastWakeCaptureConversationId = '';
   const autoOpenedVoiceConversationIds: string[] = [];
 
@@ -131,17 +140,24 @@
         ? $layoutStore.draftLayout
         : $hubStream.dashboard.layout
   };
-  $: shouldListenForBrowserWake =
+  $: shouldRunBrowserVoice =
     browser &&
     mounted &&
-    !browserWakeListening &&
-    !browserWakeBlocked &&
-    !browserVoiceCapturing &&
+    !browserVoice.wakeBlocked &&
     $hubStream.dashboard.voice.enabled &&
     $hubStream.dashboard.voice.serviceStatus === 'ready' &&
     !$hubStream.dashboard.voice.muted;
-  $: if (shouldListenForBrowserWake) {
-    void startBrowserWakeLoop();
+  $: shouldRunBrowserWakeLoop =
+    shouldRunBrowserVoice &&
+    $navigationStore.mode !== 'chat' &&
+    !browserVoiceCapturing;
+  $: if (shouldRunBrowserVoice) {
+    void ensureBrowserVoiceSession();
+  } else {
+    stopBrowserVoiceSession();
+  }
+  $: if (browserVoice.wakeListening && !shouldRunBrowserWakeLoop) {
+    abortBrowserWakeCapture();
   }
 
   $: configuringWidget =
@@ -252,7 +268,8 @@
   });
 
   onDestroy(() => {
-    browserWakeBlocked = true;
+    browserVoice.wakeBlocked = true;
+    stopBrowserVoiceSession();
     chatStore.stopTimer();
   });
 
@@ -418,13 +435,15 @@
 
   async function startChatVoiceCapture() {
     if (!browser || browserVoiceCapturing) return;
+    browserVoice.wakeBlocked = false;
+    abortBrowserWakeCapture();
     browserVoiceCapturing = true;
     hubStream.beginBrowserVoiceCapture();
     try {
       if ($hubStream.dashboard.voice.muted) {
         await hubStream.toggleVoiceMute(fetch);
       }
-      const recording = await captureBrowserVoicePCM();
+      const recording = await captureBrowserVoiceUtterance();
       await hubStream.submitBrowserVoiceAudio(recording, fetch);
     } catch (err) {
       hubStream.failBrowserVoiceCapture(
@@ -432,27 +451,39 @@
       );
     } finally {
       browserVoiceCapturing = false;
+      if (shouldRunBrowserWakeLoop) {
+        void startBrowserWakeLoop();
+      }
     }
   }
 
   async function startBrowserWakeLoop() {
-    browserWakeListening = true;
+    if (browserVoice.wakeListening || browserVoiceCapturing) return;
+    browserVoice.wakeListening = true;
     try {
       while (shouldContinueWakeLoop()) {
         try {
-          const recording = await captureBrowserVoicePCM();
+          const abort = new AbortController();
+          browserVoice.wakeAbort = abort;
+          const recording = await captureBrowserVoiceUtterance(abort.signal);
+          if (browserVoice.wakeAbort === abort) {
+            browserVoice.wakeAbort = undefined;
+          }
           await hubStream.submitBrowserWakeAudio(recording, fetch);
         } catch (err) {
           const message =
             err instanceof Error ? err.message : 'Browser microphone failed.';
-          if (message !== 'No speech detected.') {
-            browserWakeBlocked = true;
+          if (err instanceof Error && err.name === 'AbortError') {
+            // wake capture was interrupted by chat capture or mute
+          } else if (message !== 'No speech detected.') {
+            browserVoice.wakeBlocked = true;
             hubStream.failBrowserVoiceCapture(message);
           }
         }
       }
     } finally {
-      browserWakeListening = false;
+      browserVoice.wakeListening = false;
+      browserVoice.wakeAbort = undefined;
     }
   }
 
@@ -460,11 +491,69 @@
     return (
       browser &&
       mounted &&
-      !browserWakeBlocked &&
+      shouldRunBrowserWakeLoop &&
+      !browserVoice.wakeBlocked &&
       !browserVoiceCapturing &&
+      $navigationStore.mode !== 'chat' &&
       $hubStream.dashboard.voice.serviceStatus === 'ready' &&
       !$hubStream.dashboard.voice.muted
     );
+  }
+
+  async function ensureBrowserVoiceSession(reportError = true) {
+    if (
+      !browser ||
+      browserVoice.started ||
+      browserVoice.starting ||
+      browserVoice.wakeBlocked
+    ) {
+      return;
+    }
+    browserVoice.starting = true;
+    try {
+      browserVoice.session ??= createBrowserVoiceCaptureSession();
+      await browserVoice.session.start();
+      browserVoice.started = true;
+      if (shouldRunBrowserWakeLoop) {
+        void startBrowserWakeLoop();
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+      browserVoice.wakeBlocked = true;
+      if (reportError) {
+        hubStream.failBrowserVoiceCapture(
+          err instanceof Error ? err.message : 'Browser microphone failed.'
+        );
+      }
+      stopBrowserVoiceSession();
+      if (!reportError) {
+        throw err;
+      }
+    } finally {
+      browserVoice.starting = false;
+    }
+  }
+
+  async function captureBrowserVoiceUtterance(signal?: AbortSignal) {
+    await ensureBrowserVoiceSession(false);
+    if (!browserVoice.session) {
+      throw new Error('Browser microphone access is unavailable.');
+    }
+    return browserVoice.session.captureUtterance({ signal });
+  }
+
+  function abortBrowserWakeCapture() {
+    browserVoice.wakeAbort?.abort();
+    browserVoice.wakeAbort = undefined;
+  }
+
+  function stopBrowserVoiceSession() {
+    abortBrowserWakeCapture();
+    browserVoice.session?.stop();
+    browserVoice.session = undefined;
+    browserVoice.started = false;
   }
 
   async function cancelVoiceSession() {

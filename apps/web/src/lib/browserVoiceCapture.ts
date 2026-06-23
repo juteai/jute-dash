@@ -14,77 +14,200 @@ type WebKitWindow = Window &
     webkitAudioContext?: typeof AudioContext;
   };
 
-export async function captureBrowserVoicePCM(): Promise<BrowserVoiceRecording> {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error('Browser microphone access is unavailable.');
+type CaptureOptions = {
+  signal?: AbortSignal;
+};
+
+type ActiveCapture = {
+  chunks: ArrayBuffer[];
+  startedAt: number;
+  heardSpeech: boolean;
+  silenceStartedAt: number;
+  resolve: (recording: BrowserVoiceRecording) => void;
+  reject: (err: Error) => void;
+  signal?: AbortSignal;
+  abort: () => void;
+};
+
+export class BrowserVoiceCaptureSession {
+  private stream?: MediaStream;
+  private audioContext?: AudioContext;
+  private source?: MediaStreamAudioSourceNode;
+  private processor?: ScriptProcessorNode;
+  private sink?: GainNode;
+  private starting?: Promise<void>;
+  private active?: ActiveCapture;
+  private stopped = true;
+
+  async start(): Promise<void> {
+    if (this.stream) return;
+    if (this.starting) return this.starting;
+
+    this.stopped = false;
+    this.starting = this.open();
+    try {
+      await this.starting;
+    } finally {
+      this.starting = undefined;
+    }
   }
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  const AudioContextCtor =
-    window.AudioContext ?? (window as WebKitWindow).webkitAudioContext;
-  if (!AudioContextCtor) {
-    stopStream(stream);
-    throw new Error('Browser audio capture is unavailable.');
+
+  async captureUtterance(
+    options: CaptureOptions = {}
+  ): Promise<BrowserVoiceRecording> {
+    await this.start();
+    if (this.active) {
+      throw new Error('Browser microphone is already capturing.');
+    }
+    if (options.signal?.aborted) {
+      throw abortError();
+    }
+
+    return new Promise((resolve, reject) => {
+      const capture: ActiveCapture = {
+        chunks: [],
+        startedAt: performance.now(),
+        heardSpeech: false,
+        silenceStartedAt: 0,
+        resolve,
+        reject,
+        signal: options.signal,
+        abort: () => this.rejectCapture(capture, abortError())
+      };
+      this.active = capture;
+      options.signal?.addEventListener('abort', capture.abort, { once: true });
+    });
   }
 
-  const audioContext = new AudioContextCtor();
-  const source = audioContext.createMediaStreamSource(stream);
-  const processor = audioContext.createScriptProcessor(4096, 1, 1);
-  const sink = audioContext.createGain();
-  sink.gain.value = 0;
+  cancelUtterance(): void {
+    if (this.active) {
+      this.rejectCapture(this.active, abortError());
+    }
+  }
 
-  return new Promise((resolve, reject) => {
-    const chunks: ArrayBuffer[] = [];
-    const startedAt = performance.now();
-    let heardSpeech = false;
-    let silenceStartedAt = 0;
-    let done = false;
+  stop(): void {
+    this.stopped = true;
+    this.cancelUtterance();
+    this.processor?.disconnect();
+    this.source?.disconnect();
+    this.sink?.disconnect();
+    void this.audioContext?.close();
+    if (this.stream) {
+      stopStream(this.stream);
+    }
+    this.stream = undefined;
+    this.audioContext = undefined;
+    this.source = undefined;
+    this.processor = undefined;
+    this.sink = undefined;
+    this.starting = undefined;
+  }
 
-    function cleanup() {
+  private async open(): Promise<void> {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Browser microphone access is unavailable.');
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (this.stopped) {
+      stopStream(stream);
+      throw abortError();
+    }
+    const AudioContextCtor =
+      window.AudioContext ?? (window as WebKitWindow).webkitAudioContext;
+    if (!AudioContextCtor) {
+      stopStream(stream);
+      throw new Error('Browser audio capture is unavailable.');
+    }
+
+    const audioContext = new AudioContextCtor();
+    const source = audioContext.createMediaStreamSource(stream);
+    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+    const sink = audioContext.createGain();
+    sink.gain.value = 0;
+    processor.onaudioprocess = (event) => this.processAudio(event);
+    source.connect(processor);
+    processor.connect(sink);
+    sink.connect(audioContext.destination);
+    if (this.stopped) {
       processor.disconnect();
       source.disconnect();
       sink.disconnect();
       void audioContext.close();
       stopStream(stream);
+      throw abortError();
     }
 
-    function finish() {
-      if (done) return;
-      done = true;
-      cleanup();
-      if (!heardSpeech || chunks.length === 0) {
-        reject(new Error('No speech detected.'));
-        return;
-      }
-      resolve({
-        audio: new Blob(chunks, { type: 'application/octet-stream' }),
-        sampleRate: TARGET_RATE,
-        channels: 1
-      });
+    this.stream = stream;
+    this.audioContext = audioContext;
+    this.source = source;
+    this.processor = processor;
+    this.sink = sink;
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
     }
+  }
 
-    processor.onaudioprocess = (event) => {
-      const input = event.inputBuffer.getChannelData(0);
-      const pcm = floatToPCM16(resample(input, audioContext.sampleRate));
-      chunks.push(
-        pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength)
-      );
+  private processAudio(event: AudioProcessingEvent): void {
+    const capture = this.active;
+    const audioContext = this.audioContext;
+    if (!capture || !audioContext) return;
 
-      const level = rms(input);
-      const now = performance.now();
-      if (level >= MIN_RMS) {
-        heardSpeech = true;
-        silenceStartedAt = 0;
-      } else if (heardSpeech) {
-        silenceStartedAt ||= now;
-        if (now - silenceStartedAt >= SILENCE_MS) finish();
+    const input = event.inputBuffer.getChannelData(0);
+    const pcm = floatToPCM16(resample(input, audioContext.sampleRate));
+    capture.chunks.push(
+      pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength)
+    );
+
+    const level = rms(input);
+    const now = performance.now();
+    if (level >= MIN_RMS) {
+      capture.heardSpeech = true;
+      capture.silenceStartedAt = 0;
+    } else if (capture.heardSpeech) {
+      capture.silenceStartedAt ||= now;
+      if (now - capture.silenceStartedAt >= SILENCE_MS) {
+        this.resolveCapture(capture);
       }
-      if (now - startedAt >= MAX_MS) finish();
-    };
+    }
+    if (now - capture.startedAt >= MAX_MS) {
+      this.resolveCapture(capture);
+    }
+  }
 
-    source.connect(processor);
-    processor.connect(sink);
-    sink.connect(audioContext.destination);
-  });
+  private resolveCapture(capture: ActiveCapture): void {
+    if (this.active !== capture) return;
+    this.active = undefined;
+    capture.signal?.removeEventListener('abort', capture.abort);
+    if (!capture.heardSpeech || capture.chunks.length === 0) {
+      capture.reject(new Error('No speech detected.'));
+      return;
+    }
+    capture.resolve({
+      audio: new Blob(capture.chunks, { type: 'application/octet-stream' }),
+      sampleRate: TARGET_RATE,
+      channels: 1
+    });
+  }
+
+  private rejectCapture(capture: ActiveCapture, err: Error): void {
+    if (this.active !== capture) return;
+    this.active = undefined;
+    capture.signal?.removeEventListener('abort', capture.abort);
+    capture.reject(err);
+  }
+}
+
+export function createBrowserVoiceCaptureSession(): BrowserVoiceCaptureSession {
+  return new BrowserVoiceCaptureSession();
+}
+
+function abortError(): Error {
+  if (typeof DOMException !== 'undefined') {
+    return new DOMException('Voice capture canceled.', 'AbortError');
+  }
+  const err = new Error('Voice capture canceled.');
+  err.name = 'AbortError';
+  return err;
 }
 
 function stopStream(stream: MediaStream) {
