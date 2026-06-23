@@ -8,7 +8,7 @@ Usage: ./install-local-voice.sh [--check]
 Installs local voice command tools into .jute/local-voice-tools:
   - openWakeWord Python package plus a Jute-compatible CLI wrapper
   - Piper TTS Python package plus a default Amy voice model
-  - gowhisper CLI from the upstream release binary
+  - faster-whisper Python package plus a Jute-compatible CLI wrapper
 
 Options:
   --check   Verify detected local voice tools and exit without installing.
@@ -26,7 +26,6 @@ PIPER_BASE_URL="${JUTE_PIPER_VOICE_BASE_URL:-https://huggingface.co/rhasspy/pipe
 PIPER_MODEL="$MODEL_DIR/$PIPER_VOICE.onnx"
 PIPER_CONFIG="$PIPER_MODEL.json"
 ENV_FILE="$TOOLS_DIR/local-voice.env"
-GOWHISPER_VERSION="${JUTE_GOWHISPER_VERSION:-v0.0.39}"
 OPENWAKEWORD_MODEL_VERSION="${JUTE_OPENWAKEWORD_MODEL_VERSION:-v0.5.1}"
 
 case "${1:-}" in
@@ -36,7 +35,7 @@ case "${1:-}" in
     ;;
   --check)
     ok=1
-    for bin in openwakeword gowhisper piper; do
+    for bin in openwakeword jute-faster-whisper piper; do
       if [ -x "$BIN_DIR/$bin" ]; then
         path="$BIN_DIR/$bin"
       elif command -v "$bin" >/dev/null 2>&1; then
@@ -55,6 +54,14 @@ case "${1:-}" in
             ok=0
           fi
           ;;
+        jute-faster-whisper)
+          if "$path" --check >/dev/null 2>&1; then
+            printf '%s: %s\n' "$bin" "$path"
+          else
+            printf '%s: broken (%s --check failed)\n' "$bin" "$path"
+            ok=0
+          fi
+          ;;
         *)
           if "$path" --help >/dev/null 2>&1; then
             printf '%s: %s\n' "$bin" "$path"
@@ -70,6 +77,19 @@ case "${1:-}" in
     else
       printf 'piper-model: missing (%s and %s)\n' "$PIPER_MODEL" "$PIPER_CONFIG"
       ok=0
+    fi
+    if [ "$ok" -eq 1 ]; then
+      smoke_wav=$(mktemp -t jute-voice-check.XXXXXX.wav)
+      trap 'rm -f "$smoke_wav"' EXIT
+      if printf '%s' 'turn on the kitchen lights' |
+        JUTE_PIPER_MODEL="$PIPER_MODEL" "$BIN_DIR/piper" --model "$PIPER_MODEL" --output_file "$smoke_wav" >/dev/null 2>&1 &&
+        JUTE_FASTER_WHISPER_MODEL_DIR="$MODEL_DIR/whisper" "$BIN_DIR/jute-faster-whisper" --model tiny.en --input "$smoke_wav" --language en |
+          grep -qi 'kitchen lights'; then
+        printf 'stt-smoke: ok\n'
+      else
+        printf 'stt-smoke: failed\n'
+        ok=0
+      fi
     fi
     exit $((1 - ok))
     ;;
@@ -100,46 +120,6 @@ download() {
   curl -L --fail "$url" -o "$out"
 }
 
-gowhisper_asset() {
-  os=$(uname -s | tr '[:upper:]' '[:lower:]')
-  arch=$(uname -m)
-  case "$os" in
-    darwin) os=darwin ;;
-    linux) os=linux ;;
-    *) return 1 ;;
-  esac
-  case "$arch" in
-    arm64|aarch64) arch=arm64 ;;
-    x86_64|amd64) arch=amd64 ;;
-    *) return 1 ;;
-  esac
-  printf 'gowhisper-%s-%s' "$os" "$arch"
-}
-
-install_gowhisper() {
-  if [ -x "$BIN_DIR/gowhisper" ]; then
-    return
-  fi
-  asset=$(gowhisper_asset) || {
-    echo "No gowhisper release binary for this platform; set JUTE_GO_WHISPER_BIN" >&2
-    exit 1
-  }
-  url="https://github.com/mutablelogic/go-whisper/releases/download/$GOWHISPER_VERSION/$asset"
-  tmp="$BIN_DIR/gowhisper.tmp"
-  echo "Downloading gowhisper $GOWHISPER_VERSION..."
-  if curl -L --fail "$url" -o "$tmp"; then
-    mv "$tmp" "$BIN_DIR/gowhisper"
-    chmod +x "$BIN_DIR/gowhisper"
-    if command -v xattr >/dev/null 2>&1; then
-      xattr -d com.apple.quarantine "$BIN_DIR/gowhisper" >/dev/null 2>&1 || true
-    fi
-    return
-  fi
-  rm -f "$tmp"
-  echo "gowhisper download failed; set JUTE_GO_WHISPER_BIN or install it manually" >&2
-  exit 1
-}
-
 need curl
 need python3
 
@@ -148,7 +128,7 @@ if [ ! -x "$VENV_DIR/bin/python" ]; then
 fi
 
 "$VENV_DIR/bin/python" -m pip install --upgrade pip
-"$VENV_DIR/bin/python" -m pip install openwakeword onnxruntime piper-tts
+"$VENV_DIR/bin/python" -m pip install openwakeword onnxruntime piper-tts faster-whisper
 OPENWAKEWORD_MODEL_DIR=$("$VENV_DIR/bin/python" - <<'PY'
 import os
 import openwakeword
@@ -192,11 +172,52 @@ PY
 } > "$BIN_DIR/openwakeword"
 chmod +x "$BIN_DIR/openwakeword"
 
+{
+printf '#!%s\n' "$VENV_DIR/bin/python"
+cat <<'PY'
+import argparse
+import json
+import os
+from faster_whisper import WhisperModel
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--model", default="tiny.en")
+parser.add_argument("--input", default="")
+parser.add_argument("--language", default="en")
+parser.add_argument("--check", action="store_true")
+args = parser.parse_args()
+
+if args.check:
+    print(json.dumps({"ok": True}))
+    raise SystemExit(0)
+if not args.input:
+    raise SystemExit("--input is required unless --check is used")
+
+download_root = os.environ.get("JUTE_FASTER_WHISPER_MODEL_DIR")
+device = os.environ.get("JUTE_FASTER_WHISPER_DEVICE", "cpu")
+compute_type = os.environ.get("JUTE_FASTER_WHISPER_COMPUTE_TYPE", "int8")
+model = WhisperModel(
+    args.model,
+    device=device,
+    compute_type=compute_type,
+    download_root=download_root,
+)
+segments, info = model.transcribe(args.input, language=args.language, vad_filter=True)
+text = " ".join(segment.text.strip() for segment in segments).strip()
+print(json.dumps({
+    "text": text,
+    "providerId": "local-whisper-stt",
+    "modelId": args.model,
+    "language": info.language or args.language,
+    "durationMs": int(float(info.duration or 0) * 1000),
+}))
+PY
+} > "$BIN_DIR/jute-faster-whisper"
+chmod +x "$BIN_DIR/jute-faster-whisper"
+
 if [ ! -x "$BIN_DIR/piper" ] && [ -x "$VENV_DIR/bin/piper" ]; then
   ln -sf "$VENV_DIR/bin/piper" "$BIN_DIR/piper"
 fi
-
-install_gowhisper
 
 download "$PIPER_BASE_URL/$PIPER_VOICE.onnx" "$PIPER_MODEL"
 download "$PIPER_BASE_URL/$PIPER_VOICE.onnx.json" "$PIPER_CONFIG"
@@ -206,7 +227,8 @@ export PATH="$BIN_DIR:\$PATH"
 export JUTE_OPENWAKEWORD_BIN="$BIN_DIR/openwakeword"
 export JUTE_OPENWAKEWORD_MODEL="\${JUTE_OPENWAKEWORD_MODEL:-hey jarvis}"
 export JUTE_OPENWAKEWORD_THRESHOLD="\${JUTE_OPENWAKEWORD_THRESHOLD:-0.35}"
-export JUTE_GO_WHISPER_BIN="\${JUTE_GO_WHISPER_BIN:-$BIN_DIR/gowhisper}"
+export JUTE_FASTER_WHISPER_BIN="\${JUTE_FASTER_WHISPER_BIN:-$BIN_DIR/jute-faster-whisper}"
+export JUTE_FASTER_WHISPER_MODEL_DIR="\${JUTE_FASTER_WHISPER_MODEL_DIR:-$MODEL_DIR/whisper}"
 export JUTE_PIPER_BIN="$BIN_DIR/piper"
 export JUTE_PIPER_MODEL="$PIPER_MODEL"
 EOF

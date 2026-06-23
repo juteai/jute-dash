@@ -202,7 +202,7 @@ temporary WAV when needed, invokes the selected local provider command, emits
 `voice.wake_detected` on detection, and then continues to STT. microWakeWord remains deferred until
 its native dependency chain is worth carrying.
 
-STT providers default to trusted hub-owned command adapters, with go-whisper-style local CLIs as the
+STT providers default to trusted hub-owned command adapters, with faster-whisper-style local CLIs as the
 first practical path. Command providers are disabled until explicitly enabled, must use absolute
 commands, receive a temporary WAV path through `{inputPath}`, and return final transcript JSON.
 Cloud upload still requires explicit opt-in.

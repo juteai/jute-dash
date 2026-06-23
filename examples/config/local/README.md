@@ -41,7 +41,7 @@ The browser may ask you to accept the local self-signed certificate the first ti
 make run-http
 ```
 
-`make run` uses `.jute/local-dev` and wires local voice provider packs for wake, STT, and TTS. The normal run targets install or verify the local tools automatically, source `.jute/local-voice-tools/local-voice.env`, and select openWakeWord wake, go-whisper STT, and Piper TTS. Real local wake uses openWakeWord's built-in `hey jarvis` model unless you provide a trained Hey Jute model.
+`make run` uses `.jute/local-dev` and wires local voice provider packs for wake, STT, and TTS. The normal run targets install or verify the local tools automatically, source `.jute/local-voice-tools/local-voice.env`, and select openWakeWord wake, faster-whisper STT, and Piper TTS. Real local wake uses openWakeWord's built-in `hey jarvis` model unless you provide a trained Hey Jute model.
 
 See [Local Voice Development](../../../docs/developer/local-voice-dev.md) for real wake/STT/TTS setup.
 

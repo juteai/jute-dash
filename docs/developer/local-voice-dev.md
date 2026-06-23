@@ -1,6 +1,6 @@
 # Local Voice Development
 
-Jute local examples use openWakeWord, go-whisper, and Piper as hub-owned command providers.
+Jute local examples use openWakeWord, faster-whisper, and Piper as hub-owned command providers.
 
 ## Install Local Voice Tools
 
@@ -11,12 +11,14 @@ cd examples/config/local
 make setup
 ```
 
-The installer creates `.jute/local-voice-tools`, installs Python command tools in a local virtualenv, downloads ONNX wake assets and a Piper voice, writes a small `openwakeword` CLI wrapper, and downloads the upstream `gowhisper` CLI binary into the same tool directory.
+The installer creates `.jute/local-voice-tools`, installs Python command tools in a local virtualenv, downloads ONNX wake assets and a Piper voice, and writes small `openwakeword` and `jute-faster-whisper` CLI wrappers into the same tool directory.
 The normal `make run`, `make run-mock`, `make run-kronk`, `make run-ollama`, and `make run-gemini` targets install or verify these tools automatically. Re-check an existing install with:
 
 ```sh
 make voice-check
 ```
+
+`voice-check` verifies the binaries and runs a short Piper-to-STT smoke test so broken STT command paths fail before you open the dashboard.
 
 It does not start a wake/STT/TTS server. The hub invokes each tool as a command provider for one request. The local Makefile automatically sources `.jute/local-voice-tools/local-voice.env` when it runs the hub.
 
@@ -47,8 +49,10 @@ Use these when tools are already installed elsewhere:
 JUTE_OPENWAKEWORD_BIN=/absolute/path/to/openwakeword
 JUTE_OPENWAKEWORD_MODEL=/absolute/path/to/hey-jute.onnx
 JUTE_OPENWAKEWORD_THRESHOLD=0.35
-JUTE_GO_WHISPER_BIN=/absolute/path/to/gowhisper
-JUTE_GOWHISPER_VERSION=v0.0.39
+JUTE_FASTER_WHISPER_BIN=/absolute/path/to/jute-faster-whisper
+JUTE_FASTER_WHISPER_MODEL_DIR=/absolute/path/to/whisper-model-cache
+JUTE_FASTER_WHISPER_DEVICE=cpu
+JUTE_FASTER_WHISPER_COMPUTE_TYPE=int8
 JUTE_PIPER_BIN=/absolute/path/to/piper
 JUTE_PIPER_MODEL=/absolute/path/to/voice.onnx
 ```
@@ -71,5 +75,5 @@ voice:
 References:
 
 - [openWakeWord](https://github.com/dscripka/openWakeWord)
-- [go-whisper](https://github.com/mutablelogic/go-whisper)
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 - [Piper](https://github.com/OHF-Voice/piper1-gpl)

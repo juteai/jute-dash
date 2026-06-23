@@ -30,13 +30,13 @@ if [ -z "$model" ] || [ -z "$input" ]; then
   exit 2
 fi
 
-bin="${JUTE_GO_WHISPER_BIN:-gowhisper}"
+bin="${JUTE_FASTER_WHISPER_BIN:-jute-faster-whisper}"
 if ! command -v "$bin" >/dev/null 2>&1; then
-  echo "gowhisper is required; set JUTE_GO_WHISPER_BIN or install gowhisper on PATH" >&2
+  echo "jute-faster-whisper is required; set JUTE_FASTER_WHISPER_BIN or run make setup" >&2
   exit 1
 fi
 
-output=$("$bin" transcribe "$model" "$input" --format json --language "$language")
+output=$("$bin" --model "$model" --input "$input" --language "$language")
 case "$output" in
   \{*) printf '%s\n' "$output" ;;
   *)

@@ -184,7 +184,7 @@ voice-provider-packs:
         type: command
         command: /bin/sh
         args:
-            - ../../examples/config/local/go-whisper-stt.sh
+            - ../../examples/config/local/faster-whisper-stt.sh
             - --model
             - '{modelId}'
             - --input

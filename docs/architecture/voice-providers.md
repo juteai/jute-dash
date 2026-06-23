@@ -38,7 +38,7 @@ Supported transport:
 - [OpenAI speech-to-text](https://developers.openai.com/api/docs/guides/speech-to-text): optional cloud STT provider for higher quality transcription.
 - [OpenAI text-to-speech](https://developers.openai.com/api/docs/guides/text-to-speech): optional cloud TTS provider with streaming and multiple output formats.
 - [OHF Piper](https://github.com/OHF-Voice/piper1-gpl): fast local neural TTS engine. It should be integrated as an external service or command provider unless Jute makes an explicit licensing decision.
-- [go-whisper](https://github.com/mutablelogic/go-whisper): local Whisper STT service. Treat it as a documented external `command` provider for trusted installs in v1; keep command providers opt-in and do not link whisper.cpp or FFmpeg into the hub.
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper): local Whisper STT library. The local example wraps it as a hub-owned `command` provider so no STT server is required.
 - Browser APIs: display-local fallback candidate only. They are not canonical provider-pack transports for v1.
 - [pmdroid/microwakeword](https://github.com/pmdroid/microwakeword): experimental Go wake-word wrapper over TensorFlow Lite and the audio microfrontend. Defer production adoption until native packaging and model compatibility are proven.
 
