@@ -377,14 +377,13 @@ test('chat mic asks the browser for microphone access', async ({ page }) => {
   await expect(page.getByText('Microphone permission denied.')).toBeVisible();
 });
 
-test('manual chat mic submits speech without wake gating', async ({ page }) => {
+test('manual chat open submits speech without wake gating', async ({
+  page
+}) => {
   await installReusableMicStub(page);
   const hub = await createMockHub(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Open chat' }).click();
-  await page
-    .getByRole('button', { name: 'Start voice input' })
-    .click({ force: true });
   await emitVoiceUtterance(page);
 
   await expect

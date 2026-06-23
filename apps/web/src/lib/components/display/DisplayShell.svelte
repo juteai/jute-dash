@@ -282,6 +282,13 @@
   async function openChat(agent?: Agent) {
     navigationStore.openChat();
     await chatStore.openChat($hubStream.dashboard.agents, agent);
+    if (
+      browser &&
+      $hubStream.dashboard.voice.serviceStatus === 'ready' &&
+      !$hubStream.dashboard.voice.muted
+    ) {
+      window.setTimeout(() => void startChatVoiceCapture(), 0);
+    }
   }
 
   function closeChat() {
