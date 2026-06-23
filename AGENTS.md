@@ -134,7 +134,7 @@ Run Go tests:
 make test
 ```
 
-Setup dev environment (npm, pre-commit, and optional system dependencies):
+Setup dev environment (npm, pre-commit, optional system dependencies, and local example voice tools):
 
 ```sh
 make setup

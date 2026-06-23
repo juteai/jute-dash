@@ -3,7 +3,7 @@ SHELL := /bin/bash
 WEB_DIR := apps/web
 NPM ?= npm
 
-.PHONY: setup pre-commit-install lint test test-coverage codegen generate-mocks integration-test-local web-lint web-format-check web-check web-test web-test-coverage web-build check reset
+.PHONY: setup setup-local-examples pre-commit-install lint test test-coverage codegen generate-mocks integration-test-local web-lint web-format-check web-check web-test web-test-coverage web-build check reset
 
 setup:
 	@echo "Checking for Homebrew dependencies..."
@@ -17,6 +17,11 @@ setup:
 	cd $(WEB_DIR) && $(NPM) install
 	@echo "Setting up pre-commit hooks..."
 	$(MAKE) pre-commit-install
+	$(MAKE) setup-local-examples
+
+setup-local-examples:
+	@echo "Setting up local example harness..."
+	$(MAKE) -C examples/config/local setup
 
 pre-commit-install:
 	@if command -v pre-commit >/dev/null 2>&1; then \

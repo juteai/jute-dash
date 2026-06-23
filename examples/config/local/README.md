@@ -11,7 +11,14 @@ cd examples/config/local
 ```
 
 ### Standalone Jute Dash
-Install local voice tools explicitly when you want to preflight downloads:
+From the repo root, setup prepares this local harness, including voice tools. It does not start dev servers:
+
+```sh
+cd ../../..
+make setup
+```
+
+From this directory, install or refresh only the local example voice tools:
 
 ```sh
 make setup

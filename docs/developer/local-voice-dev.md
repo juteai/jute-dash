@@ -7,6 +7,14 @@ Jute local examples use openWakeWord, faster-whisper, and Piper as hub-owned com
 From the repo root:
 
 ```sh
+make setup
+```
+
+This prepares dependencies and local voice tools only. Dev servers start from the example `make run-*` targets.
+
+Or from the local example directory:
+
+```sh
 cd examples/config/local
 make setup
 ```
