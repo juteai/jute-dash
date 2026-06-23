@@ -75,12 +75,8 @@ func (s *Store) SetLogger(log *slog.Logger) {
 	}
 	s.logger = log
 	if s.db != nil && s.db.DB() != nil {
-		gormLevel := logger.Warn
-		if log.Enabled(context.Background(), slog.LevelDebug) {
-			gormLevel = logger.Info
-		}
 		gormLogger := database.NewSlogLogger(log)
-		gormLogger.LogLevel = gormLevel
+		gormLogger.LogLevel = logger.Warn
 		s.db.DB().Config.Logger = gormLogger
 	}
 }

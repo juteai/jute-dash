@@ -39,6 +39,7 @@ make run-kronk
 ```
 
 By default, the local examples use openWakeWord's built-in `hey jarvis` model because this repo does not yet ship a trained "Hey Jute" wake model. Say "hey jarvis" for local real-wake testing.
+If openWakeWord misses, the local wake script falls back to local faster-whisper phrase matching so development can still exercise wake-to-STT-to-agent-to-TTS without a trained household wake model.
 The local config starts with a `0.35` wake threshold so browser microphone chunks are less brittle during development. Override `JUTE_OPENWAKEWORD_THRESHOLD` when you need to tune local detection without editing the provider pack.
 The local config also sets hub logging to debug so wake misses include provider, model, and confidence in `.jute/local-dev/jute.log`.
 
@@ -58,6 +59,7 @@ Use these when tools are already installed elsewhere:
 JUTE_OPENWAKEWORD_BIN=/absolute/path/to/openwakeword
 JUTE_OPENWAKEWORD_MODEL=/absolute/path/to/hey-jute.onnx
 JUTE_OPENWAKEWORD_THRESHOLD=0.35
+JUTE_WAKE_STT_FALLBACK=true
 JUTE_FASTER_WHISPER_BIN=/absolute/path/to/jute-faster-whisper
 JUTE_FASTER_WHISPER_MODEL_DIR=/absolute/path/to/whisper-model-cache
 JUTE_FASTER_WHISPER_DEVICE=cpu
