@@ -78,6 +78,6 @@ func (l *SlogLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 		attrs = append(attrs, slog.Duration("slow_threshold", l.SlowThreshold))
 		l.Logger.WarnContext(ctx, "database slow query", attrs...)
 	case l.LogLevel >= logger.Info:
-		l.Logger.InfoContext(ctx, "database query", attrs...)
+		l.Logger.DebugContext(ctx, "database query", attrs...)
 	}
 }

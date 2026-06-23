@@ -192,7 +192,12 @@ describe('VoiceSettings', () => {
     expect(body).toContain('Wake model');
     expect(body).toContain('Cloud providers');
     expect(body).toContain('Command providers');
-    expect(body).toContain('Local Wake · local · available');
+    expect(body).toContain(
+      '<option value="local-wake" selected="">Local Wake · local · available</option>'
+    );
+    expect(body).toContain(
+      '<option value="hey-jute" selected="">Hey Jute</option>'
+    );
     expect(body).not.toContain('STT provider');
     expect(body).not.toContain('TTS provider');
     expect(body).not.toContain('Satellites');

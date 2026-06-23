@@ -12,6 +12,7 @@
   let lastJSON = '';
 
   $: voice = $hubStream.dashboard.voice;
+  $: if (voice) syncVoiceDraft(voice);
   $: providers = $settingsStore.voiceProviders;
   $: wakeProviders = providers.filter(
     (provider) => provider.kind === 'wake-word'
@@ -35,8 +36,6 @@
     selectedTTSProvider && selectedTTSProvider.capabilities
       ? !selectedTTSProvider.capabilities.offline
       : Boolean($settingsStore.ttsVoices?.cloudProvider);
-
-  $: if (voice) syncVoiceDraft(voice);
 
   function syncVoiceDraft(nextVoice: VoiceStatus) {
     const currentJSON = JSON.stringify(nextVoice);
@@ -209,19 +208,22 @@
           <label>
             <span>Wake provider</span>
             <select
-              value={selectedWakeProvider?.id ?? ''}
               on:change={(event) =>
                 selectWakeProvider(
                   (event.currentTarget as HTMLSelectElement).value
                 )}
             >
-              <option value="">
+              <option value="" selected={!selectedWakeProvider}>
                 {wakeProviders.length === 0
                   ? 'No wake providers installed'
                   : 'Choose wake provider'}
               </option>
               {#each wakeProviders as provider (provider.id)}
-                <option value={provider.id}>{providerLabel(provider)}</option>
+                <option
+                  value={provider.id}
+                  selected={provider.id === selectedWakeProvider?.id}
+                  >{providerLabel(provider)}</option
+                >
               {/each}
             </select>
           </label>

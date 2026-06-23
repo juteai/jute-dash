@@ -165,7 +165,14 @@ if args.check:
 if not args.input:
     raise SystemExit("--input is required unless --check is used")
 predictions = model.predict_clip(args.input)
-scores = predictions if isinstance(predictions, dict) else {}
+if isinstance(predictions, dict):
+    scores = predictions
+else:
+    scores = {}
+    for frame in predictions:
+        if isinstance(frame, dict):
+            for key, value in frame.items():
+                scores[key] = max(float(value), scores.get(key, 0.0))
 confidence = max([float(v) for v in scores.values()] or [0.0])
 print(json.dumps({"detected": confidence >= args.threshold, "confidence": confidence}))
 PY
