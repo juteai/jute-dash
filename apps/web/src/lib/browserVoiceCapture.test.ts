@@ -19,6 +19,7 @@ class FakeProcessor {
 class FakeAudioContext {
   static processors: FakeProcessor[] = [];
   static instances: FakeAudioContext[] = [];
+  static options: AudioContextOptions[] = [];
 
   sampleRate = 16000;
   state: AudioContextState = 'running';
@@ -26,7 +27,8 @@ class FakeAudioContext {
   close = vi.fn();
   resume = vi.fn();
 
-  constructor() {
+  constructor(options: AudioContextOptions = {}) {
+    FakeAudioContext.options.push(options);
     FakeAudioContext.instances.push(this);
   }
 
@@ -61,6 +63,7 @@ describe('BrowserVoiceCaptureSession', () => {
     vi.restoreAllMocks();
     FakeAudioContext.processors = [];
     FakeAudioContext.instances = [];
+    FakeAudioContext.options = [];
     now = 0;
     vi.spyOn(performance, 'now').mockImplementation(() => now);
     stopTrack = vi.fn();
@@ -96,6 +99,7 @@ describe('BrowserVoiceCaptureSession', () => {
     });
 
     expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(FakeAudioContext.options[0]).toEqual({ sampleRate: 16000 });
     expect(stopTrack).not.toHaveBeenCalled();
     expect(FakeAudioContext.instances[0].close).not.toHaveBeenCalled();
 

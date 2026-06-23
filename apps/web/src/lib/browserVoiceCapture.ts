@@ -119,7 +119,7 @@ export class BrowserVoiceCaptureSession {
       throw new Error('Browser audio capture is unavailable.');
     }
 
-    const audioContext = new AudioContextCtor();
+    const audioContext = new AudioContextCtor({ sampleRate: TARGET_RATE });
     const source = audioContext.createMediaStreamSource(stream);
     const processor = audioContext.createScriptProcessor(4096, 1, 1);
     const sink = audioContext.createGain();
