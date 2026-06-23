@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1504,6 +1505,85 @@ func TestVoiceFinalTranscriptTriggersTTSEvents(t *testing.T) {
 		case <-ctx.Done():
 			t.Fatalf("timed out waiting for TTS events started=%v completed=%v", sawStarted, sawCompleted)
 		}
+	}
+}
+
+func TestVoiceFinalTranscriptSpeaksStreamingAssistantDeltasInChunks(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	cfg.Voice.TTSEnabled = true
+	cfg.Voice.TTSProviderID = "local-tts"
+	client := a2a.NewInMemoryClient()
+	client.StubStreamMessage([]a2a.StreamEvent{
+		{
+			Kind:           "artifact",
+			ConversationID: "voice-conversation-1",
+			TaskID:         "task-stream-1",
+			Text:           "First sentence.",
+			Append:         true,
+		},
+		{
+			Kind:           "artifact",
+			ConversationID: "voice-conversation-1",
+			TaskID:         "task-stream-1",
+			Text:           " Second sentence.",
+			Append:         true,
+		},
+		{
+			Kind:           "status",
+			ConversationID: "voice-conversation-1",
+			TaskID:         "task-stream-1",
+			Status:         "completed",
+			Terminal:       true,
+		},
+	}, nil)
+	syncer := filesync.NewInMemorySyncer(cfg)
+	cards := service.NewCardService()
+	manager := service.NewAgentManager(syncer, cards, "")
+	dispatcher := service.NewVoiceDispatcher()
+	store := repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice)
+	provider := &fixtureAppTTSProvider{}
+	server := &Server{
+		cfg:             cfg,
+		agentsManager:   manager,
+		messages:        client,
+		voiceStore:      store,
+		voiceDispatcher: dispatcher,
+		voiceRuntime:    service.NewConversationRuntime(),
+	}
+	server.voiceSpeaker = service.NewSpeaker(store, dispatcher, provider)
+	server.turnRunner = service.NewRunner(service.RunnerOptions{
+		GetRegistry:    manager.ActiveRegistry,
+		GetAgentConfig: manager.ConfiguredAgent,
+		GetAgentCardCache: func(context.Context, registry.Agent) (service.AgentCardCache, bool) {
+			return service.AgentCardCache{
+				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
+				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
+				Streaming:               true,
+			}, true
+		},
+		GetDashboardContext: func(context.Context) map[string]any {
+			return map[string]any{}
+		},
+		Messages: client,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	_, err := server.submitFinalTranscript(ctx, VoiceFinalTranscriptRequest{
+		Text:     "turn on the kitchen lights",
+		DeviceID: "kitchen-display",
+	})
+	if err != nil {
+		t.Fatalf("submitFinalTranscript() error = %v", err)
+	}
+
+	got := waitForTTSRequests(t, provider, 2)
+	want := []string{"First sentence.", "Second sentence."}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("TTS chunks = %v, want %v", got, want)
 	}
 }
 
@@ -3650,6 +3730,25 @@ func (p *fixtureAppWakeProvider) DetectWake(
 	return service.WakeDetection{Detected: p.detected}, nil
 }
 
+type fixtureAppTTSProvider struct {
+	mu       sync.Mutex
+	requests []service.TTSRequest
+}
+
+func (p *fixtureAppTTSProvider) Synthesize(
+	_ context.Context,
+	req service.TTSRequest,
+) (service.TTSAudioResult, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.requests = append(p.requests, req)
+	return service.TTSAudioResult{
+		ProviderID:   "local-tts",
+		ContentType:  "audio/wav",
+		PlaybackKind: "audio",
+	}, nil
+}
+
 type fixtureAppCapture struct {
 	frames []service.AudioFrame
 }
@@ -3705,6 +3804,32 @@ func waitForSentMessages(t *testing.T, client *a2a.InMemoryClient, count int) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %d sent message(s), got %d", count, len(client.SentMessages))
+}
+
+func waitForTTSRequests(
+	t *testing.T,
+	provider *fixtureAppTTSProvider,
+	count int,
+) []string {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		provider.mu.Lock()
+		if len(provider.requests) >= count {
+			texts := make([]string, 0, len(provider.requests))
+			for _, req := range provider.requests {
+				texts = append(texts, req.Text)
+			}
+			provider.mu.Unlock()
+			return texts
+		}
+		provider.mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+	}
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	t.Fatalf("timed out waiting for %d TTS request(s), got %d", count, len(provider.requests))
+	return nil
 }
 
 func waitForVoiceStateEvent(

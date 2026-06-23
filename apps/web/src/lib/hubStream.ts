@@ -228,6 +228,10 @@ function createHubStreamStore() {
   let hasConnected = false;
   let isMounted = false;
   let ttsPlaybackPending = false;
+  let ttsPendingActions = 0;
+  let ttsAudioPlaying = false;
+  let ttsPlaybackFailed = false;
+  const ttsAudioQueue: string[] = [];
 
   async function playTTSAudio(audioUrl: string) {
     if (!browser || typeof Audio === 'undefined' || !audioUrl) return;
@@ -237,15 +241,63 @@ function createHubStreamStore() {
     }
     const objectUrl = URL.createObjectURL(await response.blob());
     const audio = new Audio(objectUrl);
-    const cleanup = () => URL.revokeObjectURL(objectUrl);
-    audio.addEventListener('ended', cleanup, { once: true });
-    audio.addEventListener('error', cleanup, { once: true });
-    try {
-      await audio.play();
-    } catch (err) {
-      cleanup();
-      throw err;
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const cleanup = () => URL.revokeObjectURL(objectUrl);
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      const fail = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('TTS playback failed.'));
+      };
+      audio.addEventListener('ended', finish, { once: true });
+      audio.addEventListener('error', fail, { once: true });
+      void audio.play().catch(fail);
+    });
+  }
+
+  function finishTTSPlaybackIfIdle() {
+    if (ttsPendingActions > 0 || ttsAudioQueue.length > 0 || ttsAudioPlaying) {
+      return;
     }
+    const failed = ttsPlaybackFailed;
+    ttsPlaybackPending = false;
+    ttsPlaybackFailed = false;
+    update((s) => ({
+      ...s,
+      voiceOrbState: 'followup',
+      voiceError: failed ? safeVoiceError('tts_failure') : ''
+    }));
+  }
+
+  async function drainTTSAudioQueue() {
+    if (ttsAudioPlaying) return;
+    ttsAudioPlaying = true;
+    try {
+      while (ttsAudioQueue.length > 0) {
+        const audioUrl = ttsAudioQueue.shift();
+        if (!audioUrl) continue;
+        try {
+          await playTTSAudio(audioUrl);
+        } catch {
+          ttsPlaybackFailed = true;
+        }
+      }
+    } finally {
+      ttsAudioPlaying = false;
+      finishTTSPlaybackIfIdle();
+    }
+  }
+
+  function queueTTSAudio(audioUrl: string) {
+    ttsAudioQueue.push(audioUrl);
+    void drainTTSAudioQueue();
   }
 
   function markConnected() {
@@ -728,7 +780,11 @@ function createHubStreamStore() {
           payload?: { state?: string };
         }>((event as MessageEvent).data);
         logger.sse(event.type, e?.payload?.state);
+        if (!ttsPlaybackPending) {
+          ttsPlaybackFailed = false;
+        }
         ttsPlaybackPending = true;
+        ttsPendingActions += 1;
         update((s) => ({
           ...s,
           voiceConversationId:
@@ -745,6 +801,7 @@ function createHubStreamStore() {
         }>((event as MessageEvent).data);
         logger.sse(event.type);
         const audioUrl = e?.payload?.audioUrl;
+        ttsPendingActions = Math.max(0, ttsPendingActions - 1);
         if (typeof audioUrl === 'string' && audioUrl) {
           update((s) => ({
             ...s,
@@ -753,33 +810,14 @@ function createHubStreamStore() {
             voiceOrbState: 'speaking',
             voiceError: ''
           }));
-          void playTTSAudio(audioUrl).then(
-            () => {
-              ttsPlaybackPending = false;
-              update((s) => ({
-                ...s,
-                voiceOrbState: 'followup',
-                voiceError: ''
-              }));
-            },
-            () => {
-              ttsPlaybackPending = false;
-              update((s) => ({
-                ...s,
-                voiceOrbState: 'followup',
-                voiceError: safeVoiceError('tts_failure')
-              }));
-            }
-          );
+          queueTTSAudio(audioUrl);
         } else {
-          ttsPlaybackPending = false;
           update((s) => ({
             ...s,
             voiceConversationId:
-              eventConversationID(e ?? {}) || s.voiceConversationId,
-            voiceOrbState: 'followup',
-            voiceError: ''
+              eventConversationID(e ?? {}) || s.voiceConversationId
           }));
+          finishTTSPlaybackIfIdle();
         }
       });
 
@@ -790,6 +828,9 @@ function createHubStreamStore() {
         }>((event as MessageEvent).data);
         const reason = e?.payload?.reason;
         ttsPlaybackPending = false;
+        ttsPendingActions = 0;
+        ttsAudioQueue.length = 0;
+        ttsPlaybackFailed = false;
         const policyMessage =
           reason === 'sensitive_output_visual_only' ||
           reason === 'sensitive_output_requires_confirmation'
@@ -814,7 +855,9 @@ function createHubStreamStore() {
           payload?: { reason?: string };
         }>((event as MessageEvent).data);
         logger.sse(event.type);
-        ttsPlaybackPending = false;
+        ttsPendingActions = Math.max(0, ttsPendingActions - 1);
+        ttsPlaybackFailed = true;
+        finishTTSPlaybackIfIdle();
         update((s) => ({
           ...s,
           voiceConversationId:
@@ -832,6 +875,9 @@ function createHubStreamStore() {
         const error = safeVoiceError(e?.payload?.reason);
         logger.sse(event.type);
         ttsPlaybackPending = false;
+        ttsPendingActions = 0;
+        ttsAudioQueue.length = 0;
+        ttsPlaybackFailed = false;
         update((s) => ({
           ...s,
           voiceConversationId:

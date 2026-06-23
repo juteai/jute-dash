@@ -62,10 +62,10 @@ sequenceDiagram
   participant UI as Jute Display
   participant User
 
-  Hub->>Provider: synthesize approved assistant text
-  Provider-->>Hub: stream or playable audio reference
-  Hub->>UI: tts.completed with audioUrl
   Hub->>UI: tts.started
+  Hub->>Provider: synthesize approved assistant chunk
+  Provider-->>Hub: playable audio bytes
+  Hub->>UI: tts.completed with audioUrl
   UI->>Hub: GET /api/v1/tts/audio/{id}
   UI->>User: browser audio playback
   User->>Voice: barge-in or cancel
@@ -116,6 +116,11 @@ local command with hub-approved text and selected voice/locale/model arguments, 
 metadata about the produced playback. The command is disabled until explicitly enabled and must not
 receive secrets through argv.
 
+When an A2A agent streams assistant text, the hub chunks approved assistant deltas on sentence
+boundaries or a bounded text size and invokes the selected TTS provider for each chunk in FIFO order.
+The display queues returned `audioUrl` values and plays them sequentially. Non-streaming A2A agents
+produce a single TTS action after the final assistant response is available.
+
 At runtime, the hub resolves the selected TTS Provider Pack from SQLite and attaches a provider only
 when the manifest is local/offline, command providers are enabled, provider health is `available` or
 `degraded`, required credentials are satisfied, and TTS is enabled for the device profile. Public
@@ -150,10 +155,6 @@ Implemented events:
 - `tts.completed`: playback completed.
 - `tts.failed`: synthesis or playback failed.
 - `tts.stopped`: user, policy, barge-in, or timeout stopped playback.
-
-Future events:
-
-- `tts.chunk`: optional streaming progress event for chunked playback.
 
 Every TTS event includes `id`, `type`, `createdAt`, `deviceId`, optional `conversationId`, optional `turnId`, and `payload`.
 

@@ -165,10 +165,22 @@ describe('hubStream voice events', () => {
       ok: true,
       blob: async () => new Blob(['audio'], { type: 'audio/wav' })
     }));
+    const endedListeners: Array<() => void> = [];
+    const createObjectURL = vi.fn(() => 'blob:tts-1');
+    const revokeObjectURL = vi.fn();
+    const NativeURL = URL;
+    class FakeURL extends NativeURL {
+      static createObjectURL = createObjectURL;
+      static revokeObjectURL = revokeObjectURL;
+    }
     const play = vi.fn(async () => undefined);
     class FakeAudio {
       constructor(public src: string) {}
-      addEventListener() {}
+      addEventListener(type: string, listener: () => void) {
+        if (type === 'ended') {
+          endedListeners.push(listener);
+        }
+      }
       play = play;
     }
     vi.stubGlobal('window', {
@@ -178,6 +190,7 @@ describe('hubStream voice events', () => {
       clearTimeout: vi.fn(),
       fetch: fetchAudio
     });
+    vi.stubGlobal('URL', FakeURL);
     vi.stubGlobal('Audio', FakeAudio);
     const { hubStream } = await import('./hubStream');
 
@@ -188,11 +201,90 @@ describe('hubStream voice events', () => {
       conversationId: 'conversation-1',
       payload: { audioUrl: '/api/v1/tts/audio/tts-1' }
     });
-    await Promise.resolve();
-    await Promise.resolve();
 
-    expect(fetchAudio).toHaveBeenCalledWith('/api/v1/tts/audio/tts-1');
-    expect(play).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(fetchAudio).toHaveBeenCalledWith('/api/v1/tts/audio/tts-1');
+      expect(play).toHaveBeenCalled();
+    });
+    endedListeners.shift()?.();
+    await vi.waitFor(() => {
+      expect(get(hubStream)).toMatchObject({
+        voiceConversationId: 'conversation-1',
+        voiceOrbState: 'followup',
+        voiceError: ''
+      });
+    });
+  });
+
+  it('queues browser TTS audio chunks sequentially', async () => {
+    const fetchAudio = vi.fn(async () => ({
+      ok: true,
+      blob: async () => new Blob(['audio'], { type: 'audio/wav' })
+    }));
+    const endedListeners: Array<() => void> = [];
+    let objectURLIndex = 0;
+    const createObjectURL = vi.fn(() => `blob:tts-${++objectURLIndex}`);
+    const NativeURL = URL;
+    class FakeURL extends NativeURL {
+      static createObjectURL = createObjectURL;
+      static revokeObjectURL = vi.fn();
+    }
+    const play = vi.fn(async () => undefined);
+    class FakeAudio {
+      constructor(public src: string) {}
+      addEventListener(type: string, listener: () => void) {
+        if (type === 'ended') {
+          endedListeners.push(listener);
+        }
+      }
+      play = play;
+    }
+    vi.stubGlobal('window', {
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn(),
+      setTimeout: vi.fn(() => 1),
+      clearTimeout: vi.fn(),
+      fetch: fetchAudio
+    });
+    vi.stubGlobal('URL', FakeURL);
+    vi.stubGlobal('Audio', FakeAudio);
+    const { hubStream } = await import('./hubStream');
+
+    hubStream.connect(vi.fn() as unknown as typeof fetch);
+    const source = FakeEventSource.instances[0];
+    source.emit('tts.started', {
+      id: 'tts-1',
+      conversationId: 'conversation-1',
+      payload: {}
+    });
+    source.emit('tts.completed', {
+      id: 'tts-1',
+      conversationId: 'conversation-1',
+      payload: { audioUrl: '/api/v1/tts/audio/tts-1' }
+    });
+    source.emit('tts.started', {
+      id: 'tts-2',
+      conversationId: 'conversation-1',
+      payload: {}
+    });
+    source.emit('tts.completed', {
+      id: 'tts-2',
+      conversationId: 'conversation-1',
+      payload: { audioUrl: '/api/v1/tts/audio/tts-2' }
+    });
+
+    await vi.waitFor(() => {
+      expect(fetchAudio).toHaveBeenCalledTimes(1);
+      expect(fetchAudio).toHaveBeenCalledWith('/api/v1/tts/audio/tts-1');
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+    endedListeners.shift()?.();
+    await vi.waitFor(() => {
+      expect(fetchAudio).toHaveBeenCalledTimes(2);
+      expect(fetchAudio).toHaveBeenLastCalledWith('/api/v1/tts/audio/tts-2');
+      expect(play).toHaveBeenCalledTimes(2);
+    });
+    endedListeners.shift()?.();
     await vi.waitFor(() => {
       expect(get(hubStream)).toMatchObject({
         voiceConversationId: 'conversation-1',

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"jute-dash/apps/hub/internal/app/service"
@@ -37,6 +38,7 @@ type VoiceFollowupResponse struct {
 }
 
 const maxVoiceAudioBytes = 2 * 1024 * 1024
+const minTTSChunkBytes = 220
 
 type voiceTranscriptError struct {
 	status  int
@@ -662,18 +664,51 @@ func (s *Server) voiceAgentID(requested string, settings service.Settings) strin
 func (s *Server) voiceAgentEventCallback(deviceID string) func(service.Event) error {
 	var ttsBuffer strings.Builder
 	spokeFromDeltas := false
+	type ttsChunk struct {
+		conversationID string
+		taskID         string
+		text           string
+	}
+	ttsQueue := make(chan ttsChunk, 8)
+	var startTTSWorker sync.Once
+	var closeTTSQueue sync.Once
 
-	speakBuffered := func(ctx context.Context, event service.Event, force bool) {
+	enqueueTTS := func(event service.Event, text string) {
+		text = strings.TrimSpace(text)
+		if text == "" {
+			return
+		}
+		startTTSWorker.Do(func() {
+			go func() {
+				for chunk := range ttsQueue {
+					s.speakVoiceAssistantTextNow(
+						context.Background(),
+						deviceID,
+						chunk.conversationID,
+						chunk.taskID,
+						chunk.text,
+					)
+				}
+			}()
+		})
+		ttsQueue <- ttsChunk{
+			conversationID: event.ConversationID,
+			taskID:         event.TaskID,
+			text:           text,
+		}
+	}
+
+	speakBuffered := func(event service.Event, force bool) {
 		text := strings.TrimSpace(ttsBuffer.String())
 		if text == "" {
 			return
 		}
-		if !force && !endsWithSentenceBoundary(text) {
+		if !force && !readyForTTSChunk(text) {
 			return
 		}
 		ttsBuffer.Reset()
 		spokeFromDeltas = true
-		s.speakVoiceAssistantText(ctx, deviceID, event.ConversationID, event.TaskID, text)
+		enqueueTTS(event, text)
 	}
 
 	return func(event service.Event) error {
@@ -709,7 +744,7 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(service.Event) er
 				payload,
 			)
 			if ttsBuffer.Len() > 0 {
-				speakBuffered(context.Background(), event, true)
+				speakBuffered(event, true)
 			} else if !spokeFromDeltas && assistantText != "" {
 				taskID := event.TaskID
 				if event.Detail != nil && event.Detail.Conversation.LatestTaskID != "" {
@@ -723,6 +758,7 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(service.Event) er
 					assistantText,
 				)
 			}
+			closeTTSQueue.Do(func() { close(ttsQueue) })
 		case service.EventStatusChanged:
 			s.voiceDispatcher.EmitConversationEvent(
 				service.EventConversationTurnStarted,
@@ -751,9 +787,10 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(service.Event) er
 					ttsBuffer.Reset()
 				}
 				ttsBuffer.WriteString(event.Text)
-				speakBuffered(context.Background(), event, false)
+				speakBuffered(event, false)
 			}
 		case service.EventTurnFailed:
+			closeTTSQueue.Do(func() { close(ttsQueue) })
 			s.voiceDispatcher.EmitConversationEvent(
 				service.EventConversationTurnCompleted,
 				deviceID,
@@ -772,6 +809,13 @@ func (s *Server) speakVoiceAssistantText(
 	ctx context.Context,
 	deviceID, conversationID, taskID, text string,
 ) {
+	go s.speakVoiceAssistantTextNow(ctx, deviceID, conversationID, taskID, text)
+}
+
+func (s *Server) speakVoiceAssistantTextNow(
+	ctx context.Context,
+	deviceID, conversationID, taskID, text string,
+) {
 	text = strings.TrimSpace(text)
 	if text == "" || s.voiceSpeaker == nil {
 		return
@@ -782,20 +826,26 @@ func (s *Server) speakVoiceAssistantText(
 		strings.TrimSpace(settings.TTSProviderID) == "" {
 		return
 	}
-	go func() {
-		ttsCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
-		defer cancel()
-		_, _ = s.voiceSpeaker.Speak(
-			ttsCtx,
-			deviceID,
-			service.TTSActionSpeak,
-			service.TTSRequest{
-				Text:           text,
-				ConversationID: conversationID,
-				TurnID:         taskID,
-			},
-		)
-	}()
+	ttsCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	defer cancel()
+	_, _ = s.voiceSpeaker.Speak(
+		ttsCtx,
+		deviceID,
+		service.TTSActionSpeak,
+		service.TTSRequest{
+			Text:           text,
+			ConversationID: conversationID,
+			TurnID:         taskID,
+		},
+	)
+}
+
+func readyForTTSChunk(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	return endsWithSentenceBoundary(text) || len(text) >= minTTSChunkBytes
 }
 
 func endsWithSentenceBoundary(text string) bool {
