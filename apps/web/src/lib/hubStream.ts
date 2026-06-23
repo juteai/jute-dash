@@ -228,6 +228,20 @@ function createHubStreamStore() {
   let hasConnected = false;
   let isMounted = false;
 
+  async function playTTSAudio(audioUrl: string) {
+    if (!browser || typeof Audio === 'undefined' || !audioUrl) return;
+    const response = await window.fetch(audioUrl);
+    if (!response.ok) {
+      throw new Error('TTS audio is unavailable.');
+    }
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const audio = new Audio(objectUrl);
+    const cleanup = () => URL.revokeObjectURL(objectUrl);
+    audio.addEventListener('ended', cleanup, { once: true });
+    audio.addEventListener('error', cleanup, { once: true });
+    await audio.play();
+  }
+
   function markConnected() {
     hasConnected = true;
     update((s) => ({
@@ -718,9 +732,10 @@ function createHubStreamStore() {
       });
 
       eventSource.addEventListener('tts.completed', (event) => {
-        const e = parseDisplayEvent<{ conversationId?: string }>(
-          (event as MessageEvent).data
-        );
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { audioUrl?: string };
+        }>((event as MessageEvent).data);
         logger.sse(event.type);
         update((s) => ({
           ...s,
@@ -729,6 +744,16 @@ function createHubStreamStore() {
           voiceOrbState: 'followup',
           voiceError: ''
         }));
+        const audioUrl = e?.payload?.audioUrl;
+        if (typeof audioUrl === 'string' && audioUrl) {
+          void playTTSAudio(audioUrl).catch(() => {
+            update((s) => ({
+              ...s,
+              voiceOrbState: 'followup',
+              voiceError: safeVoiceError('tts_failure')
+            }));
+          });
+        }
       });
 
       eventSource.addEventListener('tts.stopped', (event) => {

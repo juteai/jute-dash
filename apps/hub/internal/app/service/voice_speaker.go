@@ -10,6 +10,7 @@ type Speaker struct {
 	display     VoiceDisplayEmitter
 	tts         *TTSRuntime
 	ttsProvider TTSProvider
+	audioStore  *TTSAudioStore
 }
 
 func NewSpeaker(store VoiceStore, display VoiceDisplayEmitter, provider TTSProvider) *Speaker {
@@ -19,6 +20,11 @@ func NewSpeaker(store VoiceStore, display VoiceDisplayEmitter, provider TTSProvi
 		tts:         NewTTSRuntime(),
 		ttsProvider: provider,
 	}
+}
+
+func (s *Speaker) WithAudioStore(store *TTSAudioStore) *Speaker {
+	s.audioStore = store
+	return s
 }
 
 func (s *Speaker) Speak(ctx context.Context, deviceID, action string, req TTSRequest) (TTSActionResponse, error) {
@@ -60,6 +66,9 @@ func (s *Speaker) Speak(ctx context.Context, deviceID, action string, req TTSReq
 			return response, nil
 		}
 		response = s.tts.CompleteWithAudio(response.ID, audio)
+		if s.audioStore.Put(response.ID, audio) {
+			response.AudioURL = "/api/v1/tts/audio/" + response.ID
+		}
 	} else {
 		response.State = TTSStatePlayback
 		response = s.tts.Complete(response.ID)
@@ -71,6 +80,10 @@ func (s *Speaker) Speak(ctx context.Context, deviceID, action string, req TTSReq
 		s.display.EmitTTSEvent(EventTTSCompleted, deviceID, response)
 	}
 	return response, nil
+}
+
+func (s *Speaker) TTSAudio(id string) (StoredTTSAudio, bool) {
+	return s.audioStore.Get(id)
 }
 
 func (s *Speaker) Stop(deviceID string, req TTSStopRequest) TTSActionResponse {

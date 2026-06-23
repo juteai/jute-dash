@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"jute-dash/apps/hub/internal/app/service"
 	"jute-dash/apps/hub/internal/pkg/httphelper"
@@ -42,7 +43,12 @@ func NewVoiceController(
 	display VoiceDisplayEmitter,
 	cancel func() []service.CancelledConversation,
 ) *VoiceController {
-	return NewVoiceControllerWithSpeaker(store, display, cancel, service.NewSpeaker(store, display, nil))
+	return NewVoiceControllerWithSpeaker(
+		store,
+		display,
+		cancel,
+		service.NewSpeaker(store, display, nil).WithAudioStore(service.NewTTSAudioStore(5*time.Minute)),
+	)
 }
 
 func NewVoiceControllerWithSpeaker(
@@ -68,7 +74,12 @@ func NewVoiceControllerWithTTSProvider(
 	cancel func() []service.CancelledConversation,
 	provider service.TTSProvider,
 ) *VoiceController {
-	return NewVoiceControllerWithSpeaker(store, display, cancel, service.NewSpeaker(store, display, provider))
+	return NewVoiceControllerWithSpeaker(
+		store,
+		display,
+		cancel,
+		service.NewSpeaker(store, display, provider).WithAudioStore(service.NewTTSAudioStore(5*time.Minute)),
+	)
 }
 
 func (c *VoiceController) OnRuntimeChanged(
@@ -102,6 +113,7 @@ func (c *VoiceController) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/voice/unmute", c.handleVoiceUnmute)
 	mux.HandleFunc("/api/v1/voice/cancel", c.handleVoiceCancel)
 	mux.HandleFunc("/api/v1/voice/providers", c.handleVoiceProviders)
+	mux.HandleFunc("/api/v1/tts/audio/", c.handleTTSAudio)
 	mux.HandleFunc("/api/v1/tts/voices", c.handleTTSVoices)
 	mux.HandleFunc("/api/v1/tts/speak", c.handleTTSSpeak)
 	mux.HandleFunc("/api/v1/tts/stop", c.handleTTSStop)
@@ -275,6 +287,22 @@ func (c *VoiceController) handleTTSVoices(w http.ResponseWriter, r *http.Request
 		return
 	}
 	httphelper.WriteJSON(w, http.StatusOK, voices)
+}
+
+func (c *VoiceController) handleTTSAudio(w http.ResponseWriter, r *http.Request) {
+	if !httphelper.RequireMethod(w, r, http.MethodGet) {
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/api/v1/tts/audio/")
+	audio, ok := c.speaker.TTSAudio(id)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", audio.ContentType)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(audio.Audio)
 }
 
 func (c *VoiceController) handleTTSSpeak(w http.ResponseWriter, r *http.Request) {

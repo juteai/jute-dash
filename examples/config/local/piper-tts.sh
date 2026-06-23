@@ -40,10 +40,6 @@ fi
 audio=$(mktemp -t jute-piper.XXXXXX.wav)
 trap 'rm -f "$audio"' EXIT
 printf '%s' "$text" | "$bin" --model "$model" --output_file "$audio" >/dev/null
-if command -v afplay >/dev/null 2>&1; then
-  afplay "$audio" >/dev/null 2>&1 || true
-elif command -v aplay >/dev/null 2>&1; then
-  aplay "$audio" >/dev/null 2>&1 || true
-fi
+audio_b64=$(base64 < "$audio" | tr -d '\n')
 
-printf '{"providerId":"local-piper-tts","voiceId":"%s","locale":"%s","contentType":"audio/wav","sampleRate":22050,"sampleWidth":2,"channels":1,"playbackKind":"local"}\n' "$voice" "$language"
+printf '{"providerId":"local-piper-tts","voiceId":"%s","locale":"%s","contentType":"audio/wav","sampleRate":22050,"sampleWidth":2,"channels":1,"playbackKind":"browser","audioBase64":"%s"}\n' "$voice" "$language" "$audio_b64"

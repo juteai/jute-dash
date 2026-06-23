@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -99,6 +100,7 @@ func decodeCommandTTSOutput(output []byte, p CommandTTSProvider, req TTSRequest)
 		Channels     int     `json:"channels"`
 		DurationMS   float64 `json:"durationMs"`
 		PlaybackKind string  `json:"playbackKind"`
+		AudioBase64  string  `json:"audioBase64"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(output)))
 	decoder.DisallowUnknownFields()
@@ -108,7 +110,16 @@ func decodeCommandTTSOutput(output []byte, p CommandTTSProvider, req TTSRequest)
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return TTSAudioResult{}, errCommandTTSProviderUnavailable
 	}
+	var audio []byte
+	if strings.TrimSpace(out.AudioBase64) != "" {
+		decoded, err := base64.StdEncoding.DecodeString(out.AudioBase64)
+		if err != nil {
+			return TTSAudioResult{}, errCommandTTSProviderUnavailable
+		}
+		audio = decoded
+	}
 	return TTSAudioResult{
+		Audio:        audio,
 		ProviderID:   safeIdentifier(voiceFirstNonEmpty(out.ProviderID, p.ProviderID)),
 		VoiceID:      safeIdentifier(voiceFirstNonEmpty(out.VoiceID, req.VoiceID, p.VoiceID)),
 		Locale:       safeIdentifier(voiceFirstNonEmpty(out.Locale, req.Locale, p.Locale)),

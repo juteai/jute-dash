@@ -199,6 +199,13 @@ async function handleAPI(
   if (path === '/api/v1/tts/voices' && method === 'GET') {
     return json(route, state.ttsVoices);
   }
+  if (path.match(/^\/api\/v1\/tts\/audio\/[^/]+$/) && method === 'GET') {
+    return route.fulfill({
+      status: 200,
+      contentType: 'audio/wav',
+      body: Buffer.from('RIFF$\x00\x00\x00WAVEfmt ')
+    });
+  }
   if (path === '/api/v1/voice/settings' && method === 'PATCH') {
     state.voice = { ...state.voice, ...((await safeBody(request)) as object) };
     return json(route, state.voice);

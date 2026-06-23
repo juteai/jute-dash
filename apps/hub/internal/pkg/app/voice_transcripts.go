@@ -124,7 +124,8 @@ func (s *Server) handleVoiceAudio(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		response, err := s.beginWakeConversation(r.Context(), req)
+		req.wakeDetected = true
+		response, err := s.submitVoiceUtterance(r.Context(), req, utterance)
 		if err != nil {
 			var transcriptErr voiceTranscriptError
 			if errors.As(err, &transcriptErr) {
@@ -378,7 +379,38 @@ func (s *Server) submitVoiceUtterance(
 	req.Text = transcript.Text
 	req.DeviceProfileID = transcript.DeviceProfileID
 	req.DeviceID = transcript.DeviceID
+	if req.wakeDetected {
+		settings, err := s.voiceStore.VoiceSettings(ctx, req.DeviceProfileID)
+		if err != nil {
+			return VoiceFinalTranscriptResponse{}, voiceTranscriptError{
+				status:  http.StatusInternalServerError,
+				message: "voice settings are unavailable",
+			}
+		}
+		req.Text = stripWakePhraseFromTranscript(req.Text, settings)
+		if req.Text == "" {
+			return s.beginWakeConversation(ctx, req)
+		}
+	}
 	return s.submitFinalTranscript(ctx, req)
+}
+
+func stripWakePhraseFromTranscript(text string, settings service.Settings) string {
+	text = strings.TrimSpace(text)
+	for _, phrase := range []string{
+		settings.WakeWordPhrase,
+		strings.NewReplacer("_", " ", "-", " ").Replace(settings.WakeWordModelID),
+	} {
+		phrase = strings.TrimSpace(phrase)
+		if phrase == "" {
+			continue
+		}
+		if len(text) < len(phrase) || !strings.EqualFold(text[:len(phrase)], phrase) {
+			continue
+		}
+		return strings.TrimSpace(strings.TrimLeft(text[len(phrase):], " ,.!?:;-"))
+	}
+	return text
 }
 
 func (s *Server) handleFinalTranscriptRequest(

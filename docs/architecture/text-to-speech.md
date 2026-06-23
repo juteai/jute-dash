@@ -26,8 +26,8 @@ command-provider policy is enabled for a household or device profile. It must no
 Provider Pack manifests, hub speech policy, sensitive-output handling, provider health reporting, or
 the visual-first failure model.
 
-Browser `speechSynthesis` is not part of the v1 voice runtime. The display remains a hub client and
-does not synthesize speech locally.
+Browser `speechSynthesis` is not part of the v1 voice runtime. The display remains a hub client:
+the hub synthesizes approved speech and the browser plays short-lived hub audio URLs.
 
 ## Component Flow
 
@@ -37,7 +37,7 @@ flowchart LR
   hub["Jute Hub\nconversation authority"]
   policy["Speech policy\nredaction + sensitivity"]
   provider["Selected TTS Provider Pack"]
-  voice["Jute Voice Service\nplayback owner"]
+  voice["Jute Hub\nsynthesis owner"]
   ui["Jute Display\nchat surface"]
   events["/api/v1/events"]
 
@@ -64,9 +64,10 @@ sequenceDiagram
 
   Hub->>Provider: synthesize approved assistant text
   Provider-->>Hub: stream or playable audio reference
-  Hub->>Voice: play response
+  Hub->>UI: tts.completed with audioUrl
   Hub->>UI: tts.started
-  Voice-->>UI: playback progress through events
+  UI->>Hub: GET /api/v1/tts/audio/{id}
+  UI->>User: browser audio playback
   User->>Voice: barge-in or cancel
   Voice->>Hub: playback stopped
   Hub->>Provider: cancel if still synthesizing
@@ -132,10 +133,11 @@ Implemented foundation APIs:
 
 - `GET /api/v1/tts/voices`: returns voices for the selected provider or a requested `providerId`,
   scoped to the default profile or requested `deviceProfileId`.
+- `GET /api/v1/tts/audio/{id}`: returns short-lived synthesized audio for browser playback.
 - `POST /api/v1/tts/speak`: queues speech for approved assistant text or explicit UI action.
 - `POST /api/v1/tts/stop`: stops current playback.
 
-The speak HTTP implementation applies hub speech policy, emits safe TTS state events, and returns a control response. When a selected command provider is available, the server calls the provider synthesis path. The provider may perform local playback itself and return safe playback metadata such as content type, sample format, duration, and playback kind. Raw audio bytes are not put on the JSON or SSE surface. Without an attached provider, the same API remains a safe control/event path for UI integration tests.
+The speak HTTP implementation applies hub speech policy, emits safe TTS state events, and returns a control response. When a selected command provider is available, the server calls the provider synthesis path. Command providers return safe playback metadata and may include `audioBase64`; the hub stores those bytes briefly and exposes only an `audioUrl` on JSON/SSE. Without an attached provider, the same API remains a safe control/event path for UI integration tests.
 
 `POST /api/v1/tts/stop` records `tts.stopped` as a terminal state for the active action and cancels
 any in-flight provider synthesis context, including barge-in stops. If the provider returns after

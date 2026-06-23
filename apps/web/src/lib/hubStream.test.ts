@@ -49,6 +49,7 @@ class FakeEventSource {
 
 describe('hubStream voice events', () => {
   beforeEach(() => {
+    vi.unstubAllGlobals();
     vi.resetModules();
     vi.clearAllMocks();
     FakeEventSource.instances = [];
@@ -156,6 +157,46 @@ describe('hubStream voice events', () => {
     expect(get(hubStream)).toMatchObject({
       voiceOrbState: 'error',
       voiceError: 'The agent could not complete that voice turn.'
+    });
+  });
+
+  it('plays browser TTS audio from completed events', async () => {
+    const fetchAudio = vi.fn(async () => ({
+      ok: true,
+      blob: async () => new Blob(['audio'], { type: 'audio/wav' })
+    }));
+    const play = vi.fn(async () => undefined);
+    class FakeAudio {
+      constructor(public src: string) {}
+      addEventListener() {}
+      play = play;
+    }
+    vi.stubGlobal('window', {
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn(),
+      setTimeout: vi.fn(() => 1),
+      clearTimeout: vi.fn(),
+      fetch: fetchAudio
+    });
+    vi.stubGlobal('Audio', FakeAudio);
+    const { hubStream } = await import('./hubStream');
+
+    hubStream.connect(vi.fn() as unknown as typeof fetch);
+    const source = FakeEventSource.instances[0];
+    source.emit('tts.completed', {
+      id: 'tts-1',
+      conversationId: 'conversation-1',
+      payload: { audioUrl: '/api/v1/tts/audio/tts-1' }
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetchAudio).toHaveBeenCalledWith('/api/v1/tts/audio/tts-1');
+    expect(play).toHaveBeenCalled();
+    expect(get(hubStream)).toMatchObject({
+      voiceConversationId: 'conversation-1',
+      voiceOrbState: 'followup',
+      voiceError: ''
     });
   });
 

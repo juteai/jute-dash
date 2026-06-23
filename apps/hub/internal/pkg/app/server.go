@@ -443,7 +443,11 @@ func newServerWithSecrets(
 			ttsProvider = provider
 		}
 	}
-	server.voiceSpeaker = service.NewSpeaker(server.voiceStore, server.voiceDispatcher, ttsProvider)
+	server.voiceSpeaker = service.NewSpeaker(
+		server.voiceStore,
+		server.voiceDispatcher,
+		ttsProvider,
+	).WithAudioStore(service.NewTTSAudioStore(5 * time.Minute))
 	controller.NewVoiceControllerWithSpeaker(
 		server.voiceStore,
 		server.voiceDispatcher,

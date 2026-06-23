@@ -158,6 +158,9 @@ func sanitizeTTSActionResponse(response TTSActionResponse) TTSActionResponse {
 	response.Reason = sanitizeText(response.Reason)
 	response.PlaybackKind = safeIdentifier(response.PlaybackKind)
 	response.ContentType = safeIdentifier(response.ContentType)
+	if !strings.HasPrefix(response.AudioURL, "/api/v1/tts/audio/") {
+		response.AudioURL = ""
+	}
 	return response
 }
 

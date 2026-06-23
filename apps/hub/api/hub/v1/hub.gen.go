@@ -199,6 +199,9 @@ type ServerInterface interface {
 	// (GET /api/v1/status)
 	GetStatus(ctx echo.Context) error
 
+	// (GET /api/v1/tts/audio/{id})
+	GetTTSAudio(ctx echo.Context, id string) error
+
 	// (POST /api/v1/tts/speak)
 	PostTTSSpeak(ctx echo.Context) error
 
@@ -415,6 +418,22 @@ func (w *ServerInterfaceWrapper) GetStatus(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetStatus(ctx)
+	return err
+}
+
+// GetTTSAudio converts echo context to params.
+func (w *ServerInterfaceWrapper) GetTTSAudio(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetTTSAudio(ctx, id)
 	return err
 }
 
@@ -771,6 +790,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.PUT(options.BaseURL+"/api/v1/settings/tiles", wrapper.PutTiles, options.OperationMiddlewares["putTiles"]...)
 	router.GET(options.BaseURL+"/api/v1/setup/status", wrapper.GetSetupStatus, options.OperationMiddlewares["getSetupStatus"]...)
 	router.GET(options.BaseURL+"/api/v1/status", wrapper.GetStatus, options.OperationMiddlewares["getStatus"]...)
+	router.GET(options.BaseURL+"/api/v1/tts/audio/:id", wrapper.GetTTSAudio, options.OperationMiddlewares["getTTSAudio"]...)
 	router.POST(options.BaseURL+"/api/v1/tts/speak", wrapper.PostTTSSpeak, options.OperationMiddlewares["postTTSSpeak"]...)
 	router.POST(options.BaseURL+"/api/v1/tts/stop", wrapper.PostTTSStop, options.OperationMiddlewares["postTTSStop"]...)
 	router.GET(options.BaseURL+"/api/v1/tts/voices", wrapper.GetTTSVoices, options.OperationMiddlewares["getTTSVoices"]...)

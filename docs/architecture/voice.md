@@ -13,8 +13,8 @@ The chosen posture is **local-first hybrid**:
 - A2A agents receive transcripts and redacted context, not raw microphone audio.
 
 Canonical voice runtime is inside the Go hub. The Svelte display may act as a browser microphone
-client by sending PCM to the hub, but browser STT, browser wake-word decisions, browser TTS, and
-direct A2A routing are out of scope for v1.
+client by sending PCM to the hub, but browser STT, browser wake-word decisions, browser-side speech
+synthesis, and direct A2A routing are out of scope for v1.
 
 ## Ecosystem References
 
@@ -157,8 +157,8 @@ sequenceDiagram
   Voice->>Voice: Detects wake word locally
   Voice->>Hub: voice.wake_detected
   Hub->>UI: voice.state_changed wake_detected
-  Voice->>Voice: Captures utterance with pre-roll + VAD
-  Voice->>Hub: voice.transcript.final
+  Voice->>Hub: wake audio
+  Hub->>Voice: STT after wake detection
   Hub->>Hub: Starts conversation or creates turn
   Hub->>Agent: Sends A2A message/task with transcript
   Agent-->>Hub: Streams task status and response
@@ -174,10 +174,9 @@ Implemented command-capture wake flow:
 
 1. Device continuously listens locally for the configured wake word while unmuted.
 2. On wake, Jute plays or displays an acknowledgement state.
-3. Jute captures the utterance using VAD and a short pre-roll buffer.
+3. The hub runs STT against the same utterance, strips the wake phrase, and keeps the chat open if no command remains.
 4. STT produces a transcript.
-5. The voice service sends the transcript to the hub.
-6. The hub creates or continues a conversation and forwards the turn to the selected A2A agent.
+5. The hub creates or continues a conversation and forwards the sanitized transcript to the selected A2A agent.
 
 Follow-up flow:
 
@@ -222,8 +221,10 @@ For display/browser microphone input, the display only captures PCM after browse
 granted. Push-to-talk posts an utterance to `POST /api/v1/voice/audio`; passive dashboard wake
 listening posts speech candidates to `POST /api/v1/voice/audio?wake=true`. The hub validates PCM,
 runs VAD, applies the selected wake provider when `wake=true`, runs the selected STT provider only
-after wake detection, then submits the sanitized final transcript through the same A2A text path.
-Browser `SpeechRecognition`, browser wake models, and browser TTS remain out of scope.
+after wake detection, then strips the configured wake phrase and submits the sanitized final
+transcript through the same A2A text path. Browser `SpeechRecognition` and browser wake models
+remain out of scope. Browser TTS playback uses hub-synthesized audio from
+`/api/v1/tts/audio/{id}`; the browser does not synthesize speech itself.
 
 TTS providers:
 

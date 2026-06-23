@@ -33,13 +33,11 @@ case "$mode" in
     ;;
   tts)
     text="$(cat)"
-    if command -v say >/dev/null 2>&1 && [ -n "$text" ]; then
-      say "$text" >/dev/null 2>&1 || true
-      playback="local"
-    else
-      playback="metadata"
+    if [ -z "$text" ]; then
+      echo "TTS text is required" >&2
+      exit 2
     fi
-    printf '{"providerId":"local-dev-tts","voiceId":"amy","locale":"en","contentType":"audio/wav","sampleRate":16000,"sampleWidth":2,"channels":1,"durationMs":500,"playbackKind":"%s"}\n' "$playback"
+    printf '{"providerId":"local-dev-tts","voiceId":"amy","locale":"en","contentType":"audio/wav","sampleRate":16000,"sampleWidth":2,"channels":1,"durationMs":500,"playbackKind":"browser","audioBase64":"UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA="}\n'
     ;;
   *)
     echo "usage: $0 capture|wake|stt|tts" >&2

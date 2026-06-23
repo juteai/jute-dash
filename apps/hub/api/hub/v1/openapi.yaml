@@ -512,6 +512,29 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+  /api/v1/tts/audio/{id}:
+    get:
+      operationId: getTTSAudio
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Synthesized TTS audio.
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+            audio/pcm:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: TTS audio was not found or expired.
   /api/v1/tts/speak:
     post:
       operationId: postTTSSpeak

@@ -289,13 +289,14 @@ Implemented foundation provider APIs:
 - `GET /api/v1/tts/voices`: list voices for the selected or requested TTS provider, scoped by
   optional `deviceProfileId`.
 - `POST /api/v1/tts/speak`: apply speech policy, send approved assistant text to the configured
-  TTS provider when available, and emit safe speak TTS state events. Command providers may perform
-  local playback and return only safe playback metadata.
+  TTS provider when available, and emit safe speak TTS state events. Command providers return safe
+  playback metadata and may include `audioBase64` for hub-owned browser playback.
+- `GET /api/v1/tts/audio/{id}`: return short-lived synthesized audio bytes for the display.
 - `POST /api/v1/tts/stop`: stop current transient TTS state and emit `tts.stopped`.
 
-The foundation TTS control APIs return safe playback metadata for synthesized provider audio. They
-do not make spoken output canonical: visual assistant responses remain authoritative when synthesis,
-playback, provider setup, or speech policy prevents audio.
+The foundation TTS control APIs return safe playback metadata and short-lived audio URLs for
+synthesized provider audio. They do not make spoken output canonical: visual assistant responses
+remain authoritative when synthesis, playback, provider setup, or speech policy prevents audio.
 
 Future provider APIs:
 

@@ -112,6 +112,7 @@ type TTSActionResponse struct {
 	Channels       int    `json:"channels,omitempty"`
 	AudioBytes     int    `json:"audioBytes,omitempty"`
 	DurationMs     int64  `json:"durationMs,omitempty"`
+	AudioURL       string `json:"audioUrl,omitempty"`
 }
 
 type TTSRuntime struct {

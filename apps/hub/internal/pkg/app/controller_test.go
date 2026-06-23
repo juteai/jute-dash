@@ -1763,16 +1763,85 @@ func TestVoiceAudioReportsSTTFailure(t *testing.T) {
 	}
 }
 
-func TestVoiceAudioWakeRequestStartsConversationWithoutSTT(t *testing.T) {
+func TestVoiceAudioWakeRequestRoutesDetectedCommandThroughSTT(t *testing.T) {
 	cfg := testConfig()
 	cfg.Voice.Enabled = true
 	cfg.Voice.MutedByDefault = false
 	cfg.Voice.PreferredAgentID = "house"
+	cfg.Voice.WakeWordPhrase = "hey jarvis"
+	client := a2a.NewInMemoryClient()
+	client.SendMessageFunc = func(_ context.Context, req a2a.SendMessageRequest) (a2a.SendMessageResult, error) {
+		return a2a.SendMessageResult{
+			ConversationID: req.ConversationID,
+			TaskID:         "task-wake-command",
+			Status:         "completed",
+			Text:           "Done.",
+		}, nil
+	}
 	syncer := filesync.NewInMemorySyncer(cfg)
 	cards := service.NewCardService()
 	manager := service.NewAgentManager(syncer, cards, "")
 	stt := &fixtureAppSTTProvider{
-		result: service.STTResult{Text: "turn on the lights", ProviderID: "local-stt"},
+		result: service.STTResult{Text: "hey jarvis turn on the lights", ProviderID: "local-stt"},
+	}
+	dispatcher := service.NewVoiceDispatcher()
+	store := &fixtureActiveWakeSTTVoiceStore{
+		fixtureActiveSTTVoiceStore: &fixtureActiveSTTVoiceStore{
+			MemoryVoiceRepository: repository.NewMemoryVoiceRepositoryFromConfig(cfg.Voice),
+			provider:              stt,
+		},
+		wake: &fixtureAppWakeProvider{detected: true},
+	}
+	server := &Server{
+		cfg:             cfg,
+		agentsManager:   manager,
+		messages:        client,
+		voiceStore:      store,
+		voiceDispatcher: dispatcher,
+		voiceRuntime:    service.NewConversationRuntime(),
+	}
+	server.turnRunner = service.NewRunner(service.RunnerOptions{
+		GetRegistry:    manager.ActiveRegistry,
+		GetAgentConfig: manager.ConfiguredAgent,
+		GetAgentCardCache: func(context.Context, registry.Agent) (service.AgentCardCache, bool) {
+			return service.AgentCardCache{
+				SelectedEndpointURL:     "https://agent.example.com/a2a/v1",
+				SelectedProtocolBinding: a2a.ProtocolJSONRPC,
+			}, true
+		},
+		GetDashboardContext: func(context.Context) map[string]any { return map[string]any{} },
+		Messages:            client,
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/voice/audio?wake=true", bytes.NewReader([]byte{0xff, 0x7f}))
+	rec := httptest.NewRecorder()
+
+	server.handleVoiceAudio(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !store.wake.seen {
+		t.Fatal("wake provider was not called")
+	}
+	if stt.calls != 1 {
+		t.Fatalf("wake audio should be transcribed once, STT calls=%d", stt.calls)
+	}
+	if len(client.SentMessages) != 1 ||
+		client.SentMessages[0].Text != "turn on the lights" {
+		t.Fatalf("unexpected A2A send: %+v", client.SentMessages)
+	}
+}
+
+func TestVoiceAudioWakeOnlyStartsConversationWithoutA2A(t *testing.T) {
+	cfg := testConfig()
+	cfg.Voice.Enabled = true
+	cfg.Voice.MutedByDefault = false
+	cfg.Voice.PreferredAgentID = "house"
+	cfg.Voice.WakeWordPhrase = "hey jarvis"
+	client := a2a.NewInMemoryClient()
+	stt := &fixtureAppSTTProvider{
+		result: service.STTResult{Text: "hey jarvis", ProviderID: "local-stt"},
 	}
 	dispatcher := service.NewVoiceDispatcher()
 	events := dispatcher.Subscribe(t.Context())
@@ -1785,8 +1854,7 @@ func TestVoiceAudioWakeRequestStartsConversationWithoutSTT(t *testing.T) {
 	}
 	server := &Server{
 		cfg:             cfg,
-		agentsManager:   manager,
-		messages:        a2a.NewInMemoryClient(),
+		messages:        client,
 		voiceStore:      store,
 		voiceDispatcher: dispatcher,
 		voiceRuntime:    service.NewConversationRuntime(),
@@ -1800,11 +1868,11 @@ func TestVoiceAudioWakeRequestStartsConversationWithoutSTT(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if !store.wake.seen {
-		t.Fatal("wake provider was not called")
+	if stt.calls != 1 {
+		t.Fatalf("wake-only audio should still be transcribed once, STT calls=%d", stt.calls)
 	}
-	if stt.calls != 0 {
-		t.Fatalf("wake audio should not be transcribed, STT calls=%d", stt.calls)
+	if len(client.SentMessages) != 0 {
+		t.Fatalf("wake-only audio should not send A2A messages: %+v", client.SentMessages)
 	}
 	select {
 	case event := <-events:

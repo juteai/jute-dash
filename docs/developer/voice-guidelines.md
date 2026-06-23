@@ -13,7 +13,7 @@ Do not call A2A agents directly from voice providers or the display.
 Canonical runtime boundary:
 
 - build production wake-word, VAD, STT, TTS, follow-up, and mute/cancel behavior in the Go hub voice runtime and hub APIs;
-- keep the display as a hub client; browser microphone capture may send PCM to the hub, but browser wake decisions, browser STT, and browser TTS are not v1 runtime paths;
+- keep the display as a hub client; browser microphone capture may send PCM to the hub, but browser wake decisions, browser STT, and browser-side synthesis are not v1 runtime paths;
 - do not rely on browser `SpeechRecognition` for local-first STT.
 
 ## Provider Interfaces
@@ -68,7 +68,7 @@ Fallback rules:
 
 - Do not add `htgo-tts` as a built-in or canonical TTS provider.
 - `htgo-tts` may only be reconsidered as a trusted command/external sidecar path after command providers are explicitly enabled and manifest health/privacy rules are satisfied.
-- Browser `speechSynthesis` is out of scope for v1.
+- Browser `speechSynthesis` is out of scope for v1. Browser playback uses hub-synthesized audio URLs.
 - Fallbacks must emit the same recoverable TTS event states and keep the visual assistant response canonical.
 
 Provider status values should be:

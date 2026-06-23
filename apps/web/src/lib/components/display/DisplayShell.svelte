@@ -69,7 +69,7 @@
     session: undefined as BrowserVoiceCaptureSession | undefined,
     wakeAbort: undefined as AbortController | undefined
   };
-  let lastWakeCaptureConversationId = '';
+  let lastAutoCaptureKey = '';
   const autoOpenedVoiceConversationIds: string[] = [];
 
   /* eslint-disable no-useless-assignment */
@@ -243,14 +243,20 @@
     void retryDashboard();
     const unsubscribeWakeCapture = hubStream.subscribe((state) => {
       const conversationId = state.voiceConversationId;
-      if (
+      const autoCaptureKey =
         conversationId &&
         state.voiceOrbState === 'listening' &&
-        state.voiceMessages.length === 0 &&
-        lastWakeCaptureConversationId !== conversationId &&
+        state.voiceMessages.length === 0
+          ? `wake:${conversationId}`
+          : conversationId && state.voiceOrbState === 'followup'
+            ? `followup:${conversationId}:${state.voiceFollowupExpiresAt}`
+            : '';
+      if (
+        autoCaptureKey &&
+        lastAutoCaptureKey !== autoCaptureKey &&
         !browserVoiceCapturing
       ) {
-        lastWakeCaptureConversationId = conversationId;
+        lastAutoCaptureKey = autoCaptureKey;
         window.setTimeout(() => void startChatVoiceCapture(), 0);
       }
     });

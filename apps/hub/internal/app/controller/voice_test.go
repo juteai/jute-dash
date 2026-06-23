@@ -63,8 +63,22 @@ func TestTTSSpeakUsesProviderAndReturnsSafePlaybackMetadata(t *testing.T) {
 		body.SampleWidth != 2 ||
 		body.Channels != 1 ||
 		body.AudioBytes != 4 ||
-		body.DurationMs != 0 {
+		body.DurationMs != 0 ||
+		!strings.HasPrefix(body.AudioURL, "/api/v1/tts/audio/") {
 		t.Fatalf("unexpected provider-backed TTS response: %+v", body)
+	}
+	audioReq := httptest.NewRequest(http.MethodGet, body.AudioURL, nil)
+	audioRR := httptest.NewRecorder()
+	controller.handleTTSAudio(audioRR, audioReq)
+	if audioRR.Code != http.StatusOK ||
+		audioRR.Header().Get("Content-Type") != "audio/pcm" ||
+		string(audioRR.Body.Bytes()) != string([]byte{1, 2, 3, 4}) {
+		t.Fatalf(
+			"unexpected TTS audio response: status=%d headers=%v body=%v",
+			audioRR.Code,
+			audioRR.Header(),
+			audioRR.Body.Bytes(),
+		)
 	}
 	if provider.request.ProviderID != "local-tts" ||
 		provider.request.VoiceID != "amy" ||
@@ -78,7 +92,8 @@ func TestTTSSpeakUsesProviderAndReturnsSafePlaybackMetadata(t *testing.T) {
 		t.Fatalf("unexpected TTS events: %+v", emitter.ttsEvents)
 	}
 	completed, ok := emitter.ttsEvents[1].Payload.(service.TTSActionResponse)
-	if !ok || completed.AudioBytes != 4 || completed.ContentType != "audio/pcm" {
+	if !ok || completed.AudioBytes != 4 || completed.ContentType != "audio/pcm" ||
+		completed.AudioURL != body.AudioURL {
 		t.Fatalf("completed event omitted playback metadata: %+v", emitter.ttsEvents[1])
 	}
 	assertJSONOmits(t, emitter.ttsEvents, "AQIDBA", string([]byte{1, 2, 3, 4}), "rawAudio")

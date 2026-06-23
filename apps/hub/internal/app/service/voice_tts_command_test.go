@@ -21,6 +21,9 @@ func TestCommandTTSProviderSendsTextOnStdin(t *testing.T) {
 	if result.ProviderID != "piper-command" || result.VoiceID != "amy" || result.Locale != "en-GB" {
 		t.Fatalf("unexpected result: %+v", result)
 	}
+	if string(result.Audio) != "hello audio" {
+		t.Fatalf("unexpected audio: %q", result.Audio)
+	}
 }
 
 func TestCommandTTSProviderHelper(t *testing.T) {
@@ -36,9 +39,12 @@ func TestCommandTTSProviderHelper(t *testing.T) {
 		t.Fatalf("unexpected stdin text: %q", raw)
 	}
 	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
-		"providerId": "piper-command",
-		"voiceId":    voiceID,
-		"locale":     locale,
+		"providerId":   "piper-command",
+		"voiceId":      voiceID,
+		"locale":       locale,
+		"audioBase64":  "aGVsbG8gYXVkaW8=",
+		"contentType":  "audio/wav",
+		"playbackKind": "browser",
 	})
 	os.Exit(0)
 }

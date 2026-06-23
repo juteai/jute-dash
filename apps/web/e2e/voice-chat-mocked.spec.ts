@@ -61,9 +61,38 @@ function micRequestCount(page: Page) {
 function micStopCount(page: Page) {
   return page.evaluate(
     () =>
+      (window as Window & typeof globalThis & { __juteMicStopCount?: number })
+        .__juteMicStopCount ?? 0
+  );
+}
+
+async function installAudioPlaybackStub(page: Page) {
+  await page.addInitScript(() => {
+    type AudioWindow = Window &
+      typeof globalThis & {
+        __jutePlayedAudioSrcs?: string[];
+      };
+    const w = window as AudioWindow;
+    w.__jutePlayedAudioSrcs = [];
+    class FakeAudio {
+      constructor(public src: string) {}
+      addEventListener() {}
+      play() {
+        w.__jutePlayedAudioSrcs?.push(this.src);
+        return Promise.resolve();
+      }
+    }
+    w.Audio = FakeAudio as unknown as typeof Audio;
+  });
+}
+
+function playedAudioCount(page: Page) {
+  return page.evaluate(
+    () =>
       (
-        window as Window & typeof globalThis & { __juteMicStopCount?: number }
-      ).__juteMicStopCount ?? 0
+        window as Window &
+          typeof globalThis & { __jutePlayedAudioSrcs?: string[] }
+      ).__jutePlayedAudioSrcs?.length ?? 0
   );
 }
 
@@ -202,9 +231,7 @@ test('dashboard wake reuses the active browser microphone in chat', async ({
   const hub = await createMockHub(page);
   await page.goto('/');
   await hub.waitForEventStream();
-  await expect
-    .poll(() => micRequestCount(page))
-    .toBe(1);
+  await expect.poll(() => micRequestCount(page)).toBe(1);
 
   await hub.emit('voice.wake_detected', {
     id: 'wake-command-capture',
@@ -212,9 +239,7 @@ test('dashboard wake reuses the active browser microphone in chat', async ({
     payload: {}
   });
 
-  await expect
-    .poll(() => micRequestCount(page))
-    .toBe(1);
+  await expect.poll(() => micRequestCount(page)).toBe(1);
   await expect(
     page.getByRole('region', { name: 'Agent conversation' })
   ).toBeVisible();
@@ -306,17 +331,28 @@ test('mute stops the browser microphone and unmute starts one session', async ({
   await installReusableMicStub(page);
   await createMockHub(page);
   await page.goto('/');
-  await expect
-    .poll(() => micRequestCount(page))
-    .toBe(1);
+  await expect.poll(() => micRequestCount(page)).toBe(1);
 
   await page.getByRole('button', { name: 'Wake listening' }).click();
-  await expect
-    .poll(() => micStopCount(page))
-    .toBe(1);
+  await expect.poll(() => micStopCount(page)).toBe(1);
 
   await page.getByRole('button', { name: 'Voice muted' }).click();
-  await expect
-    .poll(() => micRequestCount(page))
-    .toBe(2);
+  await expect.poll(() => micRequestCount(page)).toBe(2);
+});
+
+test('tts completed event plays browser audio from the hub', async ({
+  page
+}) => {
+  await installAudioPlaybackStub(page);
+  const hub = await createMockHub(page);
+  await page.goto('/');
+  await hub.waitForEventStream();
+
+  await hub.emit('tts.completed', {
+    id: 'tts-browser-audio',
+    conversationId: 'conversation-browser-audio',
+    payload: { audioUrl: '/api/v1/tts/audio/tts-browser-audio' }
+  });
+
+  await expect.poll(() => playedAudioCount(page)).toBe(1);
 });

@@ -39,6 +39,7 @@ func (s *Server) GetTiles(ctx echo.Context) error                 { return s.ser
 func (s *Server) PutTiles(ctx echo.Context) error                 { return s.serve(ctx) }
 func (s *Server) GetSetupStatus(ctx echo.Context) error           { return s.serve(ctx) }
 func (s *Server) GetStatus(ctx echo.Context) error                { return s.serve(ctx) }
+func (s *Server) GetTTSAudio(ctx echo.Context, _ string) error    { return s.serve(ctx) }
 func (s *Server) PostTTSSpeak(ctx echo.Context) error             { return s.serve(ctx) }
 func (s *Server) PostTTSStop(ctx echo.Context) error              { return s.serve(ctx) }
 func (s *Server) PostVoiceCancel(ctx echo.Context) error          { return s.serve(ctx) }

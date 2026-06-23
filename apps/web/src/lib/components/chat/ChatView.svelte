@@ -215,7 +215,11 @@
     <div class="chat-thread">
       <div class="conversation-thread-header">
         <div>
-          <strong>{selectedConversation?.title || selectedAgent?.name || 'Chat'}</strong>
+          <strong
+            >{selectedConversation?.title ||
+              selectedAgent?.name ||
+              'Chat'}</strong
+          >
           <span>
             {#if selectedConversation?.historyUnsupported}
               History unavailable for this agent
