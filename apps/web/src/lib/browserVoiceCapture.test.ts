@@ -20,8 +20,9 @@ class FakeAudioContext {
   static processors: FakeProcessor[] = [];
   static instances: FakeAudioContext[] = [];
   static options: AudioContextOptions[] = [];
+  static nextSampleRate = 16000;
 
-  sampleRate = 16000;
+  sampleRate: number;
   state: AudioContextState = 'running';
   destination = {};
   close = vi.fn();
@@ -30,6 +31,7 @@ class FakeAudioContext {
   constructor(options: AudioContextOptions = {}) {
     FakeAudioContext.options.push(options);
     FakeAudioContext.instances.push(this);
+    this.sampleRate = FakeAudioContext.nextSampleRate;
   }
 
   createMediaStreamSource() {
@@ -64,6 +66,7 @@ describe('BrowserVoiceCaptureSession', () => {
     FakeAudioContext.processors = [];
     FakeAudioContext.instances = [];
     FakeAudioContext.options = [];
+    FakeAudioContext.nextSampleRate = 16000;
     now = 0;
     vi.spyOn(performance, 'now').mockImplementation(() => now);
     stopTrack = vi.fn();
@@ -122,6 +125,50 @@ describe('BrowserVoiceCaptureSession', () => {
     expect(getUserMedia).toHaveBeenCalledTimes(1);
     expect(stopTrack).not.toHaveBeenCalled();
     expect(FakeAudioContext.instances[0].close).not.toHaveBeenCalled();
+
+    session.stop();
+  });
+
+  it('includes recent pre-roll audio when speech starts before an utterance capture', async () => {
+    const session = createBrowserVoiceCaptureSession();
+    await session.start();
+
+    now += 10;
+    FakeAudioContext.processors[0].emit(new Float32Array([0.25, 0.2, 0.15]));
+
+    const capture = session.captureUtterance();
+    await Promise.resolve();
+    now += 1300;
+    FakeAudioContext.processors[0].emit(new Float32Array([0, 0, 0]));
+
+    const recording = await capture;
+    expect(recording.sampleRate).toBe(16000);
+    expect(await recording.audio.arrayBuffer()).toHaveProperty(
+      'byteLength',
+      12
+    );
+
+    session.stop();
+  });
+
+  it('resamples browsers that ignore the requested 16 kHz audio context', async () => {
+    FakeAudioContext.nextSampleRate = 48000;
+    const session = createBrowserVoiceCaptureSession();
+    await session.start();
+
+    const capture = session.captureUtterance();
+    await Promise.resolve();
+    now += 10;
+    FakeAudioContext.processors[0].emit(new Float32Array(480).fill(0.2));
+    now += 10;
+    FakeAudioContext.processors[0].emit(new Float32Array(480));
+    now += 1300;
+    FakeAudioContext.processors[0].emit(new Float32Array(480));
+
+    const recording = await capture;
+    const audio = await recording.audio.arrayBuffer();
+    expect(recording.sampleRate).toBe(16000);
+    expect(audio.byteLength).toBe(960);
 
     session.stop();
   });

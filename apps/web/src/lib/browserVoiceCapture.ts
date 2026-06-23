@@ -8,6 +8,10 @@ const TARGET_RATE = 16000;
 const SILENCE_MS = 1200;
 const MAX_MS = 15000;
 const MIN_RMS = 0.015;
+const PRE_ROLL_MS = 750;
+const SAMPLE_BYTES = 2;
+const PRE_ROLL_BYTES =
+  Math.ceil((TARGET_RATE * PRE_ROLL_MS) / 1000) * SAMPLE_BYTES;
 
 type WebKitWindow = Window &
   typeof globalThis & {
@@ -22,11 +26,16 @@ type ActiveCapture = {
   chunks: ArrayBuffer[];
   startedAt: number;
   heardSpeech: boolean;
-  silenceStartedAt: number;
+  silenceStartedAt?: number;
   resolve: (recording: BrowserVoiceRecording) => void;
   reject: (err: Error) => void;
   signal?: AbortSignal;
   abort: () => void;
+};
+
+type PreRollChunk = {
+  buffer: ArrayBuffer;
+  level: number;
 };
 
 export class BrowserVoiceCaptureSession {
@@ -37,6 +46,8 @@ export class BrowserVoiceCaptureSession {
   private sink?: GainNode;
   private starting?: Promise<void>;
   private active?: ActiveCapture;
+  private preRoll: PreRollChunk[] = [];
+  private preRollBytes = 0;
   private stopped = true;
 
   async start(): Promise<void> {
@@ -64,11 +75,16 @@ export class BrowserVoiceCaptureSession {
     }
 
     return new Promise((resolve, reject) => {
+      const preRoll = this.preRoll.map((chunk) => chunk.buffer.slice(0));
+      const heardPreRollSpeech = this.preRoll.some(
+        (chunk) => chunk.level >= MIN_RMS
+      );
+      const now = performance.now();
       const capture: ActiveCapture = {
-        chunks: [],
-        startedAt: performance.now(),
-        heardSpeech: false,
-        silenceStartedAt: 0,
+        chunks: preRoll,
+        startedAt: now,
+        heardSpeech: heardPreRollSpeech,
+        silenceStartedAt: heardPreRollSpeech ? now : undefined,
         resolve,
         reject,
         signal: options.signal,
@@ -101,6 +117,8 @@ export class BrowserVoiceCaptureSession {
     this.processor = undefined;
     this.sink = undefined;
     this.starting = undefined;
+    this.preRoll = [];
+    this.preRollBytes = 0;
   }
 
   private async open(): Promise<void> {
@@ -148,29 +166,45 @@ export class BrowserVoiceCaptureSession {
   }
 
   private processAudio(event: AudioProcessingEvent): void {
-    const capture = this.active;
     const audioContext = this.audioContext;
-    if (!capture || !audioContext) return;
+    if (!audioContext) return;
 
     const input = event.inputBuffer.getChannelData(0);
-    const pcm = floatToPCM16(resample(input, audioContext.sampleRate));
-    capture.chunks.push(
-      pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength)
-    );
-
     const level = rms(input);
+    const pcm = floatToPCM16(resample(input, audioContext.sampleRate));
+    const buffer = pcm.buffer.slice(
+      pcm.byteOffset,
+      pcm.byteOffset + pcm.byteLength
+    );
+    this.pushPreRoll(buffer.slice(0), level);
+
+    const capture = this.active;
+    if (!capture) return;
+    capture.chunks.push(buffer);
+
     const now = performance.now();
     if (level >= MIN_RMS) {
       capture.heardSpeech = true;
-      capture.silenceStartedAt = 0;
+      capture.silenceStartedAt = undefined;
     } else if (capture.heardSpeech) {
-      capture.silenceStartedAt ||= now;
+      capture.silenceStartedAt ??= now;
       if (now - capture.silenceStartedAt >= SILENCE_MS) {
         this.resolveCapture(capture);
       }
     }
     if (now - capture.startedAt >= MAX_MS) {
       this.resolveCapture(capture);
+    }
+  }
+
+  private pushPreRoll(buffer: ArrayBuffer, level: number): void {
+    if (buffer.byteLength === 0) return;
+    this.preRoll.push({ buffer, level });
+    this.preRollBytes += buffer.byteLength;
+    while (this.preRollBytes > PRE_ROLL_BYTES) {
+      const removed = this.preRoll.shift();
+      if (!removed) break;
+      this.preRollBytes -= removed.buffer.byteLength;
     }
   }
 
@@ -217,6 +251,7 @@ function stopStream(stream: MediaStream) {
 }
 
 function rms(samples: Float32Array) {
+  if (samples.length === 0) return 0;
   let sum = 0;
   for (const sample of samples) {
     sum += sample * sample;
@@ -226,11 +261,23 @@ function rms(samples: Float32Array) {
 
 function resample(samples: Float32Array, sourceRate: number) {
   if (sourceRate === TARGET_RATE) return samples;
-  const ratio = sourceRate / TARGET_RATE;
-  const length = Math.floor(samples.length / ratio);
+  if (sourceRate <= 0 || samples.length === 0) return new Float32Array();
+  const length = Math.max(
+    1,
+    Math.round((samples.length * TARGET_RATE) / sourceRate)
+  );
   const out = new Float32Array(length);
+  if (length === 1) {
+    out[0] = samples[0] ?? 0;
+    return out;
+  }
+  const scale = (samples.length - 1) / (length - 1);
   for (let i = 0; i < length; i += 1) {
-    out[i] = samples[Math.min(samples.length - 1, Math.floor(i * ratio))];
+    const position = i * scale;
+    const left = Math.floor(position);
+    const right = Math.min(samples.length - 1, left + 1);
+    const fraction = position - left;
+    out[i] = samples[left] + (samples[right] - samples[left]) * fraction;
   }
   return out;
 }
