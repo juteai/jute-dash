@@ -130,6 +130,35 @@ describe('hubStream voice events', () => {
     expect(logCalls).not.toContain('The kitchen lights are on.');
   });
 
+  it('renders assistant display text instead of speech-only text for voice turns', async () => {
+    const { hubStream } = await import('./hubStream');
+
+    hubStream.connect(vi.fn() as unknown as typeof fetch);
+    const source = FakeEventSource.instances[0];
+
+    source.emit('conversation.turn_completed', {
+      id: 'turn-1',
+      conversationId: 'conversation-1',
+      createdAt: '2026-06-15T10:00:01Z',
+      payload: {
+        text: 'Everything seems covered. Time to format the response.\nThe current weather is clear.',
+        speech: 'The current weather is clear.'
+      }
+    });
+
+    const state = get(hubStream);
+    expect(state.assistantSpeech).toBe(
+      'Everything seems covered. Time to format the response.\nThe current weather is clear.'
+    );
+    expect(state.voiceMessages).toMatchObject([
+      {
+        role: 'assistant',
+        text: 'Everything seems covered. Time to format the response.\nThe current weather is clear.',
+        status: 'speaking'
+      }
+    ]);
+  });
+
   it('maps provider and playback failures to safe recoverable voice errors', async () => {
     const { hubStream } = await import('./hubStream');
 

@@ -104,6 +104,53 @@ func TestSpeakerSpeakSanitizesMarkdownBeforeProvider(t *testing.T) {
 	}
 }
 
+func TestSpeakerSpeakRemovesReasoningBeforeProvider(t *testing.T) {
+	provider := &testTTSProvider{}
+	speaker := NewSpeaker(testVoiceStore{settings: Settings{
+		TTSEnabled:    true,
+		TTSProviderID: "local",
+	}}, nil, provider)
+
+	_, err := speaker.Speak(
+		t.Context(),
+		"display-1",
+		TTSActionSpeak,
+		TTSRequest{
+			Text: "Okay, the user asked for weather. I should call a tool.\n\nIt is 22 C and sunny.",
+		},
+	)
+	if err != nil {
+		t.Fatalf("Speak() error = %v", err)
+	}
+	if provider.req.Text != "It is 22 C and sunny." {
+		t.Fatalf("unexpected speech text: %q", provider.req.Text)
+	}
+}
+
+func TestSpeakerSpeakSkipsReasoningOnlyProviderCall(t *testing.T) {
+	provider := &testTTSProvider{}
+	speaker := NewSpeaker(testVoiceStore{settings: Settings{
+		TTSEnabled:    true,
+		TTSProviderID: "local",
+	}}, nil, provider)
+
+	response, err := speaker.Speak(
+		t.Context(),
+		"display-1",
+		TTSActionSpeak,
+		TTSRequest{Text: "<think>I should inspect the weather widget.</think>"},
+	)
+	if err != nil {
+		t.Fatalf("Speak() error = %v", err)
+	}
+	if provider.called {
+		t.Fatal("provider should not be called for reasoning-only speech")
+	}
+	if response.State != TTSStateVisualOnly || response.Reason != "speech_text_empty" {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
 func TestSpeakerSensitiveSpeechDoesNotCallProvider(t *testing.T) {
 	provider := &testTTSProvider{}
 	speaker := NewSpeaker(testVoiceStore{settings: Settings{

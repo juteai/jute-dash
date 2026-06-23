@@ -23,6 +23,30 @@ func TestSpeechPolicyAllowsSpeakAll(t *testing.T) {
 	}
 }
 
+func TestSpeechTextDropsReasoningBeforeAnswer(t *testing.T) {
+	text := "Okay, the user asked for weather. I should call a tool.\n\nIt is 22 C and sunny."
+
+	if got := SpeechText(text); got != "It is 22 C and sunny." {
+		t.Fatalf("SpeechText() = %q", got)
+	}
+}
+
+func TestSpeechTextDropsLeadingReasoningLineBeforeAnswer(t *testing.T) {
+	text := "Everything seems covered. Time to format the response with the extracted data.\nThe current weather in Dundee is clear skies with a temperature of 24.9 C."
+
+	if got := SpeechText(text); got != "The current weather in Dundee is clear skies with a temperature of 24.9 C." {
+		t.Fatalf("SpeechText() = %q", got)
+	}
+}
+
+func TestSpeechTextDropsTaggedReasoning(t *testing.T) {
+	text := "<think>I should not say this.</think>\n\nHi there."
+
+	if got := SpeechText(text); got != "Hi there." {
+		t.Fatalf("SpeechText() = %q", got)
+	}
+}
+
 func TestTTSRuntimeBargeInStopsCurrentAction(t *testing.T) {
 	runtime := NewTTSRuntime()
 	started := runtime.Begin(

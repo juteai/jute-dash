@@ -673,10 +673,10 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(service.Event) er
 	var startTTSWorker sync.Once
 	var closeTTSQueue sync.Once
 
-	enqueueTTS := func(event service.Event, text string) {
-		text = strings.TrimSpace(text)
-		if text == "" {
-			return
+	enqueueTTS := func(event service.Event, text string) bool {
+		speech := service.SpeechText(text)
+		if speech == "" {
+			return false
 		}
 		startTTSWorker.Do(func() {
 			go func() {
@@ -694,8 +694,9 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(service.Event) er
 		ttsQueue <- ttsChunk{
 			conversationID: event.ConversationID,
 			taskID:         event.TaskID,
-			text:           text,
+			text:           speech,
 		}
+		return true
 	}
 
 	speakBuffered := func(event service.Event, force bool) {
@@ -707,8 +708,9 @@ func (s *Server) voiceAgentEventCallback(deviceID string) func(service.Event) er
 			return
 		}
 		ttsBuffer.Reset()
-		spokeFromDeltas = true
-		enqueueTTS(event, text)
+		if enqueueTTS(event, text) {
+			spokeFromDeltas = true
+		}
 	}
 
 	return func(event service.Event) error {

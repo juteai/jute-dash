@@ -35,6 +35,14 @@ func (s *Speaker) Speak(ctx context.Context, deviceID, action string, req TTSReq
 	req = effectiveTTSRequest(req, settings)
 	allowed, reason := speechPolicyAllows(req, settings)
 	req.Text = speechText(req.Text)
+	if strings.TrimSpace(req.Text) == "" {
+		return TTSActionResponse{
+			Action:     action,
+			State:      TTSStateVisualOnly,
+			VisualOnly: true,
+			Reason:     "speech_text_empty",
+		}, nil
+	}
 	synthesisCtx, cancelSynthesis := context.WithCancel(ctx)
 	defer cancelSynthesis()
 	response := s.tts.Begin(action, req, settings, cancelSynthesis)

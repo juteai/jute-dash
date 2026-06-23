@@ -35,6 +35,10 @@ var (
 	ttsHeadingQuotePattern = regexp.MustCompile(`(?m)^\s{0,3}(?:#{1,6}\s*|>\s*)`)
 	ttsWhitespacePattern   = regexp.MustCompile(`\s+`)
 	ttsURLPattern          = regexp.MustCompile(`https?://\S+`)
+	ttsReasoningPattern    = regexp.MustCompile(
+		"(?is)<(?:think|thinking|reasoning|scratchpad)>.*?</(?:think|thinking|reasoning|scratchpad)>" +
+			"|```(?:thinking|reasoning|scratchpad)\\s+.*?```",
+	)
 )
 
 type TTSRequest struct {
@@ -109,6 +113,7 @@ func effectiveTTSRequest(req TTSRequest, settings Settings) TTSRequest {
 
 // ponytail: regex scrub, swap for a markdown AST only if speech needs full CommonMark fidelity.
 func speechText(value string) string {
+	value = stripReasoningForSpeech(value)
 	value = ttsFencePattern.ReplaceAllString(value, " Code omitted. ")
 	value = ttsImagePattern.ReplaceAllString(value, "$1")
 	value = ttsLinkPattern.ReplaceAllString(value, "$1")
@@ -129,6 +134,95 @@ func speechText(value string) string {
 		"[X]", "",
 	).Replace(value)
 	return strings.TrimSpace(ttsWhitespacePattern.ReplaceAllString(value, " "))
+}
+
+// SpeechText returns provider-safe text for spoken output.
+func SpeechText(value string) string {
+	return speechText(value)
+}
+
+func stripReasoningForSpeech(value string) string {
+	value = strings.TrimSpace(value)
+	value = ttsReasoningPattern.ReplaceAllString(value, "")
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	lines := ttsSplitLines(value)
+	for len(lines) > 1 && looksLikeSpokenReasoning(lines[0]) {
+		lines = lines[1:]
+	}
+	value = strings.TrimSpace(strings.Join(lines, "\n"))
+	paragraphs := ttsSplitParagraphs(value)
+	for len(paragraphs) > 1 && looksLikeSpokenReasoning(paragraphs[0]) {
+		paragraphs = paragraphs[1:]
+	}
+	if len(paragraphs) == 1 && looksLikeSpokenReasoning(paragraphs[0]) {
+		return ""
+	}
+	return strings.TrimSpace(strings.Join(paragraphs, "\n\n"))
+}
+
+func ttsSplitLines(value string) []string {
+	normalized := strings.ReplaceAll(value, "\r\n", "\n")
+	raw := strings.Split(normalized, "\n")
+	lines := make([]string, 0, len(raw))
+	for _, line := range raw {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			lines = append(lines, trimmed)
+		}
+	}
+	return lines
+}
+
+func ttsSplitParagraphs(value string) []string {
+	normalized := strings.ReplaceAll(value, "\r\n", "\n")
+	raw := strings.Split(normalized, "\n\n")
+	paragraphs := make([]string, 0, len(raw))
+	for _, paragraph := range raw {
+		if trimmed := strings.TrimSpace(paragraph); trimmed != "" {
+			paragraphs = append(paragraphs, trimmed)
+		}
+	}
+	return paragraphs
+}
+
+func looksLikeSpokenReasoning(value string) bool {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	if strings.HasPrefix(lower, "okay, the user") ||
+		strings.HasPrefix(lower, "the user ") ||
+		strings.HasPrefix(lower, "we need ") ||
+		strings.HasPrefix(lower, "i need ") ||
+		strings.HasPrefix(lower, "i should ") ||
+		strings.HasPrefix(lower, "let me ") ||
+		strings.HasPrefix(lower, "everything seems covered") ||
+		strings.HasPrefix(lower, "time to format") ||
+		strings.HasPrefix(lower, "now i can ") ||
+		strings.HasPrefix(lower, "i can now ") {
+		return true
+	}
+	signals := 0
+	for _, phrase := range []string{
+		"the user",
+		"i should",
+		"i'll",
+		"i will",
+		"i can",
+		"no need to",
+		"need to call",
+		"call any function",
+		"call tools",
+		"use the tool",
+		"tool choice",
+		"final answer",
+		"format the response",
+		"extracted data",
+	} {
+		if strings.Contains(lower, phrase) {
+			signals++
+		}
+	}
+	return signals >= 2
 }
 
 type TTSActionResponse struct {

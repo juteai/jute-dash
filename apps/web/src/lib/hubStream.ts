@@ -676,10 +676,10 @@ function createHubStreamStore() {
         const speech = e?.payload?.speech;
         const text = e?.payload?.text;
         const assistantText =
-          typeof speech === 'string'
-            ? speech
-            : typeof text === 'string'
-              ? text
+          typeof text === 'string'
+            ? text
+            : typeof speech === 'string'
+              ? speech
               : '';
         logger.sse(event.type, safeEventTextLength(assistantText));
         update((s) => ({
