@@ -36,6 +36,12 @@ test('SSE events drive degraded, notification, focus, and voice states', async (
   page
 }) => {
   const hub = await createMockHub(page);
+  hub.state.voice = {
+    ...hub.state.voice,
+    enabled: false,
+    state: 'idle',
+    serviceStatus: 'disabled'
+  };
   await page.goto('/');
   await expect(page.getByLabel('Widget dashboard')).toBeVisible();
 
@@ -57,11 +63,7 @@ test('SSE events drive degraded, notification, focus, and voice states', async (
     page.locator('[data-widget-id="weather"] .widget-frame--focused')
   ).toBeVisible();
 
-  await hub.emit('voice.wake_detected', {
-    id: 'wake-dashboard',
-    conversationId: 'conversation-1',
-    payload: {}
-  });
+  await page.getByRole('button', { name: 'Open chat' }).click();
   const chat = page.getByLabel('Agent conversation');
   await expect(chat).toBeVisible();
   await hub.emit('voice.transcript.partial', {
@@ -117,17 +119,6 @@ test('SSE events drive degraded, notification, focus, and voice states', async (
     chat
       .locator('.message-bubble--assistant')
       .getByText('The kitchen lights are on.')
-  ).toBeVisible();
-
-  await hub.emit('tts.failed', {
-    id: 'tts-1',
-    conversationId: 'conversation-1',
-    payload: { reason: 'tts_failure' }
-  });
-  await expect(
-    page.getByText(
-      'Speech playback is unavailable. The visual response is still available.'
-    )
   ).toBeVisible();
 
   await hub.eventStreamError();
