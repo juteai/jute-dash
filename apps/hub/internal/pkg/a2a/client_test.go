@@ -144,7 +144,10 @@ func TestJSONRPCClientExtractsTaskStatusText(t *testing.T) {
 	}
 }
 
-func TestJSONRPCClientStripsReasoningFromMessageResults(t *testing.T) {
+func TestJSONRPCClientKeepsReasoningInMessageResults(t *testing.T) {
+	reply := `Okay, the user just said "Hello". I should respond politely. Since there's no specific request, I'll greet them and offer help. No need to call any functions here because the conversation isn't about the tools provided. Just a simple, friendly reply.
+
+Hello! How can I assist you today?`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeRPCResult(
 			t,
@@ -162,12 +165,12 @@ func TestJSONRPCClientStripsReasoningFromMessageResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendMessage() error = %v", err)
 	}
-	if result.Text != "Hello! How can I assist you today?" {
-		t.Fatalf("unexpected sanitized text: %q", result.Text)
+	if result.Text != reply {
+		t.Fatalf("unexpected display text: %q", result.Text)
 	}
 }
 
-func TestJSONRPCClientStripsTaggedReasoningFromTaskHistory(t *testing.T) {
+func TestJSONRPCClientKeepsTaggedReasoningInTaskHistory(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeRPCResult(t, w, `{
 			"task": {
@@ -191,8 +194,8 @@ func TestJSONRPCClientStripsTaggedReasoningFromTaskHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendMessage() error = %v", err)
 	}
-	if result.Text != "Hi there." {
-		t.Fatalf("unexpected sanitized text: %q", result.Text)
+	if result.Text != "I should not show this.\n\nHi there." {
+		t.Fatalf("unexpected display text: %q", result.Text)
 	}
 }
 
@@ -296,11 +299,11 @@ func TestJSONRPCClientGetTaskIncludesArtifactReply(t *testing.T) {
 	}
 }
 
-func TestJSONRPCClientGetTaskSanitizesAssistantHistory(t *testing.T) {
+func TestJSONRPCClientGetTaskKeepsAssistantReasoningHistory(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeRPCResult(t, w, `{
-			"id":"task-sanitize",
-			"contextId":"ctx-sanitize",
+			"id":"task-reasoning",
+			"contextId":"ctx-reasoning",
 			"status":{"state":"TASK_STATE_COMPLETED"},
 			"history":[
 				{"messageId":"msg-user","role":"ROLE_USER","parts":[{"text":"hello"}]},
@@ -313,16 +316,17 @@ func TestJSONRPCClientGetTaskSanitizesAssistantHistory(t *testing.T) {
 	task, err := NewJSONRPCClient().GetTask(t.Context(), GetTaskRequest{
 		EndpointURL:     server.URL,
 		ProtocolBinding: ProtocolJSONRPC,
-		TaskID:          "task-sanitize",
+		TaskID:          "task-reasoning",
 	})
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if len(task.Messages) != 2 || task.Messages[1].Text != "Hello back." {
-		t.Fatalf("unexpected sanitized history: %+v", task.Messages)
+	want := "Okay, the user said hello. I should greet them. No need to call tools.\n\nHello back."
+	if len(task.Messages) != 2 || task.Messages[1].Text != want {
+		t.Fatalf("unexpected history: %+v", task.Messages)
 	}
-	if task.Text != "Hello back." {
-		t.Fatalf("unexpected sanitized task text: %q", task.Text)
+	if task.Text != want {
+		t.Fatalf("unexpected task text: %q", task.Text)
 	}
 }
 
@@ -365,7 +369,7 @@ func TestJSONRPCClientStreamNormalizesA2A10States(t *testing.T) {
 	}
 }
 
-func TestJSONRPCClientStreamSanitizesReasoningDeltas(t *testing.T) {
+func TestJSONRPCClientStreamKeepsReasoningDeltas(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		writeRPCSSE(
@@ -388,8 +392,8 @@ func TestJSONRPCClientStreamSanitizesReasoningDeltas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StreamMessage() error = %v", err)
 	}
-	if len(events) != 1 || events[0].Text != "Visible reply" {
-		t.Fatalf("unexpected sanitized stream events: %+v", events)
+	if len(events) != 1 || events[0].Text != "private tool plan\n\nVisible reply" {
+		t.Fatalf("unexpected stream events: %+v", events)
 	}
 }
 

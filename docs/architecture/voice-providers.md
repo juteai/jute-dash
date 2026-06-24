@@ -2,41 +2,45 @@
 
 ## Goal
 
-Jute supports selectable speech-to-text and text-to-speech providers through **Voice Provider Packs**. This gives users a local-first default path while allowing open source contributors to add new engines, cloud adapters, and hardware-specific integrations without changing hub conversation logic.
+Jute supports selectable wake-word, speech-to-text, and text-to-speech providers through **Voice Provider Packs**. This gives users a local-first default path while allowing open source contributors to add new engines, cloud adapters, and hardware-specific integrations without changing hub conversation logic.
 
 Voice Provider Packs are not widgets, A2A agents, or in-process Go plugins:
 
 - widgets render dashboard UI and use the Widget SDK;
 - A2A agents reason over user turns and dashboard context;
-- voice providers convert audio to text or text to audio;
+- wake-word providers detect activation locally;
+- STT/TTS providers convert audio to text or text to audio;
 - the Go hub remains the conversation authority.
+
+The canonical provider runtime is the hub-owned Jute Voice Service calling manifest-declared
+provider packs. Browser APIs are not provider packs for v1.
 
 ## Decision
 
 Do not use Go's `plugin` package for v1. It is too tied to toolchain, operating system, architecture, and build constraints for Jute's multi-platform goals.
 
-Instead, voice providers are discovered by manifest and connected through isolated process or network boundaries. The Jute Voice Service calls the selected provider, and the hub stores provider choices and conversation state.
+Instead, voice providers are discovered by manifest and called by the hub runtime. The v1 transport
+is an explicitly enabled local command owned by the hub.
 
 Supported provider kinds:
 
+- `wake-word`: wake-word detection only;
 - `stt`: speech-to-text;
-- `tts`: text-to-speech;
-- `stt-tts`: both STT and TTS.
+- `tts`: text-to-speech.
 
-Supported transports:
+Supported transport:
 
-- `wyoming`: preferred local/LAN protocol for open voice services.
-- `http-json`: preferred transport for sidecars and cloud adapters.
 - `command`: trusted local wrapper for installed tools and model CLIs; disabled unless explicitly enabled.
-- `builtin`: adapters shipped with Jute, implemented through the same contract.
 
 ## Ecosystem References
 
-- [Wyoming Protocol](https://www.home-assistant.io/integrations/wyoming): local protocol boundary used by Home Assistant for speech-to-text, text-to-speech, and wake-word systems.
 - [sherpa-onnx](https://k2-fsa.github.io/sherpa/onnx/): strong local/offline candidate because it exposes ASR, VAD, TTS, multiple language bindings, and Raspberry Pi-oriented examples.
 - [OpenAI speech-to-text](https://developers.openai.com/api/docs/guides/speech-to-text): optional cloud STT provider for higher quality transcription.
 - [OpenAI text-to-speech](https://developers.openai.com/api/docs/guides/text-to-speech): optional cloud TTS provider with streaming and multiple output formats.
 - [OHF Piper](https://github.com/OHF-Voice/piper1-gpl): fast local neural TTS engine. It should be integrated as an external service or command provider unless Jute makes an explicit licensing decision.
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper): local Whisper STT library. The local example wraps it as a hub-owned `command` provider so no STT server is required.
+- Browser APIs: display-local fallback candidate only. They are not canonical provider-pack transports for v1.
+- [pmdroid/microwakeword](https://github.com/pmdroid/microwakeword): experimental Go wake-word wrapper over TensorFlow Lite and the audio microfrontend. Defer production adoption until native packaging and model compatibility are proven.
 
 ## Pack Layout
 
@@ -58,37 +62,60 @@ The manifest is the stable contract:
   "version": "1.0.0",
   "kind": "stt",
   "transport": {
-    "type": "wyoming",
-    "endpoint": "tcp://127.0.0.1:10300"
+    "type": "command",
+    "command": "/usr/local/bin/jute-stt",
+    "args": ["--model", "{modelId}", "--input", "{inputPath}"]
   },
   "capabilities": {
     "streaming": false,
     "partialTranscripts": false,
     "offline": true,
     "languages": ["en", "en-GB", "en-US"],
-    "inputFormats": ["audio/wav;rate=16000", "audio/pcm;rate=16000"],
-    "outputFormats": ["application/json"]
+    "inputFormats": ["audio/wav;rate=16000", "audio/pcm;rate=16000"]
   },
-  "hardware": {
-    "cpu": true,
-    "gpu": false,
-    "coreml": false,
-    "cuda": false,
-    "raspberryPi": true
+  "credentials": []
+}
+```
+
+Required fields are `id`, `name`, `version`, `kind`, `transport`, and `capabilities`.
+
+Wake-word providers use the same manifest envelope and add a `wakeWord` section:
+
+```json
+{
+  "id": "org.example.openwakeword",
+  "name": "Example openWakeWord",
+  "version": "1.0.0",
+  "kind": "wake-word",
+  "transport": {
+    "type": "command",
+    "command": "/usr/local/bin/jute-wake",
+    "args": ["--model", "{modelId}", "--input", "{inputPath}"]
+  },
+  "capabilities": {
+    "offline": true,
+    "languages": ["en", "en-GB"]
   },
   "credentials": [],
-  "license": {
-    "name": "MIT",
-    "url": "https://example.org/license"
-  },
-  "contribution": {
-    "source": "https://example.org/provider",
-    "maintainers": ["example-org"]
+  "wakeWord": {
+    "defaultModelId": "hey-jute",
+    "phrase": "Hey Jute",
+    "languages": ["en"],
+    "sensitivity": 0.55,
+    "models": [
+      {
+        "id": "hey-jute",
+        "path": "assets/hey-jute.tflite",
+        "phrase": "Hey Jute",
+        "languages": ["en"],
+        "sensitivity": 0.55
+      }
+    ]
   }
 }
 ```
 
-Required fields are `id`, `name`, `version`, `kind`, `transport`, `capabilities`, `hardware`, `credentials`, `license`, and `contribution`.
+Wake model paths must reference files inside the provider pack. Absolute paths, parent-directory traversal, and remote model URLs are rejected by manifest validation.
 
 Secrets never appear in manifests. Credential entries are references only:
 
@@ -106,33 +133,14 @@ Secrets never appear in manifests. Credential entries are references only:
 }
 ```
 
+Manifest validation rejects credential declarations that omit an ID, label, supported source, or
+environment-variable reference. Credential IDs must be unique within a provider pack.
+
 ## Transport Rules
-
-### Wyoming
-
-Use `wyoming` for local services and LAN voice pipelines. It is the preferred integration path for Home Assistant-compatible voice tooling and Raspberry Pi-style deployments.
-
-Rules:
-
-- endpoint must be loopback or LAN-scoped;
-- provider health checks must fail closed when the endpoint is unreachable;
-- remote internet Wyoming endpoints are not supported in v1;
-- auto-discovery can be added later, but manual endpoint configuration is enough for v1.
-
-### HTTP JSON
-
-Use `http-json` for sidecars, cloud adapters, and provider services that need ordinary HTTP request/response semantics.
-
-Rules:
-
-- cloud providers must declare `offline: false`;
-- credentials are read by the hub or voice service from secret references;
-- TLS is required for non-local endpoints;
-- timeout, retry, and payload-size limits are controlled by Jute, not the provider pack.
 
 ### Command
 
-Use `command` only for trusted local wrappers around installed engines.
+Use `command` for trusted local wrappers around installed engines.
 
 Rules:
 
@@ -141,15 +149,42 @@ Rules:
 - command path must be absolute or resolved from an approved provider directory;
 - no shell interpolation;
 - arguments are passed as an array;
+- STT-capable and wake-word command manifests must include an `{inputPath}` argument placeholder so
+  the voice service can pass the captured audio file explicitly;
+- STT-capable command manifests must also include a `{modelId}` argument placeholder;
 - stdin/stdout formats are declared in the manifest.
 
-### Builtin
+## Wake-Word Contract
 
-Use `builtin` for providers shipped with Jute. Built-ins still expose a manifest-equivalent description so the settings UI and tests do not need special cases.
+Wake-word providers report local activation events to the Jute Voice Service. They do not produce final transcripts and do not call A2A agents.
+
+Minimum input:
+
+- microphone stream controlled by the Jute Voice Service;
+- selected wake model ID or phrase;
+- language hint;
+- sensitivity threshold;
+- cancellation token.
+
+Minimum output:
+
+- provider ID;
+- model ID;
+- activation timestamp;
+- confidence when available;
+- health status;
+- last error state when activation fails.
+
+Wake-word thresholds are persisted per device profile. Failed wake checks stay silent unless debug mode is enabled.
 
 ## STT Contract
 
-STT providers accept one utterance from the Jute Voice Service and return a final transcript.
+STT providers accept one utterance from the Jute Voice Service and return a final transcript. The provider does not call the hub or A2A agents; the voice service reports final text to `POST /api/v1/voice/transcripts/final`, and the hub owns agent selection, dashboard context redaction, follow-up policy, and A2A dispatch.
+
+The first local STT path uses command providers. Jute writes the captured utterance to a temporary
+WAV, invokes the configured command with `{inputPath}` and `{modelId}`, and reads final transcript
+JSON. The adapter reports provider/model/language/duration metadata beside the transcript, keeps raw
+PCM out of logs, and treats command failures as recoverable provider state.
 
 Minimum input:
 
@@ -178,6 +213,10 @@ Partial transcripts are optional. Partial transcripts are shown in the UI only a
 
 TTS providers accept assistant text and return playable audio, a stream, or a local playback request.
 
+The first local TTS path uses command providers. Jute invokes the configured command with
+hub-approved text and selected voice/locale/model metadata, then reads safe playback JSON. Provider
+failure emits recoverable TTS failure behavior; the visual assistant response remains canonical.
+
 Minimum input:
 
 - text to speak;
@@ -198,10 +237,11 @@ Minimum output:
 - audio format;
 - duration when available;
 - playable audio, stream URL, or local playback request;
-- cache eligibility;
 - error code when synthesis fails.
 
 The display remains useful when TTS is disabled or fails. The assistant response is always rendered visually.
+
+TTS provider manifests declare a `tts` section with `defaultVoiceId`, `defaultModelId`, and a list of voice metadata records. The hub exposes voice IDs, labels, locales, model IDs, provider health, and setup status through `GET /api/v1/tts/voices`. The endpoint uses the default display profile unless a safe `deviceProfileId` query value is supplied. It does not expose raw credential references or provider manifests through this response.
 
 ## Provider Selection
 
@@ -213,6 +253,7 @@ Persisted settings:
 - selected TTS provider;
 - model ID and voice ID;
 - locale and language hints;
+- TTS enabled flag, speed, and volume;
 - streaming preference;
 - cloud provider opt-in;
 - command-provider enablement;
@@ -221,11 +262,10 @@ Persisted settings:
 
 Default selection order:
 
-1. configured local/LAN Wyoming provider;
+1. configured command provider when command providers are explicitly enabled;
 2. configured built-in provider;
-3. configured HTTP JSON sidecar;
-4. configured cloud provider, only when cloud opt-in is enabled;
-5. disabled provider with visual-only fallback.
+3. configured cloud provider, only when cloud opt-in is enabled;
+4. disabled provider with visual-only fallback.
 
 ## Health And Test States
 
@@ -239,28 +279,30 @@ Status values:
 - `degraded`: provider works but reports limited models, high latency, or partial capability.
 - `disabled`: provider exists but is not enabled for the device profile.
 
-Health checks must not send household transcripts, live microphone audio, or secrets. Provider test calls use synthetic audio or user-confirmed preview text.
+Health checks must not send household transcripts, live microphone audio, or secrets. Provider test calls use synthetic audio or explicit test text.
 
 ## Hub APIs
 
-Implemented foundation provider API:
+Implemented foundation provider APIs:
 
-- `GET /api/v1/voice/providers`: list discovered STT/TTS providers and health states.
+- `GET /api/v1/voice/providers`: list discovered wake/STT/TTS providers and health states.
+- `GET /api/v1/tts/voices`: list voices for the selected or requested TTS provider, scoped by
+  optional `deviceProfileId`.
+- `POST /api/v1/tts/speak`: apply speech policy, send approved assistant text to the configured
+  TTS provider when available, and emit safe speak TTS state events. Command providers return safe
+  playback metadata and may include `audioBase64` for hub-owned browser playback.
+- `GET /api/v1/tts/audio/{id}`: return short-lived synthesized audio bytes for the display.
+- `POST /api/v1/tts/stop`: stop current transient TTS state and emit `tts.stopped`.
 
-The first foundation implementation may return an empty provider list. It establishes the stable response shape and selected-provider settings before provider manifest discovery, health checks, or conformance tests exist.
+The foundation TTS control APIs return safe playback metadata and short-lived audio URLs for
+synthesized provider audio. They do not make spoken output canonical: visual assistant responses
+remain authoritative when synthesis, playback, provider setup, or speech policy prevents audio.
 
 Future provider APIs:
 
 - `GET /api/v1/voice/providers/{id}`: provider details, capabilities, and setup status.
 - `POST /api/v1/voice/providers/{id}/test`: run a safe provider test.
 - `PATCH /api/v1/devices/{id}/voice-settings`: update selected STT/TTS providers and voice settings.
-
-TTS APIs:
-
-- `GET /api/v1/tts/voices`: list voices for the selected or requested TTS provider.
-- `POST /api/v1/tts/preview`: synthesize a short user-confirmed preview phrase.
-- `POST /api/v1/tts/speak`: speak a conversation response or explicit UI action.
-- `POST /api/v1/tts/stop`: stop current playback.
 
 Provider events:
 
@@ -293,9 +335,11 @@ Provider submissions must document:
 
 Provider packs should include conformance tests once the provider test harness exists. The first harness should use mocked STT/TTS endpoints so CI does not require microphones, speakers, model downloads, or paid APIs.
 
+Bootstrap configs may include `voice-provider-packs` records to install or update provider manifests in the hub store. When the hub starts with an explicit config file, voice provider manifests and default device voice selections are reconciled into SQLite so local dev stacks do not get stuck on stale provider IDs.
+
 ## Security Rules
 
-- Treat third-party provider manifests as untrusted input.
+- Treat third-party provider manifests as untrusted input; reject unknown fields and trailing JSON before validation.
 - Never load arbitrary provider code into the hub process.
 - Never place raw secrets in `jute.voice.provider.json`.
 - Keep cloud STT and cloud TTS opt-in per household or device profile.

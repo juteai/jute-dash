@@ -7,6 +7,7 @@
 
   export let state: ChatState = 'idle';
   export let voice: VoiceStatus;
+  export let voiceCapturing = false;
   export let disabled = false;
   export let onSubmit: (value: string) => Promise<void> | void = () => {};
   export let onCancel: () => void = () => {};
@@ -17,9 +18,11 @@
   $: canSend = value.trim().length > 0 && !disabled;
   $: voiceReady = voice?.serviceStatus === 'ready';
   $: voiceLabel = voiceReady
-    ? voice.muted
-      ? 'Voice muted'
-      : 'Wake listening'
+    ? voiceCapturing
+      ? 'Listening for voice input'
+      : voice.muted
+        ? 'Voice muted'
+        : 'Start voice input'
     : 'Voice not configured';
 
   async function submit() {
@@ -43,8 +46,11 @@
   <IconButton
     label={voiceLabel}
     variant="outline"
-    disabled={!voiceReady || state === 'thinking' || state === 'streaming'}
-    pressed={voiceReady && !voice.muted}
+    disabled={!voiceReady ||
+      voiceCapturing ||
+      state === 'thinking' ||
+      state === 'streaming'}
+    pressed={voiceCapturing}
     on:click={onVoiceClick}
   >
     {#if voiceReady && !voice.muted}

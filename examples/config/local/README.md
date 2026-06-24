@@ -4,14 +4,26 @@ This directory provides the unified local configuration and a helper `Makefile` 
 
 ## Quick Start
 
-All commands should be run from this directory:
+### Standalone Jute Dash
+From the repo root, setup prepares this local harness, including voice tools. It does not start dev servers:
 
 ```sh
-cd examples/config/local
+make setup
 ```
 
-### Standalone Jute Dash
-To run the Hub and the web dashboard without starting any agent:
+To install or refresh only the local example voice tools:
+
+```sh
+make setup-local-examples
+```
+
+Verify the installed tools later with:
+
+```sh
+make voice-check
+```
+
+Then run the Hub and the web dashboard without starting any agent:
 
 ```sh
 make run
@@ -29,6 +41,14 @@ The browser may ask you to accept the local self-signed certificate the first ti
 make run-http
 ```
 
+`make run` uses `.jute/local-dev` and wires local voice provider packs for wake, STT, and TTS. The normal run targets install or verify the local tools automatically, source `.jute/local-voice-tools/local-voice.env`, and select openWakeWord wake, faster-whisper STT, and Piper TTS. If the generated env or tools are missing, the target logs a warning before repairing them. Real local wake uses openWakeWord's built-in `hey jarvis` model unless you provide a trained Hey Jute model.
+
+The local config uses debug hub logging by default so wake misses, wake confidence, STT subprocess boundaries, and TTS subprocess boundaries are visible while developing voice.
+
+See [Local Voice Development](../../../docs/developer/local-voice-dev.md) for real wake/STT/TTS setup.
+
+The default local config verifies real wake/STT/TTS command providers, but it does not start a host microphone command because `voice.capture-command` is empty. Use the dashboard microphone control and grant browser microphone permission for live audio capture, or set an explicit hub capture command for hands-free host-mic experiments.
+
 ### Running with a Specific Agent
 Each target starts the local Jute stack and launches the respective agent module from `examples/agents/` in parallel:
 
@@ -41,6 +61,8 @@ Each target starts the local Jute stack and launches the respective agent module
   ```sh
   make run-kronk
   ```
+
+  The local stack starts the hub, dashboard, voice tools, and Kronk in parallel. On a fresh setup, Kronk may take longer while the model downloads, probes Metal, or warms up; the harness refreshes the hub's Kronk Agent Card once it is reachable. This uses the same real local wake, STT, and TTS providers as the other example targets.
 
 * **Ollama Agent**: Local LLM assistant using `Ollama`
   ```sh
@@ -59,5 +81,6 @@ Press `Ctrl-C` to stop all running processes.
 To clear local SQLite databases and development store directories:
 
 ```sh
+cd examples/config/local
 make clean
 ```

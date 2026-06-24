@@ -20,6 +20,8 @@ type MockHubOptions = {
 type WriteRecord = {
   method: string;
   path: string;
+  search: string;
+  headers: Record<string, string>;
   body: unknown;
 };
 
@@ -28,6 +30,7 @@ type MockSSEWindow = Window &
     __juteMockSSE: {
       emit(type: string, data: unknown): void;
       error(): void;
+      sourceCount(): number;
     };
   };
 
@@ -78,6 +81,9 @@ export async function createMockHub(page: Page, options: MockHubOptions = {}) {
           source.dispatchEvent(event);
           (source as EventSource).onerror?.(event);
         }
+      },
+      sourceCount() {
+        return sources.length;
       }
     };
   });
@@ -98,6 +104,14 @@ export async function createMockHub(page: Page, options: MockHubOptions = {}) {
       ),
     eventStreamError: () =>
       page.evaluate(() => (window as MockSSEWindow).__juteMockSSE.error()),
+    waitForEventStream: async () =>
+      expect
+        .poll(() =>
+          page.evaluate(() =>
+            (window as MockSSEWindow).__juteMockSSE.sourceCount()
+          )
+        )
+        .toBeGreaterThan(0),
     expectWrite: async (method: string, path: string) =>
       expect
         .poll(() => writes.some((w) => w.method === method && w.path === path))
@@ -131,6 +145,8 @@ async function handleAPI(
     writes.push({
       method,
       path,
+      search: url.search,
+      headers: request.headers(),
       body: await safeBody(request)
     });
   }
@@ -181,6 +197,52 @@ async function handleAPI(
   }
   if (path === '/api/v1/voice/status' && method === 'GET')
     return json(route, state.voice);
+  if (path === '/api/v1/voice/providers' && method === 'GET') {
+    return json(route, { providers: state.voiceProviders });
+  }
+  if (path === '/api/v1/tts/voices' && method === 'GET') {
+    return json(route, state.ttsVoices);
+  }
+  if (path.match(/^\/api\/v1\/tts\/audio\/[^/]+$/) && method === 'GET') {
+    return route.fulfill({
+      status: 200,
+      contentType: 'audio/wav',
+      body: Buffer.from('RIFF$\x00\x00\x00WAVEfmt ')
+    });
+  }
+  if (path === '/api/v1/voice/settings' && method === 'PATCH') {
+    state.voice = { ...state.voice, ...((await safeBody(request)) as object) };
+    return json(route, state.voice);
+  }
+  if (path === '/api/v1/voice/unmute' && method === 'POST') {
+    state.voice = { ...state.voice, muted: false, state: 'wake_listening' };
+    return json(route, state.voice);
+  }
+  if (path === '/api/v1/voice/mute' && method === 'POST') {
+    state.voice = { ...state.voice, muted: true, state: 'muted' };
+    return json(route, state.voice);
+  }
+  if (path === '/api/v1/voice/cancel' && method === 'POST') {
+    return json(route, state.voice);
+  }
+  if (path === '/api/v1/voice/audio' && method === 'POST') {
+    if (!state.voice.enabled || state.voice.muted) {
+      return json(route, { error: 'voice is not listening' }, 409);
+    }
+    return json(route, {
+      conversation: { id: 'browser-voice-audio-test' },
+      followup: { active: false, turns: 1, maxTurns: 5 }
+    });
+  }
+  if (path === '/api/v1/voice/transcripts/final' && method === 'POST') {
+    if (!state.voice.enabled || state.voice.muted) {
+      return json(route, { error: 'voice is not listening' }, 409);
+    }
+    return json(route, {
+      conversation: { id: 'browser-voice-test' },
+      followup: { active: false, turns: 1, maxTurns: 5 }
+    });
+  }
   if (path === '/api/v1/status' && method === 'GET')
     return json(route, state.status);
   if (path === '/api/v1/settings/household' && method === 'GET')
@@ -369,6 +431,8 @@ function mockState(options: MockHubOptions) {
     layout: widgetLayout,
     catalog: catalog(),
     voice: voice(),
+    voiceProviders: voiceProviders(),
+    ttsVoices: ttsVoices(),
     status,
     household: {
       home: { name: 'Jute Test Home' },
@@ -500,22 +564,99 @@ function agent() {
 function voice() {
   return {
     enabled: true,
-    muted: true,
-    state: 'idle',
+    muted: false,
+    state: 'wake_listening',
     serviceStatus: 'ready',
     deviceProfileId: 'test-display',
     wakeWordModelId: 'local',
+    wakeWordPhrase: 'Hey Jute',
+    wakeSensitivity: 0.5,
     sttProviderId: 'builtin',
     ttsProviderId: 'builtin',
     sttModelId: 'tiny',
     ttsModelId: 'local',
     ttsVoiceId: 'test',
+    ttsEnabled: true,
+    ttsLocale: 'en',
+    ttsSpeed: 1,
+    ttsVolume: 1,
     preferredAgentId: 'house',
     cloudOptIn: false,
     commandProvidersEnabled: false,
     followupWindowSeconds: 8,
     microphoneProfile: 'default',
     updatedAt: now
+  };
+}
+
+function voiceProviders() {
+  return [
+    {
+      id: 'local-wake',
+      name: 'Local Wake',
+      version: '1.0.0',
+      kind: 'wake-word',
+      transportType: 'command',
+      capabilities: {
+        streaming: false,
+        partialTranscripts: false,
+        offline: true
+      },
+      wakeWord: {
+        defaultModelId: 'hey-jute',
+        phrase: 'Hey Jute',
+        sensitivity: 0.55,
+        models: [{ id: 'hey-jute', phrase: 'Hey Jute', sensitivity: 0.55 }]
+      },
+      healthStatus: 'available',
+      updatedAt: now
+    },
+    {
+      id: 'local-stt',
+      name: 'Local STT',
+      version: '1.0.0',
+      kind: 'stt',
+      transportType: 'command',
+      capabilities: {
+        streaming: false,
+        partialTranscripts: false,
+        offline: true,
+        languages: ['en-GB'],
+        inputFormats: ['audio/wav']
+      },
+      healthStatus: 'available',
+      updatedAt: now
+    },
+    {
+      id: 'local-tts',
+      name: 'Local TTS',
+      version: '1.0.0',
+      kind: 'tts',
+      transportType: 'command',
+      capabilities: {
+        streaming: false,
+        partialTranscripts: false,
+        offline: true
+      },
+      healthStatus: 'available',
+      updatedAt: now
+    }
+  ];
+}
+
+function ttsVoices() {
+  return {
+    providerId: 'local-tts',
+    providerName: 'Local TTS',
+    healthStatus: 'available',
+    setupStatus: 'available',
+    selectedVoiceId: 'amy',
+    selectedModelId: 'local',
+    locale: 'en-GB',
+    speed: 1,
+    volume: 1,
+    cloudProvider: false,
+    voices: [{ id: 'amy', label: 'Amy', locale: 'en-GB', modelId: 'local' }]
   };
 }
 

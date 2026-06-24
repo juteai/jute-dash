@@ -10,13 +10,24 @@ TTS uses the same [Voice Provider Packs](voice-providers.md) model as speech-to-
 
 Default architecture path:
 
-1. **Wyoming-compatible local TTS service** for local/LAN deployments and Home Assistant-compatible voice stacks.
-2. **sherpa-onnx provider pack** for embedded/local TTS where Jute can call a sidecar or future built-in adapter.
-3. **Piper/OHF Piper provider pack** as an external service or command wrapper. Jute should not bundle GPL TTS engines without a future licensing decision.
-4. **Browser `speechSynthesis` fallback** for display-only preview or degraded mode. It is not the headless or canonical voice path.
-5. **OpenAI text-to-speech provider pack** as optional cloud-quality TTS, using user-provided credentials and explicit cloud opt-in.
+1. **Hub-owned command provider** for local installed TTS engines.
+2. **sherpa-onnx provider pack** for embedded/local TTS where Jute can call a command adapter.
+3. **Piper/OHF Piper provider pack** as a command wrapper. Jute should not bundle GPL TTS engines without a future licensing decision.
+4. **OpenAI text-to-speech provider pack** as optional cloud-quality TTS, using user-provided credentials and explicit cloud opt-in.
 
 The first implementation should prioritize playback, cancellation, and provider health over advanced voice styling.
+
+## Non-Canonical Fallback Decision
+
+`htgo-tts` is **not a canonical provider path** for v1. It is MIT licensed and convenient for Go
+experiments, but it is closer to a playback/helper package than a manifest-driven local neural TTS
+provider. It may be revisited only as a trusted `command` or external sidecar wrapper after the
+command-provider policy is enabled for a household or device profile. It must not bypass Voice
+Provider Pack manifests, hub speech policy, sensitive-output handling, provider health reporting, or
+the visual-first failure model.
+
+Browser `speechSynthesis` is not part of the v1 voice runtime. The display remains a hub client:
+the hub synthesizes approved speech and the browser plays short-lived hub audio URLs.
 
 ## Component Flow
 
@@ -26,8 +37,8 @@ flowchart LR
   hub["Jute Hub\nconversation authority"]
   policy["Speech policy\nredaction + sensitivity"]
   provider["Selected TTS Provider Pack"]
-  voice["Jute Voice Service\nplayback owner"]
-  ui["Jute Display\nconversation sheet"]
+  voice["Jute Hub\nsynthesis owner"]
+  ui["Jute Display\nchat surface"]
   events["/api/v1/events"]
 
   agent --> hub
@@ -51,11 +62,12 @@ sequenceDiagram
   participant UI as Jute Display
   participant User
 
-  Hub->>Provider: synthesize approved assistant text
-  Provider-->>Hub: stream or playable audio reference
-  Hub->>Voice: play response
   Hub->>UI: tts.started
-  Voice-->>UI: playback progress through events
+  Hub->>Provider: synthesize approved assistant chunk
+  Provider-->>Hub: playable audio bytes
+  Hub->>UI: tts.completed with audioUrl
+  UI->>Hub: GET /api/v1/tts/audio/{id}
+  UI->>User: browser audio playback
   User->>Voice: barge-in or cancel
   Voice->>Hub: playback stopped
   Hub->>Provider: cancel if still synthesizing
@@ -94,25 +106,54 @@ TTS provider manifests declare:
 - offline status;
 - network requirements;
 - expected latency class;
-- cache eligibility.
 
 For low-latency local playback, prefer PCM or WAV. For network transfer, Opus or MP3 may be acceptable when supported.
 
+## Command TTS Path
+
+The first local-first TTS provider path is a hub-owned command provider. Jute invokes an absolute
+local command with hub-approved text and selected voice/locale/model arguments, then accepts safe JSON
+metadata about the produced playback. The command is disabled until explicitly enabled and must not
+receive secrets through argv.
+
+When an A2A agent streams assistant text, the hub chunks approved assistant deltas on sentence
+boundaries or a bounded text size and invokes the selected TTS provider for each chunk in FIFO order.
+The display queues returned `audioUrl` values and plays them sequentially. Non-streaming A2A agents
+produce a single TTS action after the final assistant response is available.
+Before synthesis, the hub converts markdown-shaped assistant text into speech text so providers do
+not read formatting, code fences, or raw links literally.
+
+At runtime, the hub resolves the selected TTS Provider Pack from SQLite and attaches a provider only
+when the manifest is local/offline, command providers are enabled, provider health is `available` or
+`degraded`, required credentials are satisfied, and TTS is enabled for the device profile. Public
+provider and voice-listing APIs continue to omit command paths and credential metadata.
+If a device profile references a voice ID that the current provider manifest no longer declares, the
+hub falls back to the manifest's default voice before returning `GET /api/v1/tts/voices` metadata or
+calling the active provider. Voice listing may be scoped with `deviceProfileId`; otherwise the default
+display profile is used.
+
 ## API Contracts
 
-The current voice foundation does not synthesize or play TTS audio. It only persists selected TTS provider and voice IDs beside the rest of device voice settings so later TTS APIs can use the same configuration surface.
+The voice foundation persists selected TTS provider, model, voice, locale, speed, and volume beside the rest of device voice settings so playback APIs can use the same configuration surface.
 
-Future hub APIs:
+Implemented foundation APIs:
 
-- `GET /api/v1/tts/voices`: returns voices for the selected provider or a requested provider ID.
-- `POST /api/v1/tts/preview`: synthesizes a short user-confirmed preview phrase.
+- `GET /api/v1/tts/voices`: returns voices for the selected provider or a requested `providerId`,
+  scoped to the default profile or requested `deviceProfileId`.
+- `GET /api/v1/tts/audio/{id}`: returns short-lived synthesized audio for browser playback.
 - `POST /api/v1/tts/speak`: queues speech for approved assistant text or explicit UI action.
 - `POST /api/v1/tts/stop`: stops current playback.
 
-Future events:
+The speak HTTP implementation applies hub speech policy, emits safe TTS state events, and returns a control response. When a selected command provider is available, the server calls the provider synthesis path. Command providers return safe playback metadata and may include `audioBase64`; the hub stores those bytes briefly and exposes only an `audioUrl` on JSON/SSE. Without an attached provider, the same API remains a safe control/event path for UI integration tests.
+
+`POST /api/v1/tts/stop` records `tts.stopped` as a terminal state for the active action and cancels
+any in-flight provider synthesis context, including barge-in stops. If the provider returns after
+that cancellation, the hub preserves the stopped state instead of converting the action to a
+provider failure.
+
+Implemented events:
 
 - `tts.started`: synthesis or playback has begun.
-- `tts.chunk`: optional streaming progress event for chunked playback.
 - `tts.completed`: playback completed.
 - `tts.failed`: synthesis or playback failed.
 - `tts.stopped`: user, policy, barge-in, or timeout stopped playback.
@@ -128,32 +169,9 @@ The conversation UI must make spoken output controllable:
 - support barge-in so user speech can stop playback and begin capture;
 - show a visual response even when TTS fails;
 - show selected voice and provider health in settings;
-- offer preview before saving a voice;
 - show clear labels for cloud providers.
 
 Ambient mode may show only speaking/listening status. It should not reveal full sensitive text by default.
-
-## Caching
-
-TTS caching is optional and disabled for sensitive text.
-
-Cache keys include:
-
-- provider ID;
-- model ID;
-- voice ID;
-- locale;
-- normalized text hash;
-- style or instruction hash;
-- speed;
-- output format.
-
-Rules:
-
-- do not cache sensitive responses by default;
-- do not cache cloud TTS output unless the user enables it;
-- provide a settings action to clear the cache;
-- never use raw text as a cache filename.
 
 ## Failure Behavior
 
@@ -181,7 +199,6 @@ Persist TTS settings per device profile:
 - volume;
 - streaming preference;
 - output target;
-- cache policy;
 - sensitive-output speech policy;
 - cloud opt-in.
 
@@ -193,5 +210,3 @@ YAML or JSON config may bootstrap these values, but runtime edits are saved thro
 - Cloud TTS is opt-in and clearly labeled.
 - Provider packs never receive raw credentials from manifests.
 - TTS logs exclude raw synthesized text by default.
-- Audio cache entries are treated as private household data.
-- Browser `speechSynthesis` is only a display fallback and must not become the headless voice path.

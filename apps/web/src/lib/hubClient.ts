@@ -12,7 +12,11 @@ import type {
   TilesSettings,
   UserFacingIssue,
   VoiceProvider,
+  VoiceFinalTranscriptRequest,
+  VoiceFinalTranscriptResponse,
+  VoiceSettingsUpdate,
   VoiceStatus,
+  TTSVoicesResponse,
   AdapterConnection,
   AdapterConnectionKind,
   WidgetCatalogItem,
@@ -355,7 +359,97 @@ export async function getVoiceProviders(
     fetcher,
     '/api/v1/voice/providers'
   );
-  return response.providers;
+  return (response.providers ?? []).map(safeVoiceProvider);
+}
+
+export async function getTTSVoices(
+  fetcher: typeof fetch,
+  providerId = ''
+): Promise<TTSVoicesResponse> {
+  const suffix = providerId
+    ? `?providerId=${encodeURIComponent(providerId)}`
+    : '';
+  return safeTTSVoicesResponse(
+    await getJSON<TTSVoicesResponse>(fetcher, `/api/v1/tts/voices${suffix}`)
+  );
+}
+
+export async function saveVoiceSettings(
+  fetcher: typeof fetch,
+  settings: VoiceSettingsUpdate
+): Promise<VoiceStatus> {
+  const response = await fetcher(`${API_BASE}/api/v1/voice/settings`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(settings)
+  });
+  if (!response.ok) {
+    throw await hubError(response, 'Jute API request failed');
+  }
+  return response.json() as Promise<VoiceStatus>;
+}
+
+export async function submitVoiceFinalTranscript(
+  fetcher: typeof fetch,
+  transcript: VoiceFinalTranscriptRequest
+): Promise<VoiceFinalTranscriptResponse> {
+  const response = await fetcher(`${API_BASE}/api/v1/voice/transcripts/final`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(transcript)
+  });
+  if (!response.ok) {
+    throw await hubError(response, 'Jute API request failed');
+  }
+  return response.json() as Promise<VoiceFinalTranscriptResponse>;
+}
+
+export async function submitVoiceAudio(
+  fetcher: typeof fetch,
+  audio: Blob,
+  options: {
+    sampleRate: number;
+    channels: number;
+    deviceProfileId?: string;
+    deviceId?: string;
+    conversationId?: string;
+    agentId?: string;
+    requireWake?: boolean;
+  }
+): Promise<VoiceFinalTranscriptResponse> {
+  const headers = new Headers({
+    'Content-Type': 'application/octet-stream',
+    'X-Jute-Sample-Rate': String(options.sampleRate),
+    'X-Jute-Channels': String(options.channels)
+  });
+  for (const [name, value] of [
+    ['X-Jute-Device-Profile-Id', options.deviceProfileId],
+    ['X-Jute-Device-Id', options.deviceId],
+    ['X-Jute-Conversation-Id', options.conversationId],
+    ['X-Jute-Agent-Id', options.agentId]
+  ] as const) {
+    if (value) headers.set(name, value);
+  }
+  const suffix = options.requireWake ? '?wake=true' : '';
+  const response = await fetcher(`${API_BASE}/api/v1/voice/audio${suffix}`, {
+    method: 'POST',
+    headers,
+    body: audio
+  });
+  if (!response.ok) {
+    throw await hubError(response, 'Jute API request failed');
+  }
+  if (response.status === 204) {
+    return {
+      conversation: {},
+      followup: { active: false, turns: 0, maxTurns: 0 }
+    };
+  }
+  return response.json() as Promise<VoiceFinalTranscriptResponse>;
 }
 
 export function fallbackDashboard(issue?: UserFacingIssue): DashboardData {
@@ -538,11 +632,17 @@ function fallbackVoiceStatus(): VoiceStatus {
     serviceStatus: 'not_configured',
     deviceProfileId: 'fallback-display',
     wakeWordModelId: '',
+    wakeWordPhrase: '',
+    wakeSensitivity: 0.5,
     sttProviderId: '',
     ttsProviderId: '',
     sttModelId: '',
     ttsModelId: '',
     ttsVoiceId: '',
+    ttsEnabled: false,
+    ttsLocale: 'en',
+    ttsSpeed: 1,
+    ttsVolume: 1,
     preferredAgentId: '',
     cloudOptIn: false,
     commandProvidersEnabled: false,
@@ -550,6 +650,87 @@ function fallbackVoiceStatus(): VoiceStatus {
     microphoneProfile: '',
     updatedAt: new Date().toISOString()
   };
+}
+
+function safeVoiceProvider(provider: VoiceProvider): VoiceProvider {
+  return {
+    id: provider.id,
+    name: provider.name,
+    version: provider.version,
+    kind: provider.kind,
+    transportType: provider.transportType,
+    capabilities: provider.capabilities
+      ? {
+          streaming: Boolean(provider.capabilities.streaming),
+          partialTranscripts: Boolean(provider.capabilities.partialTranscripts),
+          offline: Boolean(provider.capabilities.offline),
+          languages: safeStringArray(provider.capabilities.languages),
+          inputFormats: safeStringArray(provider.capabilities.inputFormats)
+        }
+      : undefined,
+    wakeWord: provider.wakeWord
+      ? {
+          defaultModelId: provider.wakeWord.defaultModelId,
+          phrase: provider.wakeWord.phrase,
+          languages: safeStringArray(provider.wakeWord.languages),
+          sensitivity: provider.wakeWord.sensitivity,
+          models: provider.wakeWord.models?.map((model) => ({
+            id: model.id,
+            phrase: model.phrase,
+            languages: safeStringArray(model.languages),
+            sensitivity: model.sensitivity
+          }))
+        }
+      : undefined,
+    healthStatus: provider.healthStatus,
+    lastActivationAt: provider.lastActivationAt,
+    lastError: redactCredentialText(provider.lastError),
+    updatedAt: provider.updatedAt
+  };
+}
+
+function safeTTSVoicesResponse(response: TTSVoicesResponse): TTSVoicesResponse {
+  return {
+    providerId: response.providerId,
+    providerName: redactCredentialText(response.providerName),
+    healthStatus: response.healthStatus,
+    setupStatus: response.setupStatus,
+    selectedVoiceId: response.selectedVoiceId,
+    selectedModelId: response.selectedModelId,
+    locale: redactCredentialText(response.locale) ?? '',
+    speed: Number(response.speed),
+    volume: Number(response.volume),
+    cloudProvider: Boolean(response.cloudProvider),
+    voices: (response.voices ?? []).map((voice) => ({
+      id: voice.id,
+      label: redactCredentialText(voice.label) ?? '',
+      locale: redactCredentialText(voice.locale) ?? '',
+      modelId: redactCredentialText(voice.modelId)
+    }))
+  };
+}
+
+function safeStringArray(values: string[] | undefined): string[] | undefined {
+  if (!values) {
+    return undefined;
+  }
+  return values.flatMap((value) => {
+    const redacted = redactCredentialText(value);
+    return redacted ? [redacted] : [];
+  });
+}
+
+function redactCredentialText(value: string | undefined): string | undefined {
+  if (!value) {
+    return value;
+  }
+  return value
+    .replace(/\b(?:https?|wss?|tcp):\/\/[^\s)]+/gi, '[redacted-url]')
+    .replace(/token=[^\s&]+/gi, 'token=[redacted]')
+    .replace(/secret[:=][^\s&]+/gi, 'secret=[redacted]')
+    .replace(/password[:=][^\s&]+/gi, 'password=[redacted]')
+    .replace(/api[_-]?key[:=][^\s&]+/gi, 'api_key=[redacted]')
+    .replace(/sk-[A-Za-z0-9_-]+/g, 'sk-[redacted]');
 }
 
 async function postVoiceControl(

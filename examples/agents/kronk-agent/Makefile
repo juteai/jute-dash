@@ -39,8 +39,20 @@ reset-probe:
 
 run:
 	@chosen=$$($(MAKE) -s probe-processor); \
-	printf 'kronk: starting A2A server with processor=%s\n' "$$chosen" >&2; \
-	$(KRONK_RUN_ENV) KRONK_PROCESSOR="$$chosen" JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="$(JUTE_MCP_AGENT_ID)" KRONK_A2A_MODE=server $(KRONK_GO_RUN)
+	while :; do \
+		printf 'kronk: starting A2A server with processor=%s\n' "$$chosen" >&2; \
+		$(KRONK_RUN_ENV) KRONK_PROCESSOR="$$chosen" JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="$(JUTE_MCP_AGENT_ID)" KRONK_A2A_MODE=server $(KRONK_GO_RUN); \
+		status=$$?; \
+		if [[ "$$status" -eq 0 || "$$status" -eq 130 || "$$status" -eq 143 ]]; then \
+			exit "$$status"; \
+		fi; \
+		if [[ "$$chosen" != "metal" ]]; then \
+			exit "$$status"; \
+		fi; \
+		printf 'kronk: Metal server failed; falling back to CPU and caching choice in %s\n' "$(KRONK_PROBE_CACHE)" >&2; \
+		echo cpu >"$(KRONK_PROBE_CACHE)"; \
+		chosen=cpu; \
+	done
 
 check:
 	go test ./...

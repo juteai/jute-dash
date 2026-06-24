@@ -6,8 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"jute-dash/apps/hub/internal/app/agents"
-	"jute-dash/apps/hub/internal/app/dashboard"
+	"jute-dash/apps/hub/internal/app/model"
 )
 
 func TestLoadAppliesDefaults(t *testing.T) {
@@ -81,8 +80,14 @@ voice:
   enabled: true
   muted-by-default: false
   wake-word-model-id: openwakeword-hey-jute
-  stt-provider-id: wyoming-local
+  wake-word-phrase: Hey Jute
+  wake-sensitivity: 0.7
+  stt-provider-id: local-stt
   tts-provider-id: ""
+  tts-enabled: true
+  tts-locale: en-GB
+  tts-speed: 1.1
+  tts-volume: 0.8
   preferred-agent-id: house
   cloud-opt-in: false
   command-providers-enabled: false
@@ -147,7 +152,14 @@ tiles: []
 	); got != "dashboard:read,widgets:read,skills:read,skills:context_read,skills:prompt_read" {
 		t.Fatalf("unexpected YAML MCP scopes: %s", got)
 	}
-	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" ||
+	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "local-stt" ||
+		cfg.Voice.WakeWordModelID != "openwakeword-hey-jute" ||
+		cfg.Voice.WakeWordPhrase != "Hey Jute" ||
+		cfg.Voice.WakeSensitivity != 0.7 ||
+		!cfg.Voice.TTSEnabled ||
+		cfg.Voice.TTSLocale != "en-GB" ||
+		cfg.Voice.TTSSpeed != 1.1 ||
+		cfg.Voice.TTSVolume != 0.8 ||
 		cfg.Voice.FollowupWindowSeconds != 9 {
 		t.Fatalf("unexpected YAML voice config: %+v", cfg.Voice)
 	}
@@ -174,7 +186,7 @@ tiles: []
 }
 
 func TestSupportedThemeIDs(t *testing.T) {
-	for _, themeID := range dashboard.SupportedThemeIDs() {
+	for _, themeID := range model.SupportedThemeIDs() {
 		cfg := DefaultConfig()
 		cfg.Display.ThemeID = themeID
 		if err := ValidateConfig(cfg); err != nil {
@@ -280,8 +292,12 @@ func TestJSONConfigLoadsVoiceFields(t *testing.T) {
 		"voice": {
 			"enabled": true,
 			"mutedByDefault": false,
-			"sttProviderId": "wyoming-local",
+			"sttProviderId": "local-stt",
 			"ttsProviderId": "tts-local",
+			"ttsEnabled": true,
+			"ttsLocale": "en-US",
+			"ttsSpeed": 1.2,
+			"ttsVolume": 0.75,
 			"preferredAgentId": "house",
 			"sensitiveOutputPolicy": "visual_only_sensitive",
 			"followupWindowSeconds": 7
@@ -295,8 +311,12 @@ func TestJSONConfigLoadsVoiceFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
-	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "wyoming-local" ||
+	if !cfg.Voice.Enabled || cfg.Voice.MutedByDefault || cfg.Voice.STTProviderID != "local-stt" ||
 		cfg.Voice.TTSProviderID != "tts-local" ||
+		!cfg.Voice.TTSEnabled ||
+		cfg.Voice.TTSLocale != "en-US" ||
+		cfg.Voice.TTSSpeed != 1.2 ||
+		cfg.Voice.TTSVolume != 0.75 ||
 		cfg.Voice.FollowupWindowSeconds != 7 {
 		t.Fatalf("unexpected JSON voice config: %+v", cfg.Voice)
 	}
@@ -561,7 +581,7 @@ func TestAgentMCPScopesDefaultToReadOnly(t *testing.T) {
 		cfg.Agents[0].MCPScopes,
 		",",
 	), strings.Join(
-		agents.DefaultMCPReadScopes(),
+		model.DefaultMCPReadScopes(),
 		",",
 	); got != want {
 		t.Fatalf("unexpected default scopes: got %s want %s", got, want)
@@ -570,7 +590,7 @@ func TestAgentMCPScopesDefaultToReadOnly(t *testing.T) {
 
 func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.Agents = []agents.AgentConfig{
+	cfg.Agents = []model.AgentConfig{
 		{
 			ID:              "house",
 			Name:            "House",
@@ -578,8 +598,8 @@ func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 			EndpointURL:     "https://agent.example.com/a2a/v1",
 			ProtocolBinding: "JSONRPC",
 			Enabled:         true,
-			MCPScopes:       []string{agents.MCPScopeDashboardRead},
-			Auth:            &agents.AuthConfig{Type: "bearer", EnvToken: "SECRET_TOKEN"},
+			MCPScopes:       []string{model.MCPScopeDashboardRead},
+			Auth:            &model.AuthConfig{Type: "bearer", EnvToken: "SECRET_TOKEN"},
 		},
 	}
 
@@ -590,7 +610,7 @@ func TestPublicConfigOmitsAuthDetails(t *testing.T) {
 	if !public.Agents[0].AuthConfigured {
 		t.Fatal("expected authConfigured to be true")
 	}
-	if strings.Join(public.Agents[0].MCPScopes, ",") != agents.MCPScopeDashboardRead {
+	if strings.Join(public.Agents[0].MCPScopes, ",") != model.MCPScopeDashboardRead {
 		t.Fatalf("unexpected public MCP scopes: %+v", public.Agents[0].MCPScopes)
 	}
 }
@@ -604,6 +624,7 @@ func TestDevConfigLoads(t *testing.T) {
 	}
 	assertDevAgents(t, cfg)
 	assertDevHarnessWidgets(t, cfg)
+	assertDevVoice(t, cfg)
 }
 
 func TestDevMCPConfigLoads(t *testing.T) {
@@ -617,6 +638,23 @@ func TestDevMCPConfigLoads(t *testing.T) {
 		t.Fatalf("unexpected dev MCP config: %+v", cfg.MCP)
 	}
 	assertDevAgents(t, cfg)
+	assertDevVoice(t, cfg)
+}
+
+func assertDevVoice(t *testing.T, cfg Config) {
+	t.Helper()
+	if !cfg.Voice.Enabled ||
+		cfg.Voice.MutedByDefault ||
+		cfg.Voice.WakeWordModelID != "hey_jarvis" ||
+		cfg.Voice.STTProviderID != "local-whisper-stt" ||
+		cfg.Voice.TTSProviderID != "local-piper-tts" ||
+		cfg.Voice.TTSVoiceID != "piper-default" ||
+		!cfg.Voice.CommandProvidersEnabled {
+		t.Fatalf("unexpected dev voice config: %+v", cfg.Voice)
+	}
+	if len(cfg.ProviderPacks) != 6 {
+		t.Fatalf("expected 6 dev voice provider packs, got %d", len(cfg.ProviderPacks))
+	}
 }
 
 func assertDevAgents(t *testing.T, cfg Config) {
@@ -678,25 +716,25 @@ func assertDevHarnessWidgets(t *testing.T, cfg Config) {
 	var want []widgetExpectation
 	if cfg.Home.Name == "Jute Local Dev" || cfg.Home.Name == "Jute Kronk A2A Dev" {
 		want = []widgetExpectation{
-			widget("date-time-widget", "date-time", "small", 0, 0, 4, 2, 3, 1, dashboard.WidgetModeUI),
-			widget("weather-widget", "weather", "small", 4, 0, 4, 2, 3, 1, dashboard.WidgetModeUI),
-			widget("assistant-chat", "chat-history", "large", 0, 4, 4, 3, 3, 1, dashboard.WidgetModeUI),
-			widget("hacker-news", "rss", "large", 6, 3, 4, 3, 3, 1, dashboard.WidgetModeUI),
-			widget("stocks-watchlist", "markets", "large", 8, 0, 4, 3, 3, 1, dashboard.WidgetModeUI),
-			widget("spotify", "spotify", "medium", 0, 2, 6, 2, 4, 2, dashboard.WidgetModeUI),
-			hiddenWidget("apple-music", "apple-music", "medium", 0, 0, 6, 2, 4, 2, dashboard.WidgetModeUI),
-			widget("zigbee2mqtt", "zigbee2mqtt", "medium", 0, 0, 6, 2, 4, 2, dashboard.WidgetModeUI),
-			widget("philips-hue", "philips-hue", "medium", 0, 2, 6, 2, 4, 2, dashboard.WidgetModeUI),
-			widget("timers-alarms", "timers-alarms", "medium", 4, 6, 6, 2, 3, 2, dashboard.WidgetModeHeadless),
-			widget("calendar", "calendar", "medium", 4, 6, 6, 2, 3, 2, dashboard.WidgetModeHeadless),
+			widget("date-time-widget", "date-time", "small", 0, 0, 4, 2, 3, 1, model.WidgetModeUI),
+			widget("weather-widget", "weather", "small", 8, 0, 4, 2, 3, 1, model.WidgetModeUI),
+			widget("assistant-chat", "chat-history", "large", 8, 6, 4, 3, 3, 1, model.WidgetModeUI),
+			widget("hacker-news", "rss", "large", 4, 6, 4, 3, 3, 1, model.WidgetModeUI),
+			widget("stocks-watchlist", "markets", "large", 0, 6, 4, 3, 3, 1, model.WidgetModeUI),
+			widget("spotify", "spotify", "medium", 0, 4, 6, 2, 4, 2, model.WidgetModeUI),
+			widget("timers-alarms", "timers-alarms", "medium", 4, 6, 6, 2, 3, 2, model.WidgetModeHeadless),
+			widget("calendar", "calendar", "medium", 4, 6, 6, 2, 3, 2, model.WidgetModeHeadless),
+			hiddenWidget("apple-music", "apple-music", "medium", 0, 0, 6, 2, 4, 2, model.WidgetModeUI),
+			widget("zigbee2mqtt", "zigbee2mqtt", "medium", 0, 0, 6, 2, 4, 2, model.WidgetModeUI),
+			widget("philips-hue", "philips-hue", "medium", 0, 2, 6, 2, 4, 2, model.WidgetModeUI),
 		}
 	} else {
 		want = []widgetExpectation{
-			widget("date-time-widget", "date-time", "wide", 0, 0, 6, 1, 3, 1, dashboard.WidgetModeUI),
-			widget("weather-widget", "weather", "wide", 6, 0, 6, 1, 3, 1, dashboard.WidgetModeUI),
-			widget("assistant-chat", "chat-history", "medium", 0, 1, 6, 2, 3, 1, dashboard.WidgetModeUI),
-			widget("hacker-news", "rss", "medium", 6, 1, 6, 2, 3, 1, dashboard.WidgetModeUI),
-			widget("stocks-watchlist", "markets", "medium", 0, 3, 6, 2, 3, 1, dashboard.WidgetModeUI),
+			widget("date-time-widget", "date-time", "wide", 0, 0, 6, 1, 3, 1, model.WidgetModeUI),
+			widget("weather-widget", "weather", "wide", 6, 0, 6, 1, 3, 1, model.WidgetModeUI),
+			widget("assistant-chat", "chat-history", "medium", 0, 1, 6, 2, 3, 1, model.WidgetModeUI),
+			widget("hacker-news", "rss", "medium", 6, 1, 6, 2, 3, 1, model.WidgetModeUI),
+			widget("stocks-watchlist", "markets", "medium", 0, 3, 6, 2, 3, 1, model.WidgetModeUI),
 		}
 	}
 	if len(cfg.Dashboard.Widgets) != len(want) {

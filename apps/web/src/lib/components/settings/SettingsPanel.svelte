@@ -9,6 +9,7 @@
   import RoomsSettings from './RoomsSettings.svelte';
   import TilesSettings from './TilesSettings.svelte';
   import AgentsSettings from './AgentsSettings.svelte';
+  import VoiceSettings from './VoiceSettings.svelte';
   import ConnectionsSettings from './ConnectionsSettings.svelte';
 
   export let activeSection:
@@ -18,7 +19,9 @@
     | 'connections'
     | 'agents'
     | 'mcp'
-    | 'voice'
+    | 'voice-wake'
+    | 'voice-stt'
+    | 'voice-tts'
     | 'appearance'
     | 'about' = 'household';
   export let onClose: () => void = () => {};
@@ -31,7 +34,9 @@
     ['connections', 'Connections'],
     ['agents', 'Agents'],
     ['mcp', 'MCP'],
-    ['voice', 'Voice'],
+    ['voice-wake', 'Wake'],
+    ['voice-stt', 'STT'],
+    ['voice-tts', 'TTS'],
     ['about', 'About']
   ] as const;
 
@@ -115,34 +120,12 @@
           MCP is configured at hub startup. Edit the harness or bootstrap
           config, then restart the stack to change it.
         </p>
-      {:else if activeSection === 'voice'}
-        <div class="settings-status-grid">
-          <div>
-            <span>Status</span><strong
-              >{$hubStream.dashboard.voice.serviceStatus}</strong
-            >
-          </div>
-          <div>
-            <span>State</span><strong>{$hubStream.dashboard.voice.state}</strong
-            >
-          </div>
-          <div>
-            <span>STT provider</span><strong
-              >{$hubStream.dashboard.voice.sttProviderId ||
-                'not configured'}</strong
-            >
-          </div>
-          <div>
-            <span>TTS provider</span><strong
-              >{$hubStream.dashboard.voice.ttsProviderId ||
-                'not configured'}</strong
-            >
-          </div>
-        </div>
-        <p class="settings-help">
-          Voice provider selection is planned next. This panel currently shows
-          the safe hub status only.
-        </p>
+      {:else if activeSection === 'voice-wake'}
+        <VoiceSettings section="wake" />
+      {:else if activeSection === 'voice-stt'}
+        <VoiceSettings section="stt" />
+      {:else if activeSection === 'voice-tts'}
+        <VoiceSettings section="tts" />
       {:else}
         <div class="settings-status-grid">
           <div>

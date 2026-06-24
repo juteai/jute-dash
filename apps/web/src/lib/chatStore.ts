@@ -15,7 +15,8 @@ import type {
   ConversationDetail,
   ConversationMessage,
   UserFacingIssue,
-  ConversationStreamEvent
+  ConversationStreamEvent,
+  VoiceConversationMessage
 } from '$lib/types';
 import { createMessageQueue } from '$lib/messageQueue';
 
@@ -231,6 +232,62 @@ function createChatStore() {
             ? 'error'
             : 'idle',
       conversations: upsertConversation(s.conversations, detail.conversation)
+    }));
+  }
+
+  function applyVoiceConversation(
+    conversationId: string,
+    agentId: string,
+    voiceMessages: VoiceConversationMessage[],
+    voiceState: 'thinking' | 'idle' | 'error' = 'idle'
+  ) {
+    const now = new Date().toISOString();
+    const messages = voiceMessages.map((message) =>
+      makeMessage(message.role, message.text, {
+        id: message.id,
+        conversationId,
+        agentId,
+        createdAt: message.createdAt,
+        status:
+          message.status === 'error'
+            ? 'failed'
+            : message.status === 'speaking'
+              ? 'sent'
+              : message.status === 'partial'
+                ? 'streaming'
+                : 'sent',
+        retryText:
+          message.role === 'user' && message.status === 'error'
+            ? message.text
+            : undefined
+      })
+    );
+    const firstUser = messages.find((message) => message.role === 'user');
+    const latestMessage = messages[messages.length - 1];
+    const updatedAt = latestMessage?.createdAt || now;
+    const conversation: Conversation = {
+      id: conversationId,
+      agentId,
+      title: firstUser?.content || 'Voice conversation',
+      status:
+        voiceState === 'thinking'
+          ? 'streaming'
+          : voiceState === 'error'
+            ? 'failed'
+            : 'completed',
+      a2aContextId: conversationId,
+      latestTaskId: '',
+      createdAt: messages[0]?.createdAt || now,
+      updatedAt
+    };
+
+    update((s) => ({
+      ...s,
+      selectedConversationId: conversationId,
+      selectedAgentId: agentId || s.selectedAgentId,
+      messages,
+      chatState: voiceState,
+      conversations: upsertConversation(s.conversations, conversation)
     }));
   }
 
@@ -540,15 +597,16 @@ function createChatStore() {
         assistantStatusText: ''
       }));
     },
-    openChat: async (
-      agents: Agent[],
-      agent?: Agent,
-      fetcher: typeof fetch = window.fetch
-    ) => {
+    openChat: async (agents: Agent[], agent?: Agent) => {
       let targetAgentId = '';
+      let preserveCurrentConversation = false;
       update((s) => {
+        preserveCurrentConversation =
+          !agent && Boolean(s.selectedConversationId) && s.messages.length > 0;
         if (agent) {
           targetAgentId = agent.id;
+        } else if (preserveCurrentConversation) {
+          targetAgentId = s.selectedAgentId;
         } else if (!s.selectedAgentId) {
           const available = agents.find((item) => isAgentAvailable(item));
           targetAgentId = available?.id ?? '';
@@ -574,18 +632,19 @@ function createChatStore() {
         return;
       }
 
-      try {
-        const detail = await createConversation(fetcher, selectedAgent.id);
-        applyConversationDetail(detail);
+      if (preserveCurrentConversation) {
         resetDismissTimer();
-      } catch {
-        update((s) => ({
-          ...s,
-          messages: [
-            systemMessage('Jute could not start a new saved conversation.')
-          ]
-        }));
+        return;
       }
+
+      update((s) => ({
+        ...s,
+        selectedConversationId: '',
+        messages: [],
+        chatState: 'idle',
+        assistantStatusText: ''
+      }));
+      resetDismissTimer();
     },
     closeChat: () => {
       stopDismissTimer();
@@ -676,6 +735,7 @@ function createChatStore() {
         // ignore
       }
     },
+    applyVoiceConversation,
     submit: async (
       text: string,
       agents: Agent[],

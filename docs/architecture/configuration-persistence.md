@@ -22,7 +22,7 @@ Use SQLite WAL mode for normal runtime. [SQLite WAL](https://www.sqlite.org/wal.
 
 Runtime rules:
 
-- open the database through the `apps/hub/internal/pkg/database` and `apps/hub/internal/app/store.go` persistence modules;
+- open the database through the `apps/hub/internal/pkg/database` and `apps/hub/internal/pkg/app/store.go` persistence modules;
 - run migrations before serving APIs;
 - enable WAL mode for normal local filesystems;
 - do not place the runtime database on a network filesystem;
@@ -123,7 +123,7 @@ Production first-run should not include fake remote agents or call remote servic
 
 ## Runtime Store Model
 
-Jute uses `apps/hub/internal/pkg/database` for database connection pragmas, and `apps/hub/internal/app/store.go` as the runtime persistence wrapper, built on [GORM](https://gorm.io/) and SQLite (`gorm.io/driver/sqlite`).
+Jute uses `apps/hub/internal/pkg/database` for database connection pragmas, and `apps/hub/internal/pkg/app/store.go` as the runtime persistence wrapper, built on [GORM](https://gorm.io/) and SQLite (`gorm.io/driver/sqlite`).
 
 The store owns:
 
@@ -164,6 +164,8 @@ Initial table families:
 - `setting_audit_log`
 
 Provider manifests and widget manifests are validated records. They are not executable code and are not durable sources of truth outside the hub store. A2A agent registrations are YAML-backed in the current pre-v1 implementation; a later settings store migration may promote agents into normalized tables after the add/edit UX has settled.
+
+`voice_settings` stores per-device wake model ID, wake phrase, wake sensitivity threshold, selected STT/TTS providers, TTS model/voice/locale/speed/volume, follow-up timing, and privacy controls. `voice_provider_packs` stores validated provider manifests and safe health metadata, including wake-word provider model summaries and TTS voice metadata without credential values or raw audio.
 
 Use stable string IDs for user-facing records so import/export and future sync can preserve identity.
 
@@ -281,6 +283,10 @@ Setup and settings APIs:
 - `GET /api/v1/setup/status`
 - `GET /api/v1/settings/household`
 - `PATCH /api/v1/settings/household`
+- `GET /api/v1/voice/status`
+- `PATCH /api/v1/voice/settings`
+
+Voice settings are device-profile durable settings owned by the hub. The display may keep unsaved form edits in memory, but saved voice enablement, provider IDs, wake thresholds, locale, follow-up window, cloud opt-in, command-provider enablement, sensitive-output policy, and microphone profile must be written through the hub API and persisted in SQLite. When the hub is started with an explicit config file, voice provider manifests and the default device voice settings are reconciled from that config on startup.
 - `GET /api/v1/settings/rooms`
 - `PUT /api/v1/settings/rooms`
 - `GET /api/v1/settings/tiles`
@@ -327,9 +333,8 @@ Future CLI behavior:
 - `juted --data-dir`: override runtime data path.
 - `juted --config`: provide YAML or JSON bootstrap/import config.
 - `juted --listen`: boot-only listen override.
-- `juted --headless`: start without serving the display.
 
-The current `--config` behavior is provisional. Once SQLite persistence exists, `--config` is bootstrap input for an empty store unless an explicit import command is used.
+The current `--config` behavior is provisional. Once SQLite persistence exists, `--config` is bootstrap input for an empty store unless an explicit import command is used, with one current exception: voice provider manifests and default device voice selections are reconciled on startup so local voice stacks can recover from stale provider IDs.
 
 ## Backup And Recovery
 

@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { ChevronDown, Info, Mic, VolumeX, History } from 'lucide-svelte';
+  import {
+    AlertTriangle,
+    ChevronDown,
+    Info,
+    Mic,
+    VolumeX,
+    History
+  } from 'lucide-svelte';
   import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import StardustCanvas from '$lib/components/chat/StardustCanvas.svelte';
@@ -29,6 +36,8 @@
   export let status: AppStatus | undefined;
   export let timerProgress = 0;
   export let showTimer = false;
+  export let voiceCapturing = false;
+  export let voiceError = '';
   export let onAgentChange: (agentId: string) => void = () => {};
   export let onConversationSelect: (
     conversationId: string
@@ -43,6 +52,7 @@
   export let onClose: () => void = () => {};
   export let onCancel: () => void = () => {};
   export let onToggleVoiceMute: () => Promise<void> | void = () => {};
+  export let onStartVoiceCapture: () => Promise<void> | void = () => {};
 
   let showDiagnostics = false;
   let showHistory = false;
@@ -143,7 +153,7 @@
       <IconButton
         label={voiceLabel}
         variant="outline"
-        pressed={voiceReady && !voice.muted}
+        pressed={voiceReady && voice.muted}
         disabled={!voiceReady}
         on:click={onToggleVoiceMute}
       >
@@ -205,7 +215,11 @@
     <div class="chat-thread">
       <div class="conversation-thread-header">
         <div>
-          <strong>{selectedConversation?.title || 'New conversation'}</strong>
+          <strong
+            >{selectedConversation?.title ||
+              selectedAgent?.name ||
+              'Chat'}</strong
+          >
           <span>
             {#if selectedConversation?.historyUnsupported}
               History unavailable for this agent
@@ -231,13 +245,21 @@
         onSelectArtifact={(artifact) => (selectedArtifact = artifact)}
       />
 
+      {#if voiceError}
+        <div class="voice-error" aria-live="polite">
+          <AlertTriangle size={17} />
+          <span>{voiceError}</span>
+        </div>
+      {/if}
+
       <MessageComposer
         {state}
         disabled={composerDisabled}
         {voice}
+        {voiceCapturing}
         {onSubmit}
         {onCancel}
-        onVoiceClick={onToggleVoiceMute}
+        onVoiceClick={onStartVoiceCapture}
       />
     </div>
 
@@ -411,6 +433,18 @@
     color: var(--muted);
     font-size: 0.76rem;
     font-weight: 650;
+  }
+
+  .voice-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    color: var(--danger);
+    padding: 8px 12px;
+    font-size: 0.84rem;
+    font-weight: 700;
   }
 
   @media (min-width: 641px) {

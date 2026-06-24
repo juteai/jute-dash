@@ -194,11 +194,17 @@ export type VoiceStatus = {
   serviceStatus: VoiceServiceStatus;
   deviceProfileId: string;
   wakeWordModelId: string;
+  wakeWordPhrase: string;
+  wakeSensitivity: number;
   sttProviderId: string;
   ttsProviderId: string;
   sttModelId: string;
   ttsModelId: string;
   ttsVoiceId: string;
+  ttsEnabled: boolean;
+  ttsLocale: string;
+  ttsSpeed: number;
+  ttsVolume: number;
   preferredAgentId: string;
   cloudOptIn: boolean;
   commandProvidersEnabled: boolean;
@@ -207,14 +213,113 @@ export type VoiceStatus = {
   updatedAt: string;
 };
 
+export type VoiceConversationMessage = {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  text: string;
+  createdAt: string;
+  status: 'partial' | 'final' | 'thinking' | 'speaking' | 'error';
+};
+
+export type VoiceFinalTranscriptRequest = {
+  text: string;
+  deviceProfileId?: string;
+  deviceId?: string;
+  conversationId?: string;
+  agentId?: string;
+};
+
+export type VoiceFinalTranscriptResponse = {
+  conversation: unknown;
+  followup: {
+    active: boolean;
+    expiresAt?: string;
+    turns: number;
+    maxTurns: number;
+  };
+};
+
 export type VoiceProvider = {
   id: string;
   name: string;
   version: string;
   kind: string;
   transportType: string;
+  capabilities?: VoiceProviderCapabilities;
+  wakeWord?: VoiceWakeWordSummary;
   healthStatus: string;
+  lastActivationAt?: string;
+  lastError?: string;
   updatedAt: string;
+};
+
+export type VoiceProviderCapabilities = {
+  streaming: boolean;
+  partialTranscripts: boolean;
+  offline: boolean;
+  languages?: string[];
+  inputFormats?: string[];
+};
+
+export type VoiceWakeWordSummary = {
+  defaultModelId: string;
+  phrase?: string;
+  languages?: string[];
+  sensitivity?: number;
+  models?: VoiceWakeWordModel[];
+};
+
+export type VoiceWakeWordModel = {
+  id: string;
+  phrase?: string;
+  languages?: string[];
+  sensitivity?: number;
+};
+
+export type VoiceSettingsUpdate = Partial<
+  Pick<
+    VoiceStatus,
+    | 'deviceProfileId'
+    | 'enabled'
+    | 'wakeWordModelId'
+    | 'wakeWordPhrase'
+    | 'wakeSensitivity'
+    | 'sttProviderId'
+    | 'ttsProviderId'
+    | 'sttModelId'
+    | 'ttsModelId'
+    | 'ttsVoiceId'
+    | 'ttsEnabled'
+    | 'ttsLocale'
+    | 'ttsSpeed'
+    | 'ttsVolume'
+    | 'preferredAgentId'
+    | 'cloudOptIn'
+    | 'commandProvidersEnabled'
+    | 'followupWindowSeconds'
+    | 'microphoneProfile'
+  >
+>;
+
+export type TTSVoice = {
+  id: string;
+  label: string;
+  locale: string;
+  modelId?: string;
+};
+
+export type TTSVoicesResponse = {
+  providerId: string;
+  providerName?: string;
+  healthStatus: string;
+  setupStatus: string;
+  selectedVoiceId?: string;
+  selectedModelId?: string;
+  locale: string;
+  speed: number;
+  volume: number;
+  cloudProvider: boolean;
+  voices: TTSVoice[];
 };
 
 export type PublicConfig = {

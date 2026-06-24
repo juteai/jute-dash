@@ -5,7 +5,8 @@ import {
   muteVoice,
   unmuteVoice,
   cancelVoice,
-  getDashboard
+  getDashboard,
+  submitVoiceAudio
 } from '$lib/hubClient';
 import { logger } from '$lib/logger';
 import { navigationStore } from '$lib/navigationStore';
@@ -15,17 +16,30 @@ import type {
   DisplayFocusWidget,
   UserFacingIssue,
   WidgetLayout,
+  VoiceConversationMessage,
   VoiceStatus
 } from '$lib/types';
+
+export type VoiceOrbState =
+  | 'idle'
+  | 'listening'
+  | 'thinking'
+  | 'speaking'
+  | 'followup'
+  | 'error';
 
 export interface HubStreamState {
   dashboard: DashboardData;
   displayNotifications: DisplayNotification[];
   focusedWidgetId: string;
-  voiceOrbState: 'idle' | 'listening' | 'thinking' | 'speaking' | 'followup';
+  voiceOrbState: VoiceOrbState;
+  voiceAgentId: string;
+  voiceConversationId: string;
+  voiceMessages: VoiceConversationMessage[];
   voiceTranscript: string;
   assistantSpeech: string;
-  showVoiceOverlay: boolean;
+  voiceError: string;
+  voiceFollowupExpiresAt: string;
   retrying: boolean;
 }
 
@@ -68,11 +82,17 @@ const initialStub: DashboardData = {
     serviceStatus: 'not_configured',
     deviceProfileId: '',
     wakeWordModelId: '',
+    wakeWordPhrase: '',
+    wakeSensitivity: 0.5,
     sttProviderId: '',
     ttsProviderId: '',
     sttModelId: '',
     ttsModelId: '',
     ttsVoiceId: '',
+    ttsEnabled: false,
+    ttsLocale: 'en',
+    ttsSpeed: 1,
+    ttsVolume: 1,
     preferredAgentId: '',
     cloudOptIn: false,
     commandProvidersEnabled: false,
@@ -118,11 +138,84 @@ const initialState: HubStreamState = {
   displayNotifications: [],
   focusedWidgetId: '',
   voiceOrbState: 'idle',
+  voiceAgentId: '',
+  voiceConversationId: '',
+  voiceMessages: [],
   voiceTranscript: '',
   assistantSpeech: '',
-  showVoiceOverlay: false,
+  voiceError: '',
+  voiceFollowupExpiresAt: '',
   retrying: false
 };
+
+function eventConversationID(event: { conversationId?: string }): string {
+  return typeof event.conversationId === 'string' ? event.conversationId : '';
+}
+
+function safeEventTextLength(text: unknown): string | undefined {
+  return typeof text === 'string' ? `chars=${text.length}` : undefined;
+}
+
+function voiceMessageID(prefix: string, event: { id?: string }): string {
+  return typeof event.id === 'string' && event.id
+    ? `${prefix}-${event.id}`
+    : `${prefix}-${Date.now()}`;
+}
+
+function voiceConversationMessageID(
+  prefix: string,
+  event: {
+    id?: string;
+    conversationId?: string;
+    payload?: { taskId?: string } & Record<string, unknown>;
+  }
+): string {
+  const suffix =
+    event.payload?.taskId ||
+    event.conversationId ||
+    (typeof event.id === 'string' ? event.id : '');
+  return suffix ? `${prefix}-${suffix}` : voiceMessageID(prefix, event);
+}
+
+function appendOrReplaceVoiceMessage(
+  messages: VoiceConversationMessage[],
+  message: VoiceConversationMessage,
+  append = false
+): VoiceConversationMessage[] {
+  const existing = messages.find((item) => item.id === message.id);
+  const nextMessage =
+    existing && append
+      ? { ...message, text: `${existing.text}${message.text}` }
+      : message;
+  const next = messages.filter((item) => item.id !== message.id);
+  return [...next, nextMessage].slice(-8);
+}
+
+function safeVoiceError(reason: unknown): string {
+  switch (reason) {
+    case 'agent_failure':
+      return 'The agent could not complete that voice turn.';
+    case 'stt_failure':
+    case 'transcription_failed':
+      return "I didn't catch that. Try again when listening resumes.";
+    case 'tts_failure':
+    case 'synthesis_failed':
+      return 'Speech playback is unavailable. The visual response is still available.';
+    case 'sensitive_output_visual_only':
+    case 'sensitive_output_requires_confirmation':
+      return 'Sensitive response is visual-only.';
+    case 'provider_failure':
+    case 'provider_unavailable':
+      return 'The selected voice provider is unavailable.';
+    case 'followup_expired':
+      return 'The follow-up window expired.';
+    case 'canceled':
+    case 'followup_limit_reached':
+      return '';
+    default:
+      return 'Voice session ended.';
+  }
+}
 
 function createHubStreamStore() {
   const { subscribe, update } = writable<HubStreamState>(initialState);
@@ -134,6 +227,82 @@ function createHubStreamStore() {
   let voiceEndedTimeout: number | undefined;
   let hasConnected = false;
   let isMounted = false;
+  let ttsPlaybackPending = false;
+  let ttsPendingActions = 0;
+  let ttsAudioPlaying = false;
+  let ttsPlaybackFailed = false;
+  let pendingVoiceFollowupExpiresAt = '';
+  const ttsAudioQueue: string[] = [];
+
+  async function playTTSAudio(audioUrl: string) {
+    if (!browser || typeof Audio === 'undefined' || !audioUrl) return;
+    const response = await window.fetch(audioUrl);
+    if (!response.ok) {
+      throw new Error('TTS audio is unavailable.');
+    }
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const audio = new Audio(objectUrl);
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const cleanup = () => URL.revokeObjectURL(objectUrl);
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      const fail = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('TTS playback failed.'));
+      };
+      audio.addEventListener('ended', finish, { once: true });
+      audio.addEventListener('error', fail, { once: true });
+      void audio.play().catch(fail);
+    });
+  }
+
+  function finishTTSPlaybackIfIdle() {
+    if (ttsPendingActions > 0 || ttsAudioQueue.length > 0 || ttsAudioPlaying) {
+      return;
+    }
+    const failed = ttsPlaybackFailed;
+    ttsPlaybackPending = false;
+    ttsPlaybackFailed = false;
+    update((s) => ({
+      ...s,
+      voiceOrbState: 'followup',
+      voiceFollowupExpiresAt:
+        pendingVoiceFollowupExpiresAt || s.voiceFollowupExpiresAt,
+      voiceError: failed ? safeVoiceError('tts_failure') : ''
+    }));
+    pendingVoiceFollowupExpiresAt = '';
+  }
+
+  async function drainTTSAudioQueue() {
+    if (ttsAudioPlaying) return;
+    ttsAudioPlaying = true;
+    try {
+      while (ttsAudioQueue.length > 0) {
+        const audioUrl = ttsAudioQueue.shift();
+        if (!audioUrl) continue;
+        try {
+          await playTTSAudio(audioUrl);
+        } catch {
+          ttsPlaybackFailed = true;
+        }
+      }
+    } finally {
+      ttsAudioPlaying = false;
+      finishTTSPlaybackIfIdle();
+    }
+  }
+
+  function queueTTSAudio(audioUrl: string) {
+    ttsAudioQueue.push(audioUrl);
+    void drainTTSAudioQueue();
+  }
 
   function markConnected() {
     hasConnected = true;
@@ -370,6 +539,9 @@ function createHubStreamStore() {
       });
 
       eventSource.addEventListener('voice.wake_detected', (event) => {
+        const e = parseDisplayEvent<{ conversationId?: string }>(
+          (event as MessageEvent).data
+        );
         logger.sse(event.type);
         if (voiceEndedTimeout) {
           window.clearTimeout(voiceEndedTimeout);
@@ -377,86 +549,373 @@ function createHubStreamStore() {
         }
         update((s) => ({
           ...s,
+          voiceConversationId: eventConversationID(e ?? {}),
+          voiceAgentId: '',
+          voiceMessages: [],
           voiceOrbState: 'listening',
           voiceTranscript: '',
           assistantSpeech: '',
-          showVoiceOverlay: true
+          voiceError: '',
+          voiceFollowupExpiresAt: ''
         }));
       });
 
       eventSource.addEventListener('voice.transcript.partial', (event) => {
-        const e = parseDisplayEvent<{ payload?: { text?: string } }>(
-          (event as MessageEvent).data
-        );
+        const e = parseDisplayEvent<{
+          id?: string;
+          conversationId?: string;
+          createdAt?: string;
+          payload?: { text?: string };
+        }>((event as MessageEvent).data);
         const text = e?.payload?.text;
-        logger.sse(event.type, text ? `text="${text}"` : undefined);
+        logger.sse(event.type, safeEventTextLength(text));
         update((s) => ({
           ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
           voiceTranscript: typeof text === 'string' ? text : s.voiceTranscript,
-          voiceOrbState: 'listening'
+          voiceMessages:
+            typeof text === 'string' && text
+              ? appendOrReplaceVoiceMessage(s.voiceMessages, {
+                  id: voiceConversationMessageID('user', e ?? {}),
+                  role: 'user',
+                  text,
+                  createdAt:
+                    typeof e?.createdAt === 'string'
+                      ? e.createdAt
+                      : new Date().toISOString(),
+                  status: 'partial'
+                })
+              : s.voiceMessages,
+          voiceOrbState: 'listening',
+          voiceError: ''
         }));
       });
 
       eventSource.addEventListener('voice.transcript.final', (event) => {
-        const e = parseDisplayEvent<{ payload?: { text?: string } }>(
-          (event as MessageEvent).data
-        );
+        const e = parseDisplayEvent<{
+          id?: string;
+          conversationId?: string;
+          createdAt?: string;
+          payload?: { text?: string };
+        }>((event as MessageEvent).data);
         const text = e?.payload?.text;
-        logger.sse(event.type, text ? `text="${text}"` : undefined);
+        logger.sse(event.type, safeEventTextLength(text));
         update((s) => ({
           ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
           voiceTranscript: typeof text === 'string' ? text : s.voiceTranscript,
-          voiceOrbState: 'listening'
+          voiceMessages:
+            typeof text === 'string' && text
+              ? appendOrReplaceVoiceMessage(s.voiceMessages, {
+                  id: voiceConversationMessageID('user', e ?? {}),
+                  role: 'user',
+                  text,
+                  createdAt:
+                    typeof e?.createdAt === 'string'
+                      ? e.createdAt
+                      : new Date().toISOString(),
+                  status: 'final'
+                })
+              : s.voiceMessages,
+          voiceOrbState: 'listening',
+          voiceError: ''
+        }));
+      });
+
+      eventSource.addEventListener('conversation.started', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { agentId?: string };
+        }>((event as MessageEvent).data);
+        logger.sse(event.type);
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceAgentId:
+            typeof e?.payload?.agentId === 'string'
+              ? e.payload.agentId
+              : s.voiceAgentId,
+          voiceError: ''
         }));
       });
 
       eventSource.addEventListener('conversation.turn_started', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { agentId?: string };
+        }>((event as MessageEvent).data);
         logger.sse(event.type);
-        update((s) => ({ ...s, voiceOrbState: 'thinking' }));
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceAgentId:
+            typeof e?.payload?.agentId === 'string'
+              ? e.payload.agentId
+              : s.voiceAgentId,
+          voiceOrbState: 'thinking',
+          voiceError: ''
+        }));
       });
 
       eventSource.addEventListener('conversation.turn_completed', (event) => {
         const e = parseDisplayEvent<{
-          payload?: { speech?: string; text?: string };
+          id?: string;
+          conversationId?: string;
+          createdAt?: string;
+          payload?: {
+            agentId?: string;
+            speech?: string;
+            text?: string;
+            status?: string;
+          };
         }>((event as MessageEvent).data);
         const speech = e?.payload?.speech;
         const text = e?.payload?.text;
-        logger.sse(event.type, text ? `text="${text}"` : undefined);
+        const assistantText =
+          typeof text === 'string'
+            ? text
+            : typeof speech === 'string'
+              ? speech
+              : '';
+        logger.sse(event.type, safeEventTextLength(assistantText));
         update((s) => ({
           ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceAgentId:
+            typeof e?.payload?.agentId === 'string'
+              ? e.payload.agentId
+              : s.voiceAgentId,
+          assistantSpeech: assistantText || s.assistantSpeech,
+          voiceMessages: assistantText
+            ? appendOrReplaceVoiceMessage(s.voiceMessages, {
+                id: voiceConversationMessageID('assistant', e ?? {}),
+                role: 'assistant',
+                text: assistantText,
+                createdAt:
+                  typeof e?.createdAt === 'string'
+                    ? e.createdAt
+                    : new Date().toISOString(),
+                status: 'speaking'
+              })
+            : s.voiceMessages,
+          voiceOrbState: 'speaking',
+          voiceError: ''
+        }));
+      });
+
+      eventSource.addEventListener('conversation.assistant_delta', (event) => {
+        const e = parseDisplayEvent<{
+          id?: string;
+          conversationId?: string;
+          createdAt?: string;
+          payload?: {
+            agentId?: string;
+            taskId?: string;
+            text?: string;
+            append?: boolean;
+          };
+        }>((event as MessageEvent).data);
+        const text = e?.payload?.text;
+        logger.sse(event.type, safeEventTextLength(text));
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceAgentId:
+            typeof e?.payload?.agentId === 'string'
+              ? e.payload.agentId
+              : s.voiceAgentId,
           assistantSpeech:
-            typeof speech === 'string'
-              ? speech
-              : typeof text === 'string'
-                ? text
-                : s.assistantSpeech,
-          voiceOrbState: 'speaking'
+            typeof text === 'string'
+              ? e?.payload?.append
+                ? `${s.assistantSpeech}${text}`
+                : text
+              : s.assistantSpeech,
+          voiceMessages:
+            typeof text === 'string' && text
+              ? appendOrReplaceVoiceMessage(
+                  s.voiceMessages,
+                  {
+                    id: voiceConversationMessageID('assistant', e ?? {}),
+                    role: 'assistant',
+                    text,
+                    createdAt:
+                      typeof e?.createdAt === 'string'
+                        ? e.createdAt
+                        : new Date().toISOString(),
+                    status: 'speaking'
+                  },
+                  Boolean(e?.payload?.append)
+                )
+              : s.voiceMessages,
+          voiceOrbState: 'speaking',
+          voiceError: ''
         }));
       });
 
       eventSource.addEventListener('conversation.followup_started', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { expiresAt?: string };
+        }>((event as MessageEvent).data);
+        logger.sse(event.type);
+        const expiresAt =
+          typeof e?.payload?.expiresAt === 'string' ? e.payload.expiresAt : '';
+        if (ttsPlaybackPending && expiresAt) {
+          pendingVoiceFollowupExpiresAt = expiresAt;
+        }
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceOrbState: ttsPlaybackPending ? 'speaking' : 'followup',
+          voiceTranscript: '',
+          voiceFollowupExpiresAt: ttsPlaybackPending
+            ? ''
+            : expiresAt || s.voiceFollowupExpiresAt,
+          voiceError: ''
+        }));
+      });
+
+      eventSource.addEventListener('tts.started', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { state?: string };
+        }>((event as MessageEvent).data);
+        logger.sse(event.type, e?.payload?.state);
+        if (!ttsPlaybackPending) {
+          ttsPlaybackFailed = false;
+        }
+        ttsPlaybackPending = true;
+        ttsPendingActions += 1;
+        update((s) => {
+          if (s.voiceFollowupExpiresAt) {
+            pendingVoiceFollowupExpiresAt = s.voiceFollowupExpiresAt;
+          }
+          return {
+            ...s,
+            voiceConversationId:
+              eventConversationID(e ?? {}) || s.voiceConversationId,
+            voiceOrbState: 'speaking',
+            voiceFollowupExpiresAt: '',
+            voiceError: ''
+          };
+        });
+      });
+
+      eventSource.addEventListener('tts.completed', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { audioUrl?: string };
+        }>((event as MessageEvent).data);
+        logger.sse(event.type);
+        const audioUrl = e?.payload?.audioUrl;
+        ttsPendingActions = Math.max(0, ttsPendingActions - 1);
+        if (typeof audioUrl === 'string' && audioUrl) {
+          update((s) => ({
+            ...s,
+            voiceConversationId:
+              eventConversationID(e ?? {}) || s.voiceConversationId,
+            voiceOrbState: 'speaking',
+            voiceError: ''
+          }));
+          queueTTSAudio(audioUrl);
+        } else {
+          update((s) => ({
+            ...s,
+            voiceConversationId:
+              eventConversationID(e ?? {}) || s.voiceConversationId
+          }));
+          finishTTSPlaybackIfIdle();
+        }
+      });
+
+      eventSource.addEventListener('tts.stopped', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { reason?: string; state?: string };
+        }>((event as MessageEvent).data);
+        const reason = e?.payload?.reason;
+        ttsPlaybackPending = false;
+        ttsPendingActions = 0;
+        ttsAudioQueue.length = 0;
+        ttsPlaybackFailed = false;
+        pendingVoiceFollowupExpiresAt = '';
+        const policyMessage =
+          reason === 'sensitive_output_visual_only' ||
+          reason === 'sensitive_output_requires_confirmation'
+            ? safeVoiceError(reason)
+            : '';
         logger.sse(event.type);
         update((s) => ({
           ...s,
-          voiceOrbState: 'followup',
-          voiceTranscript: ''
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceOrbState: policyMessage ? 'followup' : 'listening',
+          voiceError:
+            reason === 'barge_in'
+              ? 'Speech stopped. Listening for your follow-up.'
+              : policyMessage
+        }));
+      });
+
+      eventSource.addEventListener('tts.failed', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { reason?: string };
+        }>((event as MessageEvent).data);
+        logger.sse(event.type);
+        ttsPendingActions = Math.max(0, ttsPendingActions - 1);
+        ttsPlaybackFailed = true;
+        finishTTSPlaybackIfIdle();
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceOrbState: 'error',
+          voiceError: safeVoiceError(e?.payload?.reason || 'tts_failure')
         }));
       });
 
       eventSource.addEventListener('conversation.ended', (event) => {
+        const e = parseDisplayEvent<{
+          conversationId?: string;
+          payload?: { reason?: string };
+        }>((event as MessageEvent).data);
+        const error = safeVoiceError(e?.payload?.reason);
         logger.sse(event.type);
-        update((s) => ({ ...s, voiceOrbState: 'idle' }));
+        ttsPlaybackPending = false;
+        ttsPendingActions = 0;
+        ttsAudioQueue.length = 0;
+        ttsPlaybackFailed = false;
+        pendingVoiceFollowupExpiresAt = '';
+        update((s) => ({
+          ...s,
+          voiceConversationId:
+            eventConversationID(e ?? {}) || s.voiceConversationId,
+          voiceOrbState: error ? 'error' : 'idle',
+          voiceError: error
+        }));
         if (voiceEndedTimeout) {
           window.clearTimeout(voiceEndedTimeout);
         }
         voiceEndedTimeout = window.setTimeout(() => {
           update((s) => {
-            if (s.voiceOrbState === 'idle') {
+            if (s.voiceOrbState === 'idle' || s.voiceOrbState === 'error') {
               return {
                 ...s,
-                showVoiceOverlay: false,
+                voiceConversationId: '',
+                voiceAgentId: '',
+                voiceMessages: [],
                 voiceTranscript: '',
-                assistantSpeech: ''
+                assistantSpeech: '',
+                voiceError: '',
+                voiceFollowupExpiresAt: ''
               };
             }
             return s;
@@ -480,6 +939,7 @@ function createHubStreamStore() {
     },
     disconnect: () => {
       isMounted = false;
+      ttsPlaybackPending = false;
       eventSource?.close();
       eventSource = undefined;
 
@@ -573,13 +1033,87 @@ function createHubStreamStore() {
         );
       }
     },
+    beginBrowserVoiceCapture: () => {
+      update((s) => ({
+        ...s,
+        voiceOrbState: 'listening',
+        voiceTranscript: '',
+        voiceError: ''
+      }));
+    },
+    submitBrowserVoiceAudio: async (
+      recording: { audio: Blob; sampleRate: number; channels: number },
+      fetcher: typeof fetch = window.fetch
+    ) => {
+      let voice: VoiceStatus = initialStub.voice;
+      let conversationId = '';
+      let agentId = '';
+      update((s) => {
+        voice = s.dashboard.voice;
+        conversationId = s.voiceConversationId;
+        agentId =
+          s.voiceAgentId ||
+          voice.preferredAgentId ||
+          s.dashboard.agents.find((agent) => agent.enabled)?.id ||
+          '';
+        return {
+          ...s,
+          voiceAgentId: agentId,
+          voiceOrbState: 'thinking',
+          voiceTranscript: '',
+          voiceError: ''
+        };
+      });
+      await submitVoiceAudio(fetcher, recording.audio, {
+        sampleRate: recording.sampleRate,
+        channels: recording.channels,
+        deviceProfileId: voice.deviceProfileId,
+        deviceId: voice.deviceProfileId,
+        conversationId,
+        agentId,
+        requireWake: false
+      });
+    },
+    submitBrowserWakeAudio: async (
+      recording: { audio: Blob; sampleRate: number; channels: number },
+      fetcher: typeof fetch = window.fetch
+    ) => {
+      let voice: VoiceStatus = initialStub.voice;
+      update((s) => {
+        voice = s.dashboard.voice;
+        return s;
+      });
+      await submitVoiceAudio(fetcher, recording.audio, {
+        sampleRate: recording.sampleRate,
+        channels: recording.channels,
+        deviceProfileId: voice.deviceProfileId,
+        deviceId: voice.deviceProfileId,
+        agentId: voice.preferredAgentId,
+        requireWake: true
+      });
+    },
+    failBrowserVoiceCapture: (reason: string) => {
+      const known = safeVoiceError(reason);
+      update((s) => ({
+        ...s,
+        voiceOrbState: 'error',
+        voiceError: known === 'Voice session ended.' ? reason : known
+      }));
+    },
     cancelVoiceSession: async (fetcher: typeof fetch = window.fetch) => {
       try {
         await cancelVoice(fetcher);
+        ttsPlaybackPending = false;
         update((s) => ({
           ...s,
           voiceOrbState: 'idle',
-          showVoiceOverlay: false
+          voiceConversationId: '',
+          voiceAgentId: '',
+          voiceMessages: [],
+          voiceTranscript: '',
+          assistantSpeech: '',
+          voiceError: '',
+          voiceFollowupExpiresAt: ''
         }));
       } catch (err) {
         console.error('Failed to cancel voice session:', err);

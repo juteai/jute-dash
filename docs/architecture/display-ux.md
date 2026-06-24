@@ -381,7 +381,8 @@ The Svelte app does not call agents directly. Chat sends turns to the hub and re
 
 ## Voice And Chat
 
-Voice UI uses the same chat mode primitives.
+Voice UI uses the same hub event stream primitives as chat and opens the durable chat view for wake
+word or microphone input. It does not render a separate voice surface.
 
 Voice-specific requirements:
 
@@ -389,7 +390,14 @@ Voice-specific requirements:
 - mute and cancel remain visible during voice activity;
 - follow-up listening can keep chat open briefly after response completion;
 - ambient mode may show only listening/speaking state, not full transcripts;
-- TTS playback state appears in the chat header or input area.
+- TTS playback state appears in the voice sheet header;
+- transcript and assistant response bubbles are derived from `/api/v1/events`, not treated as
+  durable voice truth in the browser;
+- recoverable STT, agent, TTS, and provider failures appear inline with safe user-facing text;
+- startup offline, reconnecting, stale, degraded, no-agent, and widget failure states remain visible
+  behind or alongside the sheet;
+- display logs record event names and safe metadata such as text length, not raw transcript or
+  assistant speech content.
 
 Detailed voice behavior remains in [Voice And Wake Word Architecture](voice.md).
 

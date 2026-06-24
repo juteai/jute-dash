@@ -4,7 +4,6 @@
   import ChatView from '$lib/components/chat/ChatView.svelte';
   import DashboardView from '$lib/components/display/DashboardView.svelte';
   import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
-  import VoiceOverlay from '$lib/components/display/VoiceOverlay.svelte';
   import AlarmFocusOverlay from '$lib/components/alarms/AlarmFocusOverlay.svelte';
   import OfflineState from '$lib/components/display/OfflineState.svelte';
   import StatusRibbon from '$lib/components/display/StatusRibbon.svelte';
@@ -35,6 +34,10 @@
   import { chatStore } from '$lib/chatStore';
   import { settingsStore } from '$lib/settingsStore';
   import { navigationStore } from '$lib/navigationStore';
+  import {
+    createBrowserVoiceCaptureSession,
+    type BrowserVoiceCaptureSession
+  } from '$lib/browserVoiceCapture';
 
   export let data: DashboardData;
 
@@ -46,7 +49,9 @@
     | 'connections'
     | 'agents'
     | 'mcp'
-    | 'voice'
+    | 'voice-wake'
+    | 'voice-stt'
+    | 'voice-tts'
     | 'appearance'
     | 'about' = 'household';
   let mounted = false;
@@ -54,6 +59,18 @@
   let longPressTimer: number | undefined;
   let slideshowIndex = 0;
   let slideshowTimer: number | undefined;
+  let lastVoiceChatSyncKey = '';
+  let browserVoiceCapturing = false;
+  const browserVoice = {
+    wakeListening: false,
+    wakeBlocked: false,
+    starting: false,
+    started: false,
+    session: undefined as BrowserVoiceCaptureSession | undefined,
+    wakeAbort: undefined as AbortController | undefined
+  };
+  let lastAutoCaptureKey = '';
+  const autoOpenedVoiceConversationIds: string[] = [];
 
   /* eslint-disable no-useless-assignment */
   let lastData: DashboardData | undefined;
@@ -100,6 +117,21 @@
   $: weatherData = $hubStream.dashboard.layout.widgets.find(
     (w) => w.kind === 'weather'
   )?.data;
+  $: if (
+    mounted &&
+    $hubStream.voiceConversationId &&
+    $hubStream.voiceMessages.length > 0
+  ) {
+    syncVoiceConversationIntoChat(
+      $hubStream.voiceConversationId,
+      $hubStream.voiceAgentId ||
+        $hubStream.dashboard.voice.preferredAgentId ||
+        selectedAgent?.id ||
+        '',
+      $hubStream.voiceOrbState,
+      $hubStream.voiceMessages
+    );
+  }
 
   $: dashboardForView = {
     ...$hubStream.dashboard,
@@ -108,6 +140,25 @@
         ? $layoutStore.draftLayout
         : $hubStream.dashboard.layout
   };
+  $: shouldRunBrowserVoice =
+    browser &&
+    mounted &&
+    !browserVoice.wakeBlocked &&
+    $hubStream.dashboard.voice.enabled &&
+    $hubStream.dashboard.voice.serviceStatus === 'ready' &&
+    !$hubStream.dashboard.voice.muted;
+  $: shouldRunBrowserWakeLoop =
+    shouldRunBrowserVoice &&
+    $navigationStore.mode !== 'chat' &&
+    !browserVoiceCapturing;
+  $: if (shouldRunBrowserVoice) {
+    void ensureBrowserVoiceSession();
+  } else {
+    stopBrowserVoiceSession();
+  }
+  $: if (browserVoice.wakeListening && !shouldRunBrowserWakeLoop) {
+    abortBrowserWakeCapture();
+  }
 
   $: configuringWidget =
     $layoutStore.configuringWidgetId && $layoutStore.draftLayout
@@ -190,10 +241,30 @@
     void layoutStore.initCatalog(fetch);
     hubStream.connect(fetch);
     void retryDashboard();
+    const unsubscribeWakeCapture = hubStream.subscribe((state) => {
+      const conversationId = state.voiceConversationId;
+      const autoCaptureKey =
+        conversationId &&
+        state.voiceOrbState === 'listening' &&
+        state.voiceMessages.length === 0
+          ? `wake:${conversationId}`
+          : conversationId && state.voiceOrbState === 'followup'
+            ? `followup:${conversationId}:${state.voiceFollowupExpiresAt}`
+            : '';
+      if (
+        autoCaptureKey &&
+        lastAutoCaptureKey !== autoCaptureKey &&
+        !browserVoiceCapturing
+      ) {
+        lastAutoCaptureKey = autoCaptureKey;
+        window.setTimeout(() => void startChatVoiceCapture(), 0);
+      }
+    });
 
     return () => {
       mounted = false;
       query.removeEventListener('change', updateTheme);
+      unsubscribeWakeCapture();
       clearLongPress();
       hubStream.disconnect();
       if (slideshowTimer) {
@@ -203,12 +274,21 @@
   });
 
   onDestroy(() => {
+    browserVoice.wakeBlocked = true;
+    stopBrowserVoiceSession();
     chatStore.stopTimer();
   });
 
   async function openChat(agent?: Agent) {
     navigationStore.openChat();
-    await chatStore.openChat($hubStream.dashboard.agents, agent, fetch);
+    await chatStore.openChat($hubStream.dashboard.agents, agent);
+    if (
+      browser &&
+      $hubStream.dashboard.voice.serviceStatus === 'ready' &&
+      !$hubStream.dashboard.voice.muted
+    ) {
+      window.setTimeout(() => void startChatVoiceCapture(), 0);
+    }
   }
 
   function closeChat() {
@@ -217,6 +297,56 @@
 
   function handleInteraction() {
     chatStore.resetTimer();
+  }
+
+  function syncVoiceConversationIntoChat(
+    conversationId: string,
+    agentId: string,
+    voiceOrbState: typeof $hubStream.voiceOrbState,
+    voiceMessages: typeof $hubStream.voiceMessages
+  ) {
+    if (!agentId) {
+      return;
+    }
+
+    const state =
+      voiceOrbState === 'error'
+        ? 'error'
+        : voiceOrbState === 'thinking' ||
+            voiceOrbState === 'speaking' ||
+            (voiceOrbState === 'listening' &&
+              !voiceMessages.some((message) => message.role === 'assistant'))
+          ? 'thinking'
+          : 'idle';
+    const syncKey = JSON.stringify({
+      conversationId,
+      agentId,
+      state,
+      messages: voiceMessages.map((message) => [
+        message.id,
+        message.role,
+        message.text,
+        message.status
+      ])
+    });
+    if (syncKey === lastVoiceChatSyncKey) {
+      return;
+    }
+    lastVoiceChatSyncKey = syncKey;
+    chatStore.applyVoiceConversation(
+      conversationId,
+      agentId,
+      voiceMessages,
+      state
+    );
+  }
+  $: if (
+    mounted &&
+    $hubStream.voiceConversationId &&
+    !autoOpenedVoiceConversationIds.includes($hubStream.voiceConversationId)
+  ) {
+    autoOpenedVoiceConversationIds.push($hubStream.voiceConversationId);
+    navigationStore.openChat();
   }
 
   function openSettings(section: typeof activeSettingsSection = 'household') {
@@ -317,8 +447,138 @@
     }
   }
 
+  async function startChatVoiceCapture() {
+    if (!browser || browserVoiceCapturing) return;
+    browserVoice.wakeBlocked = false;
+    abortBrowserWakeCapture();
+    browserVoiceCapturing = true;
+    hubStream.beginBrowserVoiceCapture();
+    try {
+      if ($hubStream.dashboard.voice.muted) {
+        await hubStream.toggleVoiceMute(fetch);
+      }
+      const recording = await captureBrowserVoiceUtterance();
+      await hubStream.submitBrowserVoiceAudio(recording, fetch);
+    } catch (err) {
+      hubStream.failBrowserVoiceCapture(
+        err instanceof Error ? err.message : 'Browser microphone failed.'
+      );
+    } finally {
+      browserVoiceCapturing = false;
+      if (shouldRunBrowserWakeLoop) {
+        void startBrowserWakeLoop();
+      }
+    }
+  }
+
+  async function startBrowserWakeLoop() {
+    if (browserVoice.wakeListening || browserVoiceCapturing) return;
+    browserVoice.wakeListening = true;
+    try {
+      while (shouldContinueWakeLoop()) {
+        try {
+          const abort = new AbortController();
+          browserVoice.wakeAbort = abort;
+          const recording = await captureBrowserVoiceUtterance(abort.signal);
+          if (browserVoice.wakeAbort === abort) {
+            browserVoice.wakeAbort = undefined;
+          }
+          await hubStream.submitBrowserWakeAudio(recording, fetch);
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : 'Browser microphone failed.';
+          if (err instanceof Error && err.name === 'AbortError') {
+            // wake capture was interrupted by chat capture or mute
+          } else if (message !== 'No speech detected.') {
+            browserVoice.wakeBlocked = true;
+            hubStream.failBrowserVoiceCapture(message);
+          }
+        }
+      }
+    } finally {
+      browserVoice.wakeListening = false;
+      browserVoice.wakeAbort = undefined;
+    }
+  }
+
+  function shouldContinueWakeLoop() {
+    return (
+      browser &&
+      mounted &&
+      shouldRunBrowserWakeLoop &&
+      !browserVoice.wakeBlocked &&
+      !browserVoiceCapturing &&
+      $navigationStore.mode !== 'chat' &&
+      $hubStream.dashboard.voice.serviceStatus === 'ready' &&
+      !$hubStream.dashboard.voice.muted
+    );
+  }
+
+  async function ensureBrowserVoiceSession(reportError = true) {
+    if (
+      !browser ||
+      browserVoice.started ||
+      browserVoice.starting ||
+      browserVoice.wakeBlocked
+    ) {
+      return;
+    }
+    browserVoice.starting = true;
+    try {
+      browserVoice.session ??= createBrowserVoiceCaptureSession();
+      await browserVoice.session.start();
+      browserVoice.started = true;
+      if (shouldRunBrowserWakeLoop) {
+        void startBrowserWakeLoop();
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+      browserVoice.wakeBlocked = true;
+      if (reportError) {
+        hubStream.failBrowserVoiceCapture(
+          err instanceof Error ? err.message : 'Browser microphone failed.'
+        );
+      }
+      stopBrowserVoiceSession();
+      if (!reportError) {
+        throw err;
+      }
+    } finally {
+      browserVoice.starting = false;
+    }
+  }
+
+  async function captureBrowserVoiceUtterance(signal?: AbortSignal) {
+    await ensureBrowserVoiceSession(false);
+    if (!browserVoice.session) {
+      throw new Error('Browser microphone access is unavailable.');
+    }
+    return browserVoice.session.captureUtterance({ signal });
+  }
+
+  function abortBrowserWakeCapture() {
+    browserVoice.wakeAbort?.abort();
+    browserVoice.wakeAbort = undefined;
+  }
+
+  function stopBrowserVoiceSession() {
+    abortBrowserWakeCapture();
+    browserVoice.session?.stop();
+    browserVoice.session = undefined;
+    browserVoice.started = false;
+  }
+
   async function cancelVoiceSession() {
     await hubStream.cancelVoiceSession(fetch);
+  }
+
+  async function cancelActiveSession() {
+    chatStore.cancel();
+    if ($hubStream.voiceConversationId) {
+      await cancelVoiceSession();
+    }
   }
 
   async function retryDashboard() {
@@ -456,6 +716,8 @@
           status={$hubStream.dashboard.status}
           timerProgress={$chatStore.timerProgress}
           showTimer={$chatStore.showTimer}
+          voiceCapturing={browserVoiceCapturing}
+          voiceError={$hubStream.voiceError}
           onAgentChange={(agentId) => {
             chatStore.setAgentId(agentId);
             void chatStore.loadHistory(
@@ -480,21 +742,11 @@
           onRetry={(msg) =>
             chatStore.retry(msg, $hubStream.dashboard.agents, fetch)}
           onClose={closeChat}
-          onCancel={chatStore.cancel}
+          onCancel={cancelActiveSession}
           onToggleVoiceMute={toggleVoiceMute}
+          onStartVoiceCapture={startChatVoiceCapture}
         />
       </div>
-    {/if}
-
-    {#if $hubStream.showVoiceOverlay}
-      <VoiceOverlay
-        voice={$hubStream.dashboard.voice}
-        voiceOrbState={$hubStream.voiceOrbState}
-        voiceTranscript={$hubStream.voiceTranscript}
-        assistantSpeech={$hubStream.assistantSpeech}
-        on:toggleMute={toggleVoiceMute}
-        on:cancel={cancelVoiceSession}
-      />
     {/if}
 
     <AlarmFocusOverlay data={$hubStream.dashboard} />

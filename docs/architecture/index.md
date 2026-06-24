@@ -25,6 +25,7 @@ Jute Dash is a local-first home assistant platform built around a headless-capab
 - The product foundation is **Go hub + SvelteKit/shadcn-svelte display**, not Qt.
 - The Go hub owns configuration, local state, agent registry, A2A client transport, integration adapters, event streams, and future headless voice services.
 - The SvelteKit app owns the touch dashboard, customization UI, widget surface, and kiosk/PWA experience.
+- The display is always a hub client. The hub binary does not embed or serve the display app.
 - The current Svelte UI is throwaway proof-of-concept work. The clean display UX is defined in [Display UX](display-ux.md).
 - Runtime failures must be visible, calm, and actionable. Do not silently hide hub disconnects, missing agents, stale data, or widget failures.
 - Visual customization uses data-only Theme Packs. Themes can change tokens, backgrounds, and widget chrome, but not layout behavior, permissions, agent context, or executable code.

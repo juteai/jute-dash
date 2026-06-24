@@ -64,6 +64,24 @@ describe('chatStore unit tests', () => {
     expect(state!.chatState).toBe('idle');
   });
 
+  it('opens chat without creating a conversation', async () => {
+    const fetcher = vi.fn();
+
+    await chatStore.openChat([createMockAgent()]);
+
+    let state: ChatStoreState | undefined;
+    const unsubscribe = chatStore.subscribe((s) => {
+      state = s;
+    });
+    unsubscribe();
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(state!.selectedAgentId).toBe('agent-1');
+    expect(state!.selectedConversationId).toBe('');
+    expect(state!.messages).toEqual([]);
+    expect(state!.chatState).toBe('idle');
+  });
+
   it('queues messages when chatState is thinking', async () => {
     // Manually force store into thinking state
     // (Simulating an active sendConversationTurn call)
@@ -161,5 +179,33 @@ describe('chatStore unit tests', () => {
 
     unsubscribe();
     closeSpy.mockRestore();
+  });
+
+  it('does not start the dismiss timer for active voice work', () => {
+    let state: ChatStoreState | undefined;
+    const unsubscribe = chatStore.subscribe((s) => {
+      state = s;
+    });
+
+    chatStore.applyVoiceConversation(
+      'voice-conversation-1',
+      'agent-1',
+      [
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          text: 'Checking that now.',
+          createdAt: new Date().toISOString(),
+          status: 'speaking'
+        }
+      ],
+      'thinking'
+    );
+    chatStore.resetTimer();
+
+    expect(state!.chatState).toBe('thinking');
+    expect(state!.showTimer).toBe(false);
+    expect(state!.timerProgress).toBe(0);
+    unsubscribe();
   });
 });

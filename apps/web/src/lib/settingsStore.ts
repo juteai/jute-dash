@@ -12,7 +12,10 @@ import {
   refreshAgentCard as apiRefreshAgentCard,
   getBackgroundImages as apiGetBackgroundImages,
   uploadBackgroundImage as apiUploadBackgroundImage,
-  deleteBackgroundImage as apiDeleteBackgroundImage
+  deleteBackgroundImage as apiDeleteBackgroundImage,
+  getVoiceProviders as apiGetVoiceProviders,
+  getTTSVoices as apiGetTTSVoices,
+  saveVoiceSettings as apiSaveVoiceSettings
 } from '$lib/hubClient';
 import { hubStream } from '$lib/hubStream';
 import { chatStore } from '$lib/chatStore';
@@ -21,7 +24,10 @@ import type {
   HouseholdSettings,
   Room,
   Tile,
-  BackgroundImage
+  BackgroundImage,
+  VoiceProvider,
+  TTSVoicesResponse,
+  VoiceSettingsUpdate
 } from '$lib/types';
 
 export interface SettingsState {
@@ -30,12 +36,15 @@ export interface SettingsState {
   savingRooms: boolean;
   savingTiles: boolean;
   savingAgent: boolean;
+  savingVoice: boolean;
   uploadingBackground: boolean;
   issue: string;
   householdSettings: HouseholdSettings | undefined;
   roomSettings: Room[];
   tileSettings: Tile[];
   backgroundLibrary: BackgroundImage[];
+  voiceProviders: VoiceProvider[];
+  ttsVoices: TTSVoicesResponse | undefined;
 }
 
 const initialState: SettingsState = {
@@ -44,13 +53,86 @@ const initialState: SettingsState = {
   savingRooms: false,
   savingTiles: false,
   savingAgent: false,
+  savingVoice: false,
   uploadingBackground: false,
   issue: '',
   householdSettings: undefined,
   roomSettings: [],
   tileSettings: [],
-  backgroundLibrary: []
+  backgroundLibrary: [],
+  voiceProviders: [],
+  ttsVoices: undefined
 };
+
+function selectedVoiceProviderRequiringOptIn(
+  providers: VoiceProvider[],
+  settings: VoiceSettingsUpdate
+): string {
+  const selectedProviderIds = new Set(
+    [settings.sttProviderId, settings.ttsProviderId].filter(
+      (id): id is string => typeof id === 'string' && id.trim() !== ''
+    )
+  );
+  const selectedProvider = providers.find((provider) =>
+    selectedProviderIds.has(provider.id)
+  );
+  if (!selectedProvider) {
+    return '';
+  }
+  if (
+    selectedProvider.capabilities?.offline === false &&
+    !settings.cloudOptIn
+  ) {
+    return `Cloud opt-in is required for ${selectedProvider.name}.`;
+  }
+  if (
+    selectedProvider.transportType === 'command' &&
+    !settings.commandProvidersEnabled
+  ) {
+    return `Command providers must be enabled before saving ${selectedProvider.name}.`;
+  }
+  return '';
+}
+
+function boundedNumber(
+  value: number | undefined,
+  min: number,
+  max: number,
+  fallback: number
+): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const next = Number(value);
+  if (!Number.isFinite(next)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, next));
+}
+
+function normalizeVoiceSettings(
+  settings: VoiceSettingsUpdate
+): VoiceSettingsUpdate {
+  const normalized = { ...settings };
+  normalized.wakeSensitivity = boundedNumber(
+    settings.wakeSensitivity,
+    0,
+    1,
+    0.5
+  );
+  normalized.ttsSpeed = boundedNumber(settings.ttsSpeed, 0.5, 2, 1);
+  normalized.ttsVolume = boundedNumber(settings.ttsVolume, 0, 1, 1);
+  const followupWindowSeconds = boundedNumber(
+    settings.followupWindowSeconds,
+    1,
+    45,
+    8
+  );
+  if (followupWindowSeconds !== undefined) {
+    normalized.followupWindowSeconds = Math.round(followupWindowSeconds);
+  }
+  return normalized;
+}
 
 function createSettingsStore() {
   const { subscribe, update } = writable<SettingsState>(initialState);
@@ -60,19 +142,26 @@ function createSettingsStore() {
     load: async (fetcher: typeof fetch = window.fetch) => {
       update((s) => ({ ...s, loading: true, issue: '' }));
       try {
-        const [household, rooms, tiles, backgrounds] = await Promise.all([
-          getHouseholdSettings(fetcher),
-          getRoomSettings(fetcher),
-          getTileSettings(fetcher),
-          apiGetBackgroundImages(fetcher).catch(() => [] as BackgroundImage[])
-        ]);
+        const [household, rooms, tiles, backgrounds, providers, ttsVoices] =
+          await Promise.all([
+            getHouseholdSettings(fetcher),
+            getRoomSettings(fetcher),
+            getTileSettings(fetcher),
+            apiGetBackgroundImages(fetcher).catch(
+              () => [] as BackgroundImage[]
+            ),
+            apiGetVoiceProviders(fetcher).catch(() => [] as VoiceProvider[]),
+            apiGetTTSVoices(fetcher).catch(() => undefined)
+          ]);
         update((s) => ({
           ...s,
           loading: false,
           householdSettings: household,
           roomSettings: rooms,
           tileSettings: tiles,
-          backgroundLibrary: backgrounds
+          backgroundLibrary: backgrounds,
+          voiceProviders: providers,
+          ttsVoices
         }));
       } catch (err) {
         update((s) => ({
@@ -130,6 +219,66 @@ function createSettingsStore() {
         }));
         throw err;
       }
+    },
+    saveVoice: async (
+      settings: VoiceSettingsUpdate,
+      fetcher: typeof fetch = window.fetch
+    ) => {
+      update((s) => ({ ...s, savingVoice: true, issue: '' }));
+      try {
+        const normalizedSettings = normalizeVoiceSettings(settings);
+        const providerGuardMessage = selectedVoiceProviderRequiringOptIn(
+          get({ subscribe }).voiceProviders,
+          normalizedSettings
+        );
+        if (providerGuardMessage) {
+          throw new Error(providerGuardMessage);
+        }
+        const saved = await apiSaveVoiceSettings(fetcher, normalizedSettings);
+        const ttsVoices = await apiGetTTSVoices(
+          fetcher,
+          saved.ttsProviderId
+        ).catch(() => undefined);
+        await hubStream.refreshAfterMutation(fetcher);
+        update((s) => ({
+          ...s,
+          savingVoice: false,
+          ttsVoices
+        }));
+      } catch (err) {
+        const message =
+          err instanceof Error &&
+          (err.message.startsWith('Cloud opt-in') ||
+            err.message.startsWith('Command providers'))
+            ? err.message
+            : 'Voice settings were not saved. Check provider choices and limits.';
+        update((s) => ({
+          ...s,
+          savingVoice: false,
+          issue: message
+        }));
+        throw err;
+      }
+    },
+    refreshVoiceProviders: async (fetcher: typeof fetch = window.fetch) => {
+      const [providers, ttsVoices] = await Promise.all([
+        apiGetVoiceProviders(fetcher).catch(() => [] as VoiceProvider[]),
+        apiGetTTSVoices(fetcher).catch(() => undefined)
+      ]);
+      update((s) => ({
+        ...s,
+        voiceProviders: providers,
+        ttsVoices
+      }));
+    },
+    refreshTTSVoices: async (
+      providerId: string,
+      fetcher: typeof fetch = window.fetch
+    ) => {
+      const ttsVoices = await apiGetTTSVoices(fetcher, providerId).catch(
+        () => undefined
+      );
+      update((s) => ({ ...s, ttsVoices }));
     },
     addAgent: async (cardUrl: string, fetcher: typeof fetch = window.fetch) => {
       update((s) => ({ ...s, savingAgent: true, issue: '' }));

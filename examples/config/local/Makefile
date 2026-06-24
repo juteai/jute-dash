@@ -1,17 +1,56 @@
 SHELL := /bin/bash
+ROOT_DIR := $(abspath $(CURDIR)/../../..)
 JUTE_MCP_URL ?= http://127.0.0.1:8790/mcp
 JUTE_WEB_URL ?= https://localhost:5173
 JUTE_WEB_SCRIPT ?= dev:https
+JUTE_HUB_URL ?= http://127.0.0.1:8787
+JUTE_DATA_DIR ?= $(ROOT_DIR)/.jute/local-dev
+JUTE_CONFIG ?= $(ROOT_DIR)/examples/config/local/config.yaml
+JUTE_VOICE_ENV ?= $(ROOT_DIR)/.jute/local-voice-tools/local-voice.env
+KRONK_AGENT_ID ?= kronk-agent
+KRONK_AGENT_CARD_URL ?= http://127.0.0.1:9797/.well-known/agent-card.json
+KRONK_AGENT_CARD_TIMEOUT_SECONDS ?= 180
 
-.PHONY: run run-http run-mock run-kronk run-ollama run-gemini clean
+.PHONY: setup ensure-local-voice install-local-voice voice-check run run-http run-mock run-kronk run-kronk-whisper run-kronk-local-voice run-ollama run-gemini clean
+
+setup: install-local-voice voice-check
+
+ensure-local-voice:
+	@if [ -f "$(JUTE_VOICE_ENV)" ]; then \
+		source "$(JUTE_VOICE_ENV)"; \
+	else \
+		echo "WARN: local voice env not found at $(JUTE_VOICE_ENV); running local voice setup"; \
+	fi; \
+	if ./install-local-voice.sh --check >/dev/null 2>&1; then \
+		./install-local-voice.sh --check; \
+	else \
+		echo "WARN: local voice tools are missing or failing; installing local voice tools"; \
+		./install-local-voice.sh; \
+	fi
+
+install-local-voice:
+	@./install-local-voice.sh
+
+voice-check:
+	@if [ -f "$(JUTE_VOICE_ENV)" ]; then \
+		source "$(JUTE_VOICE_ENV)"; \
+	else \
+		echo "WARN: local voice env not found at $(JUTE_VOICE_ENV); run make setup or make setup-local-examples"; \
+	fi; \
+	./install-local-voice.sh --check
 
 # 1. Run Jute Hub + Svelte Web Dashboard standalone (without launching an agent)
-run:
+run: ensure-local-voice
 	@echo "Starting Jute Hub + HTTPS Web Dashboard (standalone)..."
 	@echo "Open $(JUTE_WEB_URL)"
 	@trap 'kill 0' SIGINT; \
-	(cd ../../../apps/hub && go run ./cmd/juted -config ../../examples/config/local/config.yaml) & \
-	(cd ../../../apps/web && npm run $(JUTE_WEB_SCRIPT)) & \
+	if [ -f "$(JUTE_VOICE_ENV)" ]; then \
+		source "$(JUTE_VOICE_ENV)"; \
+	else \
+		echo "WARN: local voice env not found at $(JUTE_VOICE_ENV); voice providers may be unavailable"; \
+	fi; \
+	(cd "$(ROOT_DIR)/apps/hub" && go run ./cmd/juted -config "$(JUTE_CONFIG)" -data-dir "$(JUTE_DATA_DIR)") & \
+	(cd "$(ROOT_DIR)/apps/web" && npm run $(JUTE_WEB_SCRIPT)) & \
 	wait
 
 # 2. Run Jute Hub + Svelte Web Dashboard over plain HTTP for non-OAuth testing
@@ -22,7 +61,7 @@ run-http:
 run-mock:
 	@echo "Starting Jute Stack + Mock Agent..."
 	@trap 'kill 0' SIGINT; \
-	JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="mock-agent" $(MAKE) -C ../../agents/mock-agent run & \
+	JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="mock-agent" $(MAKE) -C "$(ROOT_DIR)/examples/agents/mock-agent" run & \
 	$(MAKE) run & \
 	wait
 
@@ -30,26 +69,50 @@ run-mock:
 run-kronk:
 	@echo "Starting Jute Stack + Kronk Agent..."
 	@trap 'kill 0' SIGINT; \
-	JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="kronk-agent" $(MAKE) -C ../../agents/kronk-agent run & \
+	JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="$(KRONK_AGENT_ID)" $(MAKE) -C "$(ROOT_DIR)/examples/agents/kronk-agent" run & \
 	$(MAKE) run & \
+	( \
+		echo "kronk: waiting for Agent Card at $(KRONK_AGENT_CARD_URL)"; \
+		deadline=$$((SECONDS + $(KRONK_AGENT_CARD_TIMEOUT_SECONDS))); \
+		while :; do \
+			if curl -fsS --max-time 2 "$(KRONK_AGENT_CARD_URL)" >/dev/null 2>&1 && \
+				curl -fsS --max-time 2 -X POST "$(JUTE_HUB_URL)/api/v1/agents/$(KRONK_AGENT_ID)/refresh-card" >/dev/null 2>&1; then \
+				echo "kronk: hub refreshed $(KRONK_AGENT_ID) Agent Card"; \
+				break; \
+			fi; \
+			if (( SECONDS >= deadline )); then \
+				echo "kronk: Agent Card did not become available at $(KRONK_AGENT_CARD_URL) within $(KRONK_AGENT_CARD_TIMEOUT_SECONDS)s" >&2; \
+				break; \
+			fi; \
+			sleep 2; \
+		done; \
+	) & \
 	wait
 
-# 5. Run Jute Dashboard along with the Ollama Agent
+# 5. Backwards-compatible alias for the default real local voice stack
+run-kronk-whisper:
+	@$(MAKE) run-kronk
+
+# 6. Backwards-compatible alias for the default real local voice stack
+run-kronk-local-voice:
+	@$(MAKE) run-kronk
+
+# 7. Run Jute Dashboard along with the Ollama Agent
 run-ollama:
 	@echo "Starting Jute Stack + Ollama Agent..."
 	@trap 'kill 0' SIGINT; \
-	JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="ollama-agent" $(MAKE) -C ../../agents/ollama-agent run & \
+	JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="ollama-agent" $(MAKE) -C "$(ROOT_DIR)/examples/agents/ollama-agent" run & \
 	$(MAKE) run & \
 	wait
 
-# 6. Run Jute Dashboard along with the Gemini Agent
+# 8. Run Jute Dashboard along with the Gemini Agent
 run-gemini:
 	@echo "Starting Jute Stack + Gemini Agent..."
 	@trap 'kill 0' SIGINT; \
-	JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="gemini-agent" $(MAKE) -C ../../agents/gemini-agent run & \
+	JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="gemini-agent" $(MAKE) -C "$(ROOT_DIR)/examples/agents/gemini-agent" run & \
 	$(MAKE) run & \
 	wait
 
-# 7. Reset local development databases and caches
+# 9. Reset local development databases and caches
 clean:
-	rm -rf ../../../.jute/dev-mock-a2a ../../../.jute/dev-kronk-a2a
+	rm -rf "$(ROOT_DIR)/.jute/local-dev" "$(ROOT_DIR)/.jute/local-whisper-dev" "$(ROOT_DIR)/.jute/local-voice-dev" "$(ROOT_DIR)/.jute/dev-mock-a2a" "$(ROOT_DIR)/.jute/dev-kronk-a2a"

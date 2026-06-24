@@ -1,0 +1,19 @@
+{
+  "id": "org.mutablelogic.go-whisper.command",
+  "name": "go-whisper Command STT",
+  "version": "external",
+  "kind": "stt",
+  "transport": {
+    "type": "command",
+    "command": "/usr/local/bin/gowhisper",
+    "args": ["transcribe", "{modelId}", "{inputPath}", "--format", "json", "--language", "{language}"]
+  },
+  "capabilities": {
+    "streaming": false,
+    "partialTranscripts": false,
+    "offline": true,
+    "languages": ["en", "en-GB", "en-US"],
+    "inputFormats": ["audio/wav;rate=16000"]
+  },
+  "credentials": []
+}

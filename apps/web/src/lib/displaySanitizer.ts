@@ -257,6 +257,9 @@ export function sanitizeDisplayText(text: string): string {
   while (paragraphs.length > 1 && looksLikeReasoningParagraph(paragraphs[0])) {
     paragraphs.shift();
   }
+  if (paragraphs.length === 1 && looksLikeReasoningParagraph(paragraphs[0])) {
+    return '';
+  }
 
   return paragraphs.join('\n\n').trim();
 }

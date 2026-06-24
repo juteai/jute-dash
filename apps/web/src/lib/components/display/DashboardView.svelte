@@ -231,7 +231,7 @@
         <IconButton
           label={voiceLabel}
           variant="outline"
-          pressed={voiceReady && !voice.muted}
+          pressed={voiceReady && voice.muted}
           disabled={!voiceReady}
           on:click={onToggleVoiceMute}
         >
