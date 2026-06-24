@@ -3,9 +3,13 @@ ROOT_DIR := $(abspath $(CURDIR)/../../..)
 JUTE_MCP_URL ?= http://127.0.0.1:8790/mcp
 JUTE_WEB_URL ?= https://localhost:5173
 JUTE_WEB_SCRIPT ?= dev:https
+JUTE_HUB_URL ?= http://127.0.0.1:8787
 JUTE_DATA_DIR ?= $(ROOT_DIR)/.jute/local-dev
 JUTE_CONFIG ?= $(ROOT_DIR)/examples/config/local/config.yaml
 JUTE_VOICE_ENV ?= $(ROOT_DIR)/.jute/local-voice-tools/local-voice.env
+KRONK_AGENT_ID ?= kronk-agent
+KRONK_AGENT_CARD_URL ?= http://127.0.0.1:9797/.well-known/agent-card.json
+KRONK_AGENT_CARD_TIMEOUT_SECONDS ?= 180
 
 .PHONY: setup ensure-local-voice install-local-voice voice-check run run-http run-mock run-kronk run-kronk-whisper run-kronk-local-voice run-ollama run-gemini clean
 
@@ -65,8 +69,24 @@ run-mock:
 run-kronk:
 	@echo "Starting Jute Stack + Kronk Agent..."
 	@trap 'kill 0' SIGINT; \
-	JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="kronk-agent" $(MAKE) -C "$(ROOT_DIR)/examples/agents/kronk-agent" run & \
+	JUTE_MCP_URL="$(JUTE_MCP_URL)" JUTE_MCP_AGENT_ID="$(KRONK_AGENT_ID)" $(MAKE) -C "$(ROOT_DIR)/examples/agents/kronk-agent" run & \
 	$(MAKE) run & \
+	( \
+		echo "kronk: waiting for Agent Card at $(KRONK_AGENT_CARD_URL)"; \
+		deadline=$$((SECONDS + $(KRONK_AGENT_CARD_TIMEOUT_SECONDS))); \
+		while :; do \
+			if curl -fsS --max-time 2 "$(KRONK_AGENT_CARD_URL)" >/dev/null 2>&1 && \
+				curl -fsS --max-time 2 -X POST "$(JUTE_HUB_URL)/api/v1/agents/$(KRONK_AGENT_ID)/refresh-card" >/dev/null 2>&1; then \
+				echo "kronk: hub refreshed $(KRONK_AGENT_ID) Agent Card"; \
+				break; \
+			fi; \
+			if (( SECONDS >= deadline )); then \
+				echo "kronk: Agent Card did not become available at $(KRONK_AGENT_CARD_URL) within $(KRONK_AGENT_CARD_TIMEOUT_SECONDS)s" >&2; \
+				break; \
+			fi; \
+			sleep 2; \
+		done; \
+	) & \
 	wait
 
 # 5. Backwards-compatible alias for the default real local voice stack

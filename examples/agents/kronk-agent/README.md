@@ -6,6 +6,8 @@ A local model-backed assistant agent using `llama.cpp` (via `ardanlabs/kronk` an
 
 On first run, the Makefile executes a self-test to probe whether Metal acceleration is stable on your system. If successful, it caches the configuration in `.kronk-processor.choice` to use GPU inference. Otherwise, it falls back to CPU.
 
+If the server still fails while starting with a cached Metal choice, the run target retries on CPU and updates `.kronk-processor.choice`.
+
 To force a re-probe:
 
 ```sh

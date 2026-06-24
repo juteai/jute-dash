@@ -185,7 +185,15 @@ cat <<'PY'
 import argparse
 import json
 import os
+import warnings
 from faster_whisper import WhisperModel
+
+warnings.filterwarnings(
+    "ignore",
+    category=RuntimeWarning,
+    message=r".*encountered in matmul",
+    module=r"faster_whisper\.feature_extractor",
+)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", default="tiny.en")

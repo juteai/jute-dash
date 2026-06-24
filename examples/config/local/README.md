@@ -47,6 +47,8 @@ The local config uses debug hub logging by default so wake misses, wake confiden
 
 See [Local Voice Development](../../../docs/developer/local-voice-dev.md) for real wake/STT/TTS setup.
 
+The default local config verifies real wake/STT/TTS command providers, but it does not start a host microphone command because `voice.capture-command` is empty. Use the dashboard microphone control and grant browser microphone permission for live audio capture, or set an explicit hub capture command for hands-free host-mic experiments.
+
 ### Running with a Specific Agent
 Each target starts the local Jute stack and launches the respective agent module from `examples/agents/` in parallel:
 
@@ -60,7 +62,7 @@ Each target starts the local Jute stack and launches the respective agent module
   make run-kronk
   ```
 
-  This uses the same real local wake, STT, and TTS providers as the other example targets.
+  The local stack starts the hub, dashboard, voice tools, and Kronk in parallel. On a fresh setup, Kronk may take longer while the model downloads, probes Metal, or warms up; the harness refreshes the hub's Kronk Agent Card once it is reachable. This uses the same real local wake, STT, and TTS providers as the other example targets.
 
 * **Ollama Agent**: Local LLM assistant using `Ollama`
   ```sh
