@@ -13,7 +13,7 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.5
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/driver/sqlite v1.6.0
-	gorm.io/gorm v1.31.1
+	gorm.io/gorm v1.31.2
 )
 
 require (
